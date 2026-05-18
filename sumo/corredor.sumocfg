@@ -1,0 +1,28 @@
+<?xml version="1.0" ?>
+<configuration>
+  <input>
+    <net-file value="network/corredor.net.xml"/>
+    <route-files value="routes/routes.rou.xml"/>
+    <additional-files value="additional/bus_stops.add.xml,additional/detectors.add.xml"/>
+  </input>
+  <time>
+    <begin value="0"/>
+    <end value="7200"/>
+    <step-length value="1.0"/>
+  </time>
+  <output>
+    <tripinfo-output value="../outputs/tripinfo.xml"/>
+    <summary-output value="../outputs/summary.xml"/>
+    <statistic-output value="../outputs/statistics.xml"/>
+  </output>
+  <report>
+    <duration-log.statistics value="true"/>
+  </report>
+  <processing>
+    <time-to-teleport value="300"/>
+    <ignore-route-errors value="true"/>
+  </processing>
+  <random_number>
+    <seed value="57"/>
+  </random_number>
+</configuration>

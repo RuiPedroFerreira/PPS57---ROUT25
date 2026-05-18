@@ -1,0 +1,28 @@
+# Local Python environment
+.venv/
+
+# Python caches and packaging
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+
+# Local environment files
+.env
+.env.*
+
+# macOS/editor files
+.DS_Store
+.idea/
+.vscode/
+
+# Generated SUMO outputs
+outputs/*.xml
+outputs/*.csv
+reports/*.json
+sumo/network/*.net.xml

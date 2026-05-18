@@ -1,0 +1,34 @@
+scenario_set: pps57_porto_boavista_realistic_v02
+metadata:
+  city: Porto
+  corridor: Avenida da Boavista / Casa da Música - Praça do Império - Castelo do Queijo
+  alignment_level: topological_proxy_realistic
+  simulation_duration_s: 7200
+  notes: >
+    Cenários realistas de desenvolvimento. A rede usa nós e procura sintéticos, mas ancorados num corredor urbano real do Porto.
+    A calibração operacional exige import OSM/GTFS e dados reais de contagens e planos semafóricos.
+
+scenarios:
+  baseline_am_peak:
+    description: Plano semafórico gerado pelo netconvert, sem prioridade semafórica.
+    route_file: sumo/routes/routes.rou.xml
+    sumocfg: sumo/corredor.sumocfg
+    expected_use: medir KPIs base para autocarros e tráfego geral.
+
+  tsp_green_extension_candidate:
+    description: Cenário a usar no Pacote 3/4 com pedidos OBU e green extension nos RSU.
+    additional_modules: [OBU_emulator, RSU_agent, TraCI_adapter]
+    expected_use: comparar contra baseline_am_peak.
+
+  tsp_early_green_candidate:
+    description: Cenário a usar no Pacote 4 com encurtamento de vermelho/early green, sob safety layer.
+    additional_modules: [decision_engine, safety_layer]
+    expected_use: avaliar impacto em headway, tempo de viagem e filas transversais.
+
+  incident_minor_road_queue:
+    description: Aumento sintético de procura numa via transversal para testar rejeição fundamentada de prioridade.
+    expected_use: validar trade-off entre prioridade ao TP e impacto no tráfego geral.
+
+  emergency_vehicle_conflict:
+    description: Evento de veículo de emergência no segundo período da simulação para testar hierarquia de prioridades.
+    expected_use: validar emergência > transporte público > tráfego geral.

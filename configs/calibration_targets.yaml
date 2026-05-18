@@ -1,0 +1,57 @@
+# PPS57 - Alvos de calibração para o cenário Porto/Boavista realista v0.2
+
+scenario_id: porto_boavista_realista_v02
+alignment_level: topological_proxy_realistic
+
+calibration_status:
+  network_geometry: proxy_not_calibrated
+  public_transport: proxy_lines_based_on_STCP_line_catalogue
+  traffic_demand: synthetic_am_peak
+  signal_plans: generated_by_netconvert_until_real_controller_data_available
+
+required_real_inputs:
+  road_network:
+    - osm_extract_or_city_gis_for_boavista_corridor
+    - lane_count_by_segment
+    - permitted_turns_by_intersection
+    - speed_limits
+    - bus_lanes_and_bus_stop_bays
+    - pedestrian_crossings_and_clearance_times
+  public_transport:
+    - latest_STCP_GTFS_zip
+    - selected_routes_500_502_205_or_project_specific_line
+    - stop_coordinates
+    - scheduled_trips_by_period
+    - vehicle_headways
+    - AVL_GPS_observed_travel_times_if_available
+  traffic:
+    - turning_counts_by_intersection_and_period
+    - detector_or_loop_data
+    - observed_queue_lengths
+    - observed_segment_travel_times
+  signals:
+    - signal_group_mapping
+    - phase_sequence
+    - cycle_length_by_period
+    - min_green_max_green
+    - yellow_and_all_red
+    - offsets_between_intersections
+
+initial_proxy_targets:
+  bus_mean_corridor_travel_time_s:
+    target_source: to_be_measured_from_GTFS_or_AVL
+    proxy_expected_range: [900, 1500]
+  general_traffic_mean_corridor_travel_time_s:
+    target_source: to_be_measured_from_probe_or_floating_car
+    proxy_expected_range: [600, 1200]
+  bus_stop_dwell_time_s:
+    target_source: to_be_measured_or_assumed
+    proxy_value: 20
+  bus_headway_s:
+    line_500_proxy: 600
+    line_502_proxy: 900
+
+acceptance_for_v02:
+  static_xml_validation: true
+  sumo_runtime_validation_required: true
+  calibration_with_real_counts_required_before_operational_claims: true

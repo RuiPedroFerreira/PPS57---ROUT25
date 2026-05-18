@@ -1,0 +1,4 @@
+# SUMO CLI binaries and Python interfaces for the local virtual environment.
+eclipse-sumo==1.26.0
+traci==1.26.0
+sumolib==1.26.0

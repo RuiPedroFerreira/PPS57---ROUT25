@@ -1,0 +1,140 @@
+{
+  "scenario_id": "porto_boavista_realista_v02",
+  "description": "Cenário realista ancorado no corredor Avenida da Boavista, Porto, para validação inicial de prioridade semafórica C-ITS/TSP em SUMO.",
+  "city": "Porto",
+  "corridor_name": "Avenida da Boavista / Casa da Música - Praça do Império - Castelo do Queijo",
+  "alignment_level": "topological_proxy_realistic",
+  "important_note": "A geometria, linhas e procura foram aproximadas para desenvolvimento técnico. Devem ser substituídas/calibradas com OSM/GTFS/contagens reais antes de validação operacional.",
+  "simulation_begin_s": 0,
+  "simulation_end_s": 7200,
+  "random_seed": 57,
+  "default_major_speed_mps": 13.89,
+  "default_minor_speed_mps": 8.33,
+  "default_major_lanes": 2,
+  "default_minor_lanes": 1,
+  "bus_dwell_time_s": 20,
+  "bus_headway_s_line_500": 600,
+  "bus_headway_s_line_502": 900,
+  "intersections": [
+    {
+      "id": "I1",
+      "name": "Casa da Música / Boavista",
+      "x": 0,
+      "y": 0,
+      "type": "traffic_light",
+      "major_lanes": 2,
+      "minor_lanes": 2,
+      "priority": 4,
+      "rsu_id": "RSU_BOAVISTA_01"
+    },
+    {
+      "id": "I2",
+      "name": "Av. Boavista / Bessa",
+      "x": 650,
+      "y": -25,
+      "type": "traffic_light",
+      "major_lanes": 2,
+      "minor_lanes": 1,
+      "priority": 4,
+      "rsu_id": "RSU_BOAVISTA_02"
+    },
+    {
+      "id": "I3",
+      "name": "Av. Boavista / Antunes Guimarães",
+      "x": 1350,
+      "y": -85,
+      "type": "traffic_light",
+      "major_lanes": 2,
+      "minor_lanes": 1,
+      "priority": 4,
+      "rsu_id": "RSU_BOAVISTA_03"
+    },
+    {
+      "id": "I4",
+      "name": "Av. Boavista / Serralves",
+      "x": 2150,
+      "y": -130,
+      "type": "traffic_light",
+      "major_lanes": 2,
+      "minor_lanes": 1,
+      "priority": 4,
+      "rsu_id": "RSU_BOAVISTA_04"
+    },
+    {
+      "id": "I5",
+      "name": "Av. Boavista / Marechal Gomes da Costa",
+      "x": 2950,
+      "y": -80,
+      "type": "traffic_light",
+      "major_lanes": 2,
+      "minor_lanes": 1,
+      "priority": 4,
+      "rsu_id": "RSU_BOAVISTA_05"
+    },
+    {
+      "id": "I6",
+      "name": "Praça do Império",
+      "x": 3820,
+      "y": 45,
+      "type": "traffic_light",
+      "major_lanes": 2,
+      "minor_lanes": 2,
+      "priority": 4,
+      "rsu_id": "RSU_BOAVISTA_06"
+    },
+    {
+      "id": "I7",
+      "name": "Castelo do Queijo / ligação Matosinhos",
+      "x": 4650,
+      "y": 125,
+      "type": "traffic_light",
+      "major_lanes": 2,
+      "minor_lanes": 1,
+      "priority": 4,
+      "rsu_id": "RSU_BOAVISTA_07"
+    }
+  ],
+  "terminals": [
+    {
+      "id": "CITY_EAST",
+      "name": "Entrada leste - ligação ao centro",
+      "x": -420,
+      "y": 15
+    },
+    {
+      "id": "ATLANTIC_WEST",
+      "name": "Saída oeste - Matosinhos/Castelo do Queijo",
+      "x": 5050,
+      "y": 170
+    }
+  ],
+  "public_transport_lines": [
+    {
+      "id": "STCP500_PROXY",
+      "name": "500 proxy - Praça Liberdade/Matosinhos",
+      "direction_west": "Centro -> Matosinhos",
+      "direction_east": "Matosinhos -> Centro",
+      "headway_s": 600
+    },
+    {
+      "id": "STCP502_PROXY",
+      "name": "502 proxy - Bolhão/Matosinhos",
+      "direction_west": "Bolhão -> Matosinhos",
+      "direction_east": "Matosinhos -> Bolhão",
+      "headway_s": 900
+    }
+  ],
+  "traffic_demand_am_peak": {
+    "description": "Procura sintética calibrável para duas horas de ponta da manhã. Sentido oeste->este/inbound mais pesado.",
+    "west_to_east_period_s": 6.5,
+    "east_to_west_period_s": 10.5,
+    "minor_north_south_period_s": 28,
+    "minor_south_north_period_s": 34
+  },
+  "real_data_sources_to_attach": {
+    "gtfs_stcp": "Portal de Dados Abertos do Porto - Horários, paragens e rotas da STCP, GTFS mais recente disponível em 11-05-2026 na consulta realizada.",
+    "road_geometry": "Extrato OSM/JOSM/netconvert para o polígono Casa da Música - Praça do Império - Castelo do Queijo.",
+    "traffic_counts": "Contagens municipais/loops/SCATS/SCOOT ou campanhas manuais por movimento e período.",
+    "signal_plans": "Planos reais dos controladores: fases, grupos semafóricos, mínimos, máximos, amarelos, all-red e offsets."
+  }
+}
