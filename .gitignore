@@ -24,5 +24,7 @@ dist/
 # Generated SUMO outputs
 outputs/*.xml
 outputs/*.csv
+outputs/*.json
+outputs/*.jsonl
 reports/*.json
 sumo/network/*.net.xml
