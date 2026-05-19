@@ -46,8 +46,8 @@ class RSUAgent:
         action = ResponseAction.FORWARD_TO_DECISION_ENGINE.value
         reason = "accepted_for_tsp_decision_engine"
         safety_notes = [
-            "Pacote 3 only emulates C-ITS messages; signal actuation is reserved for Pacote 4.",
-            "Safety constraints loaded but not yet applied to TraCI commands.",
+            "Pedido aceite pela RSU para avaliação pelo motor TSP.",
+            "A atuação semafórica, quando existir, deve passar pela Safety Layer do Pacote 4.",
         ]
 
         if request.expires_at_s and sim_time_s > request.expires_at_s:

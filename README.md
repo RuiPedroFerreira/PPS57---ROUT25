@@ -8,7 +8,8 @@ A base atual inclui:
 
 - **Pacote 2 — Gémeo Digital SUMO v0.2**, com cenário proxy realista Porto/Boavista;
 - **Pacote 3 — Emulação C-ITS/V2X v0.3**, com OBUs, RSUs e mensagens MAPEM-like, SPATEM-like, SREM-like e SSEM-like;
-- **Pacote 4 — Motor de Decisão TSP + Safety Layer v0.4**, com decisões de green extension, early green, no action, rejeição e atuação segura via dry-run/TraCI.
+- **Pacote 4 — Motor de Decisão TSP + Safety Layer v0.4**, com decisões de green extension, early green, no action, rejeição e atuação segura via dry-run/TraCI;
+- **Pacote 5 — Otimização offline + RL tabular proxy v0.5**, com baseline TSP explicável e Safety Layer como filtro obrigatório para qualquer política otimizada.
 
 ## Cenário realista Porto/Boavista
 
@@ -25,6 +26,7 @@ configs/
   corridor_config_porto_boavista_realistic.json
   cits_config.json
   tsp_config.json
+  optimization_config.json
   scenarios.yaml
   signal_policy_constraints.yaml
 
@@ -34,12 +36,14 @@ docs/
   FONTES_DADOS_REAIS.md
   PACOTE3_CITS_V2X.md
   PACOTE4_TSP_SAFETY_LAYER.md
+  PACOTE5_OTIMIZACAO_RL_OFFLINE.md
   HANDOVER_PACOTE5.md
 
 scripts/
   run_baseline.py
   run_cits_emulation.py
   run_tsp_control.py
+  run_pacote5_optimization.py
 
 src/
   pps57_sumo/
@@ -65,6 +69,11 @@ src/
     logger.py
     models.py
     safety.py
+  pps57_opt/
+    config.py
+    dataset.py
+    models.py
+    optimizer.py
 
 sumo/
   plain/corredor.nod.xml
@@ -88,6 +97,7 @@ make validate
 make test
 make cits-dryrun
 make tsp-dryrun
+make optimize-offline
 ```
 
 O `tsp-dryrun` gera:
@@ -96,7 +106,11 @@ O `tsp-dryrun` gera:
 outputs/cits_messages.jsonl
 outputs/tsp_decisions.jsonl
 outputs/tsp_actuation.jsonl
+outputs/pacote5_offline_samples.jsonl
+outputs/pacote5_policy_candidates.jsonl
 reports/tsp_emulation_summary.json
+reports/pacote5_policy_report.json
+reports/pacote5_optimization_summary.json
 ```
 
 ## Como correr a simulação SUMO baseline
@@ -195,6 +209,16 @@ Ações suportadas:
 
 A safety layer bloqueia decisões que violem limites configurados, como verde máximo, verde mínimo, cooldown, intervenções consecutivas e transições em amarelo.
 
+## Pacote 5 — Otimização offline e RL proxy
+
+O Pacote 5 executa uma avaliação offline de políticas candidatas:
+
+```bash
+make optimize-offline
+```
+
+O fluxo compara candidatos `no_action`, `green_extension`, `early_green`, `reevaluate_next_cycle` e `reject` contra o baseline TSP do Pacote 4. Cada candidato passa pela Safety Layer antes de poder ser selecionado. Candidatos bloqueados por segurança são registados, mas não entram na política exportada.
+
 ## Próximo passo
 
-O próximo desenvolvimento técnico é o **Pacote 5 — Otimização avançada e aprendizagem por reforço offline**, usando o TSP do Pacote 4 como baseline explicável e a Safety Layer como filtro obrigatório para qualquer política otimizada.
+O próximo desenvolvimento técnico é substituir o dataset sintético do Pacote 5 por logs SUMO calibrados e dados reais, mantendo a Safety Layer como filtro obrigatório antes de qualquer atuação.

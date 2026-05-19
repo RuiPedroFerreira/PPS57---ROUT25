@@ -1,0 +1,42 @@
+{
+  "package_id": "pacote5_offline_optimization_rl",
+  "version": "0.5.0",
+  "scenario_id": "porto_boavista_realista_v02_pacote5_offline_optimization",
+  "description": "Otimização offline e política RL tabular proxy com baseline TSP explicável e Safety Layer obrigatória.",
+  "logging": {
+    "sample_log": "outputs/pacote5_offline_samples.jsonl",
+    "candidate_log": "outputs/pacote5_policy_candidates.jsonl",
+    "policy_report": "reports/pacote5_policy_report.json",
+    "summary_report": "reports/pacote5_optimization_summary.json"
+  },
+  "offline_training": {
+    "episodes": 1,
+    "candidate_actions": [
+      "no_action",
+      "green_extension",
+      "early_green",
+      "reevaluate_next_cycle",
+      "reject"
+    ],
+    "state_buckets": {
+      "eta_close_s": 10,
+      "eta_far_s": 25,
+      "high_delay_s": 90,
+      "phase_switch_close_s": 5
+    }
+  },
+  "reward": {
+    "bus_delay_weight": 1.0,
+    "headway_weight": 0.25,
+    "proximity_weight": 0.3,
+    "general_traffic_penalty_per_second": 0.35,
+    "reevaluate_penalty": 8.0,
+    "reject_penalty": 20.0,
+    "unsafe_candidate_penalty": 1000.0,
+    "baseline_fallback_margin": 0.0
+  },
+  "safety": {
+    "mandatory_filter": true,
+    "allow_unsafe_policy_export": false
+  }
+}
