@@ -35,8 +35,13 @@ class TSPSafetyLayer:
                 notes=notes + ["Sem atuação semafórica requerida."],
             )
 
+        if self._is_yellow_transition(signal_state):
+            return self._blocked(decision, "current_phase_is_yellow_wait_for_next_cycle", notes)
+
         if self._cooldown_active(decision.tls_id, sim_time_s):
             return self._blocked(decision, "cooldown_after_priority_active", notes)
+
+        self._reset_count_after_cooldown(decision.tls_id, sim_time_s)
 
         max_consecutive = int(safety.get("max_consecutive_priority_interventions_per_tls", 2))
         if self.consecutive_interventions_by_tls.get(decision.tls_id, 0) >= max_consecutive:
@@ -75,6 +80,11 @@ class TSPSafetyLayer:
 
         if decision.extension_s <= 0:
             return self._blocked(decision, "green_extension_not_positive", notes)
+
+        mapping = self.tsp_config.phase_mapping_for_tls(decision.tls_id)
+        corridor_phase = _optional_int(mapping.get("corridor_green_phase_index"))
+        if corridor_phase is not None and signal_state.current_phase_index != corridor_phase:
+            return self._blocked(decision, "green_extension_requires_corridor_green_phase", notes)
 
         max_extension = float(safety.get("max_green_extension_s", policy.get("green_extension_max_s", 12)))
         extension_s = min(decision.extension_s, max_extension)
@@ -127,12 +137,12 @@ class TSPSafetyLayer:
         if spent_s < min_green:
             return self._blocked(decision, f"min_green_not_satisfied:{spent_s:.1f}<{min_green:.1f}", notes)
 
-        if signal_state.red_yellow_green_state and any(ch.lower() == "y" for ch in signal_state.red_yellow_green_state):
-            return self._blocked(decision, "current_phase_is_yellow_wait_for_next_cycle", notes)
-
         requested_duration = decision.phase_duration_s
         if requested_duration is None:
             requested_duration = float(policy.get("red_truncation_to_s", 2))
+
+        if not self._phase_sequence_leads_to_target(signal_state, decision):
+            return self._blocked(decision, "early_green_target_phase_not_next_after_transition", notes)
 
         remaining_s = TSPDecisionEngine.remaining_phase_time_s(signal_state, sim_time_s)
         if remaining_s is not None and remaining_s <= requested_duration:
@@ -173,6 +183,35 @@ class TSPSafetyLayer:
         cooldown = float(self.cits_config.safety_constraints.get("cooldown_after_priority_s", 90))
         return sim_time_s - last < cooldown
 
+    def _reset_count_after_cooldown(self, tls_id: str, sim_time_s: float) -> None:
+        last = self.last_intervention_time_by_tls.get(tls_id)
+        if last is None:
+            return
+        cooldown = float(self.cits_config.safety_constraints.get("cooldown_after_priority_s", 90))
+        if sim_time_s - last >= cooldown:
+            self.reset_intervention_count(tls_id)
+
+    @staticmethod
+    def _is_yellow_transition(signal_state: SignalState) -> bool:
+        return bool(signal_state.red_yellow_green_state and any(ch.lower() == "y" for ch in signal_state.red_yellow_green_state))
+
+    def _phase_sequence_leads_to_target(self, signal_state: SignalState, decision: TSPDecision) -> bool:
+        current = signal_state.current_phase_index
+        target = decision.target_phase_index
+        if current is None or target is None:
+            return False
+
+        mapping = self.tsp_config.phase_mapping_for_tls(decision.tls_id)
+        sequence = [_optional_int(item) for item in mapping.get("phase_sequence", [0, 1, 2, 3])]
+        sequence = [item for item in sequence if item is not None]
+        if current not in sequence or target not in sequence:
+            return False
+
+        current_pos = sequence.index(current)
+        next_phase = sequence[(current_pos + 1) % len(sequence)]
+        after_transition = sequence[(current_pos + 2) % len(sequence)]
+        return target in {next_phase, after_transition}
+
     def _blocked(self, decision: TSPDecision, reason: str, notes: Optional[list[str]] = None) -> SafetyValidationResult:
         safe = decision.copy_with(status=DecisionStatus.BLOCKED_BY_SAFETY.value, reason=reason, notes=list(notes or []))
         return SafetyValidationResult(
@@ -183,3 +222,12 @@ class TSPSafetyLayer:
             safe_decision=safe,
             notes=list(notes or []) + [f"Safety Layer bloqueou decisão: {reason}."],
         )
+
+
+def _optional_int(value: object) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None

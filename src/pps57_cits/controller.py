@@ -81,10 +81,10 @@ class CITSEmulationController:
             step_count = 0
             try:
                 while adapter.min_expected_number() > 0:
+                    if steps is not None and step_count >= steps:
+                        break
                     sim_time_s = adapter.simulation_step()
                     step_count += 1
-                    if steps is not None and step_count > steps:
-                        break
 
                     signal_states = [adapter.read_signal_state(intersection, sim_time_s) for intersection in self.config.intersections]
                     spatem = [build_spatem_message_from_state(state) for state in signal_states]

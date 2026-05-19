@@ -66,7 +66,7 @@ class TraciTSPActuator:
                 timestamp_s=sim_time_s,
                 tls_id=decision.tls_id,
                 action=decision.action,
-                applied=True,
+                applied=False,
                 dry_run=True,
                 command=command,
                 reason="sumo_no_actuation_flag_would_apply",

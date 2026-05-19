@@ -122,10 +122,10 @@ class TSPControlController:
             self._publish_log_collect(mapem, cits_logger, cits_messages)
             try:
                 while adapter.min_expected_number() > 0:
+                    if steps is not None and step_count >= steps:
+                        break
                     sim_time_s = adapter.simulation_step()
                     step_count += 1
-                    if steps is not None and step_count > steps:
-                        break
 
                     signal_states = {
                         intersection.tls_id: adapter.read_signal_state(intersection, sim_time_s)
