@@ -2,7 +2,12 @@
 """Adaptador TraCI para ler estado SUMO durante a emulação C-ITS."""
 from __future__ import annotations
 
+import importlib
+import os
+from pathlib import Path
 import shutil
+import socket
+import sys
 from typing import Iterable, List, Optional
 
 from .config import CITSConfig, IntersectionConfig
@@ -22,10 +27,10 @@ class TraciSimulationAdapter:
 
     def start(self, extra_args: Optional[List[str]] = None) -> None:
         try:
-            import traci  # type: ignore
+            traci = _load_traci()
         except ImportError as exc:
             raise TraciUnavailableError(
-                "Python package 'traci' is not available. Install SUMO and ensure SUMO tools are on PYTHONPATH."
+                "Python package 'traci' is not available. Install SUMO or project requirements, and ensure SUMO tools are on PYTHONPATH or SUMO_HOME."
             ) from exc
 
         binary = self.sumo_binary
@@ -38,7 +43,7 @@ class TraciSimulationAdapter:
         cmd = [binary, "-c", str(sumocfg), "--duration-log.statistics"]
         if extra_args:
             cmd.extend(extra_args)
-        traci.start(cmd)
+        traci.start(cmd, port=_resolve_traci_port())
         self.traci = traci
 
     def close(self) -> None:
@@ -104,6 +109,22 @@ class TraciSimulationAdapter:
             )
         return observations
 
+
+    def set_phase_duration(self, tls_id: str, duration_s: float) -> None:
+        """Define a duração restante da fase corrente do semáforo.
+
+        Este é o comando TraCI usado no MVP para extensão de verde e
+        truncagem controlada de fase. Evita manipular diretamente o estado
+        vermelho/amarelo/verde.
+        """
+        traci = self._require_traci()
+        traci.trafficlight.setPhaseDuration(tls_id, float(duration_s))
+
+    def set_phase(self, tls_id: str, phase_index: int) -> None:
+        """Muda explicitamente a fase. Deve ser usado apenas em testes controlados."""
+        traci = self._require_traci()
+        traci.trafficlight.setPhase(tls_id, int(phase_index))
+
     def read_signal_state(self, intersection: IntersectionConfig, sim_time_s: float) -> SignalState:
         traci = self._require_traci()
         tls_id = intersection.tls_id
@@ -135,3 +156,73 @@ def _safe_call(callable_):  # type: ignore[no-untyped-def]
         return callable_()
     except Exception:
         return None
+
+
+def _load_traci():  # type: ignore[no-untyped-def]
+    try:
+        return importlib.import_module("traci")
+    except ImportError:
+        _bootstrap_traci_paths()
+        return importlib.import_module("traci")
+
+
+def _bootstrap_traci_paths() -> None:
+    root = Path(__file__).resolve().parents[2]
+    candidates = [
+        root / ".venv" / "lib",
+        Path(os.environ["SUMO_HOME"]) / "tools" if "SUMO_HOME" in os.environ else None,
+    ]
+
+    for base in candidates:
+        if base is None or not base.exists():
+            continue
+
+        if base.name == "lib":
+            for site_packages in sorted(base.glob("python*/site-packages")):
+                _prepend_sys_path(site_packages)
+        else:
+            _prepend_sys_path(base)
+
+
+def _prepend_sys_path(path: Path) -> None:
+    resolved = str(path.resolve())
+    if resolved not in sys.path:
+        sys.path.insert(0, resolved)
+
+
+def _resolve_traci_port() -> int:
+    configured = os.environ.get("TRACI_PORT")
+    if configured:
+        try:
+            return int(configured)
+        except ValueError as exc:
+            raise TraciUnavailableError(f"Invalid TRACI_PORT value: {configured!r}") from exc
+
+    try:
+        from sumolib.miscutils import getFreeSocketPort  # type: ignore
+
+        port = getFreeSocketPort()
+        if port is not None:
+            return int(port)
+    except Exception:
+        pass
+
+    # Some restricted environments cannot probe an ephemeral port even though
+    # SUMO/TraCI still work with a fixed localhost port.
+    for port in range(8813, 8823):
+        if _is_tcp_port_available(port):
+            return port
+
+    raise TraciUnavailableError(
+        "Could not determine a usable TraCI TCP port. Set TRACI_PORT explicitly and retry."
+    )
+
+
+def _is_tcp_port_available(port: int) -> bool:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(("127.0.0.1", port))
+        return True
+    except OSError:
+        return False
