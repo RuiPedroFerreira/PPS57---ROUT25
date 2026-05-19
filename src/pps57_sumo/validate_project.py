@@ -13,6 +13,8 @@ REQUIRED_FILES = [
     "configs/corridor_config.json",
     "configs/corridor_config_porto_boavista_realistic.json",
     "configs/scenarios.yaml",
+    "configs/cits_config.json",
+    "configs/tsp_config.json",
     "sumo/plain/corredor.nod.xml",
     "sumo/plain/corredor.edg.xml",
     "sumo/routes/routes.rou.xml",

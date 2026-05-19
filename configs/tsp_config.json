@@ -1,0 +1,63 @@
+{
+  "package_id": "pacote4_tsp_safety_layer",
+  "version": "0.4.0",
+  "scenario_id": "porto_boavista_realista_v02_pacote4_tsp",
+  "description": "Motor de decisão TSP e Safety Layer para prioridade semafórica inteligente no corredor Porto/Boavista.",
+  "logging": {
+    "decision_log": "outputs/tsp_decisions.jsonl",
+    "actuation_log": "outputs/tsp_actuation.jsonl",
+    "summary_report": "reports/tsp_emulation_summary.json"
+  },
+  "decision_policy": {
+    "min_priority_score": 0.35,
+    "delay_normalisation_s": 180,
+    "headway_normalisation_s": 240,
+    "distance_normalisation_m": 250,
+    "eta_arrival_buffer_s": 4,
+    "green_extension_min_s": 3,
+    "green_extension_default_s": 8,
+    "green_extension_max_s": 12,
+    "early_green_min_eta_s": 10,
+    "red_truncation_to_s": 2,
+    "recovery_note": "Após uma intervenção TSP, o Pacote 4 volta ao programa semafórico SUMO base; coordenação fina/offets ficam para calibração futura.",
+    "weights": {
+      "schedule_delay": 0.45,
+      "headway_deviation": 0.20,
+      "proximity": 0.20,
+      "priority_level": 0.15
+    }
+  },
+  "actuation": {
+    "dry_run_applies_no_traci": true,
+    "allow_green_extension": true,
+    "allow_red_truncation": true,
+    "allow_direct_phase_jump": false,
+    "note": "No MVP, early_green é implementado como redução segura da duração da fase corrente via setPhaseDuration, não como salto direto de fase. Isto evita saltar amarelo/all-red."
+  },
+  "phase_mapping": {
+    "default": {
+      "corridor_green_phase_index": 0,
+      "minor_green_phase_index": 2,
+      "notes": "Mapeamento proxy. Deve ser substituído pelo mapping real de signal groups quando houver planos semafóricos reais."
+    },
+    "I1": {"corridor_green_phase_index": 0, "minor_green_phase_index": 2},
+    "I2": {"corridor_green_phase_index": 0, "minor_green_phase_index": 2},
+    "I3": {"corridor_green_phase_index": 0, "minor_green_phase_index": 2},
+    "I4": {"corridor_green_phase_index": 0, "minor_green_phase_index": 2},
+    "I5": {"corridor_green_phase_index": 0, "minor_green_phase_index": 2},
+    "I6": {"corridor_green_phase_index": 0, "minor_green_phase_index": 2},
+    "I7": {"corridor_green_phase_index": 0, "minor_green_phase_index": 2}
+  },
+  "dry_run": {
+    "steps": 90,
+    "synthetic_signal_cycle_s": 60,
+    "green_phase_s": 35,
+    "yellow_s": 3,
+    "all_red_s": 1,
+    "force_cases": [
+      "green_extension",
+      "early_green",
+      "green_sufficient"
+    ]
+  }
+}

@@ -1,10 +1,11 @@
-.PHONY: validate build run gui kpis cits-dryrun cits-sumo test clean
+.PHONY: validate build run gui kpis cits-dryrun cits-sumo tsp-dryrun tsp-sumo tsp-sumo-no-actuation tsp-gui tsp-gui-no-actuation test clean
 
-PYTHON ?= python3
+PYTHON := $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 
 validate:
 	$(PYTHON) src/pps57_sumo/validate_project.py --root .
 	$(PYTHON) -m json.tool configs/cits_config.json >/dev/null
+	$(PYTHON) -m json.tool configs/tsp_config.json >/dev/null
 
 build:
 	$(PYTHON) src/pps57_sumo/generate_plain_corridor.py --config configs/corridor_config.json --output sumo/plain
@@ -24,6 +25,21 @@ cits-dryrun:
 
 cits-sumo: build
 	$(PYTHON) scripts/run_cits_emulation.py --mode sumo --steps 7200
+
+tsp-dryrun:
+	$(PYTHON) scripts/run_tsp_control.py --mode dry-run --steps 90
+
+tsp-sumo: build
+	$(PYTHON) scripts/run_tsp_control.py --mode sumo --steps 7200
+
+tsp-sumo-no-actuation: build
+	$(PYTHON) scripts/run_tsp_control.py --mode sumo --steps 7200 --no-actuation
+
+tsp-gui: build
+	$(PYTHON) scripts/run_tsp_control.py --mode sumo --gui --steps 7200
+
+tsp-gui-no-actuation: build
+	$(PYTHON) scripts/run_tsp_control.py --mode sumo --gui --steps 7200 --no-actuation
 
 test:
 	$(PYTHON) -m unittest discover -s tests -p 'test_*.py'

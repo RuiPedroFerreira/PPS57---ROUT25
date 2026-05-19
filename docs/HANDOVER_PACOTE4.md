@@ -1,40 +1,18 @@
-# Handover para o Pacote 4 — Motor de decisão TSP
+# Handover Pacote 4 — Implementado
 
-O Pacote 3 deixou pronta a camada de mensagens C-ITS/V2X. O Pacote 4 deve ligar as respostas aceites da RSU a um motor de decisão semafórica seguro.
+O Pacote 4 foi implementado como motor de decisão TSP com Safety Layer e atuação dry-run/TraCI.
 
-## Entradas disponíveis
+## Implementado
 
-- `SREM_like`: pedido de prioridade com veículo, linha, ETA, atraso, distância e interseção.
-- `SPATEM_like`: estado semafórico observado via TraCI ou snapshot estático.
-- `MAPEM_like`: aproximações e movimentos prioritários da interseção.
-- `configs/cits_config.json`: mapeamento RSU/TLS/interseção.
-- `configs/signal_policy_constraints.yaml`: restrições semafóricas criadas no Pacote 2.
+- `src/pps57_tsp/engine.py`: motor de decisão multiobjetivo.
+- `src/pps57_tsp/safety.py`: validação de segurança antes da atuação.
+- `src/pps57_tsp/actuator.py`: atuador dry-run e atuador TraCI.
+- `src/pps57_tsp/controller.py`: integração C-ITS -> TSP -> Safety -> Atuação.
+- `scripts/run_tsp_control.py`: entrada CLI para dry-run e SUMO.
+- `configs/tsp_config.json`: pesos, thresholds, actuation policy e phase mapping proxy.
+- `tests/test_pacote4_tsp.py`: testes unitários do motor e da safety layer.
 
-## Saídas esperadas no Pacote 4
-
-- Decisão TSP auditável:
-  - `no_action`;
-  - `green_extension_5s`;
-  - `green_extension_10s`;
-  - `early_green_if_safe`;
-  - `reject_with_reason`;
-  - `reevaluate_next_cycle`.
-
-- Camada de segurança:
-  - nunca violar verde mínimo;
-  - nunca saltar amarelo/all-red;
-  - respeitar clearance pedonal;
-  - aplicar cooldown;
-  - limitar extensão máxima;
-  - registar motivo de cada decisão.
-
-- Adaptador TraCI de atuação:
-  - ler fase atual;
-  - calcular tempo restante;
-  - aplicar `setPhaseDuration` apenas após validação;
-  - evitar `setRedYellowGreenState` direto no MVP, salvo em testes controlados.
-
-## Próxima arquitetura
+## Fluxo resultante
 
 ```text
 SREM-like recebido pela RSU
@@ -45,7 +23,11 @@ Motor TSP Pacote 4
         ↓
 Safety Layer
         ↓
-SUMO TraCI Adapter
+Dry-run ou TraCI setPhaseDuration
         ↓
-KPIs e relatório
+Logs e resumo
 ```
+
+## Próximo handover
+
+Consultar `docs/HANDOVER_PACOTE5.md` para evolução para otimização avançada e RL offline.
