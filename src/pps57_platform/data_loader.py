@@ -25,8 +25,14 @@ DEFAULT_ARTIFACTS: Dict[str, str] = {
     "cits_summary": "reports/cits_emulation_summary.json",
     "tsp_summary": "reports/tsp_emulation_summary.json",
     "baseline_kpis": "reports/baseline_kpis.json",
+    "rl_kpis": "reports/rl_kpis.json",
     "optimization_summary": "reports/policy_optimization_summary.json",
     "policy_report": "reports/policy_report.json",
+    "rl_training_summary": "reports/rl_training_summary.json",
+    "tabular_q_policy_report": "reports/tabular_q_policy_report.json",
+    "tsp_ab_comparison": "reports/tsp_baseline_vs_rl_comparison.json",
+    "sumo_kpi_comparison": "reports/sumo_baseline_vs_rl_kpi_comparison.json",
+    "decision_outcome_evaluation": "reports/decision_outcome_evaluation.json",
     "tripinfo": "outputs/tripinfo.xml",
 }
 
@@ -50,8 +56,14 @@ JSON_ARTIFACTS = {
     "cits_summary",
     "tsp_summary",
     "baseline_kpis",
+    "rl_kpis",
     "optimization_summary",
     "policy_report",
+    "rl_training_summary",
+    "tabular_q_policy_report",
+    "tsp_ab_comparison",
+    "sumo_kpi_comparison",
+    "decision_outcome_evaluation",
 }
 
 
@@ -200,6 +212,13 @@ def build_aggregates(
     cits_summary = json_payloads.get("cits_summary", {})
     tsp_summary = json_payloads.get("tsp_summary", {})
     optimization_summary = json_payloads.get("optimization_summary", {})
+    baseline_kpis = json_payloads.get("baseline_kpis", {})
+    rl_kpis = json_payloads.get("rl_kpis", {})
+    rl_training_summary = json_payloads.get("rl_training_summary", {})
+    tabular_q_policy_report = json_payloads.get("tabular_q_policy_report", {})
+    tsp_ab_comparison = json_payloads.get("tsp_ab_comparison", {})
+    sumo_kpi_comparison = json_payloads.get("sumo_kpi_comparison", {})
+    decision_outcome_evaluation = json_payloads.get("decision_outcome_evaluation", {})
 
     total_messages = _count_with_summary_fallback(
         "cits_messages", len(cits_messages), cits_summary.get("total_messages"), artifact_statuses
@@ -257,7 +276,7 @@ def build_aggregates(
             "by_action": count_by(tsp_actuation, "action"),
             "by_command": count_by(tsp_actuation, "command"),
             "by_applied": count_by_bool(tsp_actuation, "applied"),
-            "by_dry_run": count_by_bool(tsp_actuation, "dry_run"),
+            "by_no_actuation": count_by_bool(tsp_actuation, "no_actuation"),
             "by_tls": count_by(tsp_actuation, "tls_id"),
         },
         "optimization": {
@@ -268,6 +287,15 @@ def build_aggregates(
             "reward_delta": optimization_delta,
             "baseline_reward": _safe_float(optimization_summary.get("baseline_reward"), default=0.0),
             "optimized_reward": _safe_float(optimization_summary.get("optimized_reward"), default=0.0),
+        },
+        "experiments": {
+            "current_run": _current_run_projection(tsp_summary, baseline_kpis, rl_training_summary),
+            "policy": _policy_projection(optimization_summary, tabular_q_policy_report, json_payloads.get("policy_report", {})),
+            "kpi_rows": _comparison_rows(sumo_kpi_comparison),
+            "tsp_rows": _comparison_rows(tsp_ab_comparison),
+            "decision_outcomes": _decision_outcome_projection(decision_outcome_evaluation),
+            "baseline_kpis": _kpi_projection(baseline_kpis),
+            "rl_kpis": _kpi_projection(rl_kpis),
         },
     }
 
@@ -385,22 +413,45 @@ def parse_tripinfo_with_status(key: str, label: str, path: Path) -> Tuple[Dict[s
 
 
 def parse_tripinfo(path: Path) -> Dict[str, Any]:
-    tree = ET.parse(path)
-    root = tree.getroot()
-    durations: List[float] = []
-    route_lengths: List[float] = []
-    waiting_times: List[float] = []
-    for trip in root.findall("tripinfo"):
-        durations.append(_safe_float(trip.attrib.get("duration"), default=0.0))
-        route_lengths.append(_safe_float(trip.attrib.get("routeLength"), default=0.0))
-        waiting_times.append(_safe_float(trip.attrib.get("waitingTime"), default=0.0))
+    """Stream `tripinfo.xml` via `iterparse` para escalar a SUMO outputs grandes.
+
+    `ET.parse` carregava o DOM inteiro em memória; ficheiros reais de SUMO em
+    corridas de 7200+ segundos podem ter centenas de MB e milhões de
+    `<tripinfo>` — chega para esgotar o processo do dashboard. Com `iterparse`
+    + `elem.clear()` o uso é O(1) por entrada e contínuo.
+    """
+    count = 0
+    duration_sum = 0.0
+    duration_max = 0.0
+    route_length_sum = 0.0
+    waiting_sum = 0.0
+    waiting_max = 0.0
+
+    # `iterparse` aceita `Path` e devolve eventos incrementais.
+    for event, elem in ET.iterparse(str(path), events=("end",)):
+        if elem.tag != "tripinfo":
+            continue
+        duration = _safe_float(elem.attrib.get("duration"), default=0.0)
+        route_length = _safe_float(elem.attrib.get("routeLength"), default=0.0)
+        waiting = _safe_float(elem.attrib.get("waitingTime"), default=0.0)
+        count += 1
+        duration_sum += duration
+        if duration > duration_max:
+            duration_max = duration
+        route_length_sum += route_length
+        waiting_sum += waiting
+        if waiting > waiting_max:
+            waiting_max = waiting
+        # Liberta a sub-árvore para não acumular memória.
+        elem.clear()
+
     return {
-        "vehicle_count": len(durations),
-        "avg_duration_s": _avg(durations),
-        "max_duration_s": max(durations) if durations else 0.0,
-        "avg_route_length_m": _avg(route_lengths),
-        "avg_waiting_time_s": _avg(waiting_times),
-        "max_waiting_time_s": max(waiting_times) if waiting_times else 0.0,
+        "vehicle_count": count,
+        "avg_duration_s": duration_sum / count if count else 0.0,
+        "max_duration_s": duration_max if count else 0.0,
+        "avg_route_length_m": route_length_sum / count if count else 0.0,
+        "avg_waiting_time_s": waiting_sum / count if count else 0.0,
+        "max_waiting_time_s": waiting_max if count else 0.0,
     }
 
 
@@ -439,7 +490,7 @@ def count_by_bool(records: Iterable[Mapping[str, Any]], key: str) -> Dict[str, i
 
 
 def valid_jsonl_records(records: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Filter synthetic parse-error rows before computing operational KPIs."""
+    """Filter JSONL parse-error marker rows before computing operational KPIs."""
     return [item for item in records if "__parse_error__" not in item]
 
 
@@ -453,6 +504,105 @@ def latest_records(records: List[Dict[str, Any]], limit: int = 20) -> List[Dict[
 def export_snapshot(snapshot: Mapping[str, Any], output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(snapshot, indent=2, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+
+
+def _current_run_projection(
+    tsp_summary: Mapping[str, Any],
+    baseline_kpis: Mapping[str, Any],
+    rl_training_summary: Mapping[str, Any],
+) -> Dict[str, Any]:
+    return {
+        "scenario_id": tsp_summary.get("scenario_id", "n/a"),
+        "mode": tsp_summary.get("mode", "n/a"),
+        "policy_mode": tsp_summary.get("policy_mode", "baseline"),
+        "steps": tsp_summary.get("steps", "n/a"),
+        "actuation_enabled": tsp_summary.get("actuation_enabled", "n/a"),
+        "runtime_policy_loaded": tsp_summary.get("runtime_policy_loaded", False),
+        "vehicle_count": _kpi_value(baseline_kpis, "all_vehicles", "vehicles", fallback=baseline_kpis.get("vehicle_count")),
+        "rl_training_episodes": rl_training_summary.get("episodes", rl_training_summary.get("episode_count", "n/a")),
+    }
+
+
+def _policy_projection(
+    optimization_summary: Mapping[str, Any],
+    rl_policy_report: Mapping[str, Any],
+    optimized_policy_report: Mapping[str, Any],
+) -> Dict[str, Any]:
+    runtime_policy = rl_policy_report or optimized_policy_report
+    return {
+        "optimized_reward_delta": _safe_float(optimization_summary.get("reward_delta"), default=0.0),
+        "optimized_candidate_count": _safe_int(optimization_summary.get("candidate_count"), default=0),
+        "unsafe_candidates_filtered": _safe_int(optimization_summary.get("unsafe_candidates_filtered"), default=0),
+        "policy_id": runtime_policy.get("policy_id", runtime_policy.get("id", "n/a")),
+        "algorithm": runtime_policy.get("algorithm", runtime_policy.get("policy_type", "n/a")),
+        "rule_count": runtime_policy.get("rule_count", len(runtime_policy.get("rules", [])) if isinstance(runtime_policy.get("rules"), list) else 0),
+    }
+
+
+def _comparison_rows(payload: Mapping[str, Any]) -> List[Dict[str, Any]]:
+    rows = payload.get("rows", [])
+    if not isinstance(rows, list):
+        return []
+    normalized: List[Dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        normalized.append(
+            {
+                "metric": row.get("metric", ""),
+                "baseline": row.get("baseline", ""),
+                "rl": row.get("rl", ""),
+                "delta": row.get("delta", ""),
+            }
+        )
+    return normalized
+
+
+def _decision_outcome_projection(payload: Mapping[str, Any]) -> Dict[str, Any]:
+    rows = payload.get("rows", [])
+    verdict_counts = payload.get("verdict_counts", {})
+    return {
+        "available": bool(payload),
+        "decision_count": _safe_int(payload.get("decision_count"), default=0),
+        "matched_decision_count": _safe_int(payload.get("matched_decision_count"), default=0),
+        "network_impact_verdict": payload.get("network_impact_verdict", "n/a"),
+        "verdict_counts": verdict_counts if isinstance(verdict_counts, dict) else {},
+        "rows": rows if isinstance(rows, list) else [],
+    }
+
+
+def _kpi_projection(payload: Mapping[str, Any]) -> Dict[str, Any]:
+    return {
+        "source": payload.get("source", ""),
+        "all_vehicles": _kpi_group(payload, "all_vehicles"),
+        "buses": _kpi_group(payload, "buses"),
+        "general_traffic": _kpi_group(payload, "general_traffic"),
+        "legacy": {
+            "vehicle_count": payload.get("vehicle_count"),
+            "avg_duration_s": payload.get("avg_duration_s"),
+            "avg_waiting_time_s": payload.get("avg_waiting_time_s"),
+        },
+    }
+
+
+def _kpi_group(payload: Mapping[str, Any], group: str) -> Dict[str, Any]:
+    group_payload = payload.get(group, {})
+    if not isinstance(group_payload, dict):
+        group_payload = {}
+    return {
+        "vehicles": _kpi_value(payload, group, "vehicles"),
+        "mean_duration_s": _kpi_value(payload, group, "mean_duration_s"),
+        "mean_waiting_time_s": _kpi_value(payload, group, "mean_waiting_time_s"),
+        "mean_time_loss_s": _kpi_value(payload, group, "mean_time_loss_s"),
+        "mean_depart_delay_s": _kpi_value(payload, group, "mean_depart_delay_s"),
+    }
+
+
+def _kpi_value(payload: Mapping[str, Any], group: str, metric: str, fallback: Any = None) -> Any:
+    group_payload = payload.get(group, {})
+    if isinstance(group_payload, dict) and metric in group_payload:
+        return group_payload.get(metric)
+    return fallback
 
 
 def _resolve(root: Path, path: str | Path) -> Path:

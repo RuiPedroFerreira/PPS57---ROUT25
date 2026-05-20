@@ -55,7 +55,7 @@ class PlatformDataLoaderTest(unittest.TestCase):
             )
             write_jsonl(
                 root / "outputs" / "tsp_actuation.jsonl",
-                [{"action": "green_extension", "applied": True, "dry_run": True, "tls_id": "TLS_1"}],
+                [{"action": "green_extension", "applied": True, "no_actuation": False, "tls_id": "TLS_1"}],
             )
             write_jsonl(
                 root / "outputs" / "policy_candidates.jsonl",
@@ -68,9 +68,26 @@ class PlatformDataLoaderTest(unittest.TestCase):
                 json.dumps({"reward_delta": 7.5, "candidate_count": 2}),
                 encoding="utf-8",
             )
+            (root / "reports" / "tsp_baseline_vs_rl_comparison.json").write_text(
+                json.dumps({"rows": [{"metric": "total_decisions", "baseline": 2, "rl": 2, "delta": 0}]}),
+                encoding="utf-8",
+            )
+            (root / "reports" / "decision_outcome_evaluation.json").write_text(
+                json.dumps(
+                    {
+                        "decision_count": 2,
+                        "matched_decision_count": 2,
+                        "network_impact_verdict": "inconclusive_without_kpis",
+                        "verdict_counts": {"same": 2},
+                        "rows": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
 
             snapshot = collect_snapshot(root)
             overview = snapshot["aggregates"]["overview"]
+            experiments = snapshot["aggregates"]["experiments"]
 
             self.assertEqual(overview["total_cits_messages"], 2)
             self.assertEqual(overview["total_tsp_decisions"], 2)
@@ -78,6 +95,8 @@ class PlatformDataLoaderTest(unittest.TestCase):
             self.assertEqual(overview["applied_actuation_events"], 1)
             self.assertEqual(overview["unsafe_candidates_filtered"], 1)
             self.assertEqual(overview["reward_delta"], 7.5)
+            self.assertEqual(experiments["tsp_rows"][0]["metric"], "total_decisions")
+            self.assertEqual(experiments["decision_outcomes"]["verdict_counts"]["same"], 2)
             self.assertFalse(snapshot["missing_critical_artifacts"])
 
     def test_existing_logs_do_not_fallback_to_stale_nonzero_summaries(self) -> None:
@@ -104,7 +123,7 @@ class PlatformDataLoaderTest(unittest.TestCase):
             )
             (root / "outputs" / "cits_messages.jsonl").write_text('{"message_type":"SREM_like"}\n{broken}\n', encoding="utf-8")
             write_jsonl(root / "outputs" / "tsp_decisions.jsonl", [{"status": "approved"}])
-            write_jsonl(root / "outputs" / "tsp_actuation.jsonl", [{"applied": False, "dry_run": "false"}])
+            write_jsonl(root / "outputs" / "tsp_actuation.jsonl", [{"applied": False, "no_actuation": "false"}])
             write_jsonl(
                 root / "outputs" / "policy_candidates.jsonl",
                 [{"selected": "false", "is_safety_blocked": "false", "safety_status": "approved"}],
@@ -258,8 +277,86 @@ class PlatformDataLoaderTest(unittest.TestCase):
         self.assertIn("--gui", command)
         self.assertIn("--no-actuation", command)
 
+        comparison_command = runner._command_for("compare-tsp-rl", RunOptions(steps=30, no_actuation=True))
+        self.assertIn("scripts/compare_tsp_baseline_rl.py", comparison_command)
+        self.assertIn("--config", comparison_command)
+        self.assertIn("--tsp-config", comparison_command)
+        self.assertIn("--policy-config", comparison_command)
+        self.assertIn("--sumo-binary", comparison_command)
+        self.assertIn("--no-actuation", comparison_command)
+
         with self.assertRaises(RunnerUnsupportedError):
             runner._command_for("shell-arbitrary", RunOptions())
+
+    def test_platform_runner_rejects_path_traversal_in_run_start(self) -> None:
+        # api.py forwards RunStartRequest fields directly to the subprocess.
+        # Without validation, "../../etc/passwd" or "/etc/shadow" reaches the
+        # worker — defense-in-depth: reject before spawning anything.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "configs").mkdir()
+            (root / "outputs").mkdir()
+            runner = PlatformRunner(root)
+
+            with self.assertRaises(RunnerUnsupportedError):
+                runner.start_run("tsp-sumo", RunOptions(config="../escape.json"))
+            with self.assertRaises(RunnerUnsupportedError):
+                runner.start_run("tsp-sumo", RunOptions(tsp_config="/etc/shadow"))
+            with self.assertRaises(RunnerUnsupportedError):
+                runner.start_run("tsp-sumo", RunOptions(policy_report="../../leak.json"))
+            # No process should have been started for any of the above.
+            self.assertIsNone(runner.process)
+
+    def test_run_platform_api_loopback_detection(self) -> None:
+        from scripts.run_platform_api import _is_loopback  # type: ignore[import-not-found]
+
+        self.assertTrue(_is_loopback("127.0.0.1"))
+        self.assertTrue(_is_loopback("localhost"))
+        self.assertTrue(_is_loopback("::1"))
+        self.assertFalse(_is_loopback("0.0.0.0"))
+        self.assertFalse(_is_loopback("10.0.0.5"))
+        self.assertFalse(_is_loopback("not-a-host"))
+
+    def test_load_scenarios_uses_yaml_safe_load(self) -> None:
+        # The regex parser silently dropped values containing ":". safe_load handles them.
+        import importlib.util
+        import types
+
+        # Stub streamlit just enough for app.py to import (cache_data must be a
+        # passthrough decorator; the dashboard module never calls st.* at import
+        # time outside of decorator construction).
+        if "streamlit" not in sys.modules:
+            stub = types.ModuleType("streamlit")
+
+            def _passthrough_cache_data(*args, **kwargs):
+                def wrap(fn):
+                    fn.clear = lambda: None  # type: ignore[attr-defined]
+                    return fn
+                return wrap
+
+            stub.cache_data = _passthrough_cache_data  # type: ignore[attr-defined]
+            sys.modules["streamlit"] = stub
+
+        spec = importlib.util.spec_from_file_location("dashboard_app", ROOT / "dashboard" / "app.py")
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as tmp:
+            scenarios_path = Path(tmp) / "scenarios.yaml"
+            scenarios_path.write_text(
+                "scenarios:\n"
+                "  alpha:\n"
+                "    description: 'a value: with colon'\n"
+                "    steps: 7200\n"
+                "  beta:\n"
+                "    enabled: true\n",
+                encoding="utf-8",
+            )
+            scenarios = module.load_scenarios(scenarios_path)
+            self.assertIn("alpha", scenarios)
+            self.assertEqual(scenarios["alpha"]["description"], "a value: with colon")
+            self.assertEqual(scenarios["alpha"]["steps"], "7200")
+            self.assertEqual(scenarios["beta"]["enabled"], "true")
 
     def test_platform_runner_reads_recent_jsonl_events(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -289,7 +386,11 @@ class PlatformDataLoaderTest(unittest.TestCase):
             self.assertIn("/runs/start", paths)
             self.assertIn("/runs/current", paths)
             self.assertIn("/artifacts/snapshot", paths)
-            self.assertEqual(RunStartRequest(kind="tsp-dry-run", steps=3).to_options().steps, 3)
+            self.assertEqual(RunStartRequest(kind="tsp-sumo", steps=3).to_options().steps, 3)
+            self.assertEqual(
+                RunStartRequest(kind="tsp-sumo", config="configs/custom_cits.json").to_options().config,
+                "configs/custom_cits.json",
+            )
 
 
 def write_jsonl(path: Path, rows: list[dict]) -> None:

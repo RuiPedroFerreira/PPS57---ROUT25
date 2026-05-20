@@ -23,14 +23,15 @@ from .data_loader import JSONL_ARTIFACTS, collect_snapshot, load_platform_config
 
 
 RUN_KINDS = {
-    "cits-dry-run",
-    "tsp-dry-run",
+    "build-event-training-dataset",
     "cits-sumo",
+    "compare-tsp-rl",
+    "evaluate-decision-outcomes",
+    "kpis",
     "tsp-sumo",
     "tsp-sumo-no-actuation",
     "optimize-offline",
     "train-rl-policy",
-    "platform-demo-data",
     "platform-check",
 }
 
@@ -52,10 +53,12 @@ class RunOptions:
     steps: Optional[int] = None
     gui: bool = False
     no_actuation: bool = False
-    overwrite: bool = False
     sumo_binary: str = "sumo"
     max_records: int = 5000
     strict: bool = False
+    config: str = "configs/cits_config.json"
+    tsp_config: str = "configs/tsp_config.json"
+    policy_config: str = "configs/policy_optimization_config.json"
     policy_mode: str = "baseline"
     policy_report: Optional[str] = None
 
@@ -83,6 +86,16 @@ class PlatformRunner:
                 raise RunnerBusyError("A platform run is already active.")
             if kind not in RUN_KINDS:
                 raise RunnerUnsupportedError(f"Unsupported run kind: {kind}")
+            # Path-traversal guard: as opções `config/tsp_config/policy_config/
+            # policy_report` são interpoladas em argumentos de subprocesso. Sem
+            # validação, um POST com "../../etc/passwd" ou um absoluto fora do
+            # projecto seria forwarded directamente. Apesar de a API correr em
+            # loopback, isto é defense-in-depth.
+            self._validate_project_path(options.config, "config")
+            self._validate_project_path(options.tsp_config, "tsp_config")
+            self._validate_project_path(options.policy_config, "policy_config")
+            if options.policy_report is not None:
+                self._validate_project_path(options.policy_report, "policy_report")
 
             run_id = str(uuid4())
             started_at = _now()
@@ -203,21 +216,56 @@ class PlatformRunner:
             "events": _read_recent_jsonl(path, max(0, limit)),
         }
 
+    def _validate_project_path(self, value: str, field_name: str) -> None:
+        """Garante que `value` é um path relativo que, depois de resolvido
+        contra `self.root`, ainda fica dentro de `self.root`. Bloqueia tanto
+        absolutos como ``..`` que escapem do projecto."""
+        if not value:
+            raise RunnerUnsupportedError(f"{field_name} is empty.")
+        candidate = Path(value)
+        if candidate.is_absolute():
+            raise RunnerUnsupportedError(
+                f"{field_name}={value!r} must be a path relative to the project root."
+            )
+        resolved = (self.root / candidate).resolve()
+        try:
+            resolved.relative_to(self.root)
+        except ValueError as exc:
+            raise RunnerUnsupportedError(
+                f"{field_name}={value!r} resolves outside the project root."
+            ) from exc
+
     def _command_for(self, kind: str, options: RunOptions) -> list[str]:
         python = _project_python(self.root)
-        if kind == "cits-dry-run":
-            return _with_steps([python, "scripts/run_cits_emulation.py", "--mode", "dry-run"], options.steps)
-        if kind == "tsp-dry-run":
-            return _with_policy(_with_steps([python, "scripts/run_tsp_control.py", "--mode", "dry-run"], options.steps), options)
         if kind == "cits-sumo":
             cmd = _with_steps(
-                [python, "scripts/run_cits_emulation.py", "--mode", "sumo", "--sumo-binary", options.sumo_binary],
+                [
+                    python,
+                    "scripts/run_cits_emulation.py",
+                    "--config",
+                    options.config,
+                    "--mode",
+                    "sumo",
+                    "--sumo-binary",
+                    options.sumo_binary,
+                ],
                 options.steps,
             )
             return cmd + (["--gui"] if options.gui else [])
         if kind in {"tsp-sumo", "tsp-sumo-no-actuation"}:
             cmd = _with_steps(
-                [python, "scripts/run_tsp_control.py", "--mode", "sumo", "--sumo-binary", options.sumo_binary],
+                [
+                    python,
+                    "scripts/run_tsp_control.py",
+                    "--config",
+                    options.config,
+                    "--tsp-config",
+                    options.tsp_config,
+                    "--mode",
+                    "sumo",
+                    "--sumo-binary",
+                    options.sumo_binary,
+                ],
                 options.steps,
             )
             if options.gui:
@@ -226,14 +274,32 @@ class PlatformRunner:
                 cmd.append("--no-actuation")
             return _with_policy(cmd, options)
         if kind == "optimize-offline":
-            return [python, "scripts/run_policy_optimization.py"]
+            return _with_config_files([python, "scripts/run_policy_optimization.py"], options)
         if kind == "train-rl-policy":
-            return [python, "scripts/run_rl_training.py"]
-        if kind == "platform-demo-data":
-            cmd = [python, "scripts/generate_platform_demo_data.py"]
-            if options.overwrite:
-                cmd.append("--overwrite")
+            return _with_config_files([python, "scripts/run_rl_training.py"], options)
+        if kind == "build-event-training-dataset":
+            return [python, "scripts/build_event_training_dataset.py"]
+        if kind == "compare-tsp-rl":
+            cmd = _with_steps(_with_config_files([python, "scripts/compare_tsp_baseline_rl.py"], options), options.steps)
+            cmd.extend(["--sumo-binary", options.sumo_binary])
+            if options.no_actuation:
+                cmd.append("--no-actuation")
             return cmd
+        if kind == "evaluate-decision-outcomes":
+            cmd = _with_steps(_with_config_files([python, "scripts/evaluate_decision_outcomes.py"], options), options.steps)
+            cmd.extend(["--sumo-binary", options.sumo_binary])
+            if options.no_actuation:
+                cmd.append("--no-actuation")
+            return cmd
+        if kind == "kpis":
+            return [
+                python,
+                "src/pps57_sumo/parse_tripinfo.py",
+                "--tripinfo",
+                "outputs/tripinfo.xml",
+                "--out",
+                "reports/baseline_kpis.json",
+            ]
         if kind == "platform-check":
             cmd = [
                 python,
@@ -334,6 +400,11 @@ def _project_python(root: Path) -> str:
 def _with_steps(command: list[str], steps: Optional[int]) -> list[str]:
     if steps is not None:
         command.extend(["--steps", str(int(steps))])
+    return command
+
+
+def _with_config_files(command: list[str], options: RunOptions) -> list[str]:
+    command.extend(["--config", options.config, "--tsp-config", options.tsp_config, "--policy-config", options.policy_config])
     return command
 
 

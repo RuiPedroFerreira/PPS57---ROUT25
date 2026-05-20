@@ -12,3 +12,7 @@ uvicorn[standard]>=0.30,<1.0
 # M4: parser XML endurecido (drop-in para xml.etree.ElementTree) que bloqueia
 # ataques XXE/expansão de entidades em XML externo (tripinfo/route files).
 defusedxml>=0.7,<1.0
+
+# PyYAML para a dashboard (load de configs/scenarios.yaml com safe_load
+# em vez do parser regex frágil anterior).
+PyYAML>=6.0,<7.0

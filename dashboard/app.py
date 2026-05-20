@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
-"""Streamlit dashboard for the PPS57 ROUT25 platform."""
+"""Streamlit experiment cockpit for the PPS57 ROUT25 platform."""
 from __future__ import annotations
 
 import json
+from html import escape
 from pathlib import Path
+import re
 import sys
 from typing import Any, Dict, Iterable, List, Mapping
 from urllib import error, request
-from html import escape
 
 try:
     import pandas as pd
     import streamlit as st
+    import yaml
 except ImportError as exc:  # pragma: no cover - only used at runtime
     raise SystemExit(
-        "Dashboard dependencies are missing. Install them with: python -m pip install -r requirements.txt"
+        "Dashboard dependencies are missing. Install them with: python -m pip install -r requirements-dashboard.txt"
     ) from exc
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,63 +27,86 @@ if str(SRC) not in sys.path:
 from pps57_platform.data_loader import collect_snapshot, latest_records  # noqa: E402
 
 
+# TTL curto: cada widget rerun do Streamlit chamava `collect_snapshot`, que
+# por sua vez re-parseia *todos* os JSONL. Com TTL de 5s a UI continua a
+# parecer "live" mas os cliques rápidos partilham o mesmo snapshot. O botão
+# "Recarregar" no sidebar chama `.clear()` para forçar releitura imediata
+# (ex.: depois de uma corrida terminar).
+@st.cache_data(ttl=5)
+def cached_collect_snapshot(root_str: str, config_path: str, max_records: int) -> Dict[str, Any]:
+    return collect_snapshot(Path(root_str), config_path, max_records=max_records)
+
+
+RUN_JOBS = {
+    "Baseline TSP": "tsp-sumo",
+    "Baseline sem atuacao": "tsp-sumo-no-actuation",
+    "C-ITS SUMO": "cits-sumo",
+    "KPIs baseline": "kpis",
+    "Dataset treino": "build-event-training-dataset",
+    "Otimizar politica": "optimize-offline",
+    "Treinar RL": "train-rl-policy",
+    "Comparar TSP baseline vs RL": "compare-tsp-rl",
+    "Avaliar outcomes": "evaluate-decision-outcomes",
+    "Verificar plataforma": "platform-check",
+}
+
+
 def main() -> None:
-    st.set_page_config(page_title="PPS57 — ROUT25 Platform", page_icon="🚦", layout="wide")
+    st.set_page_config(page_title="PPS57 ROUT25 Experiments", layout="wide")
     apply_theme()
 
     with st.sidebar:
         st.markdown("### PPS57 ROUT25")
         root_text = st.text_input("Raiz do repositório", value=str(ROOT))
-        config_text = st.text_input("Configuração", value="configs/platform_config.json")
+        config_text = st.text_input("Configuração dashboard", value="configs/platform_config.json")
         api_url = st.text_input("API local", value="http://127.0.0.1:8000")
-        max_records = st.number_input("Máximo de registos por log", min_value=100, max_value=100000, value=5000, step=100)
-        refresh = st.button("Recarregar", use_container_width=True)
-        if refresh:
+        max_records = st.number_input("Registos por log", min_value=100, max_value=100000, value=5000, step=100)
+        st.divider()
+        cits_config = st.text_input("C-ITS config", value="configs/cits_config.json")
+        tsp_config = st.text_input("TSP config", value="configs/tsp_config.json")
+        policy_config = st.text_input("RL/policy config", value="configs/policy_optimization_config.json")
+        if st.button("Recarregar", use_container_width=True):
+            # Limpa o cache do snapshot para forçar releitura dos JSONL.
+            cached_collect_snapshot.clear()
             st.rerun()
 
-    snapshot = collect_snapshot(Path(root_text), config_text, max_records=int(max_records))
-    config = snapshot["config"]
-    aggregates = snapshot["aggregates"]
-    records = snapshot["records"]
-    reports = snapshot["reports"]
+    root = Path(root_text)
+    snapshot = cached_collect_snapshot(str(root), config_text, int(max_records))
     api_state = api_get(api_url, "/runs/current")
+    scenario_catalog = load_scenarios(root / "configs" / "scenarios.yaml")
+    context = {
+        "api_url": api_url,
+        "root": root,
+        "cits_config": cits_config,
+        "tsp_config": tsp_config,
+        "policy_config": policy_config,
+        "scenario_catalog": scenario_catalog,
+    }
 
-    render_header(config, snapshot, api_state)
+    render_header(snapshot, api_state)
+    render_data_warnings(snapshot)
 
-    config_error = snapshot.get("config_error")
-    if config_error:
-        st.error(f"Configuração da plataforma inválida (a usar defaults): {config_error}")
-
-    missing = snapshot.get("missing_critical_artifacts", [])
-    if missing:
-        st.warning("Artefactos críticos em falta: " + ", ".join(missing))
-
-    tabs = st.tabs([
-        "Overview",
-        "C-ITS",
-        "TSP & Safety",
-        "Atuação",
-        "Otimização",
-        "KPIs",
-        "Controlo",
-        "Artefactos",
-    ])
-
+    tabs = st.tabs(
+        [
+            "Cockpit",
+            "Cenarios e runs",
+            "Treino e inferencia",
+            "Comparacao",
+            "Safety e decisoes",
+            "Artefactos",
+        ]
+    )
     with tabs[0]:
-        render_overview(config, aggregates, reports)
+        render_cockpit(snapshot, api_state)
     with tabs[1]:
-        render_cits(aggregates, records)
+        render_scenario_runs(snapshot, api_state, context)
     with tabs[2]:
-        render_tsp(aggregates, records)
+        render_training(snapshot, api_state, context)
     with tabs[3]:
-        render_actuation(aggregates, records)
+        render_comparison(snapshot)
     with tabs[4]:
-        render_optimization(aggregates, records, reports)
+        render_safety(snapshot)
     with tabs[5]:
-        render_kpis(aggregates, reports, snapshot.get("tripinfo", {}))
-    with tabs[6]:
-        render_control(api_url)
-    with tabs[7]:
         render_artifacts(snapshot)
 
 
@@ -90,104 +115,111 @@ def apply_theme() -> None:
         """
         <style>
         :root {
-          --pps-bg: #f7f8fa;
+          --pps-bg: #f8fafc;
           --pps-panel: #ffffff;
-          --pps-panel-border: #dfe3e8;
-          --pps-text-muted: #5d6673;
-          --pps-accent: #0f766e;
-          --pps-accent-weak: #e6f4f1;
-          --pps-warn: #9a3412;
-          --pps-warn-weak: #fff3e8;
-          --pps-bad: #b91c1c;
-          --pps-bad-weak: #feecec;
+          --pps-border: #d7dde5;
+          --pps-ink: #111827;
+          --pps-muted: #5b6573;
+          --pps-green: #0f766e;
+          --pps-blue: #1d4ed8;
+          --pps-amber: #a16207;
+          --pps-red: #b91c1c;
+          --pps-green-soft: #e7f5f1;
+          --pps-blue-soft: #e8f0ff;
+          --pps-amber-soft: #fff7df;
+          --pps-red-soft: #feecec;
         }
-        .block-container { padding-top: 1.4rem; padding-bottom: 2.2rem; }
-        h1, h2, h3 { letter-spacing: 0; }
+        .block-container { padding-top: 1.1rem; padding-bottom: 2.2rem; max-width: 1500px; }
+        h1, h2, h3, p { letter-spacing: 0; }
         div[data-testid="stMetric"] {
           background: var(--pps-panel);
-          border: 1px solid var(--pps-panel-border);
+          border: 1px solid var(--pps-border);
           border-radius: 8px;
-          padding: 0.85rem 0.95rem;
-          min-height: 94px;
+          padding: 0.75rem 0.85rem;
+          min-height: 92px;
         }
         div[data-testid="stMetricLabel"] p {
-          color: var(--pps-text-muted);
+          color: var(--pps-muted);
           font-size: 0.78rem;
         }
         div[data-testid="stMetricValue"] {
-          color: #17202a;
-          font-size: 1.75rem;
+          color: var(--pps-ink);
+          font-size: 1.55rem;
         }
-        .pps-header {
+        .pps-shell {
           background: var(--pps-panel);
-          border: 1px solid var(--pps-panel-border);
+          border: 1px solid var(--pps-border);
           border-radius: 8px;
-          padding: 1rem 1.15rem;
+          padding: 1rem 1.1rem;
           margin-bottom: 1rem;
         }
         .pps-title {
           margin: 0;
-          font-size: 1.65rem;
-          font-weight: 700;
-          color: #111827;
+          font-size: 1.5rem;
+          font-weight: 750;
+          color: var(--pps-ink);
         }
         .pps-subtitle {
           margin-top: 0.25rem;
-          color: var(--pps-text-muted);
+          color: var(--pps-muted);
           font-size: 0.95rem;
         }
         .pps-strip {
           display: flex;
           flex-wrap: wrap;
-          gap: 0.5rem;
-          margin-top: 0.85rem;
+          gap: 0.45rem;
+          margin-top: 0.8rem;
         }
         .pps-pill {
           display: inline-flex;
           align-items: center;
           min-height: 28px;
-          padding: 0.22rem 0.55rem;
-          border: 1px solid var(--pps-panel-border);
+          padding: 0.18rem 0.55rem;
+          border: 1px solid var(--pps-border);
           border-radius: 999px;
           background: #f9fafb;
           color: #374151;
           font-size: 0.78rem;
-          font-weight: 600;
+          font-weight: 650;
           white-space: nowrap;
         }
-        .pps-pill.ok { color: #0f766e; background: var(--pps-accent-weak); border-color: #a7d8cf; }
-        .pps-pill.warn { color: var(--pps-warn); background: var(--pps-warn-weak); border-color: #fdba74; }
-        .pps-pill.bad { color: var(--pps-bad); background: var(--pps-bad-weak); border-color: #fecaca; }
-        .pps-panel-title {
-          margin: 1.1rem 0 0.55rem;
-          font-size: 1.02rem;
-          font-weight: 700;
+        .pps-pill.ok { color: var(--pps-green); background: var(--pps-green-soft); border-color: #9bd8cc; }
+        .pps-pill.warn { color: var(--pps-amber); background: var(--pps-amber-soft); border-color: #f4c45f; }
+        .pps-pill.bad { color: var(--pps-red); background: var(--pps-red-soft); border-color: #f5a3a3; }
+        .pps-pill.info { color: var(--pps-blue); background: var(--pps-blue-soft); border-color: #a9c4ff; }
+        .pps-section {
+          margin: 1rem 0 0.55rem;
+          font-size: 1rem;
+          font-weight: 750;
           color: #1f2937;
         }
-        .pps-muted { color: var(--pps-text-muted); }
+        .pps-note { color: var(--pps-muted); font-size: 0.9rem; }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
 
-def render_header(config: Mapping[str, Any], snapshot: Mapping[str, Any], api_state: Mapping[str, Any]) -> None:
-    title = config.get("title", "PPS57 ROUT25 Platform")
-    description = config.get("description", "Dashboard local de validação PPS57.")
-    scenario = config.get("scenario_id", "unknown")
+def render_header(snapshot: Mapping[str, Any], api_state: Mapping[str, Any]) -> None:
+    config = snapshot["config"]
+    experiments = snapshot["aggregates"].get("experiments", {})
+    current_run = experiments.get("current_run", {})
     missing = snapshot.get("missing_critical_artifacts", [])
     api_status = "offline" if "__error__" in api_state else str(api_state.get("status", "online"))
     api_class = "bad" if api_status == "offline" else ("warn" if api_status in {"running", "paused"} else "ok")
     missing_class = "bad" if missing else "ok"
-    missing_text = f"críticos em falta: {len(missing)}" if missing else "artefactos críticos OK"
+    policy_loaded = "policy loaded" if current_run.get("runtime_policy_loaded") else "baseline/fallback"
     html = f"""
-    <div class="pps-header">
-      <div class="pps-title">{escape(str(title))}</div>
-      <div class="pps-subtitle">{escape(str(description))}</div>
+    <div class="pps-shell">
+      <div class="pps-title">{escape(str(config.get("title", "PPS57 ROUT25 Experiment Cockpit")))}</div>
+      <div class="pps-subtitle">
+        Cockpit local para configurar cenários SUMO/TraCI, treinar/inferir políticas e comparar métricas contra baseline.
+      </div>
       <div class="pps-strip">
-        <span class="pps-pill">cenário: {escape(str(scenario))}</span>
+        <span class="pps-pill info">scenario: {escape(str(current_run.get("scenario_id", config.get("scenario_id", "n/a"))))}</span>
         <span class="pps-pill {api_class}">API: {escape(api_status)}</span>
-        <span class="pps-pill {missing_class}">{escape(missing_text)}</span>
+        <span class="pps-pill {missing_class}">artefactos críticos: {len(missing)}</span>
+        <span class="pps-pill">policy: {escape(policy_loaded)}</span>
         <span class="pps-pill">root: {escape(str(snapshot.get("root", "")))}</span>
       </div>
     </div>
@@ -195,208 +227,331 @@ def render_header(config: Mapping[str, Any], snapshot: Mapping[str, Any], api_st
     st.markdown(html, unsafe_allow_html=True)
 
 
-def render_overview(config: Mapping[str, Any], aggregates: Mapping[str, Any], reports: Mapping[str, Any]) -> None:
+def render_data_warnings(snapshot: Mapping[str, Any]) -> None:
+    if snapshot.get("config_error"):
+        st.error(f"Configuração da plataforma inválida: {snapshot['config_error']}")
+    missing = snapshot.get("missing_critical_artifacts", [])
+    if missing:
+        st.warning("Artefactos críticos em falta: " + ", ".join(missing))
+
+
+def render_cockpit(snapshot: Mapping[str, Any], api_state: Mapping[str, Any]) -> None:
+    aggregates = snapshot["aggregates"]
     overview = aggregates["overview"]
-    render_panel_title("Operação")
+    experiments = aggregates.get("experiments", {})
+    current_run = experiments.get("current_run", {})
+    policy = experiments.get("policy", {})
+    outcomes = experiments.get("decision_outcomes", {})
+
+    render_section("Estado experimental")
     render_metrics(
         [
-            ("Mensagens C-ITS", overview["total_cits_messages"]),
-            ("Decisões TSP", overview["total_tsp_decisions"]),
-            ("Atuações aplicadas", overview["applied_actuation_events"]),
-            ("Bloqueios Safety", overview["blocked_by_safety"]),
-        ]
-    )
-
-    render_panel_title("Otimização e KPIs")
-    render_metrics(
-        [
-            ("Amostras offline", overview["offline_sample_count"]),
-            ("Candidatos política", overview["policy_candidate_count"]),
-            ("Unsafe filtrados", overview["unsafe_candidates_filtered"]),
-            ("Reward delta", overview["reward_delta"]),
-        ]
-    )
-
-    render_panel_title("Resumos disponíveis")
-    summary_keys = ["cits_summary", "tsp_summary", "optimization_summary", "baseline_kpis"]
-    summary_rows = [flatten_summary(name, reports.get(name, {})) for name in summary_keys]
-    render_table(summary_rows, height=210)
-
-
-def render_cits(aggregates: Mapping[str, Any], records: Mapping[str, List[Dict[str, Any]]]) -> None:
-    render_panel_title("Mensagens C-ITS/V2X")
-    cits = aggregates["cits"]
-    chart_columns = st.columns(2)
-    render_bar(chart_columns[0], "Mensagens por tipo", cits["by_message_type"])
-    render_bar(chart_columns[1], "SSEM por estado", cits["by_status"])
-    chart_columns = st.columns(2)
-    render_bar(chart_columns[0], "Pedidos por RSU", cits["requests_by_rsu"])
-    render_bar(chart_columns[1], "Pedidos por veículo", cits["requests_by_vehicle"])
-    render_panel_title("Últimas mensagens")
-    render_table(latest_records(records.get("cits_messages", []), 50), height=360)
-
-
-def render_tsp(aggregates: Mapping[str, Any], records: Mapping[str, List[Dict[str, Any]]]) -> None:
-    render_panel_title("Decisões TSP e Safety Layer")
-    tsp = aggregates["tsp"]
-    chart_columns = st.columns(2)
-    render_bar(chart_columns[0], "Decisões por ação", tsp["by_action"])
-    render_bar(chart_columns[1], "Decisões por estado", tsp["by_status"])
-    chart_columns = st.columns(2)
-    render_bar(chart_columns[0], "Decisões por RSU", tsp["by_rsu"])
-    render_bar(chart_columns[1], "Decisões por razão", tsp["by_reason"])
-    render_panel_title("Últimas decisões")
-    render_table(latest_records(records.get("tsp_decisions", []), 50), height=360)
-
-
-def render_actuation(aggregates: Mapping[str, Any], records: Mapping[str, List[Dict[str, Any]]]) -> None:
-    render_panel_title("Atuação semafórica")
-    actuation = aggregates["actuation"]
-    chart_columns = st.columns(2)
-    render_bar(chart_columns[0], "Atuações por ação", actuation["by_action"])
-    render_bar(chart_columns[1], "Aplicada?", actuation["by_applied"])
-    chart_columns = st.columns(2)
-    render_bar(chart_columns[0], "Dry-run?", actuation["by_dry_run"])
-    render_bar(chart_columns[1], "Atuações por TLS", actuation["by_tls"])
-    render_panel_title("Últimas atuações")
-    render_table(latest_records(records.get("tsp_actuation", []), 50), height=360)
-
-
-def render_optimization(
-    aggregates: Mapping[str, Any],
-    records: Mapping[str, List[Dict[str, Any]]],
-    reports: Mapping[str, Dict[str, Any]],
-) -> None:
-    render_panel_title("Policy Optimization & Reinforcement Learning")
-    opt = aggregates["optimization"]
-    render_metrics(
-        [
-            ("Baseline reward", opt["baseline_reward"]),
-            ("Optimized reward", opt["optimized_reward"]),
-            ("Reward delta", opt["reward_delta"]),
+            ("Modo atual", current_run.get("policy_mode", "baseline")),
+            ("Decisões TSP", overview.get("total_tsp_decisions", 0)),
+            ("Bloqueios Safety", overview.get("blocked_by_safety", 0)),
+            ("Atuações aplicadas", overview.get("applied_actuation_events", 0)),
+            ("Reward delta", policy.get("optimized_reward_delta", 0)),
+            ("Verdict rede", outcomes.get("network_impact_verdict", "n/a")),
         ],
-        columns=3,
+        columns=6,
     )
 
-    chart_columns = st.columns(2)
-    render_bar(chart_columns[0], "Selecionados por ação", opt["selected_by_action"])
-    render_bar(chart_columns[1], "Candidatos por Safety status", opt["candidates_by_safety_status"])
-
-    render_panel_title("Candidatos de política")
-    render_table(latest_records(records.get("policy_candidates", []), 100), height=380)
-
-    with st.expander("Relatório de política exportado"):
-        st.json(reports.get("policy_report", {}))
-
-
-def render_kpis(
-    aggregates: Mapping[str, Any],
-    reports: Mapping[str, Dict[str, Any]],
-    tripinfo: Mapping[str, Any],
-) -> None:
-    render_panel_title("KPIs de mobilidade")
-    overview = aggregates["overview"]
-    render_metrics(
-        [
-            ("Veículos TripInfo", overview["tripinfo_vehicle_count"]),
-            ("Duração média TripInfo", overview["tripinfo_avg_duration_s"]),
-            ("Veículos baseline", reports.get("baseline_kpis", {}).get("vehicle_count", "n/a")),
-            ("Espera média baseline", reports.get("baseline_kpis", {}).get("avg_waiting_time_s", "n/a")),
-        ]
-    )
-
-    st.markdown("### TripInfo SUMO")
-    st.json(dict(tripinfo))
-    st.markdown("### Baseline KPIs")
-    st.json(reports.get("baseline_kpis", {}))
-
-
-def render_control(api_url: str) -> None:
-    render_panel_title("Controlo local via FastAPI")
-    state = api_get(api_url, "/runs/current")
-    if "__error__" in state:
-        st.warning("API local indisponível. Arranca com `make platform-api`.")
-        st.code(state["__error__"])
-        return
-
-    render_metrics(
-        [
-            ("Estado", state.get("status", "unknown")),
-            ("Job", state.get("kind") or "n/a"),
-            ("PID", state.get("pid") or "n/a"),
-            ("Return code", state.get("returncode") if state.get("returncode") is not None else "n/a"),
-        ]
-    )
+    render_section("Matriz de simulações")
+    render_table(build_run_matrix(snapshot, api_state), height=260)
 
     left, right = st.columns([1.1, 0.9])
     with left:
-        render_panel_title("Executar")
-        with st.form("run_command_form"):
-            kind = st.selectbox(
-                "Job",
-                [
-                    "tsp-dry-run",
-                    "cits-dry-run",
-                    "optimize-offline",
-                    "train-rl-policy",
-                    "platform-demo-data",
-                    "platform-check",
-                    "tsp-sumo-no-actuation",
-                    "tsp-sumo",
-                    "cits-sumo",
-                ],
-            )
-            steps = st.number_input("Steps", min_value=1, max_value=100000, value=90, step=10)
-            gui = st.checkbox("GUI SUMO", value=False)
-            no_actuation = st.checkbox("Sem atuação", value=kind == "tsp-sumo-no-actuation")
-            policy_mode = st.selectbox("Policy mode", ["baseline", "optimized"])
-            policy_report = st.text_input("Policy report", value="reports/policy_report.json")
-            overwrite = st.checkbox("Overwrite demo data", value=True)
-            submitted = st.form_submit_button("Executar", use_container_width=True)
-        if submitted:
-            payload: Dict[str, Any] = {"kind": kind}
-            if kind in {"tsp-dry-run", "cits-dry-run", "tsp-sumo", "tsp-sumo-no-actuation", "cits-sumo"}:
-                payload["steps"] = int(steps)
-            if kind in {"tsp-sumo", "tsp-sumo-no-actuation", "cits-sumo"}:
-                payload["gui"] = bool(gui)
-            if kind.startswith("tsp-sumo"):
-                payload["no_actuation"] = bool(no_actuation)
-            if kind in {"tsp-dry-run", "tsp-sumo", "tsp-sumo-no-actuation"}:
-                payload["policy_mode"] = policy_mode
-                payload["policy_report"] = policy_report
-            if kind == "platform-demo-data":
-                payload["overwrite"] = bool(overwrite)
-            render_api_result(api_post(api_url, "/runs/start", payload))
-
+        render_section("Comparação rápida TSP")
+        rows = experiments.get("tsp_rows", [])
+        render_table(rows[:12], height=300)
     with right:
-        render_panel_title("Processo")
-        col_e, col_f, col_g = st.columns(3)
-        if col_e.button("Pausar", use_container_width=True):
-            render_api_result(api_post(api_url, "/runs/pause", {}))
-        if col_f.button("Continuar", use_container_width=True):
-            render_api_result(api_post(api_url, "/runs/resume", {}))
-        if col_g.button("Parar", use_container_width=True):
-            render_api_result(api_post(api_url, "/runs/stop", {}))
-        st.text_input("stdout", value=str(state.get("stdout_log") or ""), disabled=True)
-        st.text_input("stderr", value=str(state.get("stderr_log") or ""), disabled=True)
+        render_section("Verdicts de outcomes")
+        verdict_counts = outcomes.get("verdict_counts", {})
+        render_bar(st, "Distribuição de verdicts", verdict_counts)
 
-    with st.expander("Estado bruto"):
-        st.json(state)
+
+def render_scenario_runs(
+    snapshot: Mapping[str, Any],
+    api_state: Mapping[str, Any],
+    context: Mapping[str, Any],
+) -> None:
+    render_section("Scenario Builder")
+    scenarios = context["scenario_catalog"]
+    scenario_names = list(scenarios) or ["custom"]
+    left, right = st.columns([0.8, 1.2])
+    with left:
+        selected = st.selectbox("Preset de cenário", scenario_names)
+        scenario = scenarios.get(selected, {})
+        if scenario:
+            st.markdown(f'<div class="pps-note">{escape(str(scenario.get("description", "")))}</div>', unsafe_allow_html=True)
+            render_table([{"campo": key, "valor": value} for key, value in scenario.items()], height=180)
+        else:
+            st.info("Sem catálogo de cenários. Edita `configs/scenarios.yaml` para adicionar presets.")
+    with right:
+        render_run_form(
+            api_state,
+            context,
+            form_key="runtime_run_form",
+            job_options=[
+                "Baseline TSP",
+                "Baseline sem atuacao",
+                "C-ITS SUMO",
+                "KPIs baseline",
+                "Comparar TSP baseline vs RL",
+                "Avaliar outcomes",
+                "Verificar plataforma",
+            ],
+        )
+
+    render_section("Estado do processo")
+    render_process_state(api_state, context)
+
+
+def render_training(
+    snapshot: Mapping[str, Any],
+    api_state: Mapping[str, Any],
+    context: Mapping[str, Any],
+) -> None:
+    experiments = snapshot["aggregates"].get("experiments", {})
+    policy = experiments.get("policy", {})
+    reports = snapshot.get("reports", {})
+
+    render_section("Pipeline treino -> política -> inferência")
+    render_metrics(
+        [
+            ("Candidatos", policy.get("optimized_candidate_count", 0)),
+            ("Unsafe filtrados", policy.get("unsafe_candidates_filtered", 0)),
+            ("Policy ID", policy.get("policy_id", "n/a")),
+            ("Algoritmo", policy.get("algorithm", "n/a")),
+            ("Regras exportadas", policy.get("rule_count", 0)),
+        ],
+        columns=5,
+    )
+
+    left, right = st.columns([1.05, 0.95])
+    with left:
+        render_run_form(
+            api_state,
+            context,
+            form_key="training_run_form",
+            job_options=["Dataset treino", "Otimizar politica", "Treinar RL", "Comparar TSP baseline vs RL"],
+        )
+    with right:
+        render_section("Relatórios de política")
+        selected_report = st.selectbox(
+            "Relatório",
+            ["rl_training_summary", "tabular_q_policy_report", "policy_report", "optimization_summary"],
+        )
+        st.json(reports.get(selected_report, {}))
+
+
+def render_comparison(snapshot: Mapping[str, Any]) -> None:
+    experiments = snapshot["aggregates"].get("experiments", {})
+    render_section("SUMO KPIs: baseline vs RL")
+    kpi_rows = experiments.get("kpi_rows", [])
+    if kpi_rows:
+        render_delta_table(kpi_rows)
+    else:
+        st.info("Ainda não existe `reports/sumo_baseline_vs_rl_kpi_comparison.json`.")
+
+    left, right = st.columns(2)
+    with left:
+        render_section("Baseline KPIs")
+        render_kpi_cards(experiments.get("baseline_kpis", {}))
+    with right:
+        render_section("RL KPIs")
+        render_kpi_cards(experiments.get("rl_kpis", {}))
+
+    render_section("TSP runtime: baseline vs RL")
+    render_delta_table(experiments.get("tsp_rows", []))
+
+    outcomes = experiments.get("decision_outcomes", {})
+    render_section("Avaliação conservadora de outcomes")
+    render_metrics(
+        [
+            ("Decisões avaliadas", outcomes.get("decision_count", 0)),
+            ("Decisões emparelhadas", outcomes.get("matched_decision_count", 0)),
+            ("Impacto rede", outcomes.get("network_impact_verdict", "n/a")),
+        ],
+        columns=3,
+    )
+    render_table(latest_records(list(outcomes.get("rows", [])), 150), height=420)
+
+
+def render_safety(snapshot: Mapping[str, Any]) -> None:
+    aggregates = snapshot["aggregates"]
+    records = snapshot["records"]
+    left, right = st.columns(2)
+    with left:
+        render_section("Decisões por estado")
+        render_bar(st, "Status", aggregates["tsp"].get("by_status", {}))
+    with right:
+        render_section("Decisões por ação")
+        render_bar(st, "Ação", aggregates["tsp"].get("by_action", {}))
+
+    left, right = st.columns(2)
+    with left:
+        render_section("Atuação TraCI")
+        render_bar(st, "Aplicada", aggregates["actuation"].get("by_applied", {}))
+    with right:
+        render_section("Candidatos por Safety status")
+        render_bar(st, "Safety", aggregates["optimization"].get("candidates_by_safety_status", {}))
+
+    render_section("Últimas decisões TSP")
+    render_table(latest_records(records.get("tsp_decisions", []), 100), height=360)
+    render_section("Últimas atuações")
+    render_table(latest_records(records.get("tsp_actuation", []), 100), height=320)
 
 
 def render_artifacts(snapshot: Mapping[str, Any]) -> None:
-    render_panel_title("Artefactos e disponibilidade")
-    render_table(snapshot.get("artifacts", []), height=420)
+    render_section("Disponibilidade dos artefactos")
+    artifacts = snapshot.get("artifacts", [])
+    render_table(artifacts, height=460)
     with st.expander("Snapshot bruto"):
         st.json(snapshot)
 
 
-def render_bar(container: Any, title: str, counts: Mapping[str, int]) -> None:
-    container.markdown(f'<div class="pps-panel-title">{escape(title)}</div>', unsafe_allow_html=True)
+def render_run_form(
+    api_state: Mapping[str, Any],
+    context: Mapping[str, Any],
+    *,
+    form_key: str,
+    job_options: List[str],
+) -> None:
+    api_offline = "__error__" in api_state
+    if api_offline:
+        st.warning("API local indisponível. Arranca com `make platform-api` para executar jobs.")
+        st.code(str(api_state.get("__error__", "")))
+    with st.form(form_key):
+        job_label = st.selectbox("Job", job_options)
+        steps = st.number_input("Steps SUMO/TraCI", min_value=1, max_value=100000, value=7200, step=300)
+        policy_mode = st.selectbox("Policy mode", ["baseline", "optimized", "rl"])
+        policy_report = st.text_input("Policy report", value="")
+        sumo_binary = st.text_input("SUMO binary", value="sumo")
+        flags = st.columns(3)
+        gui = flags[0].checkbox("SUMO GUI", value=False)
+        no_actuation = flags[1].checkbox("Sem atuação", value=job_label == "Baseline sem atuacao")
+        strict = flags[2].checkbox("Strict check", value=False)
+        submitted = st.form_submit_button("Executar job", use_container_width=True, disabled=api_offline)
+    if submitted:
+        kind = RUN_JOBS[job_label]
+        payload: Dict[str, Any] = {
+            "kind": kind,
+            "steps": int(steps),
+            "gui": bool(gui),
+            "no_actuation": bool(no_actuation),
+            "sumo_binary": sumo_binary,
+            "strict": bool(strict),
+            "config": context["cits_config"],
+            "tsp_config": context["tsp_config"],
+            "policy_config": context["policy_config"],
+            "policy_mode": policy_mode,
+        }
+        if policy_report:
+            payload["policy_report"] = policy_report
+        result = api_post(context["api_url"], "/runs/start", payload)
+        render_api_result(result)
+
+
+def render_process_state(api_state: Mapping[str, Any], context: Mapping[str, Any]) -> None:
+    if "__error__" in api_state:
+        st.info("Sem estado de processo porque a API está offline.")
+        return
+    render_metrics(
+        [
+            ("Estado", api_state.get("status", "unknown")),
+            ("Job", api_state.get("kind") or "n/a"),
+            ("PID", api_state.get("pid") or "n/a"),
+            ("Return code", api_state.get("returncode") if api_state.get("returncode") is not None else "n/a"),
+        ],
+        columns=4,
+    )
+    col_a, col_b, col_c = st.columns(3)
+    if col_a.button("Pausar", use_container_width=True):
+        render_api_result(api_post(str(context["api_url"]), "/runs/pause", {}))
+    if col_b.button("Continuar", use_container_width=True):
+        render_api_result(api_post(str(context["api_url"]), "/runs/resume", {}))
+    if col_c.button("Parar", use_container_width=True):
+        render_api_result(api_post(str(context["api_url"]), "/runs/stop", {}))
+    with st.expander("Estado bruto do runner"):
+        st.json(api_state)
+
+
+def render_kpi_cards(kpis: Mapping[str, Any]) -> None:
+    rows: List[Dict[str, Any]] = []
+    for group in ["all_vehicles", "buses", "general_traffic"]:
+        payload = kpis.get(group, {})
+        if not isinstance(payload, dict):
+            continue
+        row = {"group": group}
+        row.update(payload)
+        rows.append(row)
+    legacy = kpis.get("legacy", {})
+    if not rows and isinstance(legacy, dict):
+        rows.append({"group": "legacy", **legacy})
+    render_table(rows, height=220)
+
+
+def render_delta_table(rows: List[Dict[str, Any]]) -> None:
+    if not rows:
+        st.info("Sem comparação disponível.")
+        return
+    df = pd.DataFrame(rows)
+    st.dataframe(df, use_container_width=True, height=360, hide_index=True)
+
+
+def build_run_matrix(snapshot: Mapping[str, Any], api_state: Mapping[str, Any]) -> List[Dict[str, Any]]:
+    reports = snapshot.get("reports", {})
+    aggregates = snapshot.get("aggregates", {})
+    experiments = aggregates.get("experiments", {})
+    overview = aggregates.get("overview", {})
+    outcomes = experiments.get("decision_outcomes", {})
+    return [
+        {
+            "lane": "baseline",
+            "source": "reports/tsp_emulation_summary.json + reports/baseline_kpis.json",
+            "status": "available" if reports.get("tsp_summary") or reports.get("baseline_kpis") else "missing",
+            "policy_mode": reports.get("tsp_summary", {}).get("policy_mode", "baseline"),
+            "decisions": overview.get("total_tsp_decisions", 0),
+            "blocked": overview.get("blocked_by_safety", 0),
+            "network_verdict": "reference",
+        },
+        {
+            "lane": "optimized",
+            "source": "reports/policy_report.json",
+            "status": "available" if reports.get("policy_report") else "missing",
+            "policy_mode": "optimized",
+            "decisions": "",
+            "blocked": experiments.get("policy", {}).get("unsafe_candidates_filtered", 0),
+            "network_verdict": f"reward_delta={experiments.get('policy', {}).get('optimized_reward_delta', 0)}",
+        },
+        {
+            "lane": "rl",
+            "source": "reports/tabular_q_policy_report.json",
+            "status": "available" if reports.get("tabular_q_policy_report") else "missing",
+            "policy_mode": "rl",
+            "decisions": "",
+            "blocked": "",
+            "network_verdict": outcomes.get("network_impact_verdict", "n/a"),
+        },
+        {
+            "lane": "runner",
+            "source": "FastAPI local",
+            "status": "offline" if "__error__" in api_state else api_state.get("status", "idle"),
+            "policy_mode": api_state.get("kind", "n/a") if "__error__" not in api_state else "n/a",
+            "decisions": "",
+            "blocked": "",
+            "network_verdict": api_state.get("message", "") if "__error__" not in api_state else api_state.get("__error__", ""),
+        },
+    ]
+
+
+def render_bar(container: Any, title: str, counts: Mapping[str, Any]) -> None:
+    container.markdown(f'<div class="pps-section">{escape(title)}</div>', unsafe_allow_html=True)
     if not counts:
         container.info("Sem dados disponíveis.")
         return
-    df = pd.DataFrame([{"categoria": key, "valor": value} for key, value in counts.items()]).set_index("categoria")
+    df = pd.DataFrame([{"categoria": str(key), "valor": value} for key, value in counts.items()]).set_index("categoria")
     container.bar_chart(df)
 
 
@@ -406,8 +561,8 @@ def render_metrics(items: Iterable[tuple[str, Any]], columns: int = 4) -> None:
         cols[index % columns].metric(label, format_metric_value(value))
 
 
-def render_panel_title(title: str) -> None:
-    st.markdown(f'<div class="pps-panel-title">{escape(title)}</div>', unsafe_allow_html=True)
+def render_section(title: str) -> None:
+    st.markdown(f'<div class="pps-section">{escape(title)}</div>', unsafe_allow_html=True)
 
 
 def render_table(rows: Any, *, height: int = 300) -> None:
@@ -431,19 +586,51 @@ def format_metric_value(value: Any) -> str:
         return "n/a"
     if isinstance(value, float):
         return f"{value:.2f}".rstrip("0").rstrip(".")
+    if isinstance(value, bool):
+        return "sim" if value else "não"
     return str(value)
 
 
-def flatten_summary(name: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
-    row: Dict[str, Any] = {"summary": name, "available": bool(payload)}
-    for key in ["mode", "scenario_id", "total_messages", "total_decisions", "scenario_count", "candidate_count", "reward_delta"]:
-        if key in payload:
-            row[key] = payload[key]
-    return row
+def load_scenarios(path: Path) -> Dict[str, Dict[str, str]]:
+    """Carrega `configs/scenarios.yaml` via `yaml.safe_load`.
+
+    O parser ad-hoc anterior (regex sobre linhas com indentação 2/4 exacta)
+    silenciosamente descartava valores com `:` no meio (URLs, descrições com
+    "X: Y", etc.) e qualquer cenário com indentação diferente. `safe_load`
+    cobre todo o standard YAML sem permitir tags arbitrárias.
+    """
+    if not path.exists():
+        return {}
+    try:
+        payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError:
+        return {}
+    raw = payload.get("scenarios") if isinstance(payload, dict) else None
+    if not isinstance(raw, dict):
+        return {}
+    scenarios: Dict[str, Dict[str, str]] = {}
+    for name, fields in raw.items():
+        if not isinstance(fields, dict):
+            continue
+        # Normaliza tudo a string para a UI (mantém compatibilidade com o
+        # parser regex anterior, que devolvia sempre strings).
+        scenarios[str(name)] = {str(k): _yaml_scalar_to_str(v) for k, v in fields.items()}
+    return scenarios
+
+
+def _yaml_scalar_to_str(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
 
 
 def api_get(base_url: str, path: str) -> Dict[str, Any]:
-    return api_request(base_url, path, method="GET")
+    payload = api_request(base_url, path, method="GET")
+    if "__error__" not in payload:
+        payload["api_url"] = base_url
+    return payload
 
 
 def api_post(base_url: str, path: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
