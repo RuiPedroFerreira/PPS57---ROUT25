@@ -201,6 +201,13 @@ class TSPControlController:
             if signal_state is None:
                 continue
             baseline = self.engine.decide(request, signal_state, sim_time_s)
+            # Tempo desde a última intervenção neste TLS (None se nunca houve):
+            # alimenta o eixo intervention_* do state bucket no runtime policy
+            # para coerência treino<->inferência.
+            last_intervention = self.safety.last_intervention_time_by_tls.get(request.tls_id)
+            seconds_since_last_intervention_s = (
+                None if last_intervention is None else max(0.0, sim_time_s - last_intervention)
+            )
             proposed = (
                 self.runtime_policy.decide(
                     request,
@@ -209,6 +216,7 @@ class TSPControlController:
                     baseline,
                     active_request_count=active_requests_by_tls.get(request.tls_id, 1),
                     network_state=network_states.get(request.tls_id) if network_states else None,
+                    seconds_since_last_intervention_s=seconds_since_last_intervention_s,
                 )
                 if self.runtime_policy is not None
                 else baseline

@@ -12,10 +12,11 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from pps57_cits.messages import SREMLike
-from pps57_cits.models import SignalState
+from pps57_cits.models import NetworkStateSnapshot, SignalState
 from pps57_tsp.config import TSPConfig
-from pps57_tsp.engine import TSPDecisionEngine
 from pps57_tsp.models import DecisionStatus, TSPAction, TSPDecision
+
+from .state import state_bucket_for_context
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,10 @@ class RuntimePolicy:
     tsp_config: TSPConfig
     rules: Dict[str, RuntimePolicyRule]
     policy_id: str = "offline_safe_policy_comparison"
+    algorithm: str = "deterministic_policy_rules"
+    is_reinforcement_learning: bool = False
+    training_environment: str = "offline_policy_export"
+    safety_filter_required: bool = True
     source_path: Optional[Path] = None
 
     @classmethod
@@ -59,6 +64,10 @@ class RuntimePolicy:
             tsp_config=tsp_config,
             rules=rules,
             policy_id=str(payload.get("policy_id", "offline_safe_policy_comparison")),
+            algorithm=str(payload.get("algorithm", "deterministic_policy_rules")),
+            is_reinforcement_learning=bool(payload.get("is_reinforcement_learning", False)),
+            training_environment=str(payload.get("training_environment", "offline_policy_export")),
+            safety_filter_required=bool(payload.get("safety_filter_required", True)),
             source_path=source,
         )
 
@@ -68,24 +77,67 @@ class RuntimePolicy:
         signal_state: SignalState,
         sim_time_s: float,
         baseline: TSPDecision,
+        *,
+        active_request_count: int = 1,
+        queue_vehicle_count: int = 0,
+        halted_vehicle_count: int = 0,
+        mean_speed_mps: float = 0.0,
+        waiting_time_s: float = 0.0,
+        occupancy: float = 0.0,
+        spillback_risk: bool = False,
+        network_state: NetworkStateSnapshot | None = None,
+        seconds_since_last_intervention_s: Optional[float] = None,
     ) -> TSPDecision:
-        bucket = state_bucket_for(self.tsp_config, request, signal_state, sim_time_s)
+        if network_state is not None:
+            active_request_count = network_state.active_request_count
+            queue_vehicle_count = network_state.queue_vehicle_count
+            halted_vehicle_count = network_state.halted_vehicle_count
+            mean_speed_mps = network_state.mean_speed_mps
+            waiting_time_s = network_state.waiting_time_s
+            occupancy = network_state.occupancy
+            spillback_risk = network_state.spillback_risk
+        bucket = state_bucket_for(
+            self.tsp_config,
+            request,
+            signal_state,
+            sim_time_s,
+            active_request_count=active_request_count,
+            queue_vehicle_count=queue_vehicle_count,
+            halted_vehicle_count=halted_vehicle_count,
+            mean_speed_mps=mean_speed_mps,
+            waiting_time_s=waiting_time_s,
+            occupancy=occupancy,
+            spillback_risk=spillback_risk,
+            seconds_since_last_intervention_s=seconds_since_last_intervention_s,
+        )
         rule = self.rules.get(bucket)
         if rule is None:
             return baseline.copy_with(
                 notes=list(baseline.notes)
                 + [f"Runtime policy fallback: no exported rule for state_bucket={bucket}."]
             )
+        notes = [
+            f"Runtime policy '{self.policy_id}' selected action '{rule.action}'.",
+            f"state_bucket={bucket}",
+            f"source_scenario_id={rule.source_scenario_id}",
+        ]
+        if network_state is not None:
+            notes.append(
+                "network_state="
+                f"active_requests:{active_request_count},"
+                f"queue:{queue_vehicle_count},"
+                f"halted:{halted_vehicle_count},"
+                f"mean_speed_mps:{mean_speed_mps:.3f},"
+                f"waiting_time_s:{waiting_time_s:.3f},"
+                f"occupancy:{occupancy:.3f},"
+                f"spillback_risk:{spillback_risk}"
+            )
         return decision_for_action(
             self.tsp_config,
             action=rule.action,
             baseline=baseline,
             reason=f"runtime_policy_rule:{bucket}",
-            notes=[
-                f"Runtime policy '{self.policy_id}' selected action '{rule.action}'.",
-                f"state_bucket={bucket}",
-                f"source_scenario_id={rule.source_scenario_id}",
-            ],
+            notes=notes,
         )
 
 
@@ -135,28 +187,36 @@ def decision_for_action(
     )
 
 
-def state_bucket_for(tsp_config: TSPConfig, request: SREMLike, signal_state: SignalState, sim_time_s: float) -> str:
-    buckets = tsp_config.raw.get("policy_runtime", {}).get("state_buckets", {})
-    eta_close = float(buckets.get("eta_close_s", 10))
-    eta_far = float(buckets.get("eta_far_s", 25))
-    high_delay = float(buckets.get("high_delay_s", 90))
-    switch_close = float(buckets.get("phase_switch_close_s", 5))
-    remaining = TSPDecisionEngine.remaining_phase_time_s(signal_state, sim_time_s)
-
-    eta_bucket = "eta_close" if request.eta_to_stopline_s <= eta_close else "eta_mid"
-    if request.eta_to_stopline_s >= eta_far:
-        eta_bucket = "eta_far"
-    delay_bucket = "delay_high" if request.schedule_delay_s >= high_delay else "delay_low"
-    corridor_phase = _optional_int(tsp_config.phase_mapping_for_tls(signal_state.tls_id).get("corridor_green_phase_index"))
-    phase_bucket = "phase_unknown"
-    if signal_state.red_yellow_green_state and "y" in signal_state.red_yellow_green_state.lower():
-        phase_bucket = "yellow"
-    elif corridor_phase is not None and signal_state.current_phase_index == corridor_phase:
-        phase_bucket = "corridor_green"
-    elif signal_state.current_phase_index is not None:
-        phase_bucket = "corridor_red"
-    switch_bucket = "switch_close" if remaining is not None and remaining <= switch_close else "switch_open"
-    return "|".join([phase_bucket, eta_bucket, delay_bucket, switch_bucket])
+def state_bucket_for(
+    tsp_config: TSPConfig,
+    request: SREMLike,
+    signal_state: SignalState,
+    sim_time_s: float,
+    *,
+    active_request_count: int = 1,
+    queue_vehicle_count: int = 0,
+    halted_vehicle_count: int = 0,
+    mean_speed_mps: float = 0.0,
+    waiting_time_s: float = 0.0,
+    occupancy: float = 0.0,
+    spillback_risk: bool = False,
+    seconds_since_last_intervention_s: Optional[float] = None,
+) -> str:
+    return state_bucket_for_context(
+        tsp_config,
+        tsp_config.raw.get("policy_runtime", {}).get("state_buckets", {}),
+        request,
+        signal_state,
+        sim_time_s,
+        active_request_count=active_request_count,
+        queue_vehicle_count=queue_vehicle_count,
+        halted_vehicle_count=halted_vehicle_count,
+        mean_speed_mps=mean_speed_mps,
+        waiting_time_s=waiting_time_s,
+        occupancy=occupancy,
+        spillback_risk=spillback_risk,
+        seconds_since_last_intervention_s=seconds_since_last_intervention_s,
+    )
 
 
 def _optional_int(value: Any) -> Optional[int]:
