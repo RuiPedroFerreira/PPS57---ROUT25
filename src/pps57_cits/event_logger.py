@@ -32,6 +32,54 @@ class CITSJsonlLogger:
         self.close()
 
 
+class IncrementalCITSSummary:
+    """M2: agrega o resumo C-ITS sem manter a lista completa em memória.
+
+    Equivalente em forma a `summarise_messages` mas incremental: cada mensagem
+    é integrada via `add()`, permitindo corridas longas (>=7200 passos) sem
+    crescimento O(n) de memória.
+    """
+
+    def __init__(self) -> None:
+        self.total = 0
+        self.by_type: Dict[str, int] = {}
+        self.request_ids: set[str] = set()
+        self.vehicle_ids: set[str] = set()
+        self.rsu_ids: set[str] = set()
+        self.acknowledged = 0
+        self.rejected = 0
+
+    def add(self, message: CITSMessage) -> None:
+        self.total += 1
+        self.by_type[message.message_type] = self.by_type.get(message.message_type, 0) + 1
+        payload = message.to_dict()
+        request_id = payload.get("request_id")
+        if request_id:
+            self.request_ids.add(str(request_id))
+        vehicle_id = payload.get("vehicle_id")
+        if vehicle_id:
+            self.vehicle_ids.add(str(vehicle_id))
+        rsu_id = payload.get("rsu_id")
+        if rsu_id:
+            self.rsu_ids.add(str(rsu_id))
+        status = payload.get("status")
+        if status == RequestStatus.ACKNOWLEDGED.value:
+            self.acknowledged += 1
+        elif status == RequestStatus.REJECTED.value:
+            self.rejected += 1
+
+    def to_dict(self) -> Dict[str, object]:
+        return {
+            "total_messages": self.total,
+            "by_type": dict(self.by_type),
+            "unique_request_ids": len(self.request_ids),
+            "unique_vehicle_ids": len(self.vehicle_ids),
+            "unique_rsu_ids": len(self.rsu_ids),
+            "acknowledged_messages": self.acknowledged,
+            "rejected_messages": self.rejected,
+        }
+
+
 def summarise_messages(messages: List[CITSMessage]) -> Dict[str, object]:
     by_type: Dict[str, int] = {}
     acknowledged = 0
@@ -66,7 +114,12 @@ def summarise_messages(messages: List[CITSMessage]) -> Dict[str, object]:
 
 
 def write_summary(path: str | Path, messages: List[CITSMessage], extra: Dict[str, object] | None = None) -> Dict[str, object]:
-    summary = summarise_messages(messages)
+    return write_summary_dict(path, summarise_messages(messages), extra)
+
+
+def write_summary_dict(path: str | Path, summary: Dict[str, object], extra: Dict[str, object] | None = None) -> Dict[str, object]:
+    """Como write_summary, mas a partir de um resumo já calculado (incremental)."""
+    summary = dict(summary)
     if extra:
         summary.update(extra)
     output_path = Path(path)

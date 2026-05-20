@@ -17,6 +17,10 @@ class OfflineScenario:
     sim_time_s: float
     request: Any
     signal_state: Any
+    # M7: estado inicial opcional para exercitar caminhos com estado na Safety
+    # Layer (cooldown, consecutive_interventions). Cada chave mapeia tls_id -> valor.
+    initial_last_intervention_time_by_tls: Dict[str, float] = field(default_factory=dict)
+    initial_consecutive_interventions_by_tls: Dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -26,6 +30,8 @@ class OfflineScenario:
             "sim_time_s": self.sim_time_s,
             "request": self.request.to_dict(),
             "signal_state": asdict(self.signal_state),
+            "initial_last_intervention_time_by_tls": dict(self.initial_last_intervention_time_by_tls),
+            "initial_consecutive_interventions_by_tls": dict(self.initial_consecutive_interventions_by_tls),
         }
 
 

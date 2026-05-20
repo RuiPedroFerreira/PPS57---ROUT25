@@ -167,6 +167,16 @@ class TraciSimulationAdapter:
         except Exception:
             return None
 
+    def read_program_phase_states(self, tls_id: str) -> Optional[List[str]]:
+        """Lista os estados RYG das fases do programa atual, ou None se ilegível."""
+        logic = self._program_logic(tls_id)
+        if logic is None:
+            return None
+        try:
+            return [str(getattr(phase, "state")) for phase in logic.phases]
+        except Exception:
+            return None
+
     def read_program_is_fixed_time(self, tls_id: str) -> Optional[bool]:
         """Classifica o programa por *comportamento*, não pela etiqueta.
 

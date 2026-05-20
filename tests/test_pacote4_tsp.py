@@ -190,6 +190,16 @@ class Package4TSPTestCase(unittest.TestCase):
         self.assertFalse(result.approved)
         self.assertEqual(result.reason, "current_phase_is_yellow_wait_for_next_cycle")
 
+    def test_safety_yellow_check_is_per_movement_not_global(self) -> None:
+        # L1: amarelo numa aproximação SECUNDÁRIA com o corredor verde estável
+        # não deve bloquear a extensão do corredor. Posições 0,1 = corredor
+        # (I1_I2_0, I3_I2_0); posições 2,3 = secundário (N_I2_I2_0, S_I2_I2_0).
+        safety = TSPSafetyLayer(self.cits, self.tsp)
+        decision = self.engine.decide(self._request(), self._state(), sim_time_s=100.0)
+        state = self._state(red_yellow_green_state="GGyy")  # corredor verde, secundário amarelo
+        result = safety.validate(decision, state, sim_time_s=100.0)
+        self.assertTrue(result.approved, msg=f"reason={result.reason}")
+
     def test_safety_blocks_green_extension_outside_corridor_green_phase(self) -> None:
         safety = TSPSafetyLayer(self.cits, self.tsp)
         decision = self.engine.decide(self._request(), self._state(), sim_time_s=100.0)
@@ -331,6 +341,50 @@ class Package4TSPTestCase(unittest.TestCase):
             valid_until_s=120.0,
         )
 
+    def test_safety_counters_advance_in_dry_run_across_steps(self) -> None:
+        # H5: contadores de safety devem avançar com base no "would-apply" para
+        # o cooldown bloquear pedidos subsequentes em modos dry-run / no-actuation.
+        controller = TSPControlController(self.cits, self.tsp)
+
+        class _NullLogger:
+            def write(self, item) -> None:  # noqa: ANN001
+                pass
+
+        actuator = TraciTSPActuator(adapter=None, apply_actuation=False)  # type: ignore[arg-type]
+        req1 = self._request(vehicle_id="bus_a")
+        decisions: list = []
+        actuations: list = []
+        controller._process_acknowledged_requests(
+            responses=[self._ack(req1)],
+            requests_by_id={req1.request_id: req1},
+            signal_states={"I2": self._state()},
+            actuator=actuator,
+            sim_time_s=100.0,
+            decision_logger=_NullLogger(),
+            actuation_logger=_NullLogger(),
+            decisions=decisions,
+            actuations=actuations,
+        )
+        # Apesar de applied=False (no-actuation), o cooldown deve estar marcado.
+        self.assertIn("I2", controller.safety.last_intervention_time_by_tls)
+        self.assertEqual(controller.safety.last_intervention_time_by_tls["I2"], 100.0)
+
+        # Pedido subsequente no mesmo TLS antes do cooldown expirar -> bloqueado.
+        req2 = self._request(vehicle_id="bus_b")
+        controller._process_acknowledged_requests(
+            responses=[self._ack(req2)],
+            requests_by_id={req2.request_id: req2},
+            signal_states={"I2": self._state()},
+            actuator=actuator,
+            sim_time_s=110.0,  # 10s < 90s cooldown
+            decision_logger=_NullLogger(),
+            actuation_logger=_NullLogger(),
+            decisions=decisions,
+            actuations=actuations,
+        )
+        blocked = [d for d in decisions if d.reason == "cooldown_after_priority_active"]
+        self.assertEqual(len(blocked), 1)
+
     def test_same_tls_intervention_deduplicated_within_step_even_without_actuation(self) -> None:
         # M6: dois pedidos para o mesmo TLS no mesmo passo -> no máximo 1
         # intervenção, mesmo em modo no-actuation (onde o cooldown não corre).
@@ -379,6 +433,10 @@ class Package4TSPTestCase(unittest.TestCase):
             def read_program_is_fixed_time(self, tls_id: str) -> bool:
                 return True
 
+            def read_program_phase_states(self, tls_id: str):
+                # 0=corridor green, 1=yellow clearance, 2=minor green, 3=yellow clearance
+                return ["GGgrrrr", "yyyrrrr", "rrrGGgr", "rrryyyy"]
+
         class _BadAdapter:
             def read_program_phase_count(self, tls_id: str):
                 return 2 if tls_id == "I1" else None
@@ -391,6 +449,9 @@ class Package4TSPTestCase(unittest.TestCase):
                     return None  # unreadable -> fail-closed at phase_count gate
                 return False  # behaviourally actuated (minDur < maxDur)
 
+            def read_program_phase_states(self, tls_id: str):
+                return None
+
         self.assertEqual(controller._verify_signal_programs(_CleanAdapter()), [])
 
         problems = controller._verify_signal_programs(_BadAdapter())
@@ -399,6 +460,30 @@ class Package4TSPTestCase(unittest.TestCase):
         self.assertIn("fora do programa", joined)  # phase_sequence 2,3 > 2 phases
         self.assertIn("atuado/adaptativo", joined)  # actuated detected by behaviour
         self.assertIn("ilegível", joined)           # unreadable program (fail-closed)
+
+    def test_signal_program_verification_flags_intermediate_phase_without_clearance(self) -> None:
+        # Item 2 (closes C1 residual): fase intermédia da sequência tem de ser
+        # intergreen — qualquer 'g'/'G' fora dos índices de verde configurados
+        # significa que a clearance não está garantida.
+        controller = TSPControlController(self.cits, self.tsp)
+
+        class _NoClearanceAdapter:
+            def read_program_phase_count(self, tls_id: str) -> int:
+                return 4
+
+            def read_program_type(self, tls_id: str) -> str:
+                return "0"
+
+            def read_program_is_fixed_time(self, tls_id: str) -> bool:
+                return True
+
+            def read_program_phase_states(self, tls_id: str):
+                # Fase 1 (intermédia) ainda tem 'G' — green->green sem clearance.
+                return ["GGgrrrr", "GGgrrrr", "rrrGGgr", "rrryyyy"]
+
+        problems = controller._verify_signal_programs(_NoClearanceAdapter())
+        self.assertTrue(problems)
+        self.assertTrue(any("fase 1" in p and "clearance" in p for p in problems))
 
     def test_traci_no_actuation_does_not_report_applied(self) -> None:
         decision = self.engine.decide(self._request(), self._state(), sim_time_s=100.0)

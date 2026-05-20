@@ -20,7 +20,11 @@
   </report>
   <processing>
     <time-to-teleport value="300"/>
-    <ignore-route-errors value="true"/>
+    <!-- Item 6: ignore-route-errors REMOVIDO. Antes mascarava rotas fora de
+         ordem (autocarros descartados em silêncio). Agora `make validate`
+         bloqueia esse caso (validate_routes_sorted) e `make sort-routes` é
+         a forma documentada de o corrigir. Se voltar a haver erro de rota,
+         queremos que o SUMO falhe ruidosamente em vez de silenciosamente. -->
   </processing>
   <random_number>
     <seed value="57"/>

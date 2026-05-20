@@ -56,7 +56,7 @@ class TSPSafetyLayer:
                 notes=notes + ["Sem atuação semafórica requerida."],
             )
 
-        if self._is_yellow_transition(signal_state):
+        if self._is_yellow_transition(signal_state, decision):
             return self._blocked(decision, "current_phase_is_yellow_wait_for_next_cycle", notes)
 
         if self._cooldown_active(decision.tls_id, sim_time_s):
@@ -244,9 +244,29 @@ class TSPSafetyLayer:
         if sim_time_s - last >= cooldown:
             self.reset_intervention_count(tls_id)
 
-    @staticmethod
-    def _is_yellow_transition(signal_state: SignalState) -> bool:
-        return bool(signal_state.red_yellow_green_state and any(ch.lower() == "y" for ch in signal_state.red_yellow_green_state))
+    def _is_yellow_transition(self, signal_state: SignalState, decision: TSPDecision) -> bool:
+        """L1: bloqueio em amarelo passa a ser por-movimento (não global).
+
+        Default conservador: qualquer 'y' no estado bloqueia (fail-safe). MAS
+        para green_extension, se conseguirmos resolver as posições do corredor
+        e nenhuma delas estiver em amarelo, libertamos — um amarelo numa
+        aproximação secundária não conflitua com extender o verde do corredor.
+        """
+        ryg = signal_state.red_yellow_green_state or ""
+        if not any(ch.lower() == "y" for ch in ryg):
+            return False
+        if decision.action == TSPAction.GREEN_EXTENSION.value:
+            intersection = self.cits_config.tls_to_intersection.get(decision.tls_id)
+            if intersection is not None:
+                corridor_edges = set(intersection.main_corridor_edges)
+                controlled = signal_state.controlled_lanes or []
+                corridor_positions = [
+                    i for i, lane in enumerate(controlled)
+                    if i < len(ryg) and lane and any(lane.startswith(f"{edge}_") for edge in corridor_edges)
+                ]
+                if corridor_positions and not any(ryg[i].lower() == "y" for i in corridor_positions):
+                    return False  # corredor estável; amarelo só em movimento secundário
+        return True
 
     def _phase_sequence_clearance_check(
         self, signal_state: SignalState, decision: TSPDecision

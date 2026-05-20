@@ -8,6 +8,8 @@ import json
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
+from pps57_cits.messages import normalise_for_json  # L6: helper partilhado
+
 
 class TSPAction(str, Enum):
     NO_ACTION = "no_action"
@@ -100,11 +102,5 @@ class ActuationResult:
         return json.dumps(self.to_dict(), ensure_ascii=False, sort_keys=True)
 
 
-def _normalise(value: Any) -> Any:
-    if isinstance(value, Enum):
-        return value.value
-    if isinstance(value, list):
-        return [_normalise(item) for item in value]
-    if isinstance(value, dict):
-        return {key: _normalise(item) for key, item in value.items()}
-    return value
+# L6: factorizado. Mantém alias local para minimizar diff em call-sites.
+_normalise = normalise_for_json

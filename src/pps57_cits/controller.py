@@ -9,7 +9,7 @@ from typing import Dict, Iterable, List, Optional
 
 from .broker import InMemoryMessageBroker
 from .config import CITSConfig
-from .event_logger import CITSJsonlLogger, write_summary
+from .event_logger import CITSJsonlLogger, IncrementalCITSSummary, write_summary_dict
 from .map_spat import build_mapem_messages, build_spatem_message_from_state, build_static_spatem_messages
 from .messages import CITSMessage, SREMLike, SSEMLike
 from .models import VehicleObservation
@@ -29,28 +29,29 @@ class CITSEmulationController:
 
     def run_dry_run(self, steps: int = 60) -> Dict[str, object]:
         """Executa uma demonstração sem SUMO, útil para validar o Pacote 3."""
-        all_messages: List[CITSMessage] = []
+        summary = IncrementalCITSSummary()
         log_path = self.config.path_from_root(self.config.logging.get("message_log", "outputs/cits_messages.jsonl"))
 
         with CITSJsonlLogger(log_path) as logger:
             mapem = build_mapem_messages(self.config, sim_time_s=0.0)
             spatem = build_static_spatem_messages(self.config, sim_time_s=0.0)
-            self._publish_log_collect(mapem + spatem, logger, all_messages)
+            self._publish_log_collect(mapem + spatem, logger, summary)
             self._write_snapshots(mapem, spatem)
 
             for step in range(max(1, steps)):
                 sim_time_s = float(step)
                 observations = self._dry_run_observations(sim_time_s)
                 requests = self.obu.generate_requests(observations, sim_time_s)
-                self._publish_log_collect(requests, logger, all_messages)
+                self._publish_log_collect(requests, logger, summary)
 
                 responses = self._process_rsu_queues(sim_time_s)
-                self._publish_log_collect(responses, logger, all_messages)
+                self._publish_log_collect(responses, logger, summary)
+                self.broker.drain_all_except([])  # M2
 
         summary_path = self.config.path_from_root(self.config.logging.get("summary_report", "reports/cits_emulation_summary.json"))
-        return write_summary(
+        return write_summary_dict(
             summary_path,
-            all_messages,
+            summary.to_dict(),
             extra={
                 "mode": "dry-run",
                 "steps": steps,
@@ -65,7 +66,7 @@ class CITSEmulationController:
         Este método exige SUMO instalado e a rede já compilada com netconvert.
         """
         adapter = TraciSimulationAdapter(self.config, sumo_binary=sumo_binary, gui=gui)
-        all_messages: List[CITSMessage] = []
+        summary = IncrementalCITSSummary()
         log_path = self.config.path_from_root(self.config.logging.get("message_log", "outputs/cits_messages.jsonl"))
 
         try:
@@ -75,7 +76,7 @@ class CITSEmulationController:
 
         with CITSJsonlLogger(log_path) as logger:
             mapem = build_mapem_messages(self.config, sim_time_s=0.0)
-            self._publish_log_collect(mapem, logger, all_messages)
+            self._publish_log_collect(mapem, logger, summary)
             self._write_snapshots(mapem, [])
 
             step_count = 0
@@ -88,21 +89,22 @@ class CITSEmulationController:
 
                     signal_states = [adapter.read_signal_state(intersection, sim_time_s) for intersection in self.config.intersections]
                     spatem = [build_spatem_message_from_state(state) for state in signal_states]
-                    self._publish_log_collect(spatem, logger, all_messages)
+                    self._publish_log_collect(spatem, logger, summary)
 
                     observations = adapter.read_vehicle_observations()
                     requests = self.obu.generate_requests(observations, sim_time_s)
-                    self._publish_log_collect(requests, logger, all_messages)
+                    self._publish_log_collect(requests, logger, summary)
 
                     responses = self._process_rsu_queues(sim_time_s)
-                    self._publish_log_collect(responses, logger, all_messages)
+                    self._publish_log_collect(responses, logger, summary)
+                    self.broker.drain_all_except([])  # M2
             finally:
                 adapter.close()
 
         summary_path = self.config.path_from_root(self.config.logging.get("summary_report", "reports/cits_emulation_summary.json"))
-        return write_summary(
+        return write_summary_dict(
             summary_path,
-            all_messages,
+            summary.to_dict(),
             extra={
                 "mode": "sumo-traci",
                 "steps": step_count,
@@ -114,12 +116,12 @@ class CITSEmulationController:
         self,
         messages: Iterable[CITSMessage],
         logger: CITSJsonlLogger,
-        all_messages: List[CITSMessage],
+        summary: IncrementalCITSSummary,
     ) -> None:
         for message in messages:
             self.broker.publish(message)
             logger.write(message)
-            all_messages.append(message)
+            summary.add(message)
 
     def _process_rsu_queues(self, sim_time_s: float) -> List[SSEMLike]:
         responses: List[SSEMLike] = []

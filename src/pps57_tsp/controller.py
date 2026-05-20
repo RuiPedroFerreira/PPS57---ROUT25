@@ -7,7 +7,7 @@ from typing import Dict, Iterable, List, Optional
 
 from pps57_cits.broker import InMemoryMessageBroker
 from pps57_cits.config import CITSConfig, IntersectionConfig
-from pps57_cits.event_logger import CITSJsonlLogger, summarise_messages
+from pps57_cits.event_logger import CITSJsonlLogger, IncrementalCITSSummary
 from pps57_cits.map_spat import build_mapem_messages, build_spatem_message_from_state
 from pps57_cits.messages import CITSMessage, RequestStatus, SREMLike, SSEMLike
 from pps57_cits.models import SignalState, VehicleObservation
@@ -37,7 +37,7 @@ class TSPControlController:
 
     def run_dry_run(self, steps: Optional[int] = None) -> Dict[str, object]:
         max_steps = int(steps or self.tsp_config.dry_run.get("steps", 90))
-        cits_messages: List[CITSMessage] = []
+        cits_summary = IncrementalCITSSummary()
         decisions: List[TSPDecision] = []
         actuations: List[ActuationResult] = []
 
@@ -48,21 +48,21 @@ class TSPControlController:
 
         with CITSJsonlLogger(cits_log_path) as cits_logger, TSPJsonlLogger(decision_log_path) as decision_logger, TSPJsonlLogger(actuation_log_path) as actuation_logger:
             mapem = build_mapem_messages(self.cits_config, sim_time_s=0.0)
-            self._publish_log_collect(mapem, cits_logger, cits_messages)
+            self._publish_log_collect(mapem, cits_logger, cits_summary)
 
             for step in range(max(1, max_steps)):
                 sim_time_s = float(step)
                 signal_states = self._dry_run_signal_states(sim_time_s)
                 spatem = [build_spatem_message_from_state(state) for state in signal_states.values()]
-                self._publish_log_collect(spatem, cits_logger, cits_messages)
+                self._publish_log_collect(spatem, cits_logger, cits_summary)
 
                 observations = self._dry_run_observations(sim_time_s)
                 requests = self.obu.generate_requests(observations, sim_time_s)
                 requests_by_id = {request.request_id: request for request in requests}
-                self._publish_log_collect(requests, cits_logger, cits_messages)
+                self._publish_log_collect(requests, cits_logger, cits_summary)
 
                 responses = self._process_rsu_queues(sim_time_s)
-                self._publish_log_collect(responses, cits_logger, cits_messages)
+                self._publish_log_collect(responses, cits_logger, cits_summary)
 
                 self._process_acknowledged_requests(
                     responses=responses,
@@ -75,9 +75,12 @@ class TSPControlController:
                     decisions=decisions,
                     actuations=actuations,
                 )
+                # M2: descartar filas BROADCAST/OBU não consumidas para não
+                # crescerem O(passos) em corridas longas.
+                self.broker.drain_all_except([])
 
         summary_path = self.tsp_config.path_from_root(self.tsp_config.logging.get("summary_report", "reports/tsp_emulation_summary.json"))
-        cits_summary = summarise_messages(cits_messages)
+        cits_summary_dict = cits_summary.to_dict()
         return write_tsp_summary(
             summary_path,
             decisions,
@@ -86,10 +89,10 @@ class TSPControlController:
                 "mode": "dry-run",
                 "steps": max_steps,
                 "scenario_id": self.tsp_config.raw.get("scenario_id"),
-                "cits_total_messages": cits_summary["total_messages"],
-                "cits_by_type": cits_summary["by_type"],
-                "cits_acknowledged_messages": cits_summary["acknowledged_messages"],
-                "cits_rejected_messages": cits_summary["rejected_messages"],
+                "cits_total_messages": cits_summary_dict["total_messages"],
+                "cits_by_type": cits_summary_dict["by_type"],
+                "cits_acknowledged_messages": cits_summary_dict["acknowledged_messages"],
+                "cits_rejected_messages": cits_summary_dict["rejected_messages"],
                 "note": "Pacote 4 dry-run valida decisões TSP e Safety Layer sem lançar SUMO/TraCI.",
             },
         )
@@ -102,7 +105,7 @@ class TSPControlController:
         apply_actuation: bool = True,
     ) -> Dict[str, object]:
         adapter = TraciSimulationAdapter(self.cits_config, sumo_binary=sumo_binary, gui=gui)
-        cits_messages: List[CITSMessage] = []
+        cits_summary = IncrementalCITSSummary()
         decisions: List[TSPDecision] = []
         actuations: List[ActuationResult] = []
 
@@ -130,7 +133,7 @@ class TSPControlController:
         step_count = 0
         with CITSJsonlLogger(cits_log_path) as cits_logger, TSPJsonlLogger(decision_log_path) as decision_logger, TSPJsonlLogger(actuation_log_path) as actuation_logger:
             mapem = build_mapem_messages(self.cits_config, sim_time_s=0.0)
-            self._publish_log_collect(mapem, cits_logger, cits_messages)
+            self._publish_log_collect(mapem, cits_logger, cits_summary)
             try:
                 while adapter.min_expected_number() > 0:
                     if steps is not None and step_count >= steps:
@@ -143,15 +146,15 @@ class TSPControlController:
                         for intersection in self.cits_config.intersections
                     }
                     spatem = [build_spatem_message_from_state(state) for state in signal_states.values()]
-                    self._publish_log_collect(spatem, cits_logger, cits_messages)
+                    self._publish_log_collect(spatem, cits_logger, cits_summary)
 
                     observations = adapter.read_vehicle_observations()
                     requests = self.obu.generate_requests(observations, sim_time_s)
                     requests_by_id = {request.request_id: request for request in requests}
-                    self._publish_log_collect(requests, cits_logger, cits_messages)
+                    self._publish_log_collect(requests, cits_logger, cits_summary)
 
                     responses = self._process_rsu_queues(sim_time_s)
-                    self._publish_log_collect(responses, cits_logger, cits_messages)
+                    self._publish_log_collect(responses, cits_logger, cits_summary)
 
                     self._process_acknowledged_requests(
                         responses=responses,
@@ -164,11 +167,14 @@ class TSPControlController:
                         decisions=decisions,
                         actuations=actuations,
                     )
+                    # M2: descartar filas BROADCAST/OBU não consumidas para não
+                    # crescerem O(passos) em corridas longas (7200+).
+                    self.broker.drain_all_except([])
             finally:
                 adapter.close()
 
         summary_path = self.tsp_config.path_from_root(self.tsp_config.logging.get("summary_report", "reports/tsp_emulation_summary.json"))
-        cits_summary = summarise_messages(cits_messages)
+        cits_summary_dict = cits_summary.to_dict()
         return write_tsp_summary(
             summary_path,
             decisions,
@@ -183,10 +189,10 @@ class TSPControlController:
                     "problems": verification_problems,
                     "actuation_downgraded": bool(verification_problems and apply_actuation),
                 },
-                "cits_total_messages": cits_summary["total_messages"],
-                "cits_by_type": cits_summary["by_type"],
-                "cits_acknowledged_messages": cits_summary["acknowledged_messages"],
-                "cits_rejected_messages": cits_summary["rejected_messages"],
+                "cits_total_messages": cits_summary_dict["total_messages"],
+                "cits_by_type": cits_summary_dict["by_type"],
+                "cits_acknowledged_messages": cits_summary_dict["acknowledged_messages"],
+                "cits_rejected_messages": cits_summary_dict["rejected_messages"],
             },
         )
 
@@ -240,12 +246,15 @@ class TSPControlController:
                 )
             else:
                 result = actuator.apply(safe_decision, signal_state, sim_time_s)
-                if result.applied:
-                    self.safety.mark_applied(safe_decision, sim_time_s)
-                # Marca o TLS como já intervindo neste passo se uma atuação foi
-                # aprovada — mesmo sem aplicação real — para a telemetria de
-                # no-actuation/downgraded refletir a intervenção única efetiva.
+                # H5: avança contadores da Safety Layer (cooldown,
+                # consecutive_interventions) mesmo em modo no-actuation /
+                # downgraded / dry-run, para a telemetria refletir o que
+                # aconteceria com atuação real. NÃO avança quando a atuação
+                # real foi tentada e falhou (applied=False AND dry_run=False),
+                # permitindo retry.
                 if validation.approved and safe_decision.requires_actuation:
+                    if result.applied or result.dry_run:
+                        self.safety.mark_applied(safe_decision, sim_time_s)
                     intervened_tls.add(safe_decision.tls_id)
 
             decision_logger.write(safe_decision)
@@ -257,12 +266,12 @@ class TSPControlController:
         self,
         messages: Iterable[CITSMessage],
         logger: CITSJsonlLogger,
-        all_messages: List[CITSMessage],
+        summary: IncrementalCITSSummary,
     ) -> None:
         for message in messages:
             self.broker.publish(message)
             logger.write(message)
-            all_messages.append(message)
+            summary.add(message)
 
     def _verify_signal_programs(self, adapter: TraciSimulationAdapter) -> List[str]:
         """Verifica que o phase_mapping configurado bate certo com o programa real.
@@ -295,6 +304,25 @@ class TSPControlController:
                     problems.append(
                         f"{tls_id}: phase_sequence índice {idx} fora do programa (fases={phase_count})"
                     )
+
+            # Item 2: verificar que as fases *fora* do par (corridor, minor) são
+            # de facto intergreen (sem 'g'/'G'). Fecha o resíduo de C1: sem isto
+            # confiávamos cegamente que o programa SUMO continha amarelo/all-red
+            # nas posições intermédias da phase_sequence.
+            minor_idx = _optional_int(mapping.get("minor_green_phase_index"))
+            green_phases = {idx for idx in (corridor_idx, minor_idx) if idx is not None}
+            states = adapter.read_program_phase_states(tls_id)
+            if states is None:
+                problems.append(f"{tls_id}: estados de fase ilegíveis (fail-closed)")
+            else:
+                for idx, state in enumerate(states):
+                    if idx in green_phases:
+                        continue
+                    if "g" in state.lower():
+                        problems.append(
+                            f"{tls_id}: fase {idx} ('{state}') é intermédia mas contém "
+                            "verde — clearance amarelo/all-red não garantida"
+                        )
 
             is_fixed = adapter.read_program_is_fixed_time(tls_id)
             if is_fixed is None:

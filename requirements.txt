@@ -6,3 +6,7 @@ sumolib==1.26.0
 # Local validation platform / dashboard.
 streamlit>=1.36,<2.0
 pandas>=2.0,<3.0
+
+# M4: parser XML endurecido (drop-in para xml.etree.ElementTree) que bloqueia
+# ataques XXE/expansão de entidades em XML externo (tripinfo/route files).
+defusedxml>=0.7,<1.0

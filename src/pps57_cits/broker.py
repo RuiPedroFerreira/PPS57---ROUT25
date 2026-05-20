@@ -13,16 +13,19 @@ from .messages import CITSMessage
 class InMemoryMessageBroker:
     """Broker simples para o Pacote 3.
 
-    Mantém filas por destino e histórico global. Em operação real, este módulo
-    seria substituído por uma stack ITS-G5/C-V2X ou por middleware de integração.
+    M2: NÃO mantém histórico ilimitado de mensagens (corridas SUMO longas
+    acumulavam até dezenas de milhares de objetos). Em vez disso mantém apenas
+    contadores incrementais por tipo. Filas por destino devem ser explicitamente
+    drenadas (consume/drain) — destinos não-RSU (OBU, BROADCAST) que não são
+    consumidos podem ser drenados periodicamente para não crescer.
     """
 
     queues: DefaultDict[str, List[CITSMessage]] = field(default_factory=lambda: defaultdict(list))
-    history: List[CITSMessage] = field(default_factory=list)
+    _counts: Dict[str, int] = field(default_factory=dict)
 
     def publish(self, message: CITSMessage) -> None:
         self.queues[message.destination_id].append(message)
-        self.history.append(message)
+        self._counts[message.message_type] = self._counts.get(message.message_type, 0) + 1
 
     def publish_many(self, messages: Iterable[CITSMessage]) -> None:
         for message in messages:
@@ -33,11 +36,22 @@ class InMemoryMessageBroker:
         self.queues[destination_id] = []
         return messages
 
+    def drain(self, destination_id: str) -> int:
+        """Descarta a fila de um destino. Devolve quantas mensagens foram descartadas."""
+        n = len(self.queues.get(destination_id, []))
+        self.queues[destination_id] = []
+        return n
+
+    def drain_all_except(self, keep_destinations: Iterable[str]) -> int:
+        keep = set(keep_destinations)
+        dropped = 0
+        for dest in list(self.queues.keys()):
+            if dest not in keep:
+                dropped += self.drain(dest)
+        return dropped
+
     def peek(self, destination_id: str) -> List[CITSMessage]:
         return list(self.queues.get(destination_id, []))
 
     def count_by_type(self) -> Dict[str, int]:
-        counts: Dict[str, int] = {}
-        for message in self.history:
-            counts[message.message_type] = counts.get(message.message_type, 0) + 1
-        return counts
+        return dict(self._counts)

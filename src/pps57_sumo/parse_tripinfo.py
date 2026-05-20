@@ -6,7 +6,8 @@ import argparse
 import json
 from pathlib import Path
 from statistics import mean
-from xml.etree import ElementTree as ET
+# M4: defusedxml em vez do stdlib — tripinfo vem de simulações externas.
+from defusedxml import ElementTree as ET  # type: ignore[import-untyped]
 
 
 def _num(value: str | None) -> float | None:

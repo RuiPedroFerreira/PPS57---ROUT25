@@ -141,6 +141,59 @@ class Package3CITSTestCase(unittest.TestCase):
         self.assertEqual(response.status, RequestStatus.REJECTED.value)
         self.assertEqual(response.reason, "request_expired")
 
+    def test_message_dataclass_fields_match_serialisation(self) -> None:
+        # M3: defesa contra a fragilidade do duplo mecanismo (@dataclass + __init__
+        # custom) — se um campo for declarado mas o __init__ esquecer de o
+        # atribuir, asdict() exporta um default que não reflete o objeto.
+        # Este teste constrói cada subclasse e confirma que to_dict() contém
+        # exatamente os nomes de campos esperados pelo modelo dataclass.
+        from dataclasses import fields
+        from pps57_cits.messages import (
+            MAPEMLike, SPATEMLike, SREMLike, SSEMLike,
+            MessageType, PriorityLevel, RequestStatus, RequestedManeuver,
+        )
+
+        srem = SREMLike(
+            source_id="OBU_x", destination_id="RSU_BOAVISTA_02", timestamp_s=1.0,
+            vehicle_id="bus_x", vehicle_class="bus", line_id="L", route_id="R",
+            intersection_id="I2", tls_id="I2", rsu_id="RSU_BOAVISTA_02",
+            current_edge_id="I1_I2", current_lane_id="I1_I2_0",
+            speed_mps=10.0, distance_to_stopline_m=100.0, eta_to_stopline_s=10.0,
+            schedule_delay_s=60.0, headway_deviation_s=0.0,
+            requested_maneuver=RequestedManeuver.GREEN_EXTENSION.value,
+            priority_level=PriorityLevel.PUBLIC_TRANSPORT_HIGH_DELAY.value,
+            expires_at_s=13.0,
+        )
+        for cls, instance in [(SREMLike, srem)]:
+            declared = {f.name for f in fields(cls)}
+            payload = instance.to_dict()
+            missing = declared - payload.keys()
+            self.assertFalse(missing, f"{cls.__name__}: campos declarados não serializados: {missing}")
+
+    def test_broker_drain_keeps_counts_but_frees_queues(self) -> None:
+        # M2: broker mantém apenas contadores incrementais; drain liberta filas.
+        broker = InMemoryMessageBroker()
+        mapem = build_mapem_messages(self.config, sim_time_s=0.0)
+        for m in mapem:
+            broker.publish(m)
+        self.assertEqual(broker.count_by_type().get("MAPEM_like"), len(mapem))
+        # Não deveria existir 'history' acumulado e cada fila tem mensagens.
+        self.assertFalse(hasattr(broker, "history") and broker.history)
+        self.assertGreater(len(broker.peek("BROADCAST")), 0)
+        broker.drain_all_except([])
+        self.assertEqual(len(broker.peek("BROADCAST")), 0)
+        # Contagens preservam-se (telemetria correta).
+        self.assertEqual(broker.count_by_type().get("MAPEM_like"), len(mapem))
+
+    def test_incremental_cits_summary_matches_legacy(self) -> None:
+        from pps57_cits.event_logger import IncrementalCITSSummary, summarise_messages
+
+        msgs = build_mapem_messages(self.config, sim_time_s=0.0)
+        incremental = IncrementalCITSSummary()
+        for m in msgs:
+            incremental.add(m)
+        self.assertEqual(incremental.to_dict(), summarise_messages(msgs))
+
     def test_broker_routes_messages_to_destination(self) -> None:
         broker = InMemoryMessageBroker()
         mapem = build_mapem_messages(self.config, sim_time_s=0.0)[0]
@@ -192,14 +245,20 @@ class Package3CITSTestCase(unittest.TestCase):
         self.assertEqual(headless_cmd[0], "sumo")
 
     def test_dry_run_generates_summary_and_logs(self) -> None:
-        controller = CITSEmulationController(self.config)
-        summary = controller.run_dry_run(steps=20)
-        self.assertGreater(summary["total_messages"], 0)
-        self.assertIn("MAPEM_like", summary["by_type"])
-        self.assertIn("SREM_like", summary["by_type"])
-        self.assertIn("SSEM_like", summary["by_type"])
-        self.assertTrue((ROOT / "outputs/cits_messages.jsonl").exists())
-        self.assertTrue((ROOT / "reports/cits_emulation_summary.json").exists())
+        import tempfile
+        from dataclasses import replace
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_root = Path(tmp)
+            config = replace(self.config, root=tmp_root)
+            controller = CITSEmulationController(config)
+            summary = controller.run_dry_run(steps=20)
+            self.assertGreater(summary["total_messages"], 0)
+            self.assertIn("MAPEM_like", summary["by_type"])
+            self.assertIn("SREM_like", summary["by_type"])
+            self.assertIn("SSEM_like", summary["by_type"])
+            self.assertTrue((tmp_root / "outputs/cits_messages.jsonl").exists())
+            self.assertTrue((tmp_root / "reports/cits_emulation_summary.json").exists())
 
 
 if __name__ == "__main__":

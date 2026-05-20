@@ -296,14 +296,20 @@ class SSEMLike(CITSMessage):
         self.safety_notes = list(safety_notes or [])
 
 
-def _normalise_enums(value: Any) -> Any:
+def normalise_for_json(value: Any) -> Any:
+    """L6: helper partilhado para serialização — converte Enum.value, anda em
+    dict/list recursivamente. Reutilizado por `pps57_tsp.models`."""
     if isinstance(value, Enum):
         return value.value
     if isinstance(value, list):
-        return [_normalise_enums(item) for item in value]
+        return [normalise_for_json(item) for item in value]
     if isinstance(value, dict):
-        return {key: _normalise_enums(item) for key, item in value.items()}
+        return {key: normalise_for_json(item) for key, item in value.items()}
     return value
+
+
+# Alias para retrocompatibilidade dentro deste módulo.
+_normalise_enums = normalise_for_json
 
 
 def now_s() -> float:

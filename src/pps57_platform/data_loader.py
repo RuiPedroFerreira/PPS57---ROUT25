@@ -12,7 +12,9 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
-from xml.etree import ElementTree as ET
+# M4: defusedxml bloqueia XXE/billion-laughs; ingerimos tripinfo de fontes
+# potencialmente externas, portanto não usamos o parser stdlib aqui.
+from defusedxml import ElementTree as ET  # type: ignore[import-untyped]
 
 DEFAULT_ARTIFACTS: Dict[str, str] = {
     "cits_messages": "outputs/cits_messages.jsonl",

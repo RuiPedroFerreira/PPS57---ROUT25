@@ -125,6 +125,13 @@ class OfflineOptimizationController:
 
     def _evaluate_candidate(self, scenario: OfflineScenario, *, policy_id: str, decision: TSPDecision) -> CandidateEvaluation:
         safety = TSPSafetyLayer(self.cits_config, self.tsp_config)
+        # M7: aplicar estado inicial opcional do cenário (cooldown ativo,
+        # intervenções consecutivas) para exercitar caminhos com estado da
+        # Safety Layer. Sem isto a optimização offline nunca testa cooldown.
+        if scenario.initial_last_intervention_time_by_tls:
+            safety.last_intervention_time_by_tls.update(scenario.initial_last_intervention_time_by_tls)
+        if scenario.initial_consecutive_interventions_by_tls:
+            safety.consecutive_interventions_by_tls.update(scenario.initial_consecutive_interventions_by_tls)
         validation = safety.validate(decision, scenario.signal_state, scenario.sim_time_s)
         safe_decision = validation.safe_decision
         reward = self._reward(scenario, safe_decision, validation.status)

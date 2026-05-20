@@ -7,7 +7,8 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from xml.etree import ElementTree as ET
+# M4: defusedxml em vez do stdlib para validação de XML do projeto.
+from defusedxml import ElementTree as ET  # type: ignore[import-untyped]
 
 REQUIRED_FILES = [
     "configs/corridor_config.json",

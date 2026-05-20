@@ -92,6 +92,26 @@ def build_offline_scenarios(config: CITSConfig) -> List[OfflineScenario]:
             request=_request(intersections["I2"], edge_id="I1_I2", lane_id="I1_I2_0", eta=16.0, distance=160.0),
             signal_state=_state(intersections["I2"], phase=0, ryg="GGrr", next_switch=102.0, spent=53.0),
         ),
+        # M7: exercitar o caminho stateful (cooldown) da Safety Layer offline.
+        OfflineScenario(
+            scenario_id="P5_COOLDOWN_ACTIVE",
+            description="Cooldown da intervenção anterior ainda ativo; extensão deve ser filtrada.",
+            expected_case="safety_filter",
+            sim_time_s=100.0,
+            request=_request(intersections["I2"], edge_id="I1_I2", lane_id="I1_I2_0", eta=16.0, distance=160.0),
+            signal_state=_state(intersections["I2"], phase=0, ryg="GGrr", next_switch=130.0, spent=10.0),
+            initial_last_intervention_time_by_tls={"I2": 95.0},  # 5s atrás, cooldown=90s
+        ),
+        # M7: exercitar o limite de intervenções consecutivas (no max_consecutive=2).
+        OfflineScenario(
+            scenario_id="P5_MAX_CONSECUTIVE_REACHED",
+            description="Já houve 2 intervenções consecutivas neste TLS; extensão deve ser filtrada.",
+            expected_case="safety_filter",
+            sim_time_s=100.0,
+            request=_request(intersections["I2"], edge_id="I1_I2", lane_id="I1_I2_0", eta=16.0, distance=160.0),
+            signal_state=_state(intersections["I2"], phase=0, ryg="GGrr", next_switch=130.0, spent=10.0),
+            initial_consecutive_interventions_by_tls={"I2": 2},
+        ),
     ]
 
 

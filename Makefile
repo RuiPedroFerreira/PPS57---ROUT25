@@ -1,4 +1,4 @@
-.PHONY: validate build run gui kpis cits-dryrun cits-sumo tsp-dryrun tsp-sumo tsp-sumo-no-actuation tsp-gui tsp-gui-no-actuation optimize-offline platform platform-check platform-demo-data dashboard test clean
+.PHONY: validate build run gui kpis cits-dryrun cits-sumo tsp-dryrun tsp-sumo tsp-sumo-no-actuation tsp-gui tsp-gui-no-actuation optimize-offline platform platform-check platform-demo-data dashboard sort-routes test clean
 
 PYTHON := $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 
@@ -11,7 +11,7 @@ validate:
 
 build:
 	$(PYTHON) src/pps57_sumo/generate_plain_corridor.py --config configs/corridor_config.json --output sumo/plain
-	netconvert --node-files sumo/plain/corredor.nod.xml --edge-files sumo/plain/corredor.edg.xml --output-file sumo/network/corredor.net.xml --no-turnarounds true --tls.default-type actuated --tls.cycle.time 90 --tls.yellow.time 3
+	netconvert --node-files sumo/plain/corredor.nod.xml --edge-files sumo/plain/corredor.edg.xml --output-file sumo/network/corredor.net.xml --no-turnarounds true --tls.default-type static --tls.cycle.time 90 --tls.yellow.time 3
 
 run: build
 	sumo -c sumo/corredor.sumocfg --duration-log.statistics
@@ -57,8 +57,24 @@ platform:
 
 dashboard: platform
 
+sort-routes:
+	# Item 15: wrapper sobre $SUMO_HOME/tools/route/sort_routes.py.
+	# Útil após edição manual de sumo/routes/routes.rou.xml; o `make validate`
+	# falha se as rotas ficarem fora de ordem temporal.
+	$(PYTHON) -m pps57_sumo.sort_routes
+
 test:
 	$(PYTHON) -m unittest discover -s tests -p 'test_*.py'
 
 clean:
-	rm -f outputs/*.xml outputs/*.csv outputs/*.json outputs/*.jsonl reports/*.json sumo/network/*.net.xml
+	# L3: limpar APENAS artefactos conhecidos gerados pelos pipelines; o glob
+	# anterior (reports/*.json, outputs/*.json) varria snapshots do utilizador
+	# (platform_snapshot.json, baseline_kpis.json) sem distinguir.
+	rm -f outputs/tripinfo.xml outputs/summary.xml outputs/statistics.xml
+	rm -f outputs/cits_messages.jsonl outputs/cits_mapem_snapshot.json outputs/cits_spatem_snapshot.json
+	rm -f outputs/tsp_decisions.jsonl outputs/tsp_actuation.jsonl
+	rm -f outputs/pacote5_offline_samples.jsonl outputs/pacote5_policy_candidates.jsonl
+	rm -f reports/cits_emulation_summary.json reports/tsp_emulation_summary.json
+	rm -f reports/pacote5_policy_report.json reports/pacote5_optimization_summary.json
+	rm -f reports/baseline_kpis.json
+	rm -f sumo/network/corredor.net.xml

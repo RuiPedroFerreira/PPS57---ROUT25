@@ -1,0 +1,9 @@
+# L5: requisitos mínimos só para a dashboard / validation platform.
+# Não inclui SUMO/traci (~150 MB) — útil para utilizadores que apenas
+# precisam de visualizar artefactos já gerados.
+#
+# Uso: pip install -r requirements-dashboard.txt
+#      (em alternativa a requirements.txt para evitar instalar SUMO)
+streamlit>=1.36,<2.0
+pandas>=2.0,<3.0
+defusedxml>=0.7,<1.0
