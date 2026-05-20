@@ -2,3 +2,7 @@
 eclipse-sumo==1.26.0
 traci==1.26.0
 sumolib==1.26.0
+
+# Local validation platform / dashboard.
+streamlit>=1.36,<2.0
+pandas>=2.0,<3.0

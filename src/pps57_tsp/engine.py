@@ -33,7 +33,7 @@ class TSPDecisionEngine:
                 notes=["Pedido aceite pela RSU, mas insuficiente para intervenção semafórica."],
             )
 
-        if request.expires_at_s and sim_time_s > request.expires_at_s:
+        if request.expires_at_s is not None and sim_time_s > request.expires_at_s:
             return self._decision(
                 request,
                 signal_state,
@@ -138,10 +138,15 @@ class TSPDecisionEngine:
         candidate_edge = request.current_edge_id
 
         # Preferir mapeamento por lane/control link quando disponível.
+        # Uma lane SUMO pertence à edge E sse for "<E>_<índice>"; usar apenas
+        # startswith(E) daria falsos positivos (ex.: "I1_I20_0" começa por
+        # "I1_I2"), o que faria o motor ler o estado de sinal do movimento
+        # errado e propor a ação errada para a Safety Layer.
+        edge_prefix = f"{candidate_edge}_" if candidate_edge else None
         for index, lane_id in enumerate(controlled_lanes):
             if index >= len(ryg):
                 continue
-            if lane_id == candidate_lane or lane_id.startswith(candidate_edge):
+            if lane_id == candidate_lane or (edge_prefix is not None and lane_id.startswith(edge_prefix)):
                 return ryg[index].lower() == "g"
 
         # Fallback: fase 0 representa corredor verde no proxy Boavista.

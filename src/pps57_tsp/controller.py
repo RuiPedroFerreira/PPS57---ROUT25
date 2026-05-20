@@ -19,7 +19,7 @@ from .actuator import DryRunTSPActuator, TraciTSPActuator
 from .config import TSPConfig
 from .engine import TSPDecisionEngine
 from .logger import TSPJsonlLogger, write_tsp_summary
-from .models import ActuationResult, TSPDecision
+from .models import ActuationResult, DecisionStatus, TSPDecision
 from .safety import TSPSafetyLayer
 
 
@@ -114,7 +114,18 @@ class TSPControlController:
         cits_log_path = self.cits_config.path_from_root(self.cits_config.logging.get("message_log", "outputs/cits_messages.jsonl"))
         decision_log_path = self.tsp_config.path_from_root(self.tsp_config.logging.get("decision_log", "outputs/tsp_decisions.jsonl"))
         actuation_log_path = self.tsp_config.path_from_root(self.tsp_config.logging.get("actuation_log", "outputs/tsp_actuation.jsonl"))
-        actuator = TraciTSPActuator(adapter=adapter, apply_actuation=apply_actuation)
+
+        # C3/C4: reconciliar o mapeamento de fases configurado com o programa
+        # semafórico realmente carregado e detetar TLS atuados (o motor assume
+        # controlo de tempo fixo). Em qualquer divergência, fail-closed:
+        # desativa a atuação mas mantém a observação/decisão.
+        verification_problems = self._verify_signal_programs(adapter)
+        effective_actuation = apply_actuation and not verification_problems
+        if verification_problems and apply_actuation:
+            print("[SAFETY] Atuação TraCI desativada: verificação do programa semafórico falhou:")
+            for problem in verification_problems:
+                print(f"  - {problem}")
+        actuator = TraciTSPActuator(adapter=adapter, apply_actuation=effective_actuation)
 
         step_count = 0
         with CITSJsonlLogger(cits_log_path) as cits_logger, TSPJsonlLogger(decision_log_path) as decision_logger, TSPJsonlLogger(actuation_log_path) as actuation_logger:
@@ -166,7 +177,12 @@ class TSPControlController:
                 "mode": "sumo-traci",
                 "steps": step_count,
                 "scenario_id": self.tsp_config.raw.get("scenario_id"),
-                "actuation_enabled": apply_actuation,
+                "actuation_requested": apply_actuation,
+                "actuation_enabled": effective_actuation,
+                "signal_program_verification": {
+                    "problems": verification_problems,
+                    "actuation_downgraded": bool(verification_problems and apply_actuation),
+                },
                 "cits_total_messages": cits_summary["total_messages"],
                 "cits_by_type": cits_summary["by_type"],
                 "cits_acknowledged_messages": cits_summary["acknowledged_messages"],
@@ -187,6 +203,11 @@ class TSPControlController:
         decisions: List[TSPDecision],
         actuations: List[ActuationResult],
     ) -> None:
+        # M6: invariante explícita "no máximo 1 intervenção por TLS por passo".
+        # Até aqui isto dependia implicitamente do efeito colateral do cooldown
+        # (frágil e silenciosamente quebrado em modo no-actuation/downgraded, onde
+        # mark_applied não corre e a telemetria contava intervenções duplicadas).
+        intervened_tls: set[str] = set()
         for response in responses:
             if response.status != RequestStatus.ACKNOWLEDGED.value:
                 continue
@@ -199,9 +220,33 @@ class TSPControlController:
             proposed = self.engine.decide(request, signal_state, sim_time_s)
             validation = self.safety.validate(proposed, signal_state, sim_time_s)
             safe_decision = validation.safe_decision
-            result = actuator.apply(safe_decision, signal_state, sim_time_s)
-            if result.applied:
-                self.safety.mark_applied(safe_decision, sim_time_s)
+
+            if safe_decision.requires_actuation and safe_decision.tls_id in intervened_tls:
+                safe_decision = safe_decision.copy_with(
+                    status=DecisionStatus.NOT_ACTUABLE.value,
+                    reason="superseded_by_earlier_intervention_same_step",
+                    notes=list(safe_decision.notes)
+                    + ["TLS já interveio neste passo; pedido suprimido para evitar atuação dupla."],
+                )
+                result = ActuationResult(
+                    decision_id=safe_decision.decision_id,
+                    timestamp_s=sim_time_s,
+                    tls_id=safe_decision.tls_id,
+                    action=safe_decision.action,
+                    applied=False,
+                    dry_run=not getattr(actuator, "apply_actuation", False),
+                    command="none",
+                    reason="superseded_by_earlier_intervention_same_step",
+                )
+            else:
+                result = actuator.apply(safe_decision, signal_state, sim_time_s)
+                if result.applied:
+                    self.safety.mark_applied(safe_decision, sim_time_s)
+                # Marca o TLS como já intervindo neste passo se uma atuação foi
+                # aprovada — mesmo sem aplicação real — para a telemetria de
+                # no-actuation/downgraded refletir a intervenção única efetiva.
+                if validation.approved and safe_decision.requires_actuation:
+                    intervened_tls.add(safe_decision.tls_id)
 
             decision_logger.write(safe_decision)
             actuation_logger.write(result)
@@ -218,6 +263,50 @@ class TSPControlController:
             self.broker.publish(message)
             logger.write(message)
             all_messages.append(message)
+
+    def _verify_signal_programs(self, adapter: TraciSimulationAdapter) -> List[str]:
+        """Verifica que o phase_mapping configurado bate certo com o programa real.
+
+        Fail-closed: se o programa não puder ser lido, ou se algum índice de fase
+        configurado estiver fora do programa, ou se o TLS for atuado (o motor
+        assume tempo fixo), devolve problemas que desativam a atuação.
+        """
+        problems: List[str] = []
+        for intersection in self.cits_config.intersections:
+            tls_id = intersection.tls_id
+            mapping = self.tsp_config.phase_mapping_for_tls(tls_id)
+            corridor_idx = _optional_int(mapping.get("corridor_green_phase_index"))
+            sequence = [
+                idx
+                for idx in (_optional_int(item) for item in mapping.get("phase_sequence", []))
+                if idx is not None
+            ]
+
+            phase_count = adapter.read_program_phase_count(tls_id)
+            if phase_count is None:
+                problems.append(f"{tls_id}: programa TLS ilegível; impossível validar phase_mapping")
+                continue
+            if corridor_idx is None or not (0 <= corridor_idx < phase_count):
+                problems.append(
+                    f"{tls_id}: corridor_green_phase_index={corridor_idx} fora do programa (fases={phase_count})"
+                )
+            for idx in sequence:
+                if not (0 <= idx < phase_count):
+                    problems.append(
+                        f"{tls_id}: phase_sequence índice {idx} fora do programa (fases={phase_count})"
+                    )
+
+            is_fixed = adapter.read_program_is_fixed_time(tls_id)
+            if is_fixed is None:
+                problems.append(
+                    f"{tls_id}: não foi possível confirmar programa de tempo fixo (fail-closed)"
+                )
+            elif is_fixed is False:
+                problems.append(
+                    f"{tls_id}: programa atuado/adaptativo (tipo='{adapter.read_program_type(tls_id)}'); "
+                    "o motor TSP assume controlo de tempo fixo"
+                )
+        return problems
 
     def _process_rsu_queues(self, sim_time_s: float) -> List[SSEMLike]:
         responses: List[SSEMLike] = []
@@ -324,3 +413,12 @@ class TSPControlController:
             spent_duration_s=spent_s,
             controlled_lanes=[f"{edge}_0" for edge in intersection.controlled_approach_edges],
         )
+
+
+def _optional_int(value: object) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None

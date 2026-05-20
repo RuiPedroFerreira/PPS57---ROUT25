@@ -9,7 +9,8 @@ A base atual inclui:
 - **Pacote 2 — Gémeo Digital SUMO v0.2**, com cenário proxy realista Porto/Boavista;
 - **Pacote 3 — Emulação C-ITS/V2X v0.3**, com OBUs, RSUs e mensagens MAPEM-like, SPATEM-like, SREM-like e SSEM-like;
 - **Pacote 4 — Motor de Decisão TSP + Safety Layer v0.4**, com decisões de green extension, early green, no action, rejeição e atuação segura via dry-run/TraCI;
-- **Pacote 5 — Otimização offline + RL tabular proxy v0.5**, com baseline TSP explicável e Safety Layer como filtro obrigatório para qualquer política otimizada.
+- **Pacote 5 — Otimização offline + RL tabular proxy v0.5**, com baseline TSP explicável e Safety Layer como filtro obrigatório para qualquer política otimizada;
+- **Pacote 6 — Plataforma de Validação e Demonstração v0.6**, com dashboard Streamlit para mensagens C-ITS, decisões TSP, Safety Layer, atuação, otimização e KPIs.
 
 ## Cenário realista Porto/Boavista
 
@@ -27,6 +28,7 @@ configs/
   cits_config.json
   tsp_config.json
   optimization_config.json
+  platform_config.json
   scenarios.yaml
   signal_policy_constraints.yaml
 
@@ -37,13 +39,20 @@ docs/
   PACOTE3_CITS_V2X.md
   PACOTE4_TSP_SAFETY_LAYER.md
   PACOTE5_OTIMIZACAO_RL_OFFLINE.md
+  PACOTE6_PLATAFORMA_DASHBOARD.md
   HANDOVER_PACOTE5.md
+  HANDOVER_PACOTE6.md
 
 scripts/
   run_baseline.py
   run_cits_emulation.py
   run_tsp_control.py
   run_pacote5_optimization.py
+  check_platform_data.py
+  generate_platform_demo_data.py
+
+dashboard/
+  app.py
 
 src/
   pps57_sumo/
@@ -74,6 +83,8 @@ src/
     dataset.py
     models.py
     optimizer.py
+  pps57_platform/
+    data_loader.py
 
 sumo/
   plain/corredor.nod.xml
@@ -86,6 +97,7 @@ sumo/
 tests/
   test_pacote3_cits.py
   test_pacote4_tsp.py
+  test_pacote6_platform.py
 ```
 
 ## Como correr validações sem SUMO
@@ -98,6 +110,7 @@ make test
 make cits-dryrun
 make tsp-dryrun
 make optimize-offline
+make platform-check
 ```
 
 O `tsp-dryrun` gera:
@@ -111,6 +124,7 @@ outputs/pacote5_policy_candidates.jsonl
 reports/tsp_emulation_summary.json
 reports/pacote5_policy_report.json
 reports/pacote5_optimization_summary.json
+reports/platform_snapshot.json
 ```
 
 ## Como correr a simulação SUMO baseline
@@ -215,10 +229,42 @@ O Pacote 5 executa uma avaliação offline de políticas candidatas:
 
 ```bash
 make optimize-offline
+make platform-check
 ```
 
 O fluxo compara candidatos `no_action`, `green_extension`, `early_green`, `reevaluate_next_cycle` e `reject` contra o baseline TSP do Pacote 4. Cada candidato passa pela Safety Layer antes de poder ser selecionado. Candidatos bloqueados por segurança são registados, mas não entram na política exportada.
 
+## Pacote 6 — Plataforma de Validação e Demonstração
+
+O Pacote 6 disponibiliza uma dashboard local para demonstrar o asset técnico:
+
+```bash
+make platform
+```
+
+A plataforma lê os artefactos dos Pacotes 3, 4 e 5:
+
+```text
+outputs/cits_messages.jsonl
+outputs/tsp_decisions.jsonl
+outputs/tsp_actuation.jsonl
+outputs/pacote5_policy_candidates.jsonl
+reports/tsp_emulation_summary.json
+reports/pacote5_optimization_summary.json
+outputs/tripinfo.xml
+```
+
+Comandos úteis:
+
+```bash
+make platform-demo-data   # gera dados demo quando ainda não existem outputs
+make platform-check       # valida artefactos e exporta reports/platform_snapshot.json
+make platform             # abre a dashboard Streamlit
+make dashboard            # alias de make platform
+```
+
+A dashboard mostra mensagens C-ITS, decisões TSP, bloqueios da Safety Layer, atuações dry-run/TraCI, candidatos de otimização e KPIs de mobilidade.
+
 ## Próximo passo
 
-O próximo desenvolvimento técnico é substituir o dataset sintético do Pacote 5 por logs SUMO calibrados e dados reais, mantendo a Safety Layer como filtro obrigatório antes de qualquer atuação.
+O próximo desenvolvimento técnico é evoluir a plataforma para comparação multi-cenário, permitindo comparar baseline sem prioridade, TSP rule-based, otimização offline e políticas RL/proxy com os mesmos KPIs e a mesma Safety Layer.

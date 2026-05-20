@@ -112,6 +112,35 @@ class Package3CITSTestCase(unittest.TestCase):
         self.assertEqual(response.status, RequestStatus.ACKNOWLEDGED.value)
         self.assertEqual(response.destination_id, "OBU_bus_1")
 
+    def test_rsu_rejects_request_expired_at_zero_timestamp(self) -> None:
+        intersection = self.config.rsu_to_intersection["RSU_BOAVISTA_02"]
+        rsu = RSUAgent(self.config, intersection)
+        request = SREMLike(
+            source_id="OBU_bus_1",
+            destination_id="RSU_BOAVISTA_02",
+            timestamp_s=0.0,
+            vehicle_id="bus_1",
+            vehicle_class="bus",
+            line_id="STCP500_PROXY_W",
+            route_id="route_boavista_east_to_west",
+            intersection_id="I2",
+            tls_id="I2",
+            rsu_id="RSU_BOAVISTA_02",
+            current_edge_id="I1_I2",
+            current_lane_id="I1_I2_0",
+            speed_mps=10.0,
+            distance_to_stopline_m=150.0,
+            eta_to_stopline_s=15.0,
+            schedule_delay_s=90.0,
+            headway_deviation_s=0.0,
+            requested_maneuver="green_extension",
+            priority_level="public_transport_high_delay",
+            expires_at_s=0.0,
+        )
+        response = rsu.evaluate_request(request, sim_time_s=1.0)
+        self.assertEqual(response.status, RequestStatus.REJECTED.value)
+        self.assertEqual(response.reason, "request_expired")
+
     def test_broker_routes_messages_to_destination(self) -> None:
         broker = InMemoryMessageBroker()
         mapem = build_mapem_messages(self.config, sim_time_s=0.0)[0]
@@ -119,6 +148,48 @@ class Package3CITSTestCase(unittest.TestCase):
         self.assertEqual(len(broker.peek("BROADCAST")), 1)
         self.assertEqual(len(broker.consume("BROADCAST")), 1)
         self.assertEqual(len(broker.consume("BROADCAST")), 0)
+
+    def test_route_file_sortedness_guard(self) -> None:
+        from pps57_sumo.validate_project import validate_routes_sorted
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            unsorted_path = Path(tmp) / "unsorted.rou.xml"
+            unsorted_path.write_text(
+                '<routes>'
+                '<vehicle id="v1" depart="10"/>'
+                '<vehicle id="v2" depart="5"/>'
+                '</routes>',
+                encoding="utf-8",
+            )
+            with self.assertRaises(SystemExit) as ctx:
+                validate_routes_sorted(unsorted_path)
+            self.assertIn("not sorted by departure", str(ctx.exception))
+            self.assertIn("v2", str(ctx.exception))
+
+            sorted_path = Path(tmp) / "sorted.rou.xml"
+            sorted_path.write_text(
+                '<routes>'
+                '<flow id="f1" begin="0"/>'
+                '<vehicle id="v1" depart="5"/>'
+                '<flow id="f2" begin="10"/>'
+                '<vehicle id="v2" depart="20"/>'
+                '</routes>',
+                encoding="utf-8",
+            )
+            validate_routes_sorted(sorted_path)  # must not raise
+
+    def test_traci_gui_command_includes_start_flag(self) -> None:
+        from pps57_cits.traci_adapter import TraciSimulationAdapter
+
+        gui_cmd = TraciSimulationAdapter(self.config, gui=True)._sumo_command("sumo-gui")
+        headless_cmd = TraciSimulationAdapter(self.config, gui=False)._sumo_command("sumo")
+        # sumo-gui sem --start fica pausado e nunca serve TraCI.
+        self.assertIn("--start", gui_cmd)
+        self.assertIn("--quit-on-end", gui_cmd)
+        self.assertEqual(gui_cmd[0], "sumo-gui")
+        self.assertNotIn("--start", headless_cmd)
+        self.assertEqual(headless_cmd[0], "sumo")
 
     def test_dry_run_generates_summary_and_logs(self) -> None:
         controller = CITSEmulationController(self.config)

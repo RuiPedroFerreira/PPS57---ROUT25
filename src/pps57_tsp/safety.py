@@ -1,5 +1,26 @@
 #!/usr/bin/env python3
-"""Safety Layer para bloquear ou ajustar decisões TSP antes da atuação TraCI."""
+"""Safety Layer para bloquear ou ajustar decisões TSP antes da atuação TraCI.
+
+Garantias *efetivamente verificadas* por esta camada (proxy):
+  - verde mínimo da fase truncada (min_green_s);
+  - extensão máxima e verde total máximo (max_green_extension_s, max_total_green_s);
+  - bloqueio em transição amarela;
+  - cooldown e número máximo de intervenções consecutivas por TLS;
+  - extensão só na fase de corredor verde configurada;
+  - a sequência de fases configurada coloca pelo menos uma fase intermédia
+    (clearance) entre a fase conflituante e o verde do corredor
+    (never_skip_yellow_or_all_red).
+
+Garantias *delegadas e NÃO verificáveis no proxy* (declaradas explicitamente,
+não silenciosamente assumidas):
+  - que a fase intermédia da sequência é de facto amarelo/all-red e respeita a
+    clearance pedonal — depende do plano semafórico SUMO real. Esta dependência
+    é reconciliada no arranque (controller._verify_signal_programs) e, em caso de
+    dúvida, a atuação é desativada (fail-closed).
+
+Princípio geral: na ausência de dados que provem a segurança de uma atuação, a
+decisão é BLOQUEADA (fail-closed), nunca aprovada com defaults permissivos.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -71,7 +92,6 @@ class TSPSafetyLayer:
         sim_time_s: float,
         notes: list[str],
     ) -> SafetyValidationResult:
-        safety = self.cits_config.safety_constraints
         policy = self.tsp_config.decision_policy
         actuation = self.tsp_config.actuation
 
@@ -86,21 +106,37 @@ class TSPSafetyLayer:
         if corridor_phase is not None and signal_state.current_phase_index != corridor_phase:
             return self._blocked(decision, "green_extension_requires_corridor_green_phase", notes)
 
-        max_extension = float(safety.get("max_green_extension_s", policy.get("green_extension_max_s", 12)))
+        # Bound de segurança obrigatório: sem ele, não é possível provar que a
+        # extensão é segura -> fail-closed.
+        max_extension = self._required_safety_value("max_green_extension_s")
+        if max_extension is None:
+            return self._blocked(decision, "safety_constraint_missing:max_green_extension_s", notes)
+        # O teto de política só pode *reduzir* a extensão, nunca substituir o
+        # bound de segurança.
+        max_extension = min(max_extension, float(policy.get("green_extension_max_s", max_extension)))
         extension_s = min(decision.extension_s, max_extension)
         if extension_s < decision.extension_s:
             notes.append(f"Extensão reduzida pela safety layer: {decision.extension_s:.1f}s -> {extension_s:.1f}s.")
 
+        max_total_green = self._required_safety_value("max_total_green_s")
+        if max_total_green is None:
+            return self._blocked(decision, "safety_constraint_missing:max_total_green_s", notes)
+
         remaining_s = TSPDecisionEngine.remaining_phase_time_s(signal_state, sim_time_s)
-        spent_s = float(signal_state.spent_duration_s or 0.0)
-        max_total_green = float(safety.get("max_total_green_s", 55))
-        if remaining_s is not None:
-            allowed_by_total = max_total_green - spent_s - remaining_s
-            if allowed_by_total <= 0:
-                return self._blocked(decision, "max_total_green_already_reached", notes)
-            if extension_s > allowed_by_total:
-                notes.append(f"Extensão limitada por max_total_green: {extension_s:.1f}s -> {allowed_by_total:.1f}s.")
-                extension_s = max(0.0, allowed_by_total)
+        if remaining_s is None:
+            # Sem o tempo restante de fase não é possível garantir o bound de
+            # verde total -> fail-closed.
+            return self._blocked(decision, "green_extension_unknown_remaining_phase_time", notes)
+        if signal_state.spent_duration_s is None:
+            return self._blocked(decision, "green_extension_unknown_spent_phase_time", notes)
+        spent_s = float(signal_state.spent_duration_s)
+
+        allowed_by_total = max_total_green - spent_s - remaining_s
+        if allowed_by_total <= 0:
+            return self._blocked(decision, "max_total_green_already_reached", notes)
+        if extension_s > allowed_by_total:
+            notes.append(f"Extensão limitada por max_total_green: {extension_s:.1f}s -> {allowed_by_total:.1f}s.")
+            extension_s = max(0.0, allowed_by_total)
 
         if extension_s <= 0:
             return self._blocked(decision, "green_extension_clipped_to_zero", notes)
@@ -132,8 +168,14 @@ class TSPSafetyLayer:
         if bool(actuation.get("allow_direct_phase_jump", False)):
             notes.append("Config permite salto direto de fase, mas o MVP usa setPhaseDuration por defeito.")
 
-        min_green = float(safety.get("min_green_s", 8))
-        spent_s = float(signal_state.spent_duration_s or 0.0)
+        min_green = self._required_safety_value("min_green_s")
+        if min_green is None:
+            return self._blocked(decision, "safety_constraint_missing:min_green_s", notes)
+        if signal_state.spent_duration_s is None:
+            # Não sabemos há quanto tempo a fase conflituante está verde -> não
+            # é possível garantir o verde mínimo -> fail-closed.
+            return self._blocked(decision, "early_green_unknown_spent_phase_time", notes)
+        spent_s = float(signal_state.spent_duration_s)
         if spent_s < min_green:
             return self._blocked(decision, f"min_green_not_satisfied:{spent_s:.1f}<{min_green:.1f}", notes)
 
@@ -141,8 +183,19 @@ class TSPSafetyLayer:
         if requested_duration is None:
             requested_duration = float(policy.get("red_truncation_to_s", 2))
 
-        if not self._phase_sequence_leads_to_target(signal_state, decision):
-            return self._blocked(decision, "early_green_target_phase_not_next_after_transition", notes)
+        sequence_problem = self._phase_sequence_clearance_check(signal_state, decision)
+        if sequence_problem is not None:
+            return self._blocked(decision, sequence_problem, notes)
+
+        # Disclosure honesto: a clearance pedonal não tem modelo no proxy.
+        if bool(safety.get("pedestrian_clearance_must_not_be_shortened", True)):
+            notes.append(
+                "Nota: pedestrian_clearance_must_not_be_shortened depende do plano "
+                "SUMO conter a fase de clearance configurada na phase_sequence; "
+                "não existe modelo pedonal no proxy (ver _verify_signal_programs)."
+            )
+        else:
+            notes.append("Aviso: pedestrian_clearance_must_not_be_shortened=false na config.")
 
         remaining_s = TSPDecisionEngine.remaining_phase_time_s(signal_state, sim_time_s)
         if remaining_s is not None and remaining_s <= requested_duration:
@@ -195,22 +248,55 @@ class TSPSafetyLayer:
     def _is_yellow_transition(signal_state: SignalState) -> bool:
         return bool(signal_state.red_yellow_green_state and any(ch.lower() == "y" for ch in signal_state.red_yellow_green_state))
 
-    def _phase_sequence_leads_to_target(self, signal_state: SignalState, decision: TSPDecision) -> bool:
+    def _phase_sequence_clearance_check(
+        self, signal_state: SignalState, decision: TSPDecision
+    ) -> Optional[str]:
+        """Devolve None se a transição é estruturalmente segura, ou o motivo do bloqueio.
+
+        Verifica (a) que o verde-alvo é alcançável a partir da fase atual segundo
+        a sequência configurada e (b) — quando never_skip_yellow_or_all_red está
+        ativo (default estrito) — que existe pelo menos uma fase intermédia entre
+        a fase conflituante atual e o verde-alvo, para o programa SUMO poder
+        executar a clearance amarelo/all-red. Fail-closed em dados em falta.
+        """
         current = signal_state.current_phase_index
         target = decision.target_phase_index
         if current is None or target is None:
-            return False
+            return "early_green_phase_indices_unknown"
 
         mapping = self.tsp_config.phase_mapping_for_tls(decision.tls_id)
         sequence = [_optional_int(item) for item in mapping.get("phase_sequence", [0, 1, 2, 3])]
         sequence = [item for item in sequence if item is not None]
         if current not in sequence or target not in sequence:
-            return False
+            return "early_green_phase_not_in_configured_sequence"
 
         current_pos = sequence.index(current)
         next_phase = sequence[(current_pos + 1) % len(sequence)]
         after_transition = sequence[(current_pos + 2) % len(sequence)]
-        return target in {next_phase, after_transition}
+        if target not in {next_phase, after_transition}:
+            return "early_green_target_phase_not_next_after_transition"
+
+        never_skip = bool(self.cits_config.safety_constraints.get("never_skip_yellow_or_all_red", True))
+        if never_skip and target == next_phase:
+            # Ir diretamente da fase conflituante para o verde-alvo, sem fase
+            # intermédia, saltaria a clearance amarelo/all-red que o programa
+            # tem de executar entre movimentos em conflito.
+            return "early_green_would_skip_clearance_phase"
+        return None
+
+    def _required_safety_value(self, key: str) -> Optional[float]:
+        """Lê um bound de segurança numérico; devolve None se ausente/inválido.
+
+        O chamador deve tratar None como motivo de bloqueio (fail-closed): um
+        bound de segurança em falta nunca é substituído por um default.
+        """
+        value = self.cits_config.safety_constraints.get(key)
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
 
     def _blocked(self, decision: TSPDecision, reason: str, notes: Optional[list[str]] = None) -> SafetyValidationResult:
         safe = decision.copy_with(status=DecisionStatus.BLOCKED_BY_SAFETY.value, reason=reason, notes=list(notes or []))

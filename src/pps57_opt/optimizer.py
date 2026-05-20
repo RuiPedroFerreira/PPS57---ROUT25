@@ -70,7 +70,7 @@ class OfflineOptimizationController:
             candidates.append(
                 self._evaluate_candidate(
                     scenario,
-                    policy_id="offline_rl_tabular_candidate",
+                    policy_id="offline_candidate",
                     decision=decision,
                 )
             )
@@ -187,7 +187,12 @@ class OfflineOptimizationController:
             return benefit - truncation * traffic_penalty - 2.0
 
         if decision.action == TSPAction.NO_ACTION.value:
-            enough_green = scenario.signal_state.current_phase_index == 0 and remaining_s >= required_green_s
+            corridor_phase = self._corridor_phase(decision.tls_id)
+            enough_green = (
+                corridor_phase is not None
+                and scenario.signal_state.current_phase_index == corridor_phase
+                and remaining_s >= required_green_s
+            )
             return benefit + 5.0 if enough_green else -benefit * 0.8
 
         if decision.action == TSPAction.REEVALUATE_NEXT_CYCLE.value:
@@ -203,6 +208,10 @@ class OfflineOptimizationController:
 
         return -50.0
 
+    def _corridor_phase(self, tls_id: str) -> int | None:
+        mapping = self.tsp_config.phase_mapping_for_tls(tls_id)
+        return _optional_int(mapping.get("corridor_green_phase_index"))
+
     def _state_bucket(self, scenario: OfflineScenario) -> str:
         buckets = self.optimization_config.offline_training.get("state_buckets", {})
         eta_close = float(buckets.get("eta_close_s", 10))
@@ -217,10 +226,11 @@ class OfflineOptimizationController:
         if request.eta_to_stopline_s >= eta_far:
             eta_bucket = "eta_far"
         delay_bucket = "delay_high" if request.schedule_delay_s >= high_delay else "delay_low"
+        corridor_phase = self._corridor_phase(state.tls_id)
         phase_bucket = "phase_unknown"
         if state.red_yellow_green_state and "y" in state.red_yellow_green_state.lower():
             phase_bucket = "yellow"
-        elif state.current_phase_index == 0:
+        elif corridor_phase is not None and state.current_phase_index == corridor_phase:
             phase_bucket = "corridor_green"
         elif state.current_phase_index is not None:
             phase_bucket = "corridor_red"
@@ -257,8 +267,10 @@ class OfflineOptimizationController:
         policy_report.write_text(
             json.dumps(
                 {
-                    "policy_id": "pacote5_offline_rl_tabular_safe_policy",
+                    "policy_id": "pacote5_offline_safe_policy_comparison",
                     "baseline_policy": "baseline_tsp_pacote4",
+                    "methodology": "deterministic_argmax_over_fixed_candidate_actions_per_synthetic_scenario",
+                    "is_reinforcement_learning": False,
                     "safety_filter_required": True,
                     "rules": [item.to_dict() for item in rules],
                     "selected_decisions": [item.to_dict() for item in selected],
@@ -288,20 +300,49 @@ class OfflineOptimizationController:
 
         baseline_reward = round(sum(item.reward for item in baseline_candidates), 4)
         optimized_reward = round(sum(item.reward for item in selected), 4)
+
+        # Métrica não-tautológica: o argmax sobre candidatos seguros (que incluem
+        # o baseline) garante optimized_reward >= baseline_reward por construção,
+        # logo reward_delta não prova superioridade. O que é informativo é em
+        # quantos cenários a política escolhida difere do baseline e quantos
+        # baselines eram inseguros.
+        baseline_by_scenario = {item.scenario_id: item for item in baseline_candidates}
+        action_changes = 0
+        baseline_unsafe = 0
+        for chosen in selected:
+            base = baseline_by_scenario.get(chosen.scenario_id)
+            if base is None:
+                continue
+            if base.is_safety_blocked:
+                baseline_unsafe += 1
+            if chosen.action != base.action:
+                action_changes += 1
+
         summary = {
             "package_id": self.optimization_config.raw.get("package_id"),
             "version": self.optimization_config.raw.get("version"),
             "scenario_id": self.optimization_config.raw.get("scenario_id"),
-            "mode": "offline-rl-tabular-dry-run",
+            "mode": "offline-policy-comparison",
+            "methodology": "deterministic_argmax_over_fixed_candidate_actions_per_synthetic_scenario",
+            "is_reinforcement_learning": False,
             "scenario_count": len(scenarios),
             "candidate_count": len(candidates),
             "unsafe_candidates_filtered": len(unsafe_filtered),
             "safety_filter_required": bool(self.optimization_config.safety.get("mandatory_filter", True)),
             "baseline_policy": "baseline_tsp_pacote4",
-            "optimized_policy": "pacote5_offline_rl_tabular_safe_policy",
+            "optimized_policy": "pacote5_offline_safe_policy_comparison",
             "baseline_reward": baseline_reward,
             "optimized_reward": optimized_reward,
             "reward_delta": round(optimized_reward - baseline_reward, 4),
+            "reward_delta_is_nonnegative_by_construction": True,
+            "reward_delta_caveat": (
+                "argmax sobre candidatos seguros inclui o baseline => reward_delta >= 0 "
+                "por construção; NÃO demonstra superioridade. Ver "
+                "optimized_action_changes_vs_baseline."
+            ),
+            "baseline_unsafe_scenarios": baseline_unsafe,
+            "optimized_action_changes_vs_baseline": action_changes,
+            "optimized_action_unchanged_vs_baseline": len(selected) - action_changes,
             "baseline_by_action": baseline_by_action,
             "selected_by_action": selected_by_action,
             "learned_rule_count": len(rules),

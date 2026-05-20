@@ -39,12 +39,25 @@ class TraciSimulationAdapter:
         if shutil.which(binary) is None:
             raise TraciUnavailableError(f"SUMO binary '{binary}' not found in PATH.")
 
+        cmd = self._sumo_command(binary, extra_args)
+        # numRetries generoso: o arranque a frio do sumo-gui sob WSLg/WSLg-GL
+        # pode demorar alguns segundos a abrir o socket TraCI.
+        traci.start(cmd, port=_resolve_traci_port(), numRetries=60)
+        self.traci = traci
+
+    def _sumo_command(self, binary: str, extra_args: Optional[List[str]] = None) -> List[str]:
         sumocfg = self.config.path_from_root(self.config.sumo.get("sumocfg", "sumo/corredor.sumocfg"))
         cmd = [binary, "-c", str(sumocfg), "--duration-log.statistics"]
+        if self.gui:
+            # Sem --start o sumo-gui fica pausado à espera do botão Play do
+            # utilizador e NÃO serve TraCI -> o cliente fica em
+            # "Connection refused, Retrying" indefinidamente. --start arranca a
+            # simulação já sob controlo TraCI; --quit-on-end fecha a janela no
+            # fim do run (ex.: --steps 7200).
+            cmd += ["--start", "--quit-on-end"]
         if extra_args:
             cmd.extend(extra_args)
-        traci.start(cmd, port=_resolve_traci_port())
-        self.traci = traci
+        return cmd
 
     def close(self) -> None:
         if self.traci is not None:
@@ -124,6 +137,70 @@ class TraciSimulationAdapter:
         """Muda explicitamente a fase. Deve ser usado apenas em testes controlados."""
         traci = self._require_traci()
         traci.trafficlight.setPhase(tls_id, int(phase_index))
+
+    def _program_logic(self, tls_id: str):  # type: ignore[no-untyped-def]
+        traci = self._require_traci()
+        for getter in ("getAllProgramLogics", "getCompleteRedYellowGreenDefinition"):
+            try:
+                logics = getattr(traci.trafficlight, getter)(tls_id)
+            except Exception:
+                continue
+            if logics:
+                return logics[0]
+        return None
+
+    def read_program_phase_count(self, tls_id: str) -> Optional[int]:
+        """Número de fases do programa carregado, ou None se indeterminável."""
+        logic = self._program_logic(tls_id)
+        try:
+            return len(logic.phases) if logic is not None else None
+        except Exception:
+            return None
+
+    def read_program_type(self, tls_id: str) -> Optional[str]:
+        """Tipo bruto do programa TLS (código SUMO), só para diagnóstico."""
+        logic = self._program_logic(tls_id)
+        if logic is None:
+            return None
+        try:
+            return str(getattr(logic, "type"))
+        except Exception:
+            return None
+
+    def read_program_is_fixed_time(self, tls_id: str) -> Optional[bool]:
+        """Classifica o programa por *comportamento*, não pela etiqueta.
+
+        Devolve True só se for possível confirmar tempo fixo, False se for
+        atuado/adaptativo, None se indeterminável. O tipo SUMO é um enum inteiro
+        cuja codificação não é fiável entre versões, por isso o sinal robusto é:
+        num programa estático cada fase tem minDur == maxDur == duration; num
+        programa atuado as fases extensíveis têm minDur < maxDur. O chamador deve
+        tratar None como "não confirmado" (fail-closed).
+        """
+        logic = self._program_logic(tls_id)
+        if logic is None:
+            return None
+        try:
+            type_repr = str(getattr(logic, "type")).strip().lower()
+        except Exception:
+            type_repr = ""
+        if type_repr in {"actuated", "delay_based", "delaybased", "nema"}:
+            return False
+        try:
+            phases = list(logic.phases)
+        except Exception:
+            return None
+        if not phases:
+            return None
+        for phase in phases:
+            try:
+                min_dur = float(getattr(phase, "minDur"))
+                max_dur = float(getattr(phase, "maxDur"))
+            except Exception:
+                return None  # sem min/max fiável -> não confirmado
+            if abs(max_dur - min_dur) > 1e-6:
+                return False  # janela extensível -> atuado/adaptativo
+        return True
 
     def read_signal_state(self, intersection: IntersectionConfig, sim_time_s: float) -> SignalState:
         traci = self._require_traci()

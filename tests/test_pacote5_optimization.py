@@ -26,7 +26,10 @@ class Package5OptimizationTestCase(unittest.TestCase):
 
     def test_offline_optimization_exports_safe_policy(self) -> None:
         summary = OfflineOptimizationController(self.cits, self.tsp, self.opt).run()
-        self.assertEqual(summary["mode"], "offline-rl-tabular-dry-run")
+        self.assertEqual(summary["mode"], "offline-policy-comparison")
+        self.assertFalse(summary["is_reinforcement_learning"])
+        self.assertTrue(summary["reward_delta_is_nonnegative_by_construction"])
+        self.assertIn("optimized_action_changes_vs_baseline", summary)
         self.assertTrue(summary["safety_filter_required"])
         self.assertGreater(summary["scenario_count"], 0)
         self.assertGreater(summary["candidate_count"], summary["scenario_count"])

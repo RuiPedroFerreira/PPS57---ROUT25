@@ -50,7 +50,7 @@ class RSUAgent:
             "A atuação semafórica, quando existir, deve passar pela Safety Layer do Pacote 4.",
         ]
 
-        if request.expires_at_s and sim_time_s > request.expires_at_s:
+        if request.expires_at_s is not None and sim_time_s > request.expires_at_s:
             status, action, reason = self._reject("request_expired")
         elif request.intersection_id != self.intersection.intersection_id:
             status, action, reason = self._reject("request_not_for_this_intersection")

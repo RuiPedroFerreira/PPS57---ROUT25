@@ -1,0 +1,46 @@
+{
+  "package_id": "PPS57_PACKAGE_6_PLATFORM",
+  "version": "0.6.0",
+  "scenario_id": "porto_boavista_realista_v02_platform",
+  "title": "PPS57 — ROUT25 Traffic Priority Platform",
+  "description": "Dashboard local de validação e demonstração para C-ITS, TSP, Safety Layer, atuação e otimização offline.",
+  "dashboard": {
+    "default_page": "overview",
+    "max_records_loaded": 5000,
+    "refresh_seconds": 5,
+    "enable_auto_refresh_hint": true
+  },
+  "artifacts": {
+    "cits_messages": "outputs/cits_messages.jsonl",
+    "tsp_decisions": "outputs/tsp_decisions.jsonl",
+    "tsp_actuation": "outputs/tsp_actuation.jsonl",
+    "offline_samples": "outputs/pacote5_offline_samples.jsonl",
+    "policy_candidates": "outputs/pacote5_policy_candidates.jsonl",
+    "cits_summary": "reports/cits_emulation_summary.json",
+    "tsp_summary": "reports/tsp_emulation_summary.json",
+    "baseline_kpis": "reports/baseline_kpis.json",
+    "optimization_summary": "reports/pacote5_optimization_summary.json",
+    "policy_report": "reports/pacote5_policy_report.json",
+    "tripinfo": "outputs/tripinfo.xml"
+  },
+  "critical_artifacts": [
+    "cits_messages",
+    "tsp_decisions",
+    "tsp_actuation",
+    "tsp_summary",
+    "optimization_summary"
+  ],
+  "labels": {
+    "cits_messages": "Mensagens C-ITS",
+    "tsp_decisions": "Decisões TSP",
+    "tsp_actuation": "Atuação semafórica",
+    "offline_samples": "Amostras offline",
+    "policy_candidates": "Candidatos de política",
+    "cits_summary": "Resumo C-ITS",
+    "tsp_summary": "Resumo TSP",
+    "baseline_kpis": "KPIs baseline",
+    "optimization_summary": "Resumo otimização",
+    "policy_report": "Relatório de política",
+    "tripinfo": "Tripinfo SUMO"
+  }
+}

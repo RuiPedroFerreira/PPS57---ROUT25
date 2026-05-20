@@ -181,7 +181,8 @@ class SREMLike(CITSMessage):
     headway_deviation_s: float = 0.0
     requested_maneuver: str = RequestedManeuver.PRIORITY_CANDIDATE.value
     priority_level: str = PriorityLevel.PUBLIC_TRANSPORT_NOMINAL.value
-    expires_at_s: float = 0.0
+    # None = pedido sem expiração; um valor é o instante absoluto de expiração.
+    expires_at_s: Optional[float] = None
     status: str = RequestStatus.REQUESTED.value
 
     def __init__(
@@ -206,7 +207,7 @@ class SREMLike(CITSMessage):
         headway_deviation_s: float,
         requested_maneuver: str,
         priority_level: str,
-        expires_at_s: float,
+        expires_at_s: Optional[float] = None,
         request_id: Optional[str] = None,
         message_id: Optional[str] = None,
         correlation_id: Optional[str] = None,
