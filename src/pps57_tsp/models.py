@@ -25,7 +25,6 @@ class DecisionStatus(str, Enum):
     BLOCKED_BY_SAFETY = "blocked_by_safety"
     NOT_ACTUABLE = "not_actuable"
     APPLIED = "applied"
-    DRY_RUN_APPLIED = "dry_run_applied"
 
 
 @dataclass
@@ -90,10 +89,15 @@ class ActuationResult:
     tls_id: str
     action: str
     applied: bool
-    dry_run: bool
+    no_actuation: bool
     command: str
     reason: str
     parameters: Dict[str, Any] = field(default_factory=dict)
+    # "info" = normal applied/skipped; "warning" = decisão chegou ao atuador
+    # mas a ação não é suportada; "error" = TraCI levantou exceção a meio
+    # de uma atuação — auditoria deve filtrar por severity para detetar
+    # falhas em vez de fazer match de substrings do `reason`.
+    severity: str = "info"
 
     def to_dict(self) -> Dict[str, Any]:
         return _normalise(asdict(self))

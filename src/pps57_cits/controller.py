@@ -9,9 +9,8 @@ from typing import Dict, Iterable, List, Optional
 from .broker import InMemoryMessageBroker
 from .config import CITSConfig
 from .event_logger import CITSJsonlLogger, IncrementalCITSSummary, write_summary_dict
-from .map_spat import build_mapem_messages, build_spatem_message_from_state, build_static_spatem_messages
+from .map_spat import build_mapem_messages, build_spatem_message_from_state
 from .messages import CITSMessage, SSEMLike
-from .models import VehicleObservation
 from .obu import OBUEmulator
 from .rsu import build_rsu_agents
 from .traci_adapter import TraciSimulationAdapter, TraciUnavailableError
@@ -25,39 +24,6 @@ class CITSEmulationController:
         self.broker = InMemoryMessageBroker()
         self.obu = OBUEmulator(self.config)
         self.rsu_agents = build_rsu_agents(self.config)
-
-    def run_dry_run(self, steps: int = 60) -> Dict[str, object]:
-        """Run a demonstration without SUMO."""
-        summary = IncrementalCITSSummary()
-        log_path = self.config.path_from_root(self.config.logging.get("message_log", "outputs/cits_messages.jsonl"))
-
-        with CITSJsonlLogger(log_path) as logger:
-            mapem = build_mapem_messages(self.config, sim_time_s=0.0)
-            spatem = build_static_spatem_messages(self.config, sim_time_s=0.0)
-            self._publish_log_collect(mapem + spatem, logger, summary)
-            self._write_snapshots(mapem, spatem)
-
-            for step in range(max(1, steps)):
-                sim_time_s = float(step)
-                observations = self._dry_run_observations(sim_time_s)
-                requests = self.obu.generate_requests(observations, sim_time_s)
-                self._publish_log_collect(requests, logger, summary)
-
-                responses = self._process_rsu_queues(sim_time_s)
-                self._publish_log_collect(responses, logger, summary)
-                self.broker.drain_all_except([])  # M2
-
-        summary_path = self.config.path_from_root(self.config.logging.get("summary_report", "reports/cits_emulation_summary.json"))
-        return write_summary_dict(
-            summary_path,
-            summary.to_dict(),
-            extra={
-                "mode": "dry-run",
-                "steps": steps,
-                "scenario_id": self.config.raw.get("scenario_id"),
-                "note": "Dry-run validates message flow without launching SUMO/TraCI.",
-            },
-        )
 
     def run_with_sumo(self, steps: Optional[int] = None, sumo_binary: str = "sumo", gui: bool = False) -> Dict[str, object]:
         """Executa a emulação ligada ao SUMO via TraCI.
@@ -86,6 +52,14 @@ class CITSEmulationController:
                     sim_time_s = adapter.simulation_step()
                     step_count += 1
 
+                    # M2: drena mensagens do tick anterior antes de publicar as
+                    # novas. NÃO drenar no fim do tick: isso destruía SSEMs
+                    # publicados imediatamente antes de qualquer consumidor OBU
+                    # poder vê-los, esvaziando arquiteturalmente o loop
+                    # OBU->RSU->OBU. Memória continua limitada: no fim do tick
+                    # apenas as filas deste tick estão preenchidas.
+                    self.broker.drain_all_except([])
+
                     signal_states = [adapter.read_signal_state(intersection, sim_time_s) for intersection in self.config.intersections]
                     spatem = [build_spatem_message_from_state(state) for state in signal_states]
                     self._publish_log_collect(spatem, logger, summary)
@@ -96,7 +70,6 @@ class CITSEmulationController:
 
                     responses = self._process_rsu_queues(sim_time_s)
                     self._publish_log_collect(responses, logger, summary)
-                    self.broker.drain_all_except([])  # M2
             finally:
                 adapter.close()
 
@@ -136,38 +109,3 @@ class CITSEmulationController:
         spatem_path.parent.mkdir(parents=True, exist_ok=True)
         mapem_path.write_text(json.dumps([message.to_dict() for message in mapem], indent=2, ensure_ascii=False), encoding="utf-8")
         spatem_path.write_text(json.dumps([message.to_dict() for message in spatem], indent=2, ensure_ascii=False), encoding="utf-8")
-
-    def _dry_run_observations(self, sim_time_s: float) -> List[VehicleObservation]:
-        """Gera autocarros sintéticos a aproximarem-se das RSUs do corredor.
-
-        A lógica foi desenhada para testar SREM/SSEM antes de ligar o TraCI.
-        """
-        observations: List[VehicleObservation] = []
-        # Deslocação simples ao longo de três aproximações para gerar pedidos em vários ciclos.
-        scenarios = [
-            ("bus_STCP500_W_DRY_001", "STCP500_PROXY_W", "route_boavista_east_to_west", "I1_I2", 650.0, 10.0),
-            ("bus_STCP500_E_DRY_002", "STCP500_PROXY_E", "route_boavista_west_to_east", "I7_I6", 830.0, 9.5),
-            ("bus_STCP502_W_DRY_003", "STCP502_PROXY_W", "route_boavista_east_to_west", "I3_I4", 800.0, 8.0),
-        ]
-        for vehicle_id, line_id, route_id, edge_id, lane_length, speed in scenarios:
-            # O autocarro parte a 280 m da stopline e entra na janela de pedido.
-            distance = max(0.0, 280.0 - sim_time_s * speed)
-            lane_position = max(0.0, lane_length - distance)
-            observations.append(
-                VehicleObservation(
-                    vehicle_id=vehicle_id,
-                    vehicle_class="bus",
-                    type_id="bus_12m",
-                    line_id=line_id,
-                    route_id=route_id,
-                    edge_id=edge_id,
-                    lane_id=f"{edge_id}_0",
-                    lane_position_m=lane_position,
-                    lane_length_m=lane_length,
-                    speed_mps=speed,
-                    waiting_time_s=0.0,
-                    accumulated_waiting_time_s=0.0,
-                    schedule_delay_s=90.0,
-                )
-            )
-        return observations

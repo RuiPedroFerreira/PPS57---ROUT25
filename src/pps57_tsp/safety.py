@@ -40,6 +40,14 @@ class TSPSafetyLayer:
     tsp_config: TSPConfig
     last_intervention_time_by_tls: Dict[str, float] = field(default_factory=dict)
     consecutive_interventions_by_tls: Dict[str, int] = field(default_factory=dict)
+    # True após o controller reconciliar o phase_mapping com o programa SUMO
+    # real e confirmar que as fases intermédias são intergreen (sem 'g').
+    # Sem isto, não há prova de que truncar a fase corrente não compromete a
+    # clearance pedonal -> fail-closed quando o flag de safety estiver ligado.
+    signal_program_verified: bool = False
+
+    def set_signal_program_verified(self, verified: bool) -> None:
+        self.signal_program_verified = bool(verified)
 
     def validate(self, decision: TSPDecision, signal_state: SignalState, sim_time_s: float) -> SafetyValidationResult:
         safety = self.cits_config.safety_constraints
@@ -64,7 +72,16 @@ class TSPSafetyLayer:
 
         self._reset_count_after_cooldown(decision.tls_id, sim_time_s)
 
-        max_consecutive = int(safety.get("max_consecutive_priority_interventions_per_tls", 2))
+        # Fail-closed: max_consecutive em falta significa que não temos bound
+        # de segurança para limitar intervenções repetidas no mesmo TLS.
+        max_consecutive_raw = self._required_safety_value("max_consecutive_priority_interventions_per_tls")
+        if max_consecutive_raw is None:
+            return self._blocked(
+                decision,
+                "safety_constraint_missing:max_consecutive_priority_interventions_per_tls",
+                notes,
+            )
+        max_consecutive = int(max_consecutive_raw)
         if self.consecutive_interventions_by_tls.get(decision.tls_id, 0) >= max_consecutive:
             return self._blocked(decision, "max_consecutive_priority_interventions_reached", notes)
 
@@ -187,12 +204,22 @@ class TSPSafetyLayer:
         if sequence_problem is not None:
             return self._blocked(decision, sequence_problem, notes)
 
-        # Disclosure honesto: a clearance pedonal não tem modelo no proxy.
+        # Enforcement: o early_green encurta a fase conflituante actual via
+        # setPhaseDuration; só *não* compromete a clearance pedonal se o
+        # programa SUMO tiver fases intermédias intergreen genuínas (sem 'g')
+        # entre conflito e verde-alvo. Isso é validado uma vez por
+        # `controller._verify_signal_programs` e propagado via
+        # `signal_program_verified`. Sem verificação -> fail-closed.
         if bool(safety.get("pedestrian_clearance_must_not_be_shortened", True)):
+            if not self.signal_program_verified:
+                return self._blocked(
+                    decision,
+                    "pedestrian_clearance_unverifiable_signal_program_not_validated",
+                    notes,
+                )
             notes.append(
-                "Nota: pedestrian_clearance_must_not_be_shortened depende do plano "
-                "SUMO conter a fase de clearance configurada na phase_sequence; "
-                "não existe modelo pedonal no proxy (ver _verify_signal_programs)."
+                "Clearance pedonal preservada: fases intermédias intergreen confirmadas "
+                "pelo programa SUMO (signal_program_verified=True)."
             )
         else:
             notes.append("Aviso: pedestrian_clearance_must_not_be_shortened=false na config.")
@@ -233,14 +260,20 @@ class TSPSafetyLayer:
         last = self.last_intervention_time_by_tls.get(tls_id)
         if last is None:
             return False
-        cooldown = float(self.cits_config.safety_constraints.get("cooldown_after_priority_s", 90))
+        cooldown = self._required_safety_value("cooldown_after_priority_s")
+        if cooldown is None:
+            # Sem cooldown configurado não há como provar que o intervalo de
+            # segurança decorreu -> assumir cooldown ativo (fail-closed).
+            return True
         return sim_time_s - last < cooldown
 
     def _reset_count_after_cooldown(self, tls_id: str, sim_time_s: float) -> None:
         last = self.last_intervention_time_by_tls.get(tls_id)
         if last is None:
             return
-        cooldown = float(self.cits_config.safety_constraints.get("cooldown_after_priority_s", 90))
+        cooldown = self._required_safety_value("cooldown_after_priority_s")
+        if cooldown is None:
+            return  # fail-closed: sem cooldown configurado, nunca reseta o contador
         if sim_time_s - last >= cooldown:
             self.reset_intervention_count(tls_id)
 
@@ -260,9 +293,13 @@ class TSPSafetyLayer:
             if intersection is not None:
                 corridor_edges = set(intersection.main_corridor_edges)
                 controlled = signal_state.controlled_lanes or []
+                # Match por edge exata via lane-suffix stripping em vez de
+                # startswith(edge+"_"): o sufixo "_" protege contra colisões
+                # "I1_I2" vs "I1_I20", mas o rsplit é estruturalmente mais
+                # robusto e independente do esquema de nomes das edges.
                 corridor_positions = [
                     i for i, lane in enumerate(controlled)
-                    if i < len(ryg) and lane and any(lane.startswith(f"{edge}_") for edge in corridor_edges)
+                    if i < len(ryg) and _lane_belongs_to_edge_set(lane, corridor_edges)
                 ]
                 if corridor_positions and not any(ryg[i].lower() == "y" for i in corridor_positions):
                     return False  # corredor estável; amarelo só em movimento secundário
@@ -337,3 +374,13 @@ def _optional_int(value: object) -> Optional[int]:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _lane_belongs_to_edge_set(lane_id: Optional[str], edges: set[str]) -> bool:
+    """Lane SUMO `<edge>_<index>` pertence a `edges` sse extracted-edge ∈ edges."""
+    if not lane_id or not edges:
+        return False
+    edge, _, suffix = lane_id.rpartition("_")
+    if not edge or not suffix.isdigit():
+        return False
+    return edge in edges

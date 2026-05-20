@@ -14,11 +14,12 @@ if str(SRC) not in sys.path:
 from pps57_cits.broker import InMemoryMessageBroker
 from pps57_cits.config import load_cits_config
 from pps57_cits.controller import CITSEmulationController
-from pps57_cits.map_spat import build_mapem_messages, build_static_spatem_messages
+from pps57_cits.map_spat import build_mapem_messages
 from pps57_cits.messages import MessageType, RequestStatus, SREMLike
-from pps57_cits.models import VehicleObservation
+from pps57_cits.models import SignalState, VehicleObservation
 from pps57_cits.obu import OBUEmulator
 from pps57_cits.rsu import RSUAgent
+from pps57_cits.traci_adapter import TraciSimulationAdapter
 
 
 class Package3CITSTestCase(unittest.TestCase):
@@ -33,9 +34,7 @@ class Package3CITSTestCase(unittest.TestCase):
 
     def test_mapem_and_spatem_are_json_serialisable(self) -> None:
         mapem = build_mapem_messages(self.config, sim_time_s=0.0)
-        spatem = build_static_spatem_messages(self.config, sim_time_s=0.0)
         self.assertEqual(len(mapem), 7)
-        self.assertEqual(len(spatem), 7)
         payload = mapem[0].to_dict()
         self.assertEqual(payload["message_type"], MessageType.MAPEM_LIKE.value)
         json.dumps(payload, ensure_ascii=False)
@@ -147,6 +146,85 @@ class Package3CITSTestCase(unittest.TestCase):
         rejected = rsu.evaluate_request(request, sim_time_s=104.0)
         self.assertEqual(rejected.status, RequestStatus.REJECTED.value)
         self.assertEqual(rejected.reason, "cooldown_active_for_vehicle")
+
+    def test_rsu_rejects_request_with_mismatched_rsu_id(self) -> None:
+        # Pedido endereçado a outra RSU não deve ser aceite por esta — defesa
+        # mínima contra spoofing/forge de mensagens C-ITS.
+        intersection = self.config.rsu_to_intersection["RSU_BOAVISTA_02"]
+        rsu = RSUAgent(self.config, intersection)
+        request = self._eligible_request(rsu_id="RSU_BOAVISTA_07")
+        response = rsu.evaluate_request(request, sim_time_s=101.0)
+        self.assertEqual(response.status, RequestStatus.REJECTED.value)
+        self.assertEqual(response.reason, "request_rsu_id_mismatch")
+
+    def test_rsu_rejects_request_with_source_id_not_matching_vehicle(self) -> None:
+        # source_id deve ser f"OBU_{vehicle_id}" — mismatch indica spoofing.
+        intersection = self.config.rsu_to_intersection["RSU_BOAVISTA_02"]
+        rsu = RSUAgent(self.config, intersection)
+        request = self._eligible_request(source_id="OBU_someone_else", vehicle_id="bus_1")
+        response = rsu.evaluate_request(request, sim_time_s=101.0)
+        self.assertEqual(response.status, RequestStatus.REJECTED.value)
+        self.assertEqual(response.reason, "source_id_does_not_match_vehicle")
+
+    def test_rsu_dedupes_duplicate_request_id_in_same_batch(self) -> None:
+        # M3.5: dois SREMs com o mesmo request_id na mesma chamada handle_messages
+        # — segunda é rejeitada como replay; primeira mantém ACK.
+        intersection = self.config.rsu_to_intersection["RSU_BOAVISTA_02"]
+        rsu = RSUAgent(self.config, intersection)
+        req = self._eligible_request()
+        responses = rsu.handle_messages([req, req], sim_time_s=101.0)
+        self.assertEqual(len(responses), 2)
+        self.assertEqual(responses[0].status, RequestStatus.ACKNOWLEDGED.value)
+        self.assertEqual(responses[1].status, RequestStatus.REJECTED.value)
+        self.assertEqual(responses[1].reason, "duplicate_request_id_in_batch")
+
+    def test_rsu_active_count_only_counts_eligible_requests(self) -> None:
+        # Antes: SREMs inelegíveis (errada intersection, expirados, etc.)
+        # consumiam o quota de pedidos ativos e bloqueavam pedidos legítimos.
+        intersection = self.config.rsu_to_intersection["RSU_BOAVISTA_02"]
+        rsu = RSUAgent(self.config, intersection)
+        max_active = int(self.config.rsu_policy.get("max_active_requests_per_rsu", 4))
+        # Constrói N pedidos COM intersection errada (rejeitados) + 1 legítimo.
+        junk = [
+            self._eligible_request(
+                vehicle_id=f"bus_junk_{i}",
+                source_id=f"OBU_bus_junk_{i}",
+                intersection_id="I1",  # endereçado a outra intersection
+            )
+            for i in range(max_active + 2)
+        ]
+        legit = self._eligible_request(vehicle_id="bus_legit", source_id="OBU_bus_legit")
+        responses = rsu.handle_messages(junk + [legit], sim_time_s=101.0)
+        # O pedido legítimo é o último — não deve ser bloqueado pelos junks.
+        legit_responses = [r for r in responses if r.vehicle_id == "bus_legit"]
+        self.assertEqual(len(legit_responses), 1)
+        self.assertEqual(legit_responses[0].status, RequestStatus.ACKNOWLEDGED.value)
+
+    def _eligible_request(self, **overrides) -> SREMLike:
+        payload = dict(
+            source_id="OBU_bus_1",
+            destination_id="RSU_BOAVISTA_02",
+            timestamp_s=100.0,
+            vehicle_id="bus_1",
+            vehicle_class="bus",
+            line_id="STCP500_PROXY_W",
+            route_id="route_boavista_east_to_west",
+            intersection_id="I2",
+            tls_id="I2",
+            rsu_id="RSU_BOAVISTA_02",
+            current_edge_id="I1_I2",
+            current_lane_id="I1_I2_0",
+            speed_mps=10.0,
+            distance_to_stopline_m=150.0,
+            eta_to_stopline_s=15.0,
+            schedule_delay_s=90.0,
+            headway_deviation_s=0.0,
+            requested_maneuver="green_extension",
+            priority_level="public_transport_high_delay",
+            expires_at_s=120.0,
+        )
+        payload.update(overrides)
+        return SREMLike(**payload)
 
     def test_rsu_rejects_request_expired_at_zero_timestamp(self) -> None:
         intersection = self.config.rsu_to_intersection["RSU_BOAVISTA_02"]
@@ -289,23 +367,6 @@ class Package3CITSTestCase(unittest.TestCase):
         self.assertEqual(gui_cmd[0], "sumo-gui")
         self.assertNotIn("--start", headless_cmd)
         self.assertEqual(headless_cmd[0], "sumo")
-
-    def test_dry_run_generates_summary_and_logs(self) -> None:
-        import tempfile
-        from dataclasses import replace
-
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_root = Path(tmp)
-            config = replace(self.config, root=tmp_root)
-            controller = CITSEmulationController(config)
-            summary = controller.run_dry_run(steps=20)
-            self.assertGreater(summary["total_messages"], 0)
-            self.assertIn("MAPEM_like", summary["by_type"])
-            self.assertIn("SREM_like", summary["by_type"])
-            self.assertIn("SSEM_like", summary["by_type"])
-            self.assertTrue((tmp_root / "outputs/cits_messages.jsonl").exists())
-            self.assertTrue((tmp_root / "reports/cits_emulation_summary.json").exists())
-
 
 if __name__ == "__main__":
     unittest.main()

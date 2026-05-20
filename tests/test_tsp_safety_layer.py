@@ -16,7 +16,7 @@ if str(SRC) not in sys.path:
 from pps57_cits.config import load_cits_config
 from pps57_cits.messages import PriorityLevel, RequestStatus, RequestedManeuver, SREMLike, SSEMLike
 from pps57_cits.models import SignalState
-from pps57_tsp.actuator import DryRunTSPActuator, TraciTSPActuator
+from pps57_tsp.actuator import TraciTSPActuator
 from pps57_tsp.config import TSPConfig, load_tsp_config
 from pps57_tsp.controller import TSPControlController
 from pps57_tsp.engine import TSPDecisionEngine
@@ -341,9 +341,9 @@ class Package4TSPTestCase(unittest.TestCase):
             valid_until_s=120.0,
         )
 
-    def test_safety_counters_advance_in_dry_run_across_steps(self) -> None:
+    def test_safety_counters_advance_in_no_actuation_across_steps(self) -> None:
         # H5: contadores de safety devem avançar com base no "would-apply" para
-        # o cooldown bloquear pedidos subsequentes em modos dry-run / no-actuation.
+        # o cooldown bloquear pedidos subsequentes em modo SUMO no-actuation.
         controller = TSPControlController(self.cits, self.tsp)
 
         class _NullLogger:
@@ -503,29 +503,121 @@ class Package4TSPTestCase(unittest.TestCase):
         adapter.traci = SimpleNamespace(trafficlight=_TrafficLight())
         self.assertEqual(adapter.read_program_phase_count("I2"), 2)
 
+    def test_safety_blocks_early_green_when_signal_program_not_verified(self) -> None:
+        # Pedestrian clearance enforcement: sem `_verify_signal_programs` ter
+        # corrido com sucesso não há prova de que as fases intermédias são
+        # intergreen genuínas -> fail-closed.
+        safety = TSPSafetyLayer(self.cits, self.tsp)
+        # signal_program_verified defaults to False
+        request = self._request(
+            destination_id="RSU_BOAVISTA_06",
+            intersection_id="I6",
+            tls_id="I6",
+            rsu_id="RSU_BOAVISTA_06",
+            current_edge_id="I7_I6",
+            current_lane_id="I7_I6_0",
+            requested_maneuver=RequestedManeuver.EARLY_GREEN.value,
+        )
+        state = SignalState(
+            intersection_id="I6",
+            tls_id="I6",
+            rsu_id="RSU_BOAVISTA_06",
+            timestamp_s=100.0,
+            current_phase_index=2,
+            current_program_id="test",
+            red_yellow_green_state="rrGG",
+            next_switch_s=125.0,
+            spent_duration_s=20.0,  # > min_green_s=8
+            controlled_lanes=["I5_I6_0", "I7_I6_0", "N_I6_I6_0", "S_I6_I6_0"],
+        )
+        decision = self.engine.decide(request, state, sim_time_s=100.0)
+        result = safety.validate(decision, state, sim_time_s=100.0)
+        self.assertFalse(result.approved)
+        self.assertEqual(
+            result.reason,
+            "pedestrian_clearance_unverifiable_signal_program_not_validated",
+        )
+
+    def test_safety_approves_early_green_when_signal_program_verified(self) -> None:
+        safety = TSPSafetyLayer(self.cits, self.tsp)
+        safety.set_signal_program_verified(True)
+        request = self._request(
+            destination_id="RSU_BOAVISTA_06",
+            intersection_id="I6",
+            tls_id="I6",
+            rsu_id="RSU_BOAVISTA_06",
+            current_edge_id="I7_I6",
+            current_lane_id="I7_I6_0",
+            requested_maneuver=RequestedManeuver.EARLY_GREEN.value,
+        )
+        state = SignalState(
+            intersection_id="I6",
+            tls_id="I6",
+            rsu_id="RSU_BOAVISTA_06",
+            timestamp_s=100.0,
+            current_phase_index=2,
+            current_program_id="test",
+            red_yellow_green_state="rrGG",
+            next_switch_s=125.0,
+            spent_duration_s=20.0,
+            controlled_lanes=["I5_I6_0", "I7_I6_0", "N_I6_I6_0", "S_I6_I6_0"],
+        )
+        decision = self.engine.decide(request, state, sim_time_s=100.0)
+        result = safety.validate(decision, state, sim_time_s=100.0)
+        self.assertTrue(result.approved, msg=f"reason={result.reason}")
+        self.assertEqual(result.reason, "approved_red_truncation")
+
     def test_traci_no_actuation_does_not_report_applied(self) -> None:
         decision = self.engine.decide(self._request(), self._state(), sim_time_s=100.0)
         safe = decision.copy_with(status=DecisionStatus.APPROVED.value)
         actuator = TraciTSPActuator(adapter=None, apply_actuation=False)  # type: ignore[arg-type]
         result = actuator.apply(safe, self._state(), sim_time_s=100.0)
         self.assertFalse(result.applied)
-        self.assertTrue(result.dry_run)
+        self.assertTrue(result.no_actuation)
         self.assertEqual(result.reason, "sumo_no_actuation_flag_would_apply")
+        self.assertEqual(result.severity, "info")
 
-    def test_dry_run_generates_tsp_summary_and_logs(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_root = Path(tmp)
-            cits = replace(self.cits, root=tmp_root)
-            tsp = replace(self.tsp, root=tmp_root)
-            controller = TSPControlController(cits, tsp)
-            summary = controller.run_dry_run(steps=30)
-            self.assertGreater(summary["total_decisions"], 0)
-            self.assertIn(TSPAction.GREEN_EXTENSION.value, summary["by_action"])
-            self.assertIn(TSPAction.EARLY_GREEN.value, summary["by_action"])
-            self.assertTrue((tmp_root / "outputs/tsp_decisions.jsonl").exists())
-            self.assertTrue((tmp_root / "outputs/tsp_actuation.jsonl").exists())
-            self.assertTrue((tmp_root / "reports/tsp_emulation_summary.json").exists())
+    def test_actuation_error_sets_severity_error_and_forces_cooldown(self) -> None:
+        # Auditoria deve detectar falhas via severity=error, e o TLS num estado
+        # potencialmente intermédio entra em cooldown para não receber retries.
+        class _RaisingAdapter:
+            def set_phase_duration(self, tls_id: str, duration_s: float) -> None:
+                raise RuntimeError("traci socket reset")
 
+        decision = self.engine.decide(self._request(), self._state(), sim_time_s=100.0)
+        safe = decision.copy_with(status=DecisionStatus.APPROVED.value)
+        actuator = TraciTSPActuator(adapter=_RaisingAdapter(), apply_actuation=True)  # type: ignore[arg-type]
+        result = actuator.apply(safe, self._state(), sim_time_s=100.0)
+        self.assertFalse(result.applied)
+        self.assertFalse(result.no_actuation)
+        self.assertEqual(result.severity, "error")
+        self.assertTrue(result.reason.startswith("traci_actuation_error:"))
+
+        # Verifica que o controller responde a severity=error forçando cooldown.
+        controller = TSPControlController(self.cits, self.tsp)
+
+        class _NullLogger:
+            def write(self, item) -> None:  # noqa: ANN001
+                pass
+
+        req = self._request(vehicle_id="bus_x")
+        decisions: list = []
+        actuations: list = []
+        controller._process_acknowledged_requests(
+            responses=[self._ack(req)],
+            requests_by_id={req.request_id: req},
+            signal_states={"I2": self._state()},
+            actuator=actuator,
+            sim_time_s=100.0,
+            decision_logger=_NullLogger(),
+            actuation_logger=_NullLogger(),
+            decisions=decisions,
+            actuations=actuations,
+        )
+        self.assertIn("I2", controller.safety.last_intervention_time_by_tls)
+        self.assertEqual(controller.safety.last_intervention_time_by_tls["I2"], 100.0)
+        error_actuations = [a for a in actuations if a.severity == "error"]
+        self.assertEqual(len(error_actuations), 1)
 
 if __name__ == "__main__":
     unittest.main()

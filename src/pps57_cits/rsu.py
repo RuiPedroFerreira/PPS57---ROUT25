@@ -28,20 +28,44 @@ class RSUAgent:
 
     def handle_messages(self, messages: Iterable[CITSMessage], sim_time_s: float) -> List[SSEMLike]:
         responses: List[SSEMLike] = []
-        active_count = 0
         max_active = int(self.config.rsu_policy.get("max_active_requests_per_rsu", 4))
+        active_count = 0  # apenas pedidos elegíveis contam para o limite (não SREMs rejeitados/dup)
+        seen_request_ids: set[str] = set()  # dedupe in-batch (mesma chamada handle_messages)
 
         for message in messages:
             if message.message_type != MessageType.SREM_LIKE.value:
                 continue
-            request = message  # type: ignore[assignment]
-            if not isinstance(request, SREMLike):
+            if not isinstance(message, SREMLike):
+                # Mensagem com message_type=SREM_LIKE mas que não é SREMLike — provavelmente
+                # foi reconstruída sem dataclass_from_dict. Rejeita explicitamente em vez
+                # de descartar em silêncio (o silêncio escondia bugs de serialização).
+                responses.append(
+                    self._make_response_for_malformed(message, sim_time_s, "request_type_mismatch")
+                )
                 continue
-            active_count += 1
-            responses.append(self.evaluate_request(request, sim_time_s, active_count > max_active))
+            request = message
+
+            if request.request_id and request.request_id in seen_request_ids:
+                responses.append(self.evaluate_request(request, sim_time_s, replay_in_batch=True))
+                continue
+            seen_request_ids.add(request.request_id)
+
+            response = self.evaluate_request(
+                request, sim_time_s, too_many_active=active_count >= max_active
+            )
+            if response.status == RequestStatus.ACKNOWLEDGED.value:
+                active_count += 1
+            responses.append(response)
         return responses
 
-    def evaluate_request(self, request: SREMLike, sim_time_s: float, too_many_active: bool = False) -> SSEMLike:
+    def evaluate_request(
+        self,
+        request: SREMLike,
+        sim_time_s: float,
+        too_many_active: bool = False,
+        *,
+        replay_in_batch: bool = False,
+    ) -> SSEMLike:
         status = RequestStatus.ACKNOWLEDGED.value
         action = ResponseAction.FORWARD_TO_DECISION_ENGINE.value
         reason = "accepted_for_tsp_decision_engine"
@@ -50,7 +74,15 @@ class RSUAgent:
             "A atuação semafórica, quando existir, deve passar pela TSP Safety Layer.",
         ]
 
-        if request.expires_at_s is not None and sim_time_s > request.expires_at_s:
+        # Verificações de identidade ANTES das de elegibilidade: um pedido com
+        # `rsu_id`/`source_id`/`vehicle_id` inconsistentes nunca deve consumir
+        # o quota de pedidos ativos nem ser tratado como replay legítimo.
+        identity_problem = self._validate_identity(request)
+        if replay_in_batch:
+            status, action, reason = self._reject("duplicate_request_id_in_batch")
+        elif identity_problem is not None:
+            status, action, reason = self._reject(identity_problem)
+        elif request.expires_at_s is not None and sim_time_s > request.expires_at_s:
             status, action, reason = self._reject("request_expired")
         elif request.intersection_id != self.intersection.intersection_id:
             status, action, reason = self._reject("request_not_for_this_intersection")
@@ -83,6 +115,43 @@ class RSUAgent:
 
     def _reject(self, reason: str) -> tuple[str, str, str]:
         return RequestStatus.REJECTED.value, ResponseAction.REJECT_WITH_REASON.value, reason
+
+    def _validate_identity(self, request: SREMLike) -> str | None:
+        """Verifica que o pedido é endereçado a esta RSU e que a identidade
+        do emissor é consistente. Devolve um motivo de rejeição ou None.
+        """
+        if request.rsu_id and request.rsu_id != self.intersection.rsu_id:
+            return "request_rsu_id_mismatch"
+        if request.vehicle_id and request.source_id != f"OBU_{request.vehicle_id}":
+            # Convenção OBU emite SREMs com source_id=f"OBU_{vehicle_id}"; mismatch
+            # indica spoofing/forge ou bug de produtor.
+            return "source_id_does_not_match_vehicle"
+        if not request.vehicle_id:
+            return "vehicle_id_missing"
+        return None
+
+    def _make_response_for_malformed(
+        self, message: CITSMessage, sim_time_s: float, reason: str
+    ) -> SSEMLike:
+        """Constrói SSEM de rejeição para mensagens marcadas como SREM mas que
+        não são SREMLike (ex.: dict reconstruído incorretamente)."""
+        return SSEMLike(
+            source_id=self.rsu_id,
+            destination_id=getattr(message, "source_id", "UNKNOWN"),
+            timestamp_s=sim_time_s,
+            request_id=getattr(message, "request_id", "") or "",
+            vehicle_id=getattr(message, "vehicle_id", "") or "",
+            intersection_id=self.intersection.intersection_id,
+            tls_id=self.intersection.tls_id,
+            rsu_id=self.rsu_id,
+            status=RequestStatus.REJECTED.value,
+            action=ResponseAction.REJECT_WITH_REASON.value,
+            reason=reason,
+            valid_until_s=sim_time_s + float(self.config.rsu_policy.get("response_ttl_s", 15)),
+            confidence=1.0,
+            safety_notes=["Mensagem SREM-marcada mas tipo inconsistente; rejeitada."],
+            correlation_id=getattr(message, "message_id", None),
+        )
 
     def _eta_in_window(self, request: SREMLike) -> bool:
         policy = self.config.obu_policy

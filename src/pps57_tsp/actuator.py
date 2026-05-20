@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Atuadores TSP para dry-run e SUMO/TraCI."""
+"""Atuador TSP para SUMO/TraCI."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,36 +8,6 @@ from pps57_cits.models import SignalState
 from pps57_cits.traci_adapter import TraciSimulationAdapter
 
 from .models import ActuationResult, DecisionStatus, TSPAction, TSPDecision
-
-
-@dataclass
-class DryRunTSPActuator:
-    """Atuador que não chama TraCI; apenas regista o que seria aplicado."""
-
-    def apply(self, decision: TSPDecision, signal_state: SignalState, sim_time_s: float) -> ActuationResult:
-        if decision.status != DecisionStatus.APPROVED.value or not decision.requires_actuation:
-            return ActuationResult(
-                decision_id=decision.decision_id,
-                timestamp_s=sim_time_s,
-                tls_id=decision.tls_id,
-                action=decision.action,
-                applied=False,
-                dry_run=True,
-                command="none",
-                reason="decision_not_actuable_or_not_approved",
-            )
-        command, parameters = _command_for_decision(decision, signal_state, sim_time_s)
-        return ActuationResult(
-            decision_id=decision.decision_id,
-            timestamp_s=sim_time_s,
-            tls_id=decision.tls_id,
-            action=decision.action,
-            applied=True,
-            dry_run=True,
-            command=command,
-            reason="dry_run_would_apply_safe_tsp_action",
-            parameters=parameters,
-        )
 
 
 @dataclass
@@ -53,7 +23,7 @@ class TraciTSPActuator:
                 tls_id=decision.tls_id,
                 action=decision.action,
                 applied=False,
-                dry_run=not self.apply_actuation,
+                no_actuation=not self.apply_actuation,
                 command="none",
                 reason="decision_not_actuable_or_not_approved",
             )
@@ -66,7 +36,7 @@ class TraciTSPActuator:
                 tls_id=decision.tls_id,
                 action=decision.action,
                 applied=False,
-                dry_run=True,
+                no_actuation=True,
                 command=command,
                 reason="sumo_no_actuation_flag_would_apply",
                 parameters=parameters,
@@ -86,22 +56,28 @@ class TraciTSPActuator:
                     tls_id=decision.tls_id,
                     action=decision.action,
                     applied=False,
-                    dry_run=False,
+                    no_actuation=False,
                     command="none",
                     reason="unsupported_action_for_traci_actuator",
                     parameters=parameters,
+                    severity="warning",
                 )
         except Exception as exc:  # SUMO/TraCI may raise runtime-specific errors.
+            # `severity=error` é o gancho estruturado para auditoria: o TLS pode
+            # ter ficado num estado intermédio (setPhaseDuration parcial), e o
+            # controlador deve impor cooldown e logar com proeminência. Não
+            # confiar em parsing de substrings de `reason`.
             return ActuationResult(
                 decision_id=decision.decision_id,
                 timestamp_s=sim_time_s,
                 tls_id=decision.tls_id,
                 action=decision.action,
                 applied=False,
-                dry_run=False,
+                no_actuation=False,
                 command=command,
                 reason=f"traci_actuation_error:{exc}",
                 parameters=parameters,
+                severity="error",
             )
 
         return ActuationResult(
@@ -110,7 +86,7 @@ class TraciTSPActuator:
             tls_id=decision.tls_id,
             action=decision.action,
             applied=True,
-            dry_run=False,
+            no_actuation=False,
             command=command,
             reason="applied_safe_tsp_action_via_traci",
             parameters=parameters,
