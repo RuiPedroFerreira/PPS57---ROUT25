@@ -135,12 +135,12 @@ def main() -> int:
     write_jsonl(root / "outputs" / "cits_messages.jsonl", cits_messages, overwrite=args.overwrite)
     write_jsonl(root / "outputs" / "tsp_decisions.jsonl", tsp_decisions, overwrite=args.overwrite)
     write_jsonl(root / "outputs" / "tsp_actuation.jsonl", tsp_actuation, overwrite=args.overwrite)
-    write_jsonl(root / "outputs" / "pacote5_policy_candidates.jsonl", policy_candidates, overwrite=args.overwrite)
-    write_jsonl(root / "outputs" / "pacote5_offline_samples.jsonl", offline_samples, overwrite=args.overwrite)
+    write_jsonl(root / "outputs" / "policy_candidates.jsonl", policy_candidates, overwrite=args.overwrite)
+    write_jsonl(root / "outputs" / "offline_policy_samples.jsonl", offline_samples, overwrite=args.overwrite)
 
     write_json(root / "reports" / "cits_emulation_summary.json", {"total_messages": 6, "by_type": {"MAPEM_like": 1, "SPATEM_like": 1, "SREM_like": 2, "SSEM_like": 2}}, overwrite=args.overwrite)
     write_json(root / "reports" / "tsp_emulation_summary.json", {"total_decisions": 2, "by_action": {"green_extension": 1, "no_action": 1}, "by_status": {"approved": 1, "not_actuable": 1}, "actuation_events": 2, "applied_events": 1}, overwrite=args.overwrite)
-    write_json(root / "reports" / "pacote5_optimization_summary.json", {"scenario_count": 2, "candidate_count": 3, "unsafe_candidates_filtered": 1, "baseline_reward": 14.0, "optimized_reward": 22.5, "reward_delta": 8.5, "selected_by_action": {"green_extension": 1, "no_action": 1}, "baseline_by_action": {"green_extension": 1, "reject": 1}}, overwrite=args.overwrite)
+    write_json(root / "reports" / "policy_optimization_summary.json", {"scenario_count": 2, "candidate_count": 3, "unsafe_candidates_filtered": 1, "baseline_reward": 14.0, "optimized_reward": 22.5, "reward_delta": 8.5, "selected_by_action": {"green_extension": 1, "no_action": 1}, "baseline_by_action": {"green_extension": 1, "reject": 1}}, overwrite=args.overwrite)
     write_json(root / "reports" / "baseline_kpis.json", {"vehicle_count": 120, "avg_duration_s": 430.0, "avg_waiting_time_s": 52.0}, overwrite=args.overwrite)
 
     print("Demo artifacts generated for PPS57 platform.")

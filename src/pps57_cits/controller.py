@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
-"""Controlador de emulação C-ITS/V2X do Pacote 3."""
+"""C-ITS/V2X emulation controller."""
 from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
 from .broker import InMemoryMessageBroker
 from .config import CITSConfig
 from .event_logger import CITSJsonlLogger, IncrementalCITSSummary, write_summary_dict
 from .map_spat import build_mapem_messages, build_spatem_message_from_state, build_static_spatem_messages
-from .messages import CITSMessage, SREMLike, SSEMLike
+from .messages import CITSMessage, SSEMLike
 from .models import VehicleObservation
 from .obu import OBUEmulator
 from .rsu import build_rsu_agents
@@ -28,7 +27,7 @@ class CITSEmulationController:
         self.rsu_agents = build_rsu_agents(self.config)
 
     def run_dry_run(self, steps: int = 60) -> Dict[str, object]:
-        """Executa uma demonstração sem SUMO, útil para validar o Pacote 3."""
+        """Run a demonstration without SUMO."""
         summary = IncrementalCITSSummary()
         log_path = self.config.path_from_root(self.config.logging.get("message_log", "outputs/cits_messages.jsonl"))
 

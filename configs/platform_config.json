@@ -1,5 +1,5 @@
 {
-  "package_id": "PPS57_PACKAGE_6_PLATFORM",
+  "component_id": "traffic_priority_validation_platform",
   "version": "0.6.0",
   "scenario_id": "porto_boavista_realista_v02_platform",
   "title": "PPS57 — ROUT25 Traffic Priority Platform",
@@ -14,13 +14,13 @@
     "cits_messages": "outputs/cits_messages.jsonl",
     "tsp_decisions": "outputs/tsp_decisions.jsonl",
     "tsp_actuation": "outputs/tsp_actuation.jsonl",
-    "offline_samples": "outputs/pacote5_offline_samples.jsonl",
-    "policy_candidates": "outputs/pacote5_policy_candidates.jsonl",
+    "offline_samples": "outputs/offline_policy_samples.jsonl",
+    "policy_candidates": "outputs/policy_candidates.jsonl",
     "cits_summary": "reports/cits_emulation_summary.json",
     "tsp_summary": "reports/tsp_emulation_summary.json",
     "baseline_kpis": "reports/baseline_kpis.json",
-    "optimization_summary": "reports/pacote5_optimization_summary.json",
-    "policy_report": "reports/pacote5_policy_report.json",
+    "optimization_summary": "reports/policy_optimization_summary.json",
+    "policy_report": "reports/policy_report.json",
     "tripinfo": "outputs/tripinfo.xml"
   },
   "critical_artifacts": [

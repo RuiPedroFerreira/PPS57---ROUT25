@@ -14,6 +14,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from pps57_platform.data_loader import collect_snapshot, latest_records, parse_tripinfo, read_jsonl
+from pps57_platform.runner import PlatformRunner, RunOptions, RunnerUnsupportedError
 
 
 class PlatformDataLoaderTest(unittest.TestCase):
@@ -30,8 +31,8 @@ class PlatformDataLoaderTest(unittest.TestCase):
                             "cits_messages": "outputs/cits_messages.jsonl",
                             "tsp_decisions": "outputs/tsp_decisions.jsonl",
                             "tsp_actuation": "outputs/tsp_actuation.jsonl",
-                            "policy_candidates": "outputs/pacote5_policy_candidates.jsonl",
-                            "optimization_summary": "reports/pacote5_optimization_summary.json",
+                            "policy_candidates": "outputs/policy_candidates.jsonl",
+                            "optimization_summary": "reports/policy_optimization_summary.json",
                         },
                         "critical_artifacts": ["cits_messages", "tsp_decisions"],
                     }
@@ -57,13 +58,13 @@ class PlatformDataLoaderTest(unittest.TestCase):
                 [{"action": "green_extension", "applied": True, "dry_run": True, "tls_id": "TLS_1"}],
             )
             write_jsonl(
-                root / "outputs" / "pacote5_policy_candidates.jsonl",
+                root / "outputs" / "policy_candidates.jsonl",
                 [
                     {"action": "green_extension", "selected": True, "safety_status": "approved"},
                     {"action": "early_green", "selected": False, "safety_status": "blocked_by_safety"},
                 ],
             )
-            (root / "reports" / "pacote5_optimization_summary.json").write_text(
+            (root / "reports" / "policy_optimization_summary.json").write_text(
                 json.dumps({"reward_delta": 7.5, "candidate_count": 2}),
                 encoding="utf-8",
             )
@@ -92,10 +93,10 @@ class PlatformDataLoaderTest(unittest.TestCase):
                             "cits_messages": "outputs/cits_messages.jsonl",
                             "tsp_decisions": "outputs/tsp_decisions.jsonl",
                             "tsp_actuation": "outputs/tsp_actuation.jsonl",
-                            "policy_candidates": "outputs/pacote5_policy_candidates.jsonl",
+                            "policy_candidates": "outputs/policy_candidates.jsonl",
                             "cits_summary": "reports/cits_emulation_summary.json",
                             "tsp_summary": "reports/tsp_emulation_summary.json",
-                            "optimization_summary": "reports/pacote5_optimization_summary.json",
+                            "optimization_summary": "reports/policy_optimization_summary.json",
                         }
                     }
                 ),
@@ -105,7 +106,7 @@ class PlatformDataLoaderTest(unittest.TestCase):
             write_jsonl(root / "outputs" / "tsp_decisions.jsonl", [{"status": "approved"}])
             write_jsonl(root / "outputs" / "tsp_actuation.jsonl", [{"applied": False, "dry_run": "false"}])
             write_jsonl(
-                root / "outputs" / "pacote5_policy_candidates.jsonl",
+                root / "outputs" / "policy_candidates.jsonl",
                 [{"selected": "false", "is_safety_blocked": "false", "safety_status": "approved"}],
             )
             (root / "reports" / "cits_emulation_summary.json").write_text(
@@ -116,7 +117,7 @@ class PlatformDataLoaderTest(unittest.TestCase):
                 json.dumps({"blocked_by_safety": 7, "applied_events": 8}),
                 encoding="utf-8",
             )
-            (root / "reports" / "pacote5_optimization_summary.json").write_text(
+            (root / "reports" / "policy_optimization_summary.json").write_text(
                 json.dumps({"unsafe_candidates_filtered": 9}),
                 encoding="utf-8",
             )
@@ -127,6 +128,55 @@ class PlatformDataLoaderTest(unittest.TestCase):
             self.assertEqual(overview["blocked_by_safety"], 0)
             self.assertEqual(overview["applied_actuation_events"], 0)
             self.assertEqual(overview["unsafe_candidates_filtered"], 0)
+
+    def test_truncated_logs_use_summary_counts_for_dashboard_totals(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "configs").mkdir()
+            (root / "outputs").mkdir()
+            (root / "reports").mkdir()
+            (root / "configs" / "platform_config.json").write_text(
+                json.dumps(
+                    {
+                        "artifacts": {
+                            "tsp_decisions": "outputs/tsp_decisions.jsonl",
+                            "tsp_actuation": "outputs/tsp_actuation.jsonl",
+                            "tsp_summary": "reports/tsp_emulation_summary.json",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            write_jsonl(
+                root / "outputs" / "tsp_decisions.jsonl",
+                [{"status": "approved"} for _ in range(5)] + [{"status": "blocked_by_safety"} for _ in range(5)],
+            )
+            write_jsonl(
+                root / "outputs" / "tsp_actuation.jsonl",
+                [{"applied": True} for _ in range(3)] + [{"applied": False} for _ in range(7)],
+            )
+            (root / "reports" / "tsp_emulation_summary.json").write_text(
+                json.dumps(
+                    {
+                        "total_decisions": 10,
+                        "actuation_events": 10,
+                        "blocked_by_safety": 5,
+                        "applied_events": 3,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            snapshot = collect_snapshot(root, max_records=2)
+            overview = snapshot["aggregates"]["overview"]
+            tsp_status = {item["key"]: item for item in snapshot["artifacts"]}["tsp_decisions"]
+
+            self.assertTrue(tsp_status["truncated"])
+            self.assertEqual(tsp_status["record_count"], 10)
+            self.assertEqual(overview["total_tsp_decisions"], 10)
+            self.assertEqual(overview["total_actuation_events"], 10)
+            self.assertEqual(overview["blocked_by_safety"], 5)
+            self.assertEqual(overview["applied_actuation_events"], 3)
 
     def test_corrupt_platform_config_surfaces_error_without_crashing(self) -> None:
         # M5: config inválido -> defaults + config_error visível, sem rebentar.
@@ -196,6 +246,50 @@ class PlatformDataLoaderTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertTrue(expected.exists())
             self.assertIn(str(expected), result.stdout)
+
+    def test_platform_runner_builds_safe_known_commands(self) -> None:
+        runner = PlatformRunner(ROOT)
+        command = runner._command_for("tsp-sumo-no-actuation", RunOptions(steps=30, gui=True))
+        self.assertIn("scripts/run_tsp_control.py", command)
+        self.assertIn("--mode", command)
+        self.assertIn("sumo", command)
+        self.assertIn("--steps", command)
+        self.assertIn("30", command)
+        self.assertIn("--gui", command)
+        self.assertIn("--no-actuation", command)
+
+        with self.assertRaises(RunnerUnsupportedError):
+            runner._command_for("shell-arbitrary", RunOptions())
+
+    def test_platform_runner_reads_recent_jsonl_events(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "configs").mkdir()
+            (root / "outputs").mkdir()
+            (root / "configs" / "platform_config.json").write_text(
+                json.dumps({"artifacts": {"tsp_decisions": "outputs/tsp_decisions.jsonl"}}),
+                encoding="utf-8",
+            )
+            write_jsonl(root / "outputs" / "tsp_decisions.jsonl", [{"i": i} for i in range(5)])
+
+            payload = PlatformRunner(root).recent_events("tsp_decisions", limit=2)
+
+            self.assertEqual([item["i"] for item in payload["events"]], [3, 4])
+
+    def test_fastapi_control_plane_exposes_expected_routes(self) -> None:
+        from pps57_platform.api import RunStartRequest, create_app
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "outputs").mkdir()
+            app = create_app(root)
+            paths = {route.path for route in app.routes}
+
+            self.assertIn("/health", paths)
+            self.assertIn("/runs/start", paths)
+            self.assertIn("/runs/current", paths)
+            self.assertIn("/artifacts/snapshot", paths)
+            self.assertEqual(RunStartRequest(kind="tsp-dry-run", steps=3).to_options().steps, 3)
 
 
 def write_jsonl(path: Path, rows: list[dict]) -> None:

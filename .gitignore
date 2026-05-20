@@ -26,12 +26,13 @@ outputs/*.xml
 outputs/*.csv
 outputs/*.json
 outputs/*.jsonl
+outputs/*.log
 reports/*.json
 sumo/network/*.net.xml
 
 # Editor / tooling metadata (downloads helpers, gh cache, etc.)
 .tools/
 
-# Source patch artefactos (já aplicados ao repositório; manter o resultado, não o patch)
-PPS57_Pacote6_Plataforma_Dashboard.patch
+# Source patch artifacts already applied to the repository.
+*.patch
 *.patch.bak

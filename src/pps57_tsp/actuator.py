@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from pps57_cits.models import SignalState
 from pps57_cits.traci_adapter import TraciSimulationAdapter

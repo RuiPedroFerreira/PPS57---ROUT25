@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Adaptar o cenário SUMO do Pacote 2 para ficar mais próximo de um caso urbano real, sem bloquear o desenvolvimento por falta de dados operacionais completos.
+Adaptar o cenário SUMO do SUMO Digital Twin para ficar mais próximo de um caso urbano real, sem bloquear o desenvolvimento por falta de dados operacionais completos.
 
 O cenário v0.2 é um **proxy topológico realista**. Isto significa que a sua estrutura é inspirada num corredor real, mas ainda não substitui uma rede importada e calibrada com dados municipais.
 

@@ -8,7 +8,7 @@ from pathlib import Path
 import shutil
 import socket
 import sys
-from typing import Iterable, List, Optional
+from typing import List, Optional
 
 from .config import CITSConfig, IntersectionConfig
 from .models import SignalState, VehicleObservation
@@ -140,13 +140,22 @@ class TraciSimulationAdapter:
 
     def _program_logic(self, tls_id: str):  # type: ignore[no-untyped-def]
         traci = self._require_traci()
+        current_program = _safe_call(lambda: traci.trafficlight.getProgram(tls_id))
+        fallback = None
         for getter in ("getAllProgramLogics", "getCompleteRedYellowGreenDefinition"):
             try:
                 logics = getattr(traci.trafficlight, getter)(tls_id)
             except Exception:
                 continue
-            if logics:
-                return logics[0]
+            for logic in logics or []:
+                if fallback is None:
+                    fallback = logic
+                if current_program is not None and _logic_program_id(logic) == str(current_program):
+                    return logic
+            if fallback is not None and current_program is None:
+                return fallback
+        if fallback is not None and current_program is not None:
+            return None
         return None
 
     def read_program_phase_count(self, tls_id: str) -> Optional[int]:
@@ -243,6 +252,17 @@ def _safe_call(callable_):  # type: ignore[no-untyped-def]
         return callable_()
     except Exception:
         return None
+
+
+def _logic_program_id(logic) -> Optional[str]:  # type: ignore[no-untyped-def]
+    for attr in ("programID", "programId", "id", "subID"):
+        try:
+            value = getattr(logic, attr)
+        except Exception:
+            continue
+        if value is not None:
+            return str(value)
+    return None
 
 
 def _load_traci():  # type: ignore[no-untyped-def]

@@ -1,4 +1,4 @@
-"""Pacote 3 - Emulação C-ITS/V2X para o PPS57 ROUT25."""
+"""C-ITS/V2X emulation for PPS57 ROUT25."""
 
 __all__ = [
     "__version__",

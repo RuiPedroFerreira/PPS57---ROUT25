@@ -485,6 +485,24 @@ class Package4TSPTestCase(unittest.TestCase):
         self.assertTrue(problems)
         self.assertTrue(any("fase 1" in p and "clearance" in p for p in problems))
 
+    def test_traci_adapter_selects_current_program_logic_for_verification(self) -> None:
+        from types import SimpleNamespace
+        from pps57_cits.traci_adapter import TraciSimulationAdapter
+
+        class _TrafficLight:
+            def getProgram(self, tls_id: str) -> str:
+                return "active"
+
+            def getAllProgramLogics(self, tls_id: str):
+                return [
+                    SimpleNamespace(programID="stale", phases=[SimpleNamespace(state="G")]),
+                    SimpleNamespace(programID="active", phases=[SimpleNamespace(state="G"), SimpleNamespace(state="r")]),
+                ]
+
+        adapter = TraciSimulationAdapter(self.cits)
+        adapter.traci = SimpleNamespace(trafficlight=_TrafficLight())
+        self.assertEqual(adapter.read_program_phase_count("I2"), 2)
+
     def test_traci_no_actuation_does_not_report_applied(self) -> None:
         decision = self.engine.decide(self._request(), self._state(), sim_time_s=100.0)
         safe = decision.copy_with(status=DecisionStatus.APPROVED.value)

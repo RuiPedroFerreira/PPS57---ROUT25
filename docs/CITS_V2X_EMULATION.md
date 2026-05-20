@@ -1,8 +1,8 @@
-# PPS57 — Pacote 3: Emulação C-ITS/V2X
+# PPS57 — C-ITS/V2X emulation: Emulação C-ITS/V2X
 
 ## Objetivo
 
-O Pacote 3 adiciona ao cenário SUMO do Pacote 2 uma camada de emulação C-ITS/V2X para suportar pedidos de prioridade semafórica por transportes públicos.
+O C-ITS/V2X emulation adiciona ao cenário SUMO do SUMO Digital Twin uma camada de emulação C-ITS/V2X para suportar pedidos de prioridade semafórica por transportes públicos.
 
 A entrega implementa o fluxo funcional:
 
@@ -41,7 +41,7 @@ src/pps57_cits/
   rsu.py
   traci_adapter.py
 scripts/run_cits_emulation.py
-tests/test_pacote3_cits.py
+tests/test_cits_emulation.py
 ```
 
 ## Como executar sem SUMO
@@ -114,13 +114,13 @@ A RSU processa pedidos recebidos e devolve `SSEM_like` com:
 - `acknowledged`, se o pedido é elegível;
 - `rejected`, se o pedido está expirado, fora da janela ETA, em cooldown ou sem critério de prioridade.
 
-No Pacote 3, a ação aceite é:
+No C-ITS/V2X emulation, a ação aceite é:
 
 ```text
 forward_to_decision_engine
 ```
 
-Isto é deliberado: a RSU ainda não altera semáforos. A atuação semafórica segura via TraCI deve ser implementada no Pacote 4.
+Isto é deliberado: a RSU ainda não altera semáforos. A atuação semafórica segura via TraCI deve ser implementada no TSP Safety Layer.
 
 ## Limitações assumidas
 
@@ -130,7 +130,7 @@ Isto é deliberado: a RSU ainda não altera semáforos. A atuação semafórica 
 - O cálculo de atraso usa `demo_force_bus_delay_s` no modo inicial, para garantir geração de pedidos em ambiente de desenvolvimento.
 - A leitura de estado semafórico via TraCI só funciona se a rede estiver compilada e SUMO estiver instalado.
 
-## Critérios de aceitação do Pacote 3
+## Critérios de aceitação do C-ITS/V2X emulation
 
 - O sistema gera `MAPEM_like` para as 7 interseções.
 - O sistema gera `SPATEM_like` em modo dry-run e SUMO.

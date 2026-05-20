@@ -1,10 +1,10 @@
-# Handover para Pacote 3 - Emulação C-ITS/V2X
+# Handover para C-ITS/V2X emulation - Emulação C-ITS/V2X
 
 ## Cenário disponível
 
-O Pacote 2 v0.2 disponibiliza um corredor realista Porto/Boavista com sete interseções semaforizadas e duas linhas de autocarro proxy. Cada interseção tem um RSU ID no ficheiro `configs/corridor_config.json`.
+O SUMO Digital Twin v0.2 disponibiliza um corredor realista Porto/Boavista com sete interseções semaforizadas e duas linhas de autocarro proxy. Cada interseção tem um RSU ID no ficheiro `configs/corridor_config.json`.
 
-## Objetos que o Pacote 3 deve consumir
+## Objetos que o C-ITS/V2X emulation deve consumir
 
 - Interseções: `I1` a `I7`
 - RSUs: `RSU_BOAVISTA_01` a `RSU_BOAVISTA_07`
@@ -13,7 +13,7 @@ O Pacote 2 v0.2 disponibiliza um corredor realista Porto/Boavista com sete inter
 - Detetores: `e1_*` e `e2_*`
 - Regras de pedido OBU: `configs/signal_policy_constraints.yaml`
 
-## Primeiro MVP do Pacote 3
+## Primeiro MVP do C-ITS/V2X emulation
 
 1. Ligar ao SUMO via TraCI.
 2. Identificar veículos `bus_*` em simulação.
@@ -21,7 +21,7 @@ O Pacote 2 v0.2 disponibiliza um corredor realista Porto/Boavista com sete inter
 4. Criar mensagem SREM-like quando o autocarro estiver a menos de 250 m e atrasado.
 5. Entregar pedido à RSU correspondente.
 6. Registar resposta SSEM-like ainda sem alterar o semáforo.
-7. Só depois ativar ações TSP no Pacote 4.
+7. Só depois ativar ações TSP no TSP Safety Layer.
 
 ## IDs recomendados para mensagens
 

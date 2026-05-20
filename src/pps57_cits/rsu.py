@@ -47,7 +47,7 @@ class RSUAgent:
         reason = "accepted_for_tsp_decision_engine"
         safety_notes = [
             "Pedido aceite pela RSU para avaliação pelo motor TSP.",
-            "A atuação semafórica, quando existir, deve passar pela Safety Layer do Pacote 4.",
+            "A atuação semafórica, quando existir, deve passar pela TSP Safety Layer.",
         ]
 
         if request.expires_at_s is not None and sim_time_s > request.expires_at_s:
@@ -62,9 +62,6 @@ class RSUAgent:
             status, action, reason = self._reject("request_eta_out_of_window")
         elif not self._priority_condition_met(request):
             status, action, reason = self._reject("not_eligible_for_priority")
-
-        if status == RequestStatus.ACKNOWLEDGED.value:
-            self.last_grant_time_by_vehicle[request.vehicle_id] = sim_time_s
 
         return SSEMLike(
             source_id=self.rsu_id,
@@ -108,6 +105,10 @@ class RSUAgent:
             return False
         cooldown_s = float(self.config.rsu_policy.get("cooldown_after_grant_s", 90))
         return sim_time_s - last < cooldown_s
+
+    def mark_priority_granted(self, vehicle_id: str, sim_time_s: float) -> None:
+        """Mark a real downstream priority grant, not merely RSU forwarding."""
+        self.last_grant_time_by_vehicle[vehicle_id] = sim_time_s
 
 
 def build_rsu_agents(config: CITSConfig) -> Dict[str, RSUAgent]:

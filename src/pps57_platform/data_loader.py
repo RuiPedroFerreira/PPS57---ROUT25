@@ -20,13 +20,13 @@ DEFAULT_ARTIFACTS: Dict[str, str] = {
     "cits_messages": "outputs/cits_messages.jsonl",
     "tsp_decisions": "outputs/tsp_decisions.jsonl",
     "tsp_actuation": "outputs/tsp_actuation.jsonl",
-    "offline_samples": "outputs/pacote5_offline_samples.jsonl",
-    "policy_candidates": "outputs/pacote5_policy_candidates.jsonl",
+    "offline_samples": "outputs/offline_policy_samples.jsonl",
+    "policy_candidates": "outputs/policy_candidates.jsonl",
     "cits_summary": "reports/cits_emulation_summary.json",
     "tsp_summary": "reports/tsp_emulation_summary.json",
     "baseline_kpis": "reports/baseline_kpis.json",
-    "optimization_summary": "reports/pacote5_optimization_summary.json",
-    "policy_report": "reports/pacote5_policy_report.json",
+    "optimization_summary": "reports/policy_optimization_summary.json",
+    "policy_report": "reports/policy_report.json",
     "tripinfo": "outputs/tripinfo.xml",
 }
 
@@ -66,6 +66,7 @@ class ArtifactStatus:
     size_bytes: int = 0
     record_count: int = 0
     error: Optional[str] = None
+    truncated: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -76,6 +77,7 @@ class ArtifactStatus:
             "size_bytes": self.size_bytes,
             "record_count": self.record_count,
             "error": self.error,
+            "truncated": self.truncated,
         }
 
 
@@ -84,7 +86,7 @@ def load_platform_config(root: Path, config_path: str | Path = "configs/platform
     path = _resolve(root, config_path)
     if not path.exists():
         return {
-            "package_id": "PPS57_PACKAGE_6_PLATFORM",
+            "component_id": "traffic_priority_validation_platform",
             "version": "0.6.0",
             "scenario_id": "unknown",
             "title": "PPS57 — ROUT25 Traffic Priority Platform",
@@ -320,23 +322,28 @@ def read_jsonl_with_status(
         return [], ArtifactStatus(key=key, label=label, path=str(path), exists=False)
 
     records: List[Dict[str, Any]] = []
+    record_count = 0
     error: Optional[str] = None
+    truncated = False
     try:
         with path.open("r", encoding="utf-8") as handle:
             for line_number, line in enumerate(handle, start=1):
-                if max_records is not None and len(records) >= max_records:
-                    break
                 raw = line.strip()
                 if not raw:
                     continue
                 try:
                     payload = json.loads(raw)
-                    if isinstance(payload, dict):
-                        records.append(payload)
-                    else:
-                        records.append({"value": payload})
+                    record_count += 1
+                    if max_records is not None and len(records) >= max_records:
+                        truncated = True
+                        continue
+                    records.append(payload if isinstance(payload, dict) else {"value": payload})
                 except json.JSONDecodeError as exc:
-                    records.append({"__parse_error__": str(exc), "__line_number__": line_number, "raw": raw})
+                    record_count += 1
+                    if max_records is None or len(records) < max_records:
+                        records.append({"__parse_error__": str(exc), "__line_number__": line_number, "raw": raw})
+                    else:
+                        truncated = True
                     error = f"JSONL parse error at line {line_number}: {exc}"
     except Exception as exc:  # pragma: no cover - defensive I/O path
         error = str(exc)
@@ -347,8 +354,9 @@ def read_jsonl_with_status(
         path=str(path),
         exists=True,
         size_bytes=path.stat().st_size,
-        record_count=len(records),
+        record_count=record_count,
         error=error,
+        truncated=truncated,
     )
 
 
@@ -489,6 +497,8 @@ def _count_with_summary_fallback(
     artifact_statuses: Optional[Mapping[str, ArtifactStatus]],
 ) -> int:
     status = artifact_statuses.get(artifact_key) if artifact_statuses is not None else None
+    if status is not None and status.exists and status.truncated:
+        return _safe_int(fallback_value, default=computed_count)
     if status is not None and status.exists:
         return computed_count
     return _safe_int(fallback_value, default=computed_count)

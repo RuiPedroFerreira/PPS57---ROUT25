@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Executa o Pacote 3 - Emulação C-ITS/V2X."""
+"""Run C-ITS/V2X emulation."""
 from __future__ import annotations
 
 import argparse
@@ -17,7 +17,7 @@ from pps57_cits.traci_adapter import TraciUnavailableError  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Pacote 3 - emulação C-ITS/V2X para prioridade semafórica.")
+    parser = argparse.ArgumentParser(description="C-ITS/V2X emulation for traffic-signal priority.")
     parser.add_argument("--config", default="configs/cits_config.json", help="Ficheiro JSON de configuração C-ITS.")
     parser.add_argument("--mode", choices=["dry-run", "sumo"], default="dry-run", help="Modo de execução.")
     parser.add_argument("--steps", type=int, default=60, help="Número máximo de passos no modo dry-run ou SUMO.")

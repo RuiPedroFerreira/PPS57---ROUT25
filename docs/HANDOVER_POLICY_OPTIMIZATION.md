@@ -1,6 +1,6 @@
-# Handover do Pacote 5 — Otimização Avançada e RL Offline
+# Policy Optimization Handover
 
-O Pacote 5 implementa a primeira camada offline de otimização sobre o baseline operacional explicável do Pacote 4:
+O Policy Optimization implementa a primeira camada offline de otimização sobre o baseline operacional explicável do TSP Safety Layer:
 
 ```text
 Cenários offline -> baseline TSP -> candidatos otimizados -> Safety Layer -> política segura exportada
@@ -8,29 +8,34 @@ Cenários offline -> baseline TSP -> candidatos otimizados -> Safety Layer -> po
 
 ## Componentes implementados
 
-- Configuração: `configs/optimization_config.json`.
+- Configuração: `configs/policy_optimization_config.json`.
 - Dataset offline sintético: `src/pps57_opt/dataset.py`.
-- Treino/avaliação tabular proxy: `src/pps57_opt/optimizer.py`.
-- Script de execução: `scripts/run_pacote5_optimization.py`.
-- Testes: `tests/test_pacote5_optimization.py`.
-- Documentação: `docs/PACOTE5_OTIMIZACAO_RL_OFFLINE.md`.
+- Offline policy comparison: `src/pps57_opt/optimizer.py`.
+- Runtime inference: `src/pps57_opt/policy_runtime.py`.
+- Tabular Q-learning: `src/pps57_opt/rl_trainer.py`.
+- Execution scripts: `scripts/run_policy_optimization.py`, `scripts/run_rl_training.py`.
+- Testes: `tests/test_policy_optimization.py`.
+- Documentação: `docs/POLICY_OPTIMIZATION_AND_RL.md`.
 
 ## Como executar
 
 ```bash
 make optimize-offline
+make train-rl-policy
 ```
 
 Outputs:
 
-- `outputs/pacote5_offline_samples.jsonl`;
-- `outputs/pacote5_policy_candidates.jsonl`;
-- `reports/pacote5_policy_report.json`;
-- `reports/pacote5_optimization_summary.json`.
+- `outputs/offline_policy_samples.jsonl`;
+- `outputs/policy_candidates.jsonl`;
+- `reports/policy_report.json`;
+- `reports/policy_optimization_summary.json`.
+- `reports/tabular_q_policy_report.json`;
+- `reports/rl_training_summary.json`.
 
 ## Garantias atuais
 
-- O baseline TSP do Pacote 4 é sempre avaliado.
+- O baseline TSP do TSP Safety Layer é sempre avaliado.
 - Candidatos otimizados são comparados contra o baseline.
 - A Safety Layer é chamada para todos os candidatos.
 - Candidatos `blocked_by_safety` ficam nos logs, mas não podem ser selecionados.

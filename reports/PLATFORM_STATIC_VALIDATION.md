@@ -1,9 +1,9 @@
-# Pacote 6 — Validação estática
+# Validation Platform — Validação estática
 
 Validação executada no ambiente de desenvolvimento do patch:
 
 ```bash
-python3 -m unittest tests/test_pacote6_platform.py
+python3 -m unittest tests/test_platform_dashboard.py
 python3 scripts/generate_platform_demo_data.py --overwrite
 python3 scripts/check_platform_data.py
 ```

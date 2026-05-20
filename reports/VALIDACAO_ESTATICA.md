@@ -1,4 +1,4 @@
-# Validação estática - Pacote 2 v0.2
+# Validação estática - SUMO Digital Twin v0.2
 
 Resultado da validação estática executada neste ambiente:
 

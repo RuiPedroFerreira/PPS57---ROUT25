@@ -112,6 +112,42 @@ class Package3CITSTestCase(unittest.TestCase):
         self.assertEqual(response.status, RequestStatus.ACKNOWLEDGED.value)
         self.assertEqual(response.destination_id, "OBU_bus_1")
 
+    def test_rsu_does_not_start_vehicle_cooldown_on_forward_only_ack(self) -> None:
+        # Forwarding to the TSP engine is not a granted priority intervention.
+        intersection = self.config.rsu_to_intersection["RSU_BOAVISTA_02"]
+        rsu = RSUAgent(self.config, intersection)
+        request = SREMLike(
+            source_id="OBU_bus_1",
+            destination_id="RSU_BOAVISTA_02",
+            timestamp_s=100.0,
+            vehicle_id="bus_1",
+            vehicle_class="bus",
+            line_id="STCP500_PROXY_W",
+            route_id="route_boavista_east_to_west",
+            intersection_id="I2",
+            tls_id="I2",
+            rsu_id="RSU_BOAVISTA_02",
+            current_edge_id="I1_I2",
+            current_lane_id="I1_I2_0",
+            speed_mps=10.0,
+            distance_to_stopline_m=150.0,
+            eta_to_stopline_s=15.0,
+            schedule_delay_s=90.0,
+            headway_deviation_s=0.0,
+            requested_maneuver="green_extension",
+            priority_level="public_transport_high_delay",
+            expires_at_s=120.0,
+        )
+        first = rsu.evaluate_request(request, sim_time_s=101.0)
+        second = rsu.evaluate_request(request, sim_time_s=102.0)
+        self.assertEqual(first.status, RequestStatus.ACKNOWLEDGED.value)
+        self.assertEqual(second.status, RequestStatus.ACKNOWLEDGED.value)
+
+        rsu.mark_priority_granted(request.vehicle_id, sim_time_s=103.0)
+        rejected = rsu.evaluate_request(request, sim_time_s=104.0)
+        self.assertEqual(rejected.status, RequestStatus.REJECTED.value)
+        self.assertEqual(rejected.reason, "cooldown_active_for_vehicle")
+
     def test_rsu_rejects_request_expired_at_zero_timestamp(self) -> None:
         intersection = self.config.rsu_to_intersection["RSU_BOAVISTA_02"]
         rsu = RSUAgent(self.config, intersection)
@@ -169,6 +205,16 @@ class Package3CITSTestCase(unittest.TestCase):
             payload = instance.to_dict()
             missing = declared - payload.keys()
             self.assertFalse(missing, f"{cls.__name__}: campos declarados não serializados: {missing}")
+
+    def test_dataclass_from_dict_reconstructs_custom_message_subclasses(self) -> None:
+        from pps57_cits.messages import MAPEMLike, dataclass_from_dict
+
+        original = build_mapem_messages(self.config, sim_time_s=12.0)[0]
+        reconstructed = dataclass_from_dict(MAPEMLike, original.to_dict())
+        self.assertEqual(reconstructed.message_type, MessageType.MAPEM_LIKE.value)
+        self.assertEqual(reconstructed.intersection_id, original.intersection_id)
+        self.assertEqual(reconstructed.tls_id, original.tls_id)
+        self.assertEqual(len(reconstructed.approaches), len(original.approaches))
 
     def test_broker_drain_keeps_counts_but_frees_queues(self) -> None:
         # M2: broker mantém apenas contadores incrementais; drain liberta filas.

@@ -10,7 +10,7 @@ Colocar o ZIP GTFS em:
 data/gtfs/gtfs_stcp_latest.zip
 ```
 
-Depois, no hardening do Pacote 2, criar script para:
+Depois, no hardening do SUMO Digital Twin, criar script para:
 
 - ler `routes.txt`;
 - selecionar linhas pretendidas, por exemplo 500/502/205 ou linhas definidas pelo projeto;

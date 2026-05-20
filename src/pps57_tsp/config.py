@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Configuração do Pacote 4 - Motor TSP e Safety Layer."""
+"""Configuration for the TSP decision engine and Safety Layer."""
 from __future__ import annotations
 
 from dataclasses import dataclass

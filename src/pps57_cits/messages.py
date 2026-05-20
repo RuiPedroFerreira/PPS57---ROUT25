@@ -2,7 +2,7 @@
 """Modelos de mensagens C-ITS emuladas.
 
 As mensagens são deliberadamente JSON/Python-native para desenvolvimento e validação
-funcional em SUMO. O objetivo do Pacote 3 é provar o fluxo OBU -> RSU -> resposta,
+funcional em SUMO. O objetivo da camada C-ITS é provar o fluxo OBU -> RSU -> resposta,
 não implementar codificação ASN.1/UPER operacional.
 """
 from __future__ import annotations
@@ -326,6 +326,10 @@ def dataclass_from_dict(cls: Type[T], payload: Dict[str, Any]) -> T:
     compatíveis. Não é usado no loop principal, mas facilita testes e ingestão de
     logs JSONL.
     """
-    accepted = {field.name for field in fields(cls)}
+    accepted = {
+        field.name
+        for field in fields(cls)
+        if field.name not in {"message_type", "protocol_version"}
+    }
     kwargs = {key: value for key, value in payload.items() if key in accepted}
     return cls(**kwargs)  # type: ignore[arg-type]

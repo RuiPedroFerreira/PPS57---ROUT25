@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Controlador do Pacote 4: C-ITS + motor TSP + Safety Layer + atuação."""
+"""C-ITS, TSP decision engine, Safety Layer, and actuation controller."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -14,6 +14,7 @@ from pps57_cits.models import SignalState, VehicleObservation
 from pps57_cits.obu import OBUEmulator
 from pps57_cits.rsu import build_rsu_agents
 from pps57_cits.traci_adapter import TraciSimulationAdapter, TraciUnavailableError
+from pps57_opt.policy_runtime import RuntimePolicy
 
 from .actuator import DryRunTSPActuator, TraciTSPActuator
 from .config import TSPConfig
@@ -27,6 +28,8 @@ from .safety import TSPSafetyLayer
 class TSPControlController:
     cits_config: CITSConfig
     tsp_config: TSPConfig
+    policy_mode: str = "baseline"
+    policy_report_path: Optional[str] = None
 
     def __post_init__(self) -> None:
         self.broker = InMemoryMessageBroker()
@@ -34,6 +37,13 @@ class TSPControlController:
         self.rsu_agents = build_rsu_agents(self.cits_config)
         self.engine = TSPDecisionEngine(self.cits_config, self.tsp_config)
         self.safety = TSPSafetyLayer(self.cits_config, self.tsp_config)
+        self.runtime_policy: Optional[RuntimePolicy] = None
+        if self.policy_mode == "optimized":
+            raw_path = self.policy_report_path or self.tsp_config.raw.get("policy_runtime", {}).get("policy_report")
+            if raw_path:
+                path = self.tsp_config.path_from_root(raw_path)
+                if path.exists():
+                    self.runtime_policy = RuntimePolicy.load(self.tsp_config, path)
 
     def run_dry_run(self, steps: Optional[int] = None) -> Dict[str, object]:
         max_steps = int(steps or self.tsp_config.dry_run.get("steps", 90))
@@ -89,11 +99,13 @@ class TSPControlController:
                 "mode": "dry-run",
                 "steps": max_steps,
                 "scenario_id": self.tsp_config.raw.get("scenario_id"),
+                "policy_mode": self.policy_mode,
+                "runtime_policy_loaded": self.runtime_policy is not None,
                 "cits_total_messages": cits_summary_dict["total_messages"],
                 "cits_by_type": cits_summary_dict["by_type"],
                 "cits_acknowledged_messages": cits_summary_dict["acknowledged_messages"],
                 "cits_rejected_messages": cits_summary_dict["rejected_messages"],
-                "note": "Pacote 4 dry-run valida decisões TSP e Safety Layer sem lançar SUMO/TraCI.",
+                "note": "Dry-run validates TSP decisions and the Safety Layer without launching SUMO/TraCI.",
             },
         )
 
@@ -183,6 +195,8 @@ class TSPControlController:
                 "mode": "sumo-traci",
                 "steps": step_count,
                 "scenario_id": self.tsp_config.raw.get("scenario_id"),
+                "policy_mode": self.policy_mode,
+                "runtime_policy_loaded": self.runtime_policy is not None,
                 "actuation_requested": apply_actuation,
                 "actuation_enabled": effective_actuation,
                 "signal_program_verification": {
@@ -223,7 +237,12 @@ class TSPControlController:
             signal_state = signal_states.get(request.tls_id)
             if signal_state is None:
                 continue
-            proposed = self.engine.decide(request, signal_state, sim_time_s)
+            baseline = self.engine.decide(request, signal_state, sim_time_s)
+            proposed = (
+                self.runtime_policy.decide(request, signal_state, sim_time_s, baseline)
+                if self.runtime_policy is not None
+                else baseline
+            )
             validation = self.safety.validate(proposed, signal_state, sim_time_s)
             safe_decision = validation.safe_decision
 

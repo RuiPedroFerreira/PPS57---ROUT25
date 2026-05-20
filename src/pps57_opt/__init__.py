@@ -1,2 +1,1 @@
-"""Pacote 5 - otimização offline e política segura sobre o TSP baseline."""
-
+"""Policy optimization, runtime inference, and RL training for TSP control."""

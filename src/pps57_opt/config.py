@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Configuração do Pacote 5 - otimização offline e RL proxy."""
+"""Configuration for policy optimization and reinforcement-learning training."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -29,6 +29,10 @@ class OptimizationConfig:
     def safety(self) -> Dict[str, Any]:
         return self.raw.get("safety", {})
 
+    @property
+    def reinforcement_learning(self) -> Dict[str, Any]:
+        return self.raw.get("reinforcement_learning", {})
+
     def path_from_root(self, relative: str | Path) -> Path:
         path = Path(relative)
         return path if path.is_absolute() else self.root / path
@@ -39,3 +43,7 @@ def load_optimization_config(path: str | Path, root: Optional[str | Path] = None
     root_path = Path(root).resolve() if root is not None else config_path.resolve().parents[1]
     raw = json.loads(config_path.read_text(encoding="utf-8"))
     return OptimizationConfig(root=root_path, raw=raw)
+
+
+def load_policy_optimization_config(path: str | Path, root: Optional[str | Path] = None) -> OptimizationConfig:
+    return load_optimization_config(path, root=root)

@@ -2,9 +2,9 @@
 """Geração de MAPEM-like e SPATEM-like para as RSUs do corredor."""
 from __future__ import annotations
 
-from typing import Iterable, List, Optional
+from typing import List
 
-from .config import CITSConfig, IntersectionConfig
+from .config import CITSConfig
 from .messages import Approach, MAPEMLike, SPATEMLike
 from .models import SignalState
 

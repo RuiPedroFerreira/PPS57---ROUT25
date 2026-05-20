@@ -1,4 +1,4 @@
-# Pacote 3 — Validação estática e dry-run
+# C-ITS/V2X emulation — Validação estática e dry-run
 
 ## Comandos executados
 
@@ -32,7 +32,7 @@ Resumo da emulação C-ITS:
 - rejected_messages: 10
 - mode: dry-run
 - steps: 60
-- scenario_id: porto_boavista_realista_v02_pacote3_cits
+- scenario_id: porto_boavista_realistic_cits_v2x
 ```
 
 ## Observação

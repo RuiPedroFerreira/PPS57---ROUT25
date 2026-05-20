@@ -16,12 +16,12 @@ scenarios:
     expected_use: medir KPIs base para autocarros e tráfego geral.
 
   tsp_green_extension_candidate:
-    description: Cenário a usar no Pacote 3/4 com pedidos OBU e green extension nos RSU.
+    description: Cenário a usar no C-ITS/V2X emulation/4 com pedidos OBU e green extension nos RSU.
     additional_modules: [OBU_emulator, RSU_agent, TraCI_adapter]
     expected_use: comparar contra baseline_am_peak.
 
   tsp_early_green_candidate:
-    description: Cenário a usar no Pacote 4 com encurtamento de vermelho/early green, sob safety layer.
+    description: Cenário a usar no TSP Safety Layer com encurtamento de vermelho/early green, sob safety layer.
     additional_modules: [decision_engine, safety_layer]
     expected_use: avaliar impacto em headway, tempo de viagem e filas transversais.
 

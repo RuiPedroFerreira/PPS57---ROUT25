@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""Treino offline tabular com Safety Layer obrigatória."""
+"""Deterministic offline policy optimization with a mandatory safety filter."""
 from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-from pathlib import Path
 from typing import Dict, Iterable, List
 
 from pps57_cits.config import CITSConfig
-from pps57_cits.messages import RequestedManeuver
 from pps57_cits.models import SignalState
 from pps57_tsp.config import TSPConfig
 from pps57_tsp.engine import TSPDecisionEngine
@@ -60,7 +58,7 @@ class OfflineOptimizationController:
         baseline = self.engine.decide(scenario.request, scenario.signal_state, scenario.sim_time_s)
         baseline_candidate = self._evaluate_candidate(
             scenario,
-            policy_id="baseline_tsp_pacote4",
+            policy_id="baseline_tsp_decision_engine",
             decision=baseline,
         )
 
@@ -90,7 +88,7 @@ class OfflineOptimizationController:
                 extension_s=extension_s,
                 phase_duration_s=None,
                 target_phase_index=None,
-                notes=["Pacote 5 candidato offline: green extension."],
+                notes=["Offline policy candidate: green extension."],
             )
 
         if action == TSPAction.EARLY_GREEN.value:
@@ -101,7 +99,7 @@ class OfflineOptimizationController:
                 extension_s=0.0,
                 phase_duration_s=float(policy.get("red_truncation_to_s", 2)),
                 target_phase_index=target_phase,
-                notes=["Pacote 5 candidato offline: early green."],
+                notes=["Offline policy candidate: early green."],
             )
 
         if action == TSPAction.NO_ACTION.value:
@@ -120,7 +118,7 @@ class OfflineOptimizationController:
             extension_s=0.0,
             phase_duration_s=None,
             target_phase_index=None,
-            notes=[f"Pacote 5 candidato offline: {action}."],
+            notes=[f"Offline policy candidate: {action}."],
         )
 
     def _evaluate_candidate(self, scenario: OfflineScenario, *, policy_id: str, decision: TSPDecision) -> CandidateEvaluation:
@@ -252,16 +250,16 @@ class OfflineOptimizationController:
         rules: Iterable[LearnedPolicyRule],
     ) -> None:
         sample_log = self.optimization_config.path_from_root(
-            self.optimization_config.logging.get("sample_log", "outputs/pacote5_offline_samples.jsonl")
+            self.optimization_config.logging.get("sample_log", "outputs/offline_policy_samples.jsonl")
         )
         candidate_log = self.optimization_config.path_from_root(
-            self.optimization_config.logging.get("candidate_log", "outputs/pacote5_policy_candidates.jsonl")
+            self.optimization_config.logging.get("candidate_log", "outputs/policy_candidates.jsonl")
         )
         policy_report = self.optimization_config.path_from_root(
-            self.optimization_config.logging.get("policy_report", "reports/pacote5_policy_report.json")
+            self.optimization_config.logging.get("policy_report", "reports/policy_report.json")
         )
         summary_report = self.optimization_config.path_from_root(
-            self.optimization_config.logging.get("summary_report", "reports/pacote5_optimization_summary.json")
+            self.optimization_config.logging.get("summary_report", "reports/policy_optimization_summary.json")
         )
         for path in [sample_log, candidate_log, policy_report, summary_report]:
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -274,8 +272,8 @@ class OfflineOptimizationController:
         policy_report.write_text(
             json.dumps(
                 {
-                    "policy_id": "pacote5_offline_safe_policy_comparison",
-                    "baseline_policy": "baseline_tsp_pacote4",
+                    "policy_id": "offline_safe_policy_comparison",
+                    "baseline_policy": "baseline_tsp_decision_engine",
                     "methodology": "deterministic_argmax_over_fixed_candidate_actions_per_synthetic_scenario",
                     "is_reinforcement_learning": False,
                     "safety_filter_required": True,
@@ -296,7 +294,7 @@ class OfflineOptimizationController:
         selected: List[CandidateEvaluation],
         rules: List[LearnedPolicyRule],
     ) -> Dict[str, object]:
-        baseline_candidates = [item for item in candidates if item.policy_id == "baseline_tsp_pacote4"]
+        baseline_candidates = [item for item in candidates if item.policy_id == "baseline_tsp_decision_engine"]
         unsafe_filtered = [item for item in candidates if item.is_safety_blocked]
         selected_by_action: Dict[str, int] = {}
         baseline_by_action: Dict[str, int] = {}
@@ -326,7 +324,7 @@ class OfflineOptimizationController:
                 action_changes += 1
 
         summary = {
-            "package_id": self.optimization_config.raw.get("package_id"),
+            "component_id": self.optimization_config.raw.get("component_id"),
             "version": self.optimization_config.raw.get("version"),
             "scenario_id": self.optimization_config.raw.get("scenario_id"),
             "mode": "offline-policy-comparison",
@@ -336,8 +334,8 @@ class OfflineOptimizationController:
             "candidate_count": len(candidates),
             "unsafe_candidates_filtered": len(unsafe_filtered),
             "safety_filter_required": bool(self.optimization_config.safety.get("mandatory_filter", True)),
-            "baseline_policy": "baseline_tsp_pacote4",
-            "optimized_policy": "pacote5_offline_safe_policy_comparison",
+            "baseline_policy": "baseline_tsp_decision_engine",
+            "optimized_policy": "offline_safe_policy_comparison",
             "baseline_reward": baseline_reward,
             "optimized_reward": optimized_reward,
             "reward_delta": round(optimized_reward - baseline_reward, 4),
@@ -361,7 +359,7 @@ class OfflineOptimizationController:
             },
         }
         summary_path = self.optimization_config.path_from_root(
-            self.optimization_config.logging.get("summary_report", "reports/pacote5_optimization_summary.json")
+            self.optimization_config.logging.get("summary_report", "reports/policy_optimization_summary.json")
         )
         summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False, sort_keys=True), encoding="utf-8")
         return summary

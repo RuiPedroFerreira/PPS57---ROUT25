@@ -11,7 +11,7 @@ from .messages import CITSMessage
 
 @dataclass
 class InMemoryMessageBroker:
-    """Broker simples para o Pacote 3.
+    """Simple C-ITS message broker.
 
     M2: NÃO mantém histórico ilimitado de mensagens (corridas SUMO longas
     acumulavam até dezenas de milhares de objetos). Em vez disso mantém apenas

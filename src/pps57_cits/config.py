@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Carregamento e indexação da configuração C-ITS do Pacote 3."""
+"""Load and index C-ITS/V2X emulation configuration."""
 from __future__ import annotations
 
 from dataclasses import dataclass

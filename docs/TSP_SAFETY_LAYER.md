@@ -1,8 +1,8 @@
-# Pacote 4 — Motor de Decisão TSP e Safety Layer
+# TSP Safety Layer — Motor de Decisão TSP e Safety Layer
 
 ## Objetivo
 
-O Pacote 4 transforma os pedidos C-ITS aceites pela RSU em decisões semafóricas auditáveis e seguras. O objetivo é passar de um fluxo apenas comunicacional:
+O TSP Safety Layer transforma os pedidos C-ITS aceites pela RSU em decisões semafóricas auditáveis e seguras. O objetivo é passar de um fluxo apenas comunicacional:
 
 ```text
 OBU -> SREM-like -> RSU -> SSEM-like
@@ -83,7 +83,7 @@ Isto permite:
 - estender a fase corrente quando o corredor já está verde;
 - encurtar a fase corrente para antecipar a transição do plano SUMO.
 
-O Pacote 4 evita `setRedYellowGreenState` e evita saltos diretos de fase por defeito.
+O TSP Safety Layer evita `setRedYellowGreenState` e evita saltos diretos de fase por defeito.
 
 ## Como executar sem SUMO
 
@@ -130,4 +130,4 @@ O dry-run força três casos funcionais:
 - O mapeamento de fases ainda é proxy e está em `configs/tsp_config.json`.
 - A calibração real depende de planos semafóricos municipais e signal groups reais.
 - O early green é implementado como truncagem de duração da fase corrente; a sequência real de amarelo/all-red depende do programa SUMO existente.
-- O asset ainda não otimiza offsets de corredor; essa etapa fica para Pacote 5.
+- O asset ainda não otimiza offsets de corredor; essa etapa fica para Policy Optimization.

@@ -1,4 +1,4 @@
-.PHONY: validate build run gui kpis cits-dryrun cits-sumo tsp-dryrun tsp-sumo tsp-sumo-no-actuation tsp-gui tsp-gui-no-actuation optimize-offline platform platform-check platform-demo-data dashboard sort-routes test clean
+.PHONY: validate build run gui kpis cits-dryrun cits-sumo tsp-dryrun tsp-sumo tsp-sumo-no-actuation tsp-gui tsp-gui-no-actuation optimize-offline train-rl-policy platform platform-api platform-check platform-demo-data dashboard sort-routes test clean
 
 PYTHON := $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 
@@ -6,7 +6,7 @@ validate:
 	$(PYTHON) src/pps57_sumo/validate_project.py --root .
 	$(PYTHON) -m json.tool configs/cits_config.json >/dev/null
 	$(PYTHON) -m json.tool configs/tsp_config.json >/dev/null
-	$(PYTHON) -m json.tool configs/optimization_config.json >/dev/null
+	$(PYTHON) -m json.tool configs/policy_optimization_config.json >/dev/null
 	$(PYTHON) -m json.tool configs/platform_config.json >/dev/null
 
 build:
@@ -44,7 +44,10 @@ tsp-gui-no-actuation: build
 	$(PYTHON) scripts/run_tsp_control.py --mode sumo --gui --steps 7200 --no-actuation
 
 optimize-offline:
-	$(PYTHON) scripts/run_pacote5_optimization.py
+	$(PYTHON) scripts/run_policy_optimization.py
+
+train-rl-policy:
+	$(PYTHON) scripts/run_rl_training.py
 
 platform-check:
 	$(PYTHON) scripts/check_platform_data.py
@@ -54,6 +57,9 @@ platform-demo-data:
 
 platform:
 	$(PYTHON) -m streamlit run dashboard/app.py
+
+platform-api:
+	$(PYTHON) scripts/run_platform_api.py
 
 dashboard: platform
 
@@ -73,8 +79,9 @@ clean:
 	rm -f outputs/tripinfo.xml outputs/summary.xml outputs/statistics.xml
 	rm -f outputs/cits_messages.jsonl outputs/cits_mapem_snapshot.json outputs/cits_spatem_snapshot.json
 	rm -f outputs/tsp_decisions.jsonl outputs/tsp_actuation.jsonl
-	rm -f outputs/pacote5_offline_samples.jsonl outputs/pacote5_policy_candidates.jsonl
+	rm -f outputs/offline_policy_samples.jsonl outputs/policy_candidates.jsonl
 	rm -f reports/cits_emulation_summary.json reports/tsp_emulation_summary.json
-	rm -f reports/pacote5_policy_report.json reports/pacote5_optimization_summary.json
+	rm -f reports/policy_report.json reports/policy_optimization_summary.json
+	rm -f reports/tabular_q_policy_report.json reports/rl_training_summary.json
 	rm -f reports/baseline_kpis.json
 	rm -f sumo/network/corredor.net.xml
