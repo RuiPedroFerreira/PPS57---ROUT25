@@ -3,19 +3,29 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
-from typing import Dict, Iterable, List
+from typing import IO, Dict, Iterable, List, Optional
 
 from .messages import CITSMessage, RequestStatus
 
 
 class CITSJsonlLogger:
+    """JSONL writer com garantias mínimas de auditoria.
+
+    - Abre o ficheiro apenas em `__enter__` (sem leak se o context manager
+      nunca for ativado).
+    - Linha-buffered (`buffering=1`): em crash a meio da emulação, todas as
+      linhas até à última `write()` ficam em disco.
+    """
+
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._handle = self.path.open("w", encoding="utf-8")
+        self._handle: Optional[IO[str]] = None
 
     def write(self, message: CITSMessage) -> None:
+        if self._handle is None:
+            raise RuntimeError("CITSJsonlLogger usado fora do context manager")
         self._handle.write(message.to_json() + "\n")
 
     def write_many(self, messages: Iterable[CITSMessage]) -> None:
@@ -23,9 +33,13 @@ class CITSJsonlLogger:
             self.write(message)
 
     def close(self) -> None:
-        self._handle.close()
+        if self._handle is not None:
+            self._handle.close()
+            self._handle = None
 
     def __enter__(self) -> "CITSJsonlLogger":
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._handle = self.path.open("w", encoding="utf-8", buffering=1)
         return self
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:  # type: ignore[no-untyped-def]
@@ -118,11 +132,18 @@ def write_summary(path: str | Path, messages: List[CITSMessage], extra: Dict[str
 
 
 def write_summary_dict(path: str | Path, summary: Dict[str, object], extra: Dict[str, object] | None = None) -> Dict[str, object]:
-    """Como write_summary, mas a partir de um resumo já calculado (incremental)."""
+    """Como write_summary, mas a partir de um resumo já calculado (incremental).
+
+    Escreve atomicamente via `.tmp` + `os.replace`: um crash a meio da
+    serialização deixa o ficheiro anterior intacto, em vez de um JSON parcial
+    que envenenaria o leitor seguinte.
+    """
     summary = dict(summary)
     if extra:
         summary.update(extra)
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
+    tmp_path = output_path.with_suffix(output_path.suffix + ".tmp")
+    tmp_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp_path, output_path)
     return summary

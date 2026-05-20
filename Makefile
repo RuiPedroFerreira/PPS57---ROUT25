@@ -1,4 +1,10 @@
-.PHONY: validate build run gui kpis cits-dryrun cits-sumo tsp-dryrun tsp-sumo tsp-sumo-no-actuation tsp-gui tsp-gui-no-actuation optimize-offline train-rl-policy platform platform-api platform-check platform-demo-data dashboard sort-routes test clean
+.PHONY: validate build run gui kpis cits-sumo compare-tsp-rl evaluate-decision-outcomes build-event-training-dataset tsp-sumo tsp-sumo-no-actuation tsp-gui tsp-gui-no-actuation optimize-offline train-rl-policy platform platform-api platform-check dashboard sort-routes test clean
+
+# Hardening: cada receita corre como `bash -ec`, garantindo `set -e` mesmo
+# em linhas encadeadas e abortando à primeira falha. Sem isto, alguém a
+# adicionar `cmd1; cmd2` no futuro pode engolir erros do `cmd1`.
+SHELL := /bin/bash
+.SHELLFLAGS := -ec
 
 PYTHON := $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 
@@ -9,7 +15,10 @@ validate:
 	$(PYTHON) -m json.tool configs/policy_optimization_config.json >/dev/null
 	$(PYTHON) -m json.tool configs/platform_config.json >/dev/null
 
-build:
+# `validate` corre antes de `build` para que toda a cadeia (run/cits-sumo/
+# tsp-sumo/etc., que dependem de build) execute o gate fail-closed de XML
+# bem-formado e rotas ordenadas. Antes ficava órfão e podia ser ignorado.
+build: validate
 	$(PYTHON) src/pps57_sumo/generate_plain_corridor.py --config configs/corridor_config.json --output sumo/plain
 	netconvert --node-files sumo/plain/corredor.nod.xml --edge-files sumo/plain/corredor.edg.xml --output-file sumo/network/corredor.net.xml --no-turnarounds true --tls.default-type static --tls.cycle.time 90 --tls.yellow.time 3
 
@@ -22,14 +31,17 @@ kpis:
 gui: build
 	sumo-gui -c sumo/corredor.sumocfg
 
-cits-dryrun:
-	$(PYTHON) scripts/run_cits_emulation.py --mode dry-run --steps 60
-
 cits-sumo: build
 	$(PYTHON) scripts/run_cits_emulation.py --mode sumo --steps 7200
 
-tsp-dryrun:
-	$(PYTHON) scripts/run_tsp_control.py --mode dry-run --steps 90
+compare-tsp-rl: build
+	$(PYTHON) scripts/compare_tsp_baseline_rl.py --steps 7200 --train-rl
+
+evaluate-decision-outcomes: build
+	$(PYTHON) scripts/evaluate_decision_outcomes.py --steps 7200 --train-rl
+
+build-event-training-dataset:
+	$(PYTHON) scripts/build_event_training_dataset.py
 
 tsp-sumo: build
 	$(PYTHON) scripts/run_tsp_control.py --mode sumo --steps 7200
@@ -43,17 +55,14 @@ tsp-gui: build
 tsp-gui-no-actuation: build
 	$(PYTHON) scripts/run_tsp_control.py --mode sumo --gui --steps 7200 --no-actuation
 
-optimize-offline:
+optimize-offline: build-event-training-dataset
 	$(PYTHON) scripts/run_policy_optimization.py
 
-train-rl-policy:
+train-rl-policy: build-event-training-dataset
 	$(PYTHON) scripts/run_rl_training.py
 
 platform-check:
 	$(PYTHON) scripts/check_platform_data.py
-
-platform-demo-data:
-	$(PYTHON) scripts/generate_platform_demo_data.py --overwrite
 
 platform:
 	$(PYTHON) -m streamlit run dashboard/app.py
