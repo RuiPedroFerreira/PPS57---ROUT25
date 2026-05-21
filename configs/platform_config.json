@@ -3,13 +3,8 @@
   "version": "0.6.0",
   "scenario_id": "porto_boavista_realista_v02_platform",
   "title": "PPS57 — ROUT25 Traffic Priority Platform",
-  "description": "Dashboard local de validação e demonstração para C-ITS, TSP, Safety Layer, atuação e otimização offline.",
-  "dashboard": {
-    "default_page": "overview",
-    "max_records_loaded": 5000,
-    "refresh_seconds": 5,
-    "enable_auto_refresh_hint": true
-  },
+  "description": "Plataforma local de validação e demonstração para C-ITS, TSP, Safety Layer, atuação e otimização offline.",
+  "max_records_loaded": 5000,
   "artifacts": {
     "cits_messages": "outputs/cits_messages.jsonl",
     "tsp_decisions": "outputs/tsp_decisions.jsonl",

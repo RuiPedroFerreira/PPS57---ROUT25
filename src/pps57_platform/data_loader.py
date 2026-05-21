@@ -2,8 +2,7 @@
 """Load and aggregate PPS57 artifacts for the validation platform.
 
 The module deliberately depends only on the Python standard library so the
-command-line checks and unit tests can run without Streamlit or SUMO installed.
-The Streamlit app imports this module and renders the returned snapshot.
+command-line checks and unit tests can run without SUMO installed.
 """
 from __future__ import annotations
 
@@ -105,10 +104,10 @@ def load_platform_config(root: Path, config_path: str | Path = "configs/platform
             "artifacts": dict(DEFAULT_ARTIFACTS),
             "critical_artifacts": list(DEFAULT_CRITICAL_ARTIFACTS),
             "labels": {},
-            "dashboard": {"max_records_loaded": 5000},
+            "max_records_loaded": 5000,
         }
-    # Resiliente (não rebenta a dashboard) mas a corrupção deixa de ser
-    # silenciosa: um config inválido devolve defaults + config_error visível.
+    # Resiliente mas sem corrupção silenciosa: um config inválido devolve
+    # defaults + config_error visível.
     config_error: Optional[str] = None
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -121,7 +120,7 @@ def load_platform_config(root: Path, config_path: str | Path = "configs/platform
     payload.setdefault("artifacts", dict(DEFAULT_ARTIFACTS))
     payload.setdefault("critical_artifacts", list(DEFAULT_CRITICAL_ARTIFACTS))
     payload.setdefault("labels", {})
-    payload.setdefault("dashboard", {})
+    payload.setdefault("max_records_loaded", 5000)
     if config_error:
         payload["config_error"] = config_error
     return payload
@@ -132,14 +131,13 @@ def collect_snapshot(
     config_path: str | Path = "configs/platform_config.json",
     max_records: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """Collect all available PPS57 artifacts and derived dashboard metrics."""
+    """Collect all available PPS57 artifacts and derived platform metrics."""
     root = Path(root).resolve()
     config = load_platform_config(root, config_path)
     artifact_paths: Mapping[str, str] = {**DEFAULT_ARTIFACTS, **config.get("artifacts", {})}
     labels: Mapping[str, str] = config.get("labels", {})
-    dashboard_cfg: Mapping[str, Any] = config.get("dashboard", {})
     if max_records is None:
-        max_records = _safe_int(dashboard_cfg.get("max_records_loaded"), default=5000)
+        max_records = _safe_int(config.get("max_records_loaded"), default=5000)
 
     jsonl_records: Dict[str, List[Dict[str, Any]]] = {}
     json_payloads: Dict[str, Dict[str, Any]] = {}
@@ -408,8 +406,8 @@ def parse_tripinfo(path: Path) -> Dict[str, Any]:
 
     `ET.parse` carregava o DOM inteiro em memória; ficheiros reais de SUMO em
     corridas de 7200+ segundos podem ter centenas de MB e milhões de
-    `<tripinfo>` — chega para esgotar o processo do dashboard. Com `iterparse`
-    + `elem.clear()` o uso é O(1) por entrada e contínuo.
+    `<tripinfo>`. Com `iterparse` + `elem.clear()` o uso é O(1) por entrada e
+    contínuo.
     """
     count = 0
     duration_sum = 0.0

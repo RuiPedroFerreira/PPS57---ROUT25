@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Local orchestration layer for the PPS57 platform API.
 
-The runner owns process lifecycle for local simulations and utilities. FastAPI
-and Streamlit call this layer; neither one talks directly to TraCI.
+The runner owns process lifecycle for local simulations and utilities. The API
+uses this layer instead of talking directly to TraCI.
 """
 from __future__ import annotations
 

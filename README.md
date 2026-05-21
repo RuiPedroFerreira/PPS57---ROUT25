@@ -1,6 +1,6 @@
 # PPS57 ROUT25 Traffic Priority Platform
 
-PPS57 ROUT25 is a local validation platform for public-transport traffic-signal priority on a realistic Porto/Boavista corridor model. It combines a SUMO digital twin, C-ITS/V2X message emulation, an explainable TSP decision engine, a mandatory Safety Layer, offline policy optimization, tabular reinforcement-learning training, a FastAPI control plane, and a Streamlit dashboard.
+PPS57 ROUT25 is a local validation platform for public-transport traffic-signal priority on a realistic Porto/Boavista corridor model. It combines a SUMO digital twin, C-ITS/V2X message emulation, an explainable TSP decision engine, a mandatory Safety Layer, offline policy optimization, tabular reinforcement-learning training, and a FastAPI control plane.
 
 The repository is designed for technical demonstration and validation. It is not yet an operationally calibrated traffic-control deployment: network geometry, demand, public-transport lines and signal plans are proxy assets that must be replaced or calibrated with real OSM, GTFS, traffic-count and signal-controller data before any production use.
 
@@ -16,13 +16,12 @@ The repository is designed for technical demonstration and validation. It is not
 - Compares offline policy candidates against the baseline TSP engine.
 - Trains a tabular Q-learning policy from SUMO/TraCI event-derived scenarios.
 - Loads exported policies for runtime inference in semi-live TSP runs.
-- Serves a local FastAPI control plane and a Streamlit dashboard for demos.
+- Serves a local FastAPI control plane for demos and artifact inspection.
 
 ## Repository Layout
 
 ```text
-configs/                 Runtime configuration for C-ITS, TSP, policy training and dashboard
-dashboard/               Streamlit web application
+configs/                 Runtime configuration for C-ITS, TSP, policy training and platform checks
 docs/                    Technical documentation
 outputs/                 Generated JSONL/XML/log artifacts
 reports/                 Generated summaries, KPIs and policy reports
@@ -45,13 +44,6 @@ For full simulation support:
 ```bash
 python -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-```
-
-For dashboard-only use without SUMO Python dependencies:
-
-```bash
-python -m venv .venv
-.venv/bin/python -m pip install -r requirements-dashboard.txt
 ```
 
 For a reproducible install with exact pinned versions (releases, CI, dependency
@@ -90,18 +82,16 @@ make train-rl-policy
 make platform-check
 ```
 
-Start the local API and dashboard:
+Start the local API:
 
 ```bash
 make platform-api
-make platform
 ```
 
 Default URLs:
 
 ```text
 FastAPI:   http://127.0.0.1:8000
-Dashboard: http://127.0.0.1:8501
 API docs:  http://127.0.0.1:8000/docs
 ```
 
@@ -122,10 +112,8 @@ API docs:  http://127.0.0.1:8000/docs
 | `make tsp-gui-no-actuation` | Run TSP with SUMO GUI observation only | Yes |
 | `make optimize-offline` | Compare safe offline policy candidates | No |
 | `make train-rl-policy` | Train tabular Q-learning policy offline | No |
-| `make platform-check` | Aggregate and validate dashboard artifacts | No |
+| `make platform-check` | Aggregate and validate platform artifacts | No |
 | `make platform-api` | Start the FastAPI control API | No |
-| `make platform` | Start the Streamlit dashboard | No |
-| `make dashboard` | Alias for `make platform` | No |
 | `make sort-routes` | Sort SUMO route definitions by departure time | No |
 | `make clean` | Remove known generated artifacts | No |
 
@@ -426,7 +414,7 @@ Core endpoints:
 | `POST` | `/runs/stop` | Stop the active managed job |
 | `POST` | `/runs/pause` | Pause the active managed job, where supported |
 | `POST` | `/runs/resume` | Resume a paused managed job, where supported |
-| `GET` | `/artifacts/snapshot` | Aggregated dashboard snapshot |
+| `GET` | `/artifacts/snapshot` | Aggregated artifact snapshot |
 | `GET` | `/events/recent` | Recent JSONL events for one artifact |
 
 Start a TSP SUMO/TraCI observation run through the API:
@@ -464,19 +452,13 @@ train-rl-policy
 platform-check
 ```
 
-### 11. Run Dashboard
+### 11. Inspect Platform Artifacts
 
 ```bash
-.venv/bin/python -m streamlit run dashboard/app.py
+make platform-check
 ```
 
-Or:
-
-```bash
-make platform
-```
-
-The dashboard reads generated artifacts and can call the FastAPI control plane when it is running. It displays:
+The platform check reads generated artifacts and writes `reports/platform_snapshot.json` with:
 
 - artifact availability;
 - C-ITS message counts and recent events;
@@ -484,8 +466,7 @@ The dashboard reads generated artifacts and can call the FastAPI control plane w
 - actuation logs;
 - policy candidate comparison;
 - exported policy summaries;
-- SUMO baseline KPIs;
-- local run controls.
+- SUMO baseline KPIs.
 
 ## C-ITS/V2X Message Flow
 
@@ -681,7 +662,7 @@ Example SUMO/TraCI actuation result:
 | `reports/policy_optimization_summary.json` | Policy optimization | Offline comparison summary |
 | `reports/tabular_q_policy_report.json` | RL training | Exported tabular Q-learning policy |
 | `reports/rl_training_summary.json` | RL training | RL training metrics |
-| `reports/platform_snapshot.json` | Platform check/API | Aggregated dashboard snapshot |
+| `reports/platform_snapshot.json` | Platform check/API | Aggregated artifact snapshot |
 
 ## Safety Layer Rules
 
@@ -731,7 +712,7 @@ SUMO/TraCI event logs -> event training dataset -> RL training -> exported polic
 | `configs/cits_config.json` | OBU, RSU, C-ITS logging and safety constraints |
 | `configs/tsp_config.json` | TSP scoring, actuation and runtime policy settings |
 | `configs/policy_optimization_config.json` | Candidate actions, reward and RL training settings |
-| `configs/platform_config.json` | Dashboard artifacts, labels and refresh settings |
+| `configs/platform_config.json` | Platform artifact paths, labels and load limits |
 | `configs/scenarios.yaml` | Scenario descriptors |
 | `configs/signal_policy_constraints.yaml` | Signal policy constraints |
 | `configs/calibration_targets.yaml` | Calibration target placeholders |
@@ -751,27 +732,25 @@ git diff --check
 
 If `sumo` or `netconvert` is missing, install SUMO and ensure the binaries are in `PATH`.
 
-If the dashboard has no data, run a SUMO/TraCI workflow first:
+If platform artifact checks have no data, run a SUMO/TraCI workflow first:
 
 ```bash
 make build
 make tsp-sumo-no-actuation
 make build-event-training-dataset
 make platform-check
-make platform
 ```
 
-If the dashboard cannot control runs, start the API in another terminal:
+To control runs, start the API in another terminal:
 
 ```bash
 make platform-api
 ```
 
-If port `8000` or `8501` is already in use, run the scripts directly with a different port:
+If port `8000` is already in use, run the script directly with a different port:
 
 ```bash
 .venv/bin/python scripts/run_platform_api.py --port 8001
-.venv/bin/python -m streamlit run dashboard/app.py --server.port 8502
 ```
 
 If an optimized runtime policy is not loaded, regenerate the policy report:

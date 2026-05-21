@@ -52,7 +52,7 @@ def create_app(root: Path = ROOT) -> FastAPI:
     app = FastAPI(
         title="PPS57 ROUT25 Platform API",
         version="0.1.0",
-        description="Local control API for PPS57 simulations, artifacts and dashboard demos.",
+        description="Local control API for PPS57 simulations and artifacts.",
     )
 
     @app.get("/")

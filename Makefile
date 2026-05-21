@@ -1,4 +1,4 @@
-.PHONY: validate build run gui kpis cits-sumo compare-tsp-rl compare-sumo-kpis evaluate-decision-outcomes build-event-training-dataset tsp-sumo tsp-sumo-no-actuation tsp-gui tsp-gui-no-actuation optimize-offline train-rl-policy platform platform-api platform-check dashboard sort-routes test clean
+.PHONY: validate build run gui kpis cits-sumo compare-tsp-rl compare-sumo-kpis evaluate-decision-outcomes build-event-training-dataset tsp-sumo tsp-sumo-no-actuation tsp-gui tsp-gui-no-actuation optimize-offline train-rl-policy platform-api platform-check sort-routes test clean
 
 # Hardening: cada receita corre como `bash -ec`, garantindo `set -e` mesmo
 # em linhas encadeadas e abortando à primeira falha. Sem isto, alguém a
@@ -71,13 +71,8 @@ train-rl-policy: build-event-training-dataset
 platform-check:
 	$(PYTHON) scripts/check_platform_data.py
 
-platform:
-	$(PYTHON) -m streamlit run dashboard/app.py
-
 platform-api:
 	$(PYTHON) scripts/run_platform_api.py
-
-dashboard: platform
 
 sort-routes:
 	# Item 15: wrapper sobre $SUMO_HOME/tools/route/sort_routes.py.

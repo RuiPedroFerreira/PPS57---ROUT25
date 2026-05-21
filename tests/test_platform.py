@@ -148,7 +148,7 @@ class PlatformDataLoaderTest(unittest.TestCase):
             self.assertEqual(overview["applied_actuation_events"], 0)
             self.assertEqual(overview["unsafe_candidates_filtered"], 0)
 
-    def test_truncated_logs_use_summary_counts_for_dashboard_totals(self) -> None:
+    def test_truncated_logs_use_summary_counts_for_platform_totals(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "configs").mkdir()
@@ -316,47 +316,6 @@ class PlatformDataLoaderTest(unittest.TestCase):
         self.assertFalse(_is_loopback("0.0.0.0"))
         self.assertFalse(_is_loopback("10.0.0.5"))
         self.assertFalse(_is_loopback("not-a-host"))
-
-    def test_load_scenarios_uses_yaml_safe_load(self) -> None:
-        # The regex parser silently dropped values containing ":". safe_load handles them.
-        import importlib.util
-        import types
-
-        # Stub streamlit just enough for app.py to import (cache_data must be a
-        # passthrough decorator; the dashboard module never calls st.* at import
-        # time outside of decorator construction).
-        if "streamlit" not in sys.modules:
-            stub = types.ModuleType("streamlit")
-
-            def _passthrough_cache_data(*args, **kwargs):
-                def wrap(fn):
-                    fn.clear = lambda: None  # type: ignore[attr-defined]
-                    return fn
-                return wrap
-
-            stub.cache_data = _passthrough_cache_data  # type: ignore[attr-defined]
-            sys.modules["streamlit"] = stub
-
-        spec = importlib.util.spec_from_file_location("dashboard_app", ROOT / "dashboard" / "app.py")
-        assert spec is not None and spec.loader is not None
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        with tempfile.TemporaryDirectory() as tmp:
-            scenarios_path = Path(tmp) / "scenarios.yaml"
-            scenarios_path.write_text(
-                "scenarios:\n"
-                "  alpha:\n"
-                "    description: 'a value: with colon'\n"
-                "    steps: 7200\n"
-                "  beta:\n"
-                "    enabled: true\n",
-                encoding="utf-8",
-            )
-            scenarios = module.load_scenarios(scenarios_path)
-            self.assertIn("alpha", scenarios)
-            self.assertEqual(scenarios["alpha"]["description"], "a value: with colon")
-            self.assertEqual(scenarios["alpha"]["steps"], "7200")
-            self.assertEqual(scenarios["beta"]["enabled"], "true")
 
     def test_platform_runner_reads_recent_jsonl_events(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
