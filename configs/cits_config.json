@@ -1,128 +1,452 @@
 {
-  "component_id": "cits_v2x_emulation",
-  "scenario_id": "porto_boavista_realistic_cits_v2x",
-  "description": "C-ITS/V2X emulation for public transport traffic-signal priority requests in the Porto/Boavista corridor.",
-  "protocol_profile": {
-    "profile_name": "C-ITS TLC emulado",
-    "version": "0.3.0",
-    "encoding": "json",
-    "messages": ["MAPEM_like", "SPATEM_like", "SREM_like", "SSEM_like"],
-    "note": "Os modelos são SREM/SSEM/MAPEM/SPATEM-like para validação funcional; não substituem codificação ASN.1/UPER ETSI em operação real."
-  },
-  "sumo": {
-    "sumocfg": "sumo/corredor.sumocfg",
-    "network": "sumo/network/corredor.net.xml",
-    "step_length_s": 1.0,
-    "default_sumo_binary": "sumo",
-    "default_gui_binary": "sumo-gui"
-  },
-  "logging": {
-    "message_log": "outputs/cits_messages.jsonl",
-    "summary_report": "reports/cits_emulation_summary.json",
-    "mapem_snapshot": "outputs/cits_mapem_snapshot.json",
-    "spatem_snapshot": "outputs/cits_spatem_snapshot.json"
-  },
-  "obu_policy": {
-    "request_distance_m": 250,
-    "request_eta_min_s": 8,
-    "request_eta_max_s": 45,
-    "delay_threshold_s": 60,
-    "headway_deviation_threshold_s": 120,
+    "component_id": "cits_v2x_emulation",
+    "scenario_id": "porto_boavista_realistic_cits_v2x",
+    "description": "C-ITS/V2X emulation for public transport traffic-signal priority requests in the Porto/Boavista corridor.",
+    "protocol_profile": {
+        "profile_name": "C-ITS TLC emulado",
+        "version": "0.3.0",
+        "encoding": "json",
+        "messages": [
+            "MAPEM_like",
+            "SPATEM_like",
+            "SREM_like",
+            "SSEM_like"
+        ],
+        "note": "Os modelos s\u00e3o SREM/SSEM/MAPEM/SPATEM-like para valida\u00e7\u00e3o funcional; n\u00e3o substituem codifica\u00e7\u00e3o ASN.1/UPER ETSI em opera\u00e7\u00e3o real."
+    },
+    "sumo": {
+        "sumocfg": "sumo/corredor.sumocfg",
+        "network": "sumo/network/corredor.net.xml",
+        "step_length_s": 1.0,
+        "default_sumo_binary": "sumo",
+        "default_gui_binary": "sumo-gui"
+    },
+    "logging": {
+        "message_log": "outputs/cits_messages.jsonl",
+        "summary_report": "reports/cits_emulation_summary.json",
+        "mapem_snapshot": "outputs/cits_mapem_snapshot.json",
+        "spatem_snapshot": "outputs/cits_spatem_snapshot.json"
+    },
+    "obu_policy": {
+        "request_distance_m": 250,
+        "request_eta_min_s": 8,
+        "request_eta_max_s": 45,
+        "emergency_request_eta_max_s": 90,
+        "delay_threshold_s": 60,
+        "headway_deviation_threshold_s": 120,
     "request_refresh_s": 5,
     "request_ttl_s": 12,
-    "demo_force_bus_delay_s": 90,
-    "priority_line_ids": ["STCP500_PROXY_E", "STCP500_PROXY_W", "STCP502_PROXY_E", "STCP502_PROXY_W"],
-    "bus_id_prefixes": ["bus_"],
-    "requested_maneuvers": ["green_extension", "early_green", "priority_candidate"]
-  },
-  "rsu_policy": {
-    "response_ttl_s": 15,
-    "cooldown_after_grant_s": 90,
-    "max_active_requests_per_rsu": 4,
-    "acceptance_mode": "acknowledge_for_decision_engine",
-    "default_reject_reason": "not_eligible_for_priority"
-  },
-  "safety_constraints": {
-    "min_green_s": 8,
-    "max_green_extension_s": 12,
-    "max_total_green_s": 55,
-    "yellow_s": 3,
-    "all_red_s": 1,
-    "pedestrian_clearance_must_not_be_shortened": true,
-    "never_skip_yellow_or_all_red": true,
-    "max_consecutive_priority_interventions_per_tls": 2,
-    "cooldown_after_priority_s": 90
-  },
-  "priority_hierarchy": {
-    "emergency_vehicle": 1,
-    "public_transport_high_delay": 2,
-    "public_transport_headway_recovery": 3,
-    "public_transport_nominal": 4,
-    "general_traffic": 5
-  },
-  "intersections": [
-    {
-      "intersection_id": "I1",
-      "tls_id": "I1",
-      "rsu_id": "RSU_BOAVISTA_01",
-      "name": "Casa da Música / Boavista",
-      "controlled_approach_edges": ["CITY_EAST_I1", "I2_I1", "N_I1_I1", "S_I1_I1"],
-      "main_corridor_edges": ["CITY_EAST_I1", "I2_I1"],
-      "priority_movements": {"westbound": "CITY_EAST_I1", "eastbound": "I2_I1"}
+    "allow_nominal_priority_requests": true,
+    "priority_line_ids": [
+            "STCP500_PROXY_E",
+            "STCP500_PROXY_W",
+            "STCP502_PROXY_E",
+            "STCP502_PROXY_W"
+        ],
+        "bus_id_prefixes": [
+            "bus_"
+        ],
+        "emergency_id_prefixes": [
+            "ev_",
+            "emergency_"
+        ],
+        "requested_maneuvers": [
+            "green_extension",
+            "early_green",
+            "priority_candidate"
+        ]
     },
-    {
-      "intersection_id": "I2",
-      "tls_id": "I2",
-      "rsu_id": "RSU_BOAVISTA_02",
-      "name": "Av. Boavista / Bessa",
-      "controlled_approach_edges": ["I1_I2", "I3_I2", "N_I2_I2", "S_I2_I2"],
-      "main_corridor_edges": ["I1_I2", "I3_I2"],
-      "priority_movements": {"westbound": "I1_I2", "eastbound": "I3_I2"}
+    "rsu_policy": {
+        "response_ttl_s": 15,
+        "cooldown_after_grant_s": 90,
+        "max_active_requests_per_rsu": 4,
+        "acceptance_mode": "acknowledge_for_decision_engine",
+        "default_reject_reason": "not_eligible_for_priority"
     },
-    {
-      "intersection_id": "I3",
-      "tls_id": "I3",
-      "rsu_id": "RSU_BOAVISTA_03",
-      "name": "Av. Boavista / Antunes Guimarães",
-      "controlled_approach_edges": ["I2_I3", "I4_I3", "N_I3_I3", "S_I3_I3"],
-      "main_corridor_edges": ["I2_I3", "I4_I3"],
-      "priority_movements": {"westbound": "I2_I3", "eastbound": "I4_I3"}
+    "safety_constraints": {
+        "min_green_s": 8,
+        "max_green_extension_s": 12,
+        "max_total_green_s": 55,
+        "yellow_s": 3,
+        "all_red_s": 1,
+        "pedestrian_clearance_must_not_be_shortened": true,
+        "never_skip_yellow_or_all_red": true,
+        "max_consecutive_priority_interventions_per_tls": 2,
+        "cooldown_after_priority_s": 90,
+        "max_recovery_debt_s": 24,
+        "recovery_debt_payback_rate_s_per_s": 1
     },
-    {
-      "intersection_id": "I4",
-      "tls_id": "I4",
-      "rsu_id": "RSU_BOAVISTA_04",
-      "name": "Av. Boavista / Serralves",
-      "controlled_approach_edges": ["I3_I4", "I5_I4", "N_I4_I4", "S_I4_I4"],
-      "main_corridor_edges": ["I3_I4", "I5_I4"],
-      "priority_movements": {"westbound": "I3_I4", "eastbound": "I5_I4"}
+    "priority_hierarchy": {
+        "emergency_vehicle": 1,
+        "public_transport_high_delay": 2,
+        "public_transport_headway_recovery": 3,
+        "public_transport_nominal": 4,
+        "general_traffic": 5
     },
-    {
-      "intersection_id": "I5",
-      "tls_id": "I5",
-      "rsu_id": "RSU_BOAVISTA_05",
-      "name": "Av. Boavista / Marechal Gomes da Costa",
-      "controlled_approach_edges": ["I4_I5", "I6_I5", "N_I5_I5", "S_I5_I5"],
-      "main_corridor_edges": ["I4_I5", "I6_I5"],
-      "priority_movements": {"westbound": "I4_I5", "eastbound": "I6_I5"}
-    },
-    {
-      "intersection_id": "I6",
-      "tls_id": "I6",
-      "rsu_id": "RSU_BOAVISTA_06",
-      "name": "Praça do Império",
-      "controlled_approach_edges": ["I5_I6", "I7_I6", "N_I6_I6", "S_I6_I6"],
-      "main_corridor_edges": ["I5_I6", "I7_I6"],
-      "priority_movements": {"westbound": "I5_I6", "eastbound": "I7_I6"}
-    },
-    {
-      "intersection_id": "I7",
-      "tls_id": "I7",
-      "rsu_id": "RSU_BOAVISTA_07",
-      "name": "Castelo do Queijo / ligação Matosinhos",
-      "controlled_approach_edges": ["I6_I7", "ATLANTIC_WEST_I7", "N_I7_I7", "S_I7_I7"],
-      "main_corridor_edges": ["I6_I7", "ATLANTIC_WEST_I7"],
-      "priority_movements": {"westbound": "I6_I7", "eastbound": "ATLANTIC_WEST_I7"}
-    }
-  ]
+    "intersections": [
+        {
+            "intersection_id": "I1",
+            "tls_id": "I1",
+            "rsu_id": "RSU_BOAVISTA_01",
+            "name": "Casa da M\u00fasica / Boavista",
+            "controlled_approach_edges": [
+                "CITY_EAST_I1",
+                "I2_I1",
+                "N_I1_I1",
+                "S_I1_I1"
+            ],
+            "priority_movements": [
+                {
+                    "movement_id": "I1_westbound_public_transport",
+                    "direction": "westbound",
+                    "approach_edges": [
+                        "CITY_EAST_I1"
+                    ],
+                    "vehicle_classes": [
+                        "public_transport"
+                    ],
+                    "target_signal_group_id": "I1_priority_westbound",
+                    "allowed_actions": [
+                        "green_extension",
+                        "early_green"
+                    ],
+                    "objectives": [
+                        "schedule_delay",
+                        "headway_recovery"
+                    ]
+                },
+                {
+                    "movement_id": "I1_eastbound_public_transport",
+                    "direction": "eastbound",
+                    "approach_edges": [
+                        "I2_I1"
+                    ],
+                    "vehicle_classes": [
+                        "public_transport"
+                    ],
+                    "target_signal_group_id": "I1_priority_eastbound",
+                    "allowed_actions": [
+                        "green_extension",
+                        "early_green"
+                    ],
+                    "objectives": [
+                        "schedule_delay",
+                        "headway_recovery"
+                    ]
+                }
+            ]
+        },
+        {
+            "intersection_id": "I2",
+            "tls_id": "I2",
+            "rsu_id": "RSU_BOAVISTA_02",
+            "name": "Av. Boavista / Bessa",
+            "controlled_approach_edges": [
+                "I1_I2",
+                "I3_I2",
+                "N_I2_I2",
+                "S_I2_I2"
+            ],
+            "priority_movements": [
+                {
+                    "movement_id": "I2_westbound_public_transport",
+                    "direction": "westbound",
+                    "approach_edges": [
+                        "I1_I2"
+                    ],
+                    "vehicle_classes": [
+                        "public_transport"
+                    ],
+                    "target_signal_group_id": "I2_priority_westbound",
+                    "allowed_actions": [
+                        "green_extension",
+                        "early_green"
+                    ],
+                    "objectives": [
+                        "schedule_delay",
+                        "headway_recovery"
+                    ]
+                },
+                {
+                    "movement_id": "I2_eastbound_public_transport",
+                    "direction": "eastbound",
+                    "approach_edges": [
+                        "I3_I2"
+                    ],
+                    "vehicle_classes": [
+                        "public_transport"
+                    ],
+                    "target_signal_group_id": "I2_priority_eastbound",
+                    "allowed_actions": [
+                        "green_extension",
+                        "early_green"
+                    ],
+                    "objectives": [
+                        "schedule_delay",
+                        "headway_recovery"
+                    ]
+                }
+            ]
+        },
+        {
+            "intersection_id": "I3",
+            "tls_id": "I3",
+            "rsu_id": "RSU_BOAVISTA_03",
+            "name": "Av. Boavista / Antunes Guimar\u00e3es",
+            "controlled_approach_edges": [
+                "I2_I3",
+                "I4_I3",
+                "N_I3_I3",
+                "S_I3_I3"
+            ],
+            "priority_movements": [
+                {
+                    "movement_id": "I3_westbound_public_transport",
+                    "direction": "westbound",
+                    "approach_edges": [
+                        "I2_I3"
+                    ],
+                    "vehicle_classes": [
+                        "public_transport"
+                    ],
+                    "target_signal_group_id": "I3_priority_westbound",
+                    "allowed_actions": [
+                        "green_extension",
+                        "early_green"
+                    ],
+                    "objectives": [
+                        "schedule_delay",
+                        "headway_recovery"
+                    ]
+                },
+                {
+                    "movement_id": "I3_eastbound_public_transport",
+                    "direction": "eastbound",
+                    "approach_edges": [
+                        "I4_I3"
+                    ],
+                    "vehicle_classes": [
+                        "public_transport"
+                    ],
+                    "target_signal_group_id": "I3_priority_eastbound",
+                    "allowed_actions": [
+                        "green_extension",
+                        "early_green"
+                    ],
+                    "objectives": [
+                        "schedule_delay",
+                        "headway_recovery"
+                    ]
+                }
+            ]
+        },
+        {
+            "intersection_id": "I4",
+            "tls_id": "I4",
+            "rsu_id": "RSU_BOAVISTA_04",
+            "name": "Av. Boavista / Serralves",
+            "controlled_approach_edges": [
+                "I3_I4",
+                "I5_I4",
+                "N_I4_I4",
+                "S_I4_I4"
+            ],
+            "priority_movements": [
+                {
+                    "movement_id": "I4_westbound_public_transport",
+                    "direction": "westbound",
+                    "approach_edges": [
+                        "I3_I4"
+                    ],
+                    "vehicle_classes": [
+                        "public_transport"
+                    ],
+                    "target_signal_group_id": "I4_priority_westbound",
+                    "allowed_actions": [
+                        "green_extension",
+                        "early_green"
+                    ],
+                    "objectives": [
+                        "schedule_delay",
+                        "headway_recovery"
+                    ]
+                },
+                {
+                    "movement_id": "I4_eastbound_public_transport",
+                    "direction": "eastbound",
+                    "approach_edges": [
+                        "I5_I4"
+                    ],
+                    "vehicle_classes": [
+                        "public_transport"
+                    ],
+                    "target_signal_group_id": "I4_priority_eastbound",
+                    "allowed_actions": [
+                        "green_extension",
+                        "early_green"
+                    ],
+                    "objectives": [
+                        "schedule_delay",
+                        "headway_recovery"
+                    ]
+                }
+            ]
+        },
+        {
+            "intersection_id": "I5",
+            "tls_id": "I5",
+            "rsu_id": "RSU_BOAVISTA_05",
+            "name": "Av. Boavista / Marechal Gomes da Costa",
+            "controlled_approach_edges": [
+                "I4_I5",
+                "I6_I5",
+                "N_I5_I5",
+                "S_I5_I5"
+            ],
+            "priority_movements": [
+                {
+                    "movement_id": "I5_westbound_public_transport",
+                    "direction": "westbound",
+                    "approach_edges": [
+                        "I4_I5"
+                    ],
+                    "vehicle_classes": [
+                        "public_transport"
+                    ],
+                    "target_signal_group_id": "I5_priority_westbound",
+                    "allowed_actions": [
+                        "green_extension",
+                        "early_green"
+                    ],
+                    "objectives": [
+                        "schedule_delay",
+                        "headway_recovery"
+                    ]
+                },
+                {
+                    "movement_id": "I5_eastbound_public_transport",
+                    "direction": "eastbound",
+                    "approach_edges": [
+                        "I6_I5"
+                    ],
+                    "vehicle_classes": [
+                        "public_transport"
+                    ],
+                    "target_signal_group_id": "I5_priority_eastbound",
+                    "allowed_actions": [
+                        "green_extension",
+                        "early_green"
+                    ],
+                    "objectives": [
+                        "schedule_delay",
+                        "headway_recovery"
+                    ]
+                }
+            ]
+        },
+        {
+            "intersection_id": "I6",
+            "tls_id": "I6",
+            "rsu_id": "RSU_BOAVISTA_06",
+            "name": "Pra\u00e7a do Imp\u00e9rio",
+            "controlled_approach_edges": [
+                "I5_I6",
+                "I7_I6",
+                "N_I6_I6",
+                "S_I6_I6"
+            ],
+            "priority_movements": [
+                {
+                    "movement_id": "I6_westbound_public_transport",
+                    "direction": "westbound",
+                    "approach_edges": [
+                        "I5_I6"
+                    ],
+                    "vehicle_classes": [
+                        "public_transport"
+                    ],
+                    "target_signal_group_id": "I6_priority_westbound",
+                    "allowed_actions": [
+                        "green_extension",
+                        "early_green"
+                    ],
+                    "objectives": [
+                        "schedule_delay",
+                        "headway_recovery"
+                    ]
+                },
+                {
+                    "movement_id": "I6_eastbound_public_transport",
+                    "direction": "eastbound",
+                    "approach_edges": [
+                        "I7_I6"
+                    ],
+                    "vehicle_classes": [
+                        "public_transport"
+                    ],
+                    "target_signal_group_id": "I6_priority_eastbound",
+                    "allowed_actions": [
+                        "green_extension",
+                        "early_green"
+                    ],
+                    "objectives": [
+                        "schedule_delay",
+                        "headway_recovery"
+                    ]
+                }
+            ]
+        },
+        {
+            "intersection_id": "I7",
+            "tls_id": "I7",
+            "rsu_id": "RSU_BOAVISTA_07",
+            "name": "Castelo do Queijo / liga\u00e7\u00e3o Matosinhos",
+            "controlled_approach_edges": [
+                "I6_I7",
+                "ATLANTIC_WEST_I7",
+                "N_I7_I7",
+                "S_I7_I7"
+            ],
+            "priority_movements": [
+                {
+                    "movement_id": "I7_westbound_public_transport",
+                    "direction": "westbound",
+                    "approach_edges": [
+                        "I6_I7"
+                    ],
+                    "vehicle_classes": [
+                        "public_transport"
+                    ],
+                    "target_signal_group_id": "I7_priority_westbound",
+                    "allowed_actions": [
+                        "green_extension",
+                        "early_green"
+                    ],
+                    "objectives": [
+                        "schedule_delay",
+                        "headway_recovery"
+                    ]
+                },
+                {
+                    "movement_id": "I7_eastbound_public_transport",
+                    "direction": "eastbound",
+                    "approach_edges": [
+                        "ATLANTIC_WEST_I7"
+                    ],
+                    "vehicle_classes": [
+                        "public_transport"
+                    ],
+                    "target_signal_group_id": "I7_priority_eastbound",
+                    "allowed_actions": [
+                        "green_extension",
+                        "early_green"
+                    ],
+                    "objectives": [
+                        "schedule_delay",
+                        "headway_recovery"
+                    ]
+                }
+            ]
+        }
+    ]
 }

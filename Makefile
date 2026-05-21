@@ -1,4 +1,4 @@
-.PHONY: validate build run gui kpis cits-sumo compare-tsp-rl compare-sumo-kpis evaluate-decision-outcomes build-event-training-dataset tsp-sumo tsp-sumo-no-actuation tsp-gui tsp-gui-no-actuation optimize-offline train-rl-policy platform-api platform-check sort-routes test clean
+.PHONY: validate build run gui kpis cits-sumo tsp-demonstrator compare-tsp-rl compare-sumo-kpis evaluate-decision-outcomes build-event-training-dataset tsp-sumo tsp-sumo-no-actuation tsp-gui tsp-gui-no-actuation optimize-offline train-rl-policy platform-api platform-check sort-routes test clean
 
 # Hardening: cada receita corre como `bash -ec`, garantindo `set -e` mesmo
 # em linhas encadeadas e abortando à primeira falha. Sem isto, alguém a
@@ -33,6 +33,9 @@ gui: build
 
 cits-sumo: build
 	$(PYTHON) scripts/run_cits_emulation.py --mode sumo --steps 7200
+
+tsp-demonstrator:
+	$(PYTHON) scripts/run_tsp_demonstrator.py --steps 7200
 
 compare-tsp-rl: build
 	$(PYTHON) scripts/compare_tsp_baseline_rl.py --steps 7200 --train-rl

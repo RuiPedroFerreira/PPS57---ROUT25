@@ -75,7 +75,7 @@ class Approach:
     approach_id: str
     edge_id: str
     direction: str
-    is_priority_corridor: bool = False
+    priority_movement_ids: List[str] = field(default_factory=list)
     lane_ids: List[str] = field(default_factory=list)
 
 
@@ -174,6 +174,9 @@ class SREMLike(CITSMessage):
     rsu_id: str = ""
     current_edge_id: str = ""
     current_lane_id: str = ""
+    next_edge_id: str = ""
+    priority_movement_id: str = ""
+    target_signal_group_id: str = ""
     speed_mps: float = 0.0
     distance_to_stopline_m: float = 0.0
     eta_to_stopline_s: float = 0.0
@@ -207,6 +210,9 @@ class SREMLike(CITSMessage):
         headway_deviation_s: float,
         requested_maneuver: str,
         priority_level: str,
+        priority_movement_id: str = "",
+        target_signal_group_id: str = "",
+        next_edge_id: str = "",
         expires_at_s: Optional[float] = None,
         request_id: Optional[str] = None,
         message_id: Optional[str] = None,
@@ -230,6 +236,9 @@ class SREMLike(CITSMessage):
         self.rsu_id = rsu_id
         self.current_edge_id = current_edge_id
         self.current_lane_id = current_lane_id
+        self.next_edge_id = next_edge_id
+        self.priority_movement_id = priority_movement_id
+        self.target_signal_group_id = target_signal_group_id
         self.speed_mps = speed_mps
         self.distance_to_stopline_m = distance_to_stopline_m
         self.eta_to_stopline_s = eta_to_stopline_s

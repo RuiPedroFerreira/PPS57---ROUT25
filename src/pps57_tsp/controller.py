@@ -10,12 +10,11 @@ from pps57_cits.broker import InMemoryMessageBroker
 from pps57_cits.config import CITSConfig
 from pps57_cits.event_logger import CITSJsonlLogger, IncrementalCITSSummary
 from pps57_cits.map_spat import build_mapem_messages, build_spatem_message_from_state
-from pps57_cits.messages import CITSMessage, RequestStatus, SREMLike, SSEMLike
+from pps57_cits.messages import CITSMessage, PriorityLevel, RequestStatus, SREMLike, SSEMLike
 from pps57_cits.models import NetworkStateSnapshot, SignalState
 from pps57_cits.obu import OBUEmulator
 from pps57_cits.rsu import build_rsu_agents
 from pps57_cits.traci_adapter import TraciSimulationAdapter, TraciUnavailableError
-from pps57_cits.util import optional_int as _optional_int
 from pps57_opt.policy_runtime import RuntimePolicy
 
 from .actuator import TraciTSPActuator
@@ -23,7 +22,14 @@ from .config import TSPConfig
 from .engine import TSPDecisionEngine
 from .logger import TSPJsonlLogger, write_tsp_summary
 from .models import ActuationResult, DecisionStatus, TSPDecision
+from .request_store import PriorityRequestStore
 from .safety import TSPSafetyLayer
+from .signal_control import (
+    SignalControlAdapter,
+    SimulatedControllerAdapter,
+    TraciSignalControlAdapter,
+    build_controller_contracts,
+)
 
 
 @dataclass
@@ -39,6 +45,9 @@ class TSPControlController:
         self.rsu_agents = build_rsu_agents(self.cits_config)
         self.engine = TSPDecisionEngine(self.cits_config, self.tsp_config)
         self.safety = TSPSafetyLayer(self.cits_config, self.tsp_config)
+        self.request_store = PriorityRequestStore(
+            ttl_s=float(self.cits_config.obu_policy.get("request_lifecycle_ttl_s", 30.0))
+        )
         self.runtime_policy: Optional[RuntimePolicy] = None
         if self.policy_mode in {"optimized", "rl"}:
             raw_path = self.policy_report_path or self._default_policy_report_path()
@@ -72,7 +81,16 @@ class TSPControlController:
         # semafórico realmente carregado e detetar TLS atuados (o motor assume
         # controlo de tempo fixo). Em qualquer divergência, fail-closed:
         # desativa a atuação mas mantém a observação/decisão.
-        verification_problems = self._verify_signal_programs(adapter)
+        contracts = build_controller_contracts(self.cits_config, self.tsp_config)
+        signal_control: SignalControlAdapter = TraciSignalControlAdapter(adapter)
+        controller_simulation_cfg = self.tsp_config.raw.get("controller_simulation", {})
+        if bool(controller_simulation_cfg.get("enabled", False)):
+            signal_control = SimulatedControllerAdapter(
+                base=signal_control,
+                contracts=contracts,
+                config=controller_simulation_cfg,
+            )
+        verification_problems = self._verify_signal_programs(signal_control)
         effective_actuation = apply_actuation and not verification_problems
         if verification_problems and apply_actuation:
             print("[SAFETY] Atuação TraCI desativada: verificação do programa semafórico falhou:")
@@ -81,7 +99,7 @@ class TSPControlController:
         # Propaga o resultado da verificação para a Safety Layer poder enforçar
         # `pedestrian_clearance_must_not_be_shortened` (fail-closed em falhas).
         self.safety.set_signal_program_verified(not verification_problems)
-        actuator = TraciTSPActuator(adapter=adapter, apply_actuation=effective_actuation)
+        actuator = TraciTSPActuator(adapter=signal_control, apply_actuation=effective_actuation)
 
         step_count = 0
         with CITSJsonlLogger(cits_log_path) as cits_logger, TSPJsonlLogger(decision_log_path) as decision_logger, TSPJsonlLogger(actuation_log_path) as actuation_logger:
@@ -109,7 +127,10 @@ class TSPControlController:
                     self._publish_log_collect(spatem, cits_logger, cits_summary)
 
                     observations = adapter.read_vehicle_observations()
+                    self.request_store.update_from_observations(observations, sim_time_s)
                     requests = self.obu.generate_requests(observations, sim_time_s)
+                    self.request_store.ingest_requests(requests, sim_time_s)
+                    self.request_store.expire_old(sim_time_s)
                     requests_by_id = {request.request_id: request for request in requests}
                     self._publish_log_collect(requests, cits_logger, cits_summary)
 
@@ -161,6 +182,12 @@ class TSPControlController:
                 "cits_by_type": cits_summary_dict["by_type"],
                 "cits_acknowledged_messages": cits_summary_dict["acknowledged_messages"],
                 "cits_rejected_messages": cits_summary_dict["rejected_messages"],
+                "priority_request_lifecycle": self.request_store.to_summary(),
+                "recovery_debt_by_tls_s": {
+                    tls_id: round(value, 3)
+                    for tls_id, value in sorted(self.safety.recovery_debt_by_tls.items())
+                    if value > 0
+                },
             },
         )
 
@@ -185,6 +212,11 @@ class TSPControlController:
         intervened_tls: set[str] = set()
         response_list = list(responses)
         active_requests_by_tls: Dict[str, int] = {}
+        response_list = sorted(
+            response_list,
+            key=lambda response: _response_priority_sort_key(response, requests_by_id, self.cits_config),
+        )
+
         for response in response_list:
             if response.status != RequestStatus.ACKNOWLEDGED.value:
                 continue
@@ -265,6 +297,10 @@ class TSPControlController:
                     )
                     if result.applied or result.no_actuation or actuation_error:
                         self.safety.mark_applied(safe_decision, sim_time_s)
+                        self.request_store.mark_granted(request, sim_time_s)
+                        rsu = self.rsu_agents.get(request.rsu_id)
+                        if rsu is not None:
+                            rsu.mark_priority_granted(request.vehicle_id, sim_time_s)
                     intervened_tls.add(safe_decision.tls_id)
                     if actuation_error:
                         print(
@@ -290,68 +326,18 @@ class TSPControlController:
             logger.write(message)
             summary.add(message)
 
-    def _verify_signal_programs(self, adapter: TraciSimulationAdapter) -> List[str]:
-        """Verifica que o phase_mapping configurado bate certo com o programa real.
+    def _verify_signal_programs(self, adapter: SignalControlAdapter) -> List[str]:
+        """Verifica contratos de controlador contra o programa semafórico real.
 
         Fail-closed: se o programa não puder ser lido, ou se algum índice de fase
-        configurado estiver fora do programa, ou se o TLS for atuado (o motor
-        assume tempo fixo), devolve problemas que desativam a atuação.
+        configurado estiver fora do programa, se não houver matriz de conflitos
+        ou se o TLS for atuado quando o contrato exige tempo fixo, devolve
+        problemas que desativam a atuação.
         """
-        problems: List[str] = []
-        for intersection in self.cits_config.intersections:
-            tls_id = intersection.tls_id
-            mapping = self.tsp_config.phase_mapping_for_tls(tls_id)
-            corridor_idx = _optional_int(mapping.get("corridor_green_phase_index"))
-            sequence = [
-                idx
-                for idx in (_optional_int(item) for item in mapping.get("phase_sequence", []))
-                if idx is not None
-            ]
-
-            phase_count = adapter.read_program_phase_count(tls_id)
-            if phase_count is None:
-                problems.append(f"{tls_id}: programa TLS ilegível; impossível validar phase_mapping")
-                continue
-            if corridor_idx is None or not (0 <= corridor_idx < phase_count):
-                problems.append(
-                    f"{tls_id}: corridor_green_phase_index={corridor_idx} fora do programa (fases={phase_count})"
-                )
-            for idx in sequence:
-                if not (0 <= idx < phase_count):
-                    problems.append(
-                        f"{tls_id}: phase_sequence índice {idx} fora do programa (fases={phase_count})"
-                    )
-
-            # Item 2: verificar que as fases *fora* do par (corridor, minor) são
-            # de facto intergreen (sem 'g'/'G'). Fecha o resíduo de C1: sem isto
-            # confiávamos cegamente que o programa SUMO continha amarelo/all-red
-            # nas posições intermédias da phase_sequence.
-            minor_idx = _optional_int(mapping.get("minor_green_phase_index"))
-            green_phases = {idx for idx in (corridor_idx, minor_idx) if idx is not None}
-            states = adapter.read_program_phase_states(tls_id)
-            if states is None:
-                problems.append(f"{tls_id}: estados de fase ilegíveis (fail-closed)")
-            else:
-                for idx, state in enumerate(states):
-                    if idx in green_phases:
-                        continue
-                    if "g" in state.lower():
-                        problems.append(
-                            f"{tls_id}: fase {idx} ('{state}') é intermédia mas contém "
-                            "verde — clearance amarelo/all-red não garantida"
-                        )
-
-            is_fixed = adapter.read_program_is_fixed_time(tls_id)
-            if is_fixed is None:
-                problems.append(
-                    f"{tls_id}: não foi possível confirmar programa de tempo fixo (fail-closed)"
-                )
-            elif is_fixed is False:
-                problems.append(
-                    f"{tls_id}: programa atuado/adaptativo (tipo='{adapter.read_program_type(tls_id)}'); "
-                    "o motor TSP assume controlo de tempo fixo"
-                )
-        return problems
+        contracts = build_controller_contracts(self.cits_config, self.tsp_config)
+        if hasattr(adapter, "verify_controller_contracts"):
+            return adapter.verify_controller_contracts(contracts)
+        return TraciSignalControlAdapter(adapter).verify_controller_contracts(contracts)  # type: ignore[arg-type]
 
     def _read_network_states(
         self,
@@ -425,4 +411,24 @@ def _network_state_note(state: NetworkStateSnapshot) -> str:
         f"waiting_time_s:{state.waiting_time_s:.3f},"
         f"occupancy:{state.occupancy:.3f},"
         f"spillback_risk:{state.spillback_risk}"
+    )
+
+
+def _response_priority_sort_key(
+    response: SSEMLike,
+    requests_by_id: Dict[str, SREMLike],
+    cits_config: CITSConfig,
+) -> tuple[int, float, float, str]:
+    request = requests_by_id.get(response.request_id)
+    if response.status != RequestStatus.ACKNOWLEDGED.value or request is None:
+        return (999, float("inf"), 0.0, response.request_id)
+    hierarchy = cits_config.raw.get("priority_hierarchy", {})
+    priority_rank = int(hierarchy.get(request.priority_level, 999))
+    if request.priority_level == PriorityLevel.EMERGENCY_VEHICLE.value:
+        priority_rank = min(priority_rank, 0)
+    return (
+        priority_rank,
+        float(request.eta_to_stopline_s),
+        -float(request.schedule_delay_s),
+        request.request_id,
     )

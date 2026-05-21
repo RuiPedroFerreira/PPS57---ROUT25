@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional
 
-from .config import CITSConfig, IntersectionConfig
+from .config import CITSConfig, PriorityMovementConfig
 from .messages import PriorityLevel, RequestedManeuver, SREMLike
 from .models import VehicleObservation
 
@@ -30,6 +30,12 @@ class OBUEmulator:
         intersection = self.config.edge_to_intersection.get(observation.edge_id)
         if intersection is None:
             return None
+        priority_movement = self.config.priority_movement_for_request(
+            edge_id=observation.edge_id,
+            vehicle_class=observation.vehicle_class or observation.type_id or "bus",
+        )
+        if priority_movement is None:
+            return None
 
         policy = self.config.obu_policy
         distance = observation.distance_to_stopline_m
@@ -37,13 +43,16 @@ class OBUEmulator:
 
         if distance > float(policy.get("request_distance_m", 250)):
             return None
-        if eta < float(policy.get("request_eta_min_s", 8)) or eta > float(policy.get("request_eta_max_s", 45)):
+        is_emergency = observation.is_emergency_like
+        eta_min = 0.0 if is_emergency else float(policy.get("request_eta_min_s", 8))
+        eta_max = float(policy.get("emergency_request_eta_max_s", policy.get("request_eta_max_s", 45))) if is_emergency else float(policy.get("request_eta_max_s", 45))
+        if eta < eta_min or eta > eta_max:
             return None
 
         schedule_delay_s = self._effective_schedule_delay(observation)
         headway_deviation_s = observation.headway_deviation_s
 
-        if not self._priority_condition_met(schedule_delay_s, headway_deviation_s):
+        if not is_emergency and not self._priority_condition_met(schedule_delay_s, headway_deviation_s):
             return None
 
         key = f"{observation.vehicle_id}:{intersection.intersection_id}"
@@ -53,8 +62,8 @@ class OBUEmulator:
             return None
 
         self.last_request_time_by_key[key] = sim_time_s
-        priority_level = self._priority_level(schedule_delay_s, headway_deviation_s)
-        requested_maneuver = self._select_requested_maneuver(observation, intersection)
+        priority_level = self._priority_level(observation, schedule_delay_s, headway_deviation_s)
+        requested_maneuver = self._select_requested_maneuver(observation, priority_movement)
 
         return SREMLike(
             source_id=f"OBU_{observation.vehicle_id}",
@@ -69,6 +78,9 @@ class OBUEmulator:
             rsu_id=intersection.rsu_id,
             current_edge_id=observation.edge_id,
             current_lane_id=observation.lane_id,
+            next_edge_id=observation.next_edge_id,
+            priority_movement_id=priority_movement.movement_id,
+            target_signal_group_id=priority_movement.target_signal_group_id,
             speed_mps=round(observation.speed_mps, 3),
             distance_to_stopline_m=round(distance, 3),
             eta_to_stopline_s=round(eta, 3),
@@ -82,8 +94,13 @@ class OBUEmulator:
     def _is_priority_vehicle(self, observation: VehicleObservation) -> bool:
         policy = self.config.obu_policy
         bus_prefixes = tuple(policy.get("bus_id_prefixes", ["bus_"]))
+        emergency_prefixes = tuple(policy.get("emergency_id_prefixes", ["ev_", "emergency_"]))
         priority_line_ids = set(policy.get("priority_line_ids", []))
 
+        if observation.vehicle_id.startswith(emergency_prefixes):
+            return True
+        if observation.is_emergency_like:
+            return True
         if observation.vehicle_id.startswith(bus_prefixes):
             return True
         if observation.line_id in priority_line_ids:
@@ -91,30 +108,31 @@ class OBUEmulator:
         return observation.is_bus_like
 
     def _effective_schedule_delay(self, observation: VehicleObservation) -> float:
-        policy = self.config.obu_policy
-        forced_delay = policy.get("demo_force_bus_delay_s")
-        if forced_delay is not None:
-            return float(forced_delay)
         return max(observation.schedule_delay_s, observation.waiting_time_s, observation.accumulated_waiting_time_s)
 
     def _priority_condition_met(self, schedule_delay_s: float, headway_deviation_s: float) -> bool:
         policy = self.config.obu_policy
+        if bool(policy.get("allow_nominal_priority_requests", False)):
+            return True
         return (
             schedule_delay_s >= float(policy.get("delay_threshold_s", 60))
             or abs(headway_deviation_s) >= float(policy.get("headway_deviation_threshold_s", 120))
         )
 
-    def _priority_level(self, schedule_delay_s: float, headway_deviation_s: float) -> str:
+    def _priority_level(self, observation: VehicleObservation, schedule_delay_s: float, headway_deviation_s: float) -> str:
         policy = self.config.obu_policy
+        if observation.is_emergency_like:
+            return PriorityLevel.EMERGENCY_VEHICLE.value
         if schedule_delay_s >= float(policy.get("delay_threshold_s", 60)):
             return PriorityLevel.PUBLIC_TRANSPORT_HIGH_DELAY.value
         if abs(headway_deviation_s) >= float(policy.get("headway_deviation_threshold_s", 120)):
             return PriorityLevel.PUBLIC_TRANSPORT_HEADWAY_RECOVERY.value
         return PriorityLevel.PUBLIC_TRANSPORT_NOMINAL.value
 
-    def _select_requested_maneuver(self, observation: VehicleObservation, intersection: IntersectionConfig) -> str:
-        if observation.edge_id in intersection.main_corridor_edges and observation.eta_to_stopline_s <= 20:
+    def _select_requested_maneuver(self, observation: VehicleObservation, movement: PriorityMovementConfig) -> str:
+        allowed = set(movement.allowed_actions)
+        if RequestedManeuver.GREEN_EXTENSION.value in allowed and observation.eta_to_stopline_s <= 20:
             return RequestedManeuver.GREEN_EXTENSION.value
-        if observation.edge_id in intersection.main_corridor_edges:
+        if RequestedManeuver.EARLY_GREEN.value in allowed:
             return RequestedManeuver.EARLY_GREEN.value
         return RequestedManeuver.PRIORITY_CANDIDATE.value

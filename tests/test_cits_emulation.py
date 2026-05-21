@@ -62,6 +62,28 @@ class Package3CITSTestCase(unittest.TestCase):
         self.assertEqual(request.intersection_id, "I2")
         self.assertEqual(request.message_type, MessageType.SREM_LIKE.value)
 
+    def test_obu_generates_nominal_priority_request_from_sumo_bus_observation(self) -> None:
+        obu = OBUEmulator(self.config)
+        observation = VehicleObservation(
+            vehicle_id="bus_STCP500_W_UNIT",
+            vehicle_class="bus",
+            type_id="bus_12m",
+            line_id="STCP500_PROXY_W",
+            route_id="route_boavista_east_to_west",
+            edge_id="I1_I2",
+            lane_id="I1_I2_0",
+            lane_position_m=500.0,
+            lane_length_m=650.0,
+            speed_mps=10.0,
+            schedule_delay_s=0.0,
+            headway_deviation_s=0.0,
+        )
+        request = obu.generate_request(observation, sim_time_s=100.0)
+        self.assertIsNotNone(request)
+        assert request is not None
+        self.assertEqual(request.priority_level, "public_transport_nominal")
+        self.assertEqual(request.priority_movement_id, "I2_westbound_public_transport")
+
     def test_obu_suppresses_repeated_request_inside_refresh_window(self) -> None:
         obu = OBUEmulator(self.config)
         observation = VehicleObservation(

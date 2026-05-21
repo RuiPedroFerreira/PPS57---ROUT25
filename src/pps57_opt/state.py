@@ -52,14 +52,15 @@ def state_bucket_for_context(
     else:
         delay_bucket = "delay_low"
 
-    corridor_phase = _optional_int(tsp_config.phase_mapping_for_tls(signal_state.tls_id).get("corridor_green_phase_index"))
+    mapping = tsp_config.phase_mapping_for_movement(request.priority_movement_id, signal_state.tls_id)
+    target_phase = _optional_int(mapping.get("target_phase_index"))
     phase_bucket = "phase_unknown"
     if signal_state.red_yellow_green_state and "y" in signal_state.red_yellow_green_state.lower():
         phase_bucket = "yellow"
-    elif corridor_phase is not None and signal_state.current_phase_index == corridor_phase:
-        phase_bucket = "corridor_green"
+    elif target_phase is not None and signal_state.current_phase_index == target_phase:
+        phase_bucket = "priority_movement_green"
     elif signal_state.current_phase_index is not None:
-        phase_bucket = "corridor_red"
+        phase_bucket = "priority_movement_not_green"
 
     switch_bucket = "switch_close" if remaining is not None and remaining <= switch_close else "switch_open"
     pressure_bucket = "traffic_pressure_high" if (

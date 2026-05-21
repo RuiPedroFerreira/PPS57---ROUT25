@@ -30,8 +30,8 @@ class TSPConfig:
         return self.raw.get("phase_mapping", {})
 
     @property
-    def dry_run(self) -> Dict[str, Any]:
-        return self.raw.get("dry_run", {})
+    def controller_contracts(self) -> Dict[str, Any]:
+        return self.raw.get("controller_contracts", {})
 
     def path_from_root(self, relative: str | Path) -> Path:
         path = Path(relative)
@@ -41,6 +41,31 @@ class TSPConfig:
         mapping = dict(self.phase_mapping.get("default", {}))
         mapping.update(self.phase_mapping.get(tls_id, {}))
         return mapping
+
+    def phase_mapping_for_movement(self, movement_id: str, tls_id: str = "") -> Dict[str, Any]:
+        mapping = self.phase_mapping_for_tls(tls_id) if tls_id else dict(self.phase_mapping.get("default", {}))
+        movement_mappings = self.phase_mapping.get("priority_movements", {})
+        movement_mapping = movement_mappings.get(movement_id, {})
+        if isinstance(movement_mapping, dict):
+            mapping.update(movement_mapping)
+        return mapping
+
+    def controller_contract_for_tls(self, tls_id: str) -> Dict[str, Any]:
+        contracts = self.controller_contracts
+        default = dict(contracts.get("default", {}))
+        controllers = contracts.get("controllers", {})
+        specific = controllers.get(tls_id, {}) if isinstance(controllers, dict) else {}
+        if not isinstance(specific, dict):
+            return default
+        merged = dict(default)
+        for key, value in specific.items():
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                nested = dict(merged[key])
+                nested.update(value)
+                merged[key] = nested
+            else:
+                merged[key] = value
+        return merged
 
 
 def load_tsp_config(path: str | Path, root: Optional[str | Path] = None) -> TSPConfig:

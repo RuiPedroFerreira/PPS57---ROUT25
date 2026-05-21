@@ -5,14 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from pps57_cits.models import SignalState
-from pps57_cits.traci_adapter import TraciSimulationAdapter
 
 from .models import ActuationResult, DecisionStatus, TSPAction, TSPDecision
+from .signal_control import SignalControlAdapter
 
 
 @dataclass
 class TraciTSPActuator:
-    adapter: TraciSimulationAdapter
+    adapter: SignalControlAdapter
     apply_actuation: bool = True
 
     def apply(self, decision: TSPDecision, signal_state: SignalState, sim_time_s: float) -> ActuationResult:
@@ -43,6 +43,29 @@ class TraciTSPActuator:
             )
 
         try:
+            controller_validation = _controller_validation(
+                self.adapter,
+                decision,
+                signal_state,
+                sim_time_s,
+                command,
+                parameters,
+            )
+            if not controller_validation.accepted:
+                return ActuationResult(
+                    decision_id=decision.decision_id,
+                    timestamp_s=sim_time_s,
+                    tls_id=decision.tls_id,
+                    action=decision.action,
+                    applied=False,
+                    no_actuation=False,
+                    command=command,
+                    reason=controller_validation.reason,
+                    parameters=parameters,
+                    controller_response=controller_validation.to_dict(),
+                    severity=controller_validation.severity,
+                )
+            parameters = dict(controller_validation.adjusted_parameters)
             if decision.action == TSPAction.GREEN_EXTENSION.value:
                 new_duration_s = float(parameters["new_phase_duration_s"])
                 self.adapter.set_phase_duration(decision.tls_id, new_duration_s)
@@ -90,6 +113,7 @@ class TraciTSPActuator:
             command=command,
             reason="applied_safe_tsp_action_via_traci",
             parameters=parameters,
+            controller_response=controller_validation.to_dict(),
         )
 
 
@@ -111,3 +135,23 @@ def _command_for_decision(decision: TSPDecision, signal_state: SignalState, sim_
             "implementation": "red_truncation_not_direct_phase_jump",
         }
     return "none", {}
+
+
+def _controller_validation(
+    adapter: SignalControlAdapter,
+    decision: TSPDecision,
+    signal_state: SignalState,
+    sim_time_s: float,
+    command: str,
+    parameters: dict,
+):
+    if hasattr(adapter, "validate_actuation"):
+        return adapter.validate_actuation(decision, signal_state, sim_time_s, command, parameters)
+    from .signal_control import ControllerCommandValidation
+
+    return ControllerCommandValidation(
+        accepted=True,
+        reason="adapter_without_controller_validation",
+        effective_at_s=sim_time_s,
+        adjusted_parameters=dict(parameters),
+    )

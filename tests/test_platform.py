@@ -285,6 +285,14 @@ class PlatformDataLoaderTest(unittest.TestCase):
         self.assertIn("--sumo-binary", comparison_command)
         self.assertIn("--no-actuation", comparison_command)
 
+        demonstrator_command = runner._command_for("tsp-demonstrator", RunOptions(steps=30, no_actuation=True))
+        self.assertIn("scripts/run_tsp_demonstrator.py", demonstrator_command)
+        self.assertIn("--config", demonstrator_command)
+        self.assertIn("--tsp-config", demonstrator_command)
+        self.assertIn("--policy-config", demonstrator_command)
+        self.assertIn("--sumo-binary", demonstrator_command)
+        self.assertIn("--no-actuation", demonstrator_command)
+
         with self.assertRaises(RunnerUnsupportedError):
             runner._command_for("shell-arbitrary", RunOptions())
 

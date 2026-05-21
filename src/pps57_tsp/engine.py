@@ -100,14 +100,14 @@ class TSPDecisionEngine:
                 notes=["Pedido será reavaliado no ciclo seguinte para evitar transição insegura."],
             )
 
-        mapping = self.tsp_config.phase_mapping_for_tls(request.tls_id)
-        target_phase = _optional_int(mapping.get("corridor_green_phase_index"))
+        mapping = self.tsp_config.phase_mapping_for_movement(request.priority_movement_id, request.tls_id)
+        target_phase = _optional_int(mapping.get("target_phase_index"))
         return self._decision(
             request,
             signal_state,
             sim_time_s,
             action=TSPAction.EARLY_GREEN.value,
-            reason="truncate_conflicting_phase_to_anticipate_corridor_green",
+            reason="truncate_conflicting_phase_to_anticipate_priority_movement_green",
             score=score,
             phase_duration_s=float(policy.get("red_truncation_to_s", 2)),
             target_phase_index=target_phase,
@@ -134,6 +134,14 @@ class TSPDecisionEngine:
 
     def is_priority_movement_green(self, request: SREMLike, signal_state: SignalState) -> bool:
         ryg = signal_state.red_yellow_green_state or ""
+        controlled_links = signal_state.controlled_links or []
+        next_edge = getattr(request, "next_edge_id", "") or ""
+        for index, links_for_signal in enumerate(controlled_links):
+            if index >= len(ryg):
+                continue
+            if _controlled_links_match_request(links_for_signal, request.current_lane_id, next_edge):
+                return ryg[index].lower() == "g"
+
         controlled_lanes = signal_state.controlled_lanes or []
         candidate_lane = request.current_lane_id
         candidate_edge = request.current_edge_id
@@ -150,10 +158,9 @@ class TSPDecisionEngine:
             if lane_id == candidate_lane or (edge_prefix is not None and lane_id.startswith(edge_prefix)):
                 return ryg[index].lower() == "g"
 
-        # Fallback: fase 0 representa corredor verde no proxy Boavista.
-        mapping = self.tsp_config.phase_mapping_for_tls(request.tls_id)
-        corridor_phase = _optional_int(mapping.get("corridor_green_phase_index"))
-        return corridor_phase is not None and signal_state.current_phase_index == corridor_phase
+        mapping = self.tsp_config.phase_mapping_for_movement(request.priority_movement_id, request.tls_id)
+        target_phase = _optional_int(mapping.get("target_phase_index"))
+        return target_phase is not None and signal_state.current_phase_index == target_phase
 
     @staticmethod
     def remaining_phase_time_s(signal_state: SignalState, sim_time_s: float) -> Optional[float]:
@@ -201,6 +208,12 @@ class TSPDecisionEngine:
             eta_to_stopline_s=request.eta_to_stopline_s,
             schedule_delay_s=request.schedule_delay_s,
             headway_deviation_s=request.headway_deviation_s,
+            vehicle_class=request.vehicle_class,
+            current_edge_id=request.current_edge_id,
+            current_lane_id=request.current_lane_id,
+            next_edge_id=getattr(request, "next_edge_id", ""),
+            priority_movement_id=request.priority_movement_id,
+            target_signal_group_id=request.target_signal_group_id,
             extension_s=extension_s,
             phase_duration_s=phase_duration_s,
             target_phase_index=target_phase_index,
@@ -213,3 +226,20 @@ class TSPDecisionEngine:
 
 def _clip01(value: float) -> float:
     return max(0.0, min(1.0, value))
+
+
+def _controlled_links_match_request(links_for_signal: object, lane_id: str, next_edge_id: str) -> bool:
+    if not lane_id or not isinstance(links_for_signal, list):
+        return False
+    for link in links_for_signal:
+        if not isinstance(link, (list, tuple)) or len(link) < 2:
+            continue
+        incoming_lane = str(link[0])
+        outgoing_lane = str(link[1])
+        if incoming_lane != lane_id:
+            continue
+        if not next_edge_id:
+            return True
+        if outgoing_lane == next_edge_id or outgoing_lane.startswith(f"{next_edge_id}_"):
+            return True
+    return False

@@ -43,6 +43,12 @@ class TSPDecision:
     eta_to_stopline_s: float
     schedule_delay_s: float
     headway_deviation_s: float
+    vehicle_class: str = ""
+    current_edge_id: str = ""
+    current_lane_id: str = ""
+    next_edge_id: str = ""
+    priority_movement_id: str = ""
+    target_signal_group_id: str = ""
     decision_id: str = field(default_factory=lambda: str(uuid4()))
     extension_s: float = 0.0
     phase_duration_s: Optional[float] = None
@@ -96,6 +102,7 @@ class ActuationResult:
     command: str
     reason: str
     parameters: Dict[str, Any] = field(default_factory=dict)
+    controller_response: Dict[str, Any] = field(default_factory=dict)
     # "info" = normal applied/skipped; "warning" = decisão chegou ao atuador
     # mas a ação não é suportada; "error" = TraCI levantou exceção a meio
     # de uma atuação — auditoria deve filtrar por severity para detetar

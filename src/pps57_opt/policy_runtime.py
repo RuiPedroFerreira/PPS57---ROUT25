@@ -13,9 +13,9 @@ from typing import Any, Dict, Optional
 
 from pps57_cits.messages import SREMLike
 from pps57_cits.models import NetworkStateSnapshot, SignalState
-from pps57_cits.util import optional_int as _optional_int
 from pps57_tsp.config import TSPConfig
-from pps57_tsp.models import DecisionStatus, TSPAction, TSPDecision
+from pps57_tsp.action_planner import decision_for_action
+from pps57_tsp.models import TSPDecision
 
 from .state import state_bucket_for_context
 
@@ -140,52 +140,6 @@ class RuntimePolicy:
             reason=f"runtime_policy_rule:{bucket}",
             notes=notes,
         )
-
-
-def decision_for_action(
-    tsp_config: TSPConfig,
-    *,
-    action: str,
-    baseline: TSPDecision,
-    reason: str,
-    notes: list[str],
-) -> TSPDecision:
-    policy = tsp_config.decision_policy
-    mapping = tsp_config.phase_mapping_for_tls(baseline.tls_id)
-    target_phase = _optional_int(mapping.get("corridor_green_phase_index"))
-
-    if action == TSPAction.GREEN_EXTENSION.value:
-        extension_s = baseline.extension_s if baseline.extension_s > 0 else float(policy.get("green_extension_default_s", 8))
-        return baseline.copy_with(
-            action=action,
-            status=DecisionStatus.PROPOSED.value,
-            reason=reason,
-            extension_s=extension_s,
-            phase_duration_s=None,
-            target_phase_index=None,
-            notes=notes,
-        )
-
-    if action == TSPAction.EARLY_GREEN.value:
-        return baseline.copy_with(
-            action=action,
-            status=DecisionStatus.PROPOSED.value,
-            reason=reason,
-            extension_s=0.0,
-            phase_duration_s=float(policy.get("red_truncation_to_s", 2)),
-            target_phase_index=target_phase,
-            notes=notes,
-        )
-
-    return baseline.copy_with(
-        action=action,
-        status=DecisionStatus.PROPOSED.value,
-        reason=reason,
-        extension_s=0.0,
-        phase_duration_s=None,
-        target_phase_index=None,
-        notes=notes,
-    )
 
 
 def state_bucket_for(

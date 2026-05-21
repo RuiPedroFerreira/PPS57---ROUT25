@@ -32,6 +32,7 @@ DEFAULT_ARTIFACTS: Dict[str, str] = {
     "tsp_ab_comparison": "reports/tsp_baseline_vs_rl_comparison.json",
     "sumo_kpi_comparison": "reports/sumo_baseline_vs_rl_kpi_comparison.json",
     "decision_outcome_evaluation": "reports/decision_outcome_evaluation.json",
+    "tsp_demonstrator_report": "reports/tsp_demonstrator_report.json",
     "tripinfo": "outputs/tripinfo.xml",
 }
 
@@ -63,6 +64,7 @@ JSON_ARTIFACTS = {
     "tsp_ab_comparison",
     "sumo_kpi_comparison",
     "decision_outcome_evaluation",
+    "tsp_demonstrator_report",
 }
 
 

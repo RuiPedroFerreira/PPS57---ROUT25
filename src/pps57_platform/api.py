@@ -26,11 +26,13 @@ class RunStartRequest(BaseModel):
     steps: Optional[int] = Field(default=None, ge=1)
     gui: bool = False
     no_actuation: bool = False
-    overwrite: bool = False
     sumo_binary: str = "sumo"
     max_records: int = Field(default=5000, ge=1)
     strict: bool = False
-    policy_mode: str = Field(default="baseline", description="baseline or optimized")
+    config: str = "configs/cits_config.json"
+    tsp_config: str = "configs/tsp_config.json"
+    policy_config: str = "configs/policy_optimization_config.json"
+    policy_mode: str = Field(default="baseline", description="baseline, optimized or rl")
     policy_report: Optional[str] = None
 
     def to_options(self) -> RunOptions:
@@ -38,10 +40,12 @@ class RunStartRequest(BaseModel):
             steps=self.steps,
             gui=self.gui,
             no_actuation=self.no_actuation,
-            overwrite=self.overwrite,
             sumo_binary=self.sumo_binary,
             max_records=self.max_records,
             strict=self.strict,
+            config=self.config,
+            tsp_config=self.tsp_config,
+            policy_config=self.policy_config,
             policy_mode=self.policy_mode,
             policy_report=self.policy_report,
         )

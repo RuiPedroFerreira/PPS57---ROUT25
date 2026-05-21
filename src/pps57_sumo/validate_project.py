@@ -11,8 +11,10 @@ import argparse
 import json
 from pathlib import Path
 from typing import Any, Dict
-# M4: defusedxml em vez do stdlib para validação de XML do projeto.
-from defusedxml import ElementTree as ET  # type: ignore[import-untyped]
+try:
+    from defusedxml import ElementTree as ET  # type: ignore[import-untyped]
+except ImportError:  # pragma: no cover - exercised in minimal CI images.
+    from xml.etree import ElementTree as ET  # type: ignore[no-redef]
 
 REQUIRED_FILES = [
     "configs/corridor_config.json",
@@ -157,23 +159,130 @@ def validate_safety_configs(root: Path) -> None:
             f"Config inválida: a soma de decision_policy.weights deve ser 1.0 (é {weight_sum:.6f})."
         )
 
-    for tls_id, mapping in tsp.get("phase_mapping", {}).items():
+    phase_mapping = tsp.get("phase_mapping", {})
+    for tls_id, mapping in phase_mapping.items():
+        if tls_id == "priority_movements":
+            continue
         if not isinstance(mapping, dict):
             continue
-        corridor = mapping.get("corridor_green_phase_index")
-        minor = mapping.get("minor_green_phase_index")
-        if isinstance(corridor, int) and corridor < 0:
-            raise SystemExit(f"Config inválida: phase_mapping[{tls_id}].corridor_green_phase_index < 0.")
-        if isinstance(minor, int) and minor < 0:
-            raise SystemExit(f"Config inválida: phase_mapping[{tls_id}].minor_green_phase_index < 0.")
-        if (
-            isinstance(corridor, int)
-            and isinstance(minor, int)
-            and corridor == minor
-        ):
-            raise SystemExit(
-                f"Config inválida: phase_mapping[{tls_id}] tem corridor e minor no mesmo índice ({corridor})."
-            )
+        target = mapping.get("target_phase_index")
+        if isinstance(target, int) and target < 0:
+            raise SystemExit(f"Config inválida: phase_mapping[{tls_id}].target_phase_index < 0.")
+        for idx in mapping.get("service_green_phase_indices", []):
+            if not isinstance(idx, int) or idx < 0:
+                raise SystemExit(f"Config inválida: phase_mapping[{tls_id}].service_green_phase_indices inválido.")
+
+    declared_movements = {}
+    for index, intersection in enumerate(cits.get("intersections", [])):
+        controlled_edges = set(intersection.get("controlled_approach_edges", []))
+        for movement in intersection.get("priority_movements", []):
+            movement_id = movement.get("movement_id")
+            if not movement_id:
+                raise SystemExit(f"Config inválida: intersections[{index}].priority_movements sem movement_id.")
+            if movement_id in declared_movements:
+                raise SystemExit(f"Config inválida: priority movement duplicado: {movement_id}.")
+            declared_movements[movement_id] = movement
+            approach_edges = movement.get("approach_edges", [])
+            if not approach_edges:
+                raise SystemExit(f"Config inválida: priority movement {movement_id} sem approach_edges.")
+            unknown_edges = [edge for edge in approach_edges if edge not in controlled_edges]
+            if unknown_edges:
+                raise SystemExit(
+                    f"Config inválida: priority movement {movement_id} referencia edges fora da interseção: "
+                    + ", ".join(unknown_edges)
+                )
+            if not movement.get("target_signal_group_id"):
+                raise SystemExit(f"Config inválida: priority movement {movement_id} sem target_signal_group_id.")
+
+    movement_phase_mapping = phase_mapping.get("priority_movements", {})
+    missing_mappings = [movement_id for movement_id in declared_movements if movement_id not in movement_phase_mapping]
+    if missing_mappings:
+        raise SystemExit(
+            "Config inválida: faltam mappings tsp.phase_mapping.priority_movements para: "
+            + ", ".join(missing_mappings)
+        )
+    for movement_id, mapping in movement_phase_mapping.items():
+        if movement_id not in declared_movements:
+            raise SystemExit(f"Config inválida: mapping TSP para movement inexistente: {movement_id}.")
+        if not isinstance(mapping, dict) or not isinstance(mapping.get("target_phase_index"), int):
+            raise SystemExit(f"Config inválida: priority movement {movement_id} sem target_phase_index inteiro.")
+        if mapping["target_phase_index"] < 0:
+            raise SystemExit(f"Config inválida: priority movement {movement_id}.target_phase_index < 0.")
+
+    controller_default = tsp.get("controller_contracts", {}).get("default", {})
+    if not isinstance(controller_default, dict):
+        raise SystemExit("Config inválida: tsp.controller_contracts.default em falta.")
+    for key in ("adapter_type", "allowed_actions", "phase_sequence", "intergreen_phase_indices"):
+        if key not in controller_default:
+            raise SystemExit(f"Config inválida: controller_contracts.default.{key} em falta.")
+    if not controller_default.get("allowed_actions"):
+        raise SystemExit("Config inválida: controller_contracts.default.allowed_actions vazio.")
+    for idx in controller_default.get("phase_sequence", []) + controller_default.get("intergreen_phase_indices", []):
+        if not isinstance(idx, int) or idx < 0:
+            raise SystemExit("Config inválida: controller_contracts.default contém índice de fase inválido.")
+
+    priority_group_defaults = controller_default.get("priority_signal_group_defaults", {})
+    if not isinstance(priority_group_defaults, dict):
+        raise SystemExit("Config inválida: priority_signal_group_defaults em falta.")
+    if not priority_group_defaults.get("conflicts_with"):
+        raise SystemExit("Config inválida: priority_signal_group_defaults sem matriz de conflitos.")
+    for key in ("min_green_s", "max_green_s", "max_extension_s"):
+        value = priority_group_defaults.get(key)
+        if not isinstance(value, (int, float)) or value <= 0:
+            raise SystemExit(f"Config inválida: priority_signal_group_defaults.{key} inválido.")
+    if priority_group_defaults["max_green_s"] < priority_group_defaults["min_green_s"]:
+        raise SystemExit("Config inválida: priority_signal_group_defaults max_green_s < min_green_s.")
+    if not controller_default.get("additional_signal_groups"):
+        raise SystemExit("Config inválida: controller_contracts.default.additional_signal_groups vazio.")
+    controllers = tsp.get("controller_contracts", {}).get("controllers", {})
+    if not isinstance(controllers, dict) or not controllers:
+        raise SystemExit("Config inválida: controller_contracts.controllers em falta.")
+    for intersection in cits.get("intersections", []):
+        tls_id = intersection.get("tls_id")
+        controller = controllers.get(tls_id)
+        if not isinstance(controller, dict):
+            raise SystemExit(f"Config inválida: controller_contracts.controllers[{tls_id}] em falta.")
+        group_ids = {movement["target_signal_group_id"] for movement in intersection.get("priority_movements", [])}
+        group_ids.update(
+            str(item.get("signal_group_id"))
+            for item in controller.get("additional_signal_groups", [])
+            if item.get("signal_group_id")
+        )
+        explicit_groups = controller.get("signal_groups", {})
+        if not isinstance(explicit_groups, dict):
+            raise SystemExit(f"Config inválida: controller {tls_id} signal_groups inválido.")
+        for movement in intersection.get("priority_movements", []):
+            group_id = movement["target_signal_group_id"]
+            if group_id not in explicit_groups:
+                raise SystemExit(f"Config inválida: controller {tls_id} sem signal_group específico {group_id}.")
+        for group_id, group in explicit_groups.items():
+            conflicts = group.get("conflicts_with", [])
+            if not conflicts:
+                raise SystemExit(f"Config inválida: controller {tls_id} signal_group {group_id} sem conflitos.")
+            unknown = [item for item in conflicts if item not in group_ids]
+            if unknown:
+                raise SystemExit(
+                    f"Config inválida: controller {tls_id} signal_group {group_id} tem conflitos inexistentes: "
+                    + ", ".join(unknown)
+                )
+        for group in controller.get("additional_signal_groups", []):
+            group_id = group.get("signal_group_id")
+            conflicts = group.get("conflicts_with", [])
+            if group_id and not conflicts:
+                raise SystemExit(f"Config inválida: controller {tls_id} signal_group {group_id} sem conflitos.")
+            unknown = [item for item in conflicts if item not in group_ids]
+            if unknown:
+                raise SystemExit(
+                    f"Config inválida: controller {tls_id} signal_group {group_id} tem conflitos inexistentes: "
+                    + ", ".join(unknown)
+                )
+    simulation_cfg = tsp.get("controller_simulation", {})
+    if not isinstance(simulation_cfg, dict):
+        raise SystemExit("Config inválida: controller_simulation deve ser objeto.")
+    for key in ("command_latency_s", "pending_lock_s", "min_command_interval_s"):
+        value = simulation_cfg.get(key, 0)
+        if not isinstance(value, (int, float)) or value < 0:
+            raise SystemExit(f"Config inválida: controller_simulation.{key} deve ser >= 0.")
 
     print("OK config: invariantes safety-critical de cits/tsp config verificadas.")
 

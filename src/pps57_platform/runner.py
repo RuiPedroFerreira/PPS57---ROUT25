@@ -28,6 +28,7 @@ RUN_KINDS = {
     "compare-tsp-rl",
     "evaluate-decision-outcomes",
     "kpis",
+    "tsp-demonstrator",
     "tsp-sumo",
     "tsp-sumo-no-actuation",
     "optimize-offline",
@@ -287,6 +288,12 @@ class PlatformRunner:
             return cmd
         if kind == "evaluate-decision-outcomes":
             cmd = _with_steps(_with_config_files([python, "scripts/evaluate_decision_outcomes.py"], options), options.steps)
+            cmd.extend(["--sumo-binary", options.sumo_binary])
+            if options.no_actuation:
+                cmd.append("--no-actuation")
+            return cmd
+        if kind == "tsp-demonstrator":
+            cmd = _with_steps(_with_config_files([python, "scripts/run_tsp_demonstrator.py"], options), options.steps)
             cmd.extend(["--sumo-binary", options.sumo_binary])
             if options.no_actuation:
                 cmd.append("--no-actuation")

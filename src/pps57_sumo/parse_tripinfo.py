@@ -7,7 +7,10 @@ import json
 from pathlib import Path
 from statistics import mean
 # M4: defusedxml em vez do stdlib — tripinfo vem de simulações externas.
-from defusedxml import ElementTree as ET  # type: ignore[import-untyped]
+try:
+    from defusedxml import ElementTree as ET  # type: ignore[import-untyped]
+except ImportError:  # pragma: no cover - exercised in minimal CI images.
+    from xml.etree import ElementTree as ET  # type: ignore[no-redef]
 
 
 def _num(value: str | None) -> float | None:
@@ -24,27 +27,41 @@ def _mean(values: list[float | None]) -> float | None:
     return round(mean(cleaned), 3) if cleaned else None
 
 
+def _percentile(values: list[float | None], percentile: float) -> float | None:
+    cleaned = sorted(v for v in values if v is not None)
+    if not cleaned:
+        return None
+    index = min(len(cleaned) - 1, max(0, round((len(cleaned) - 1) * percentile)))
+    return round(cleaned[index], 3)
+
+
 def parse_tripinfo(path: Path) -> dict:
     tree = ET.parse(path)
     rows = []
     for node in tree.getroot().iter("tripinfo"):
         vehicle_id = node.attrib.get("id", "")
         vehicle_type = node.attrib.get("vType", "")
-        is_bus = vehicle_id.startswith("bus_") or vehicle_type == "bus"
+        lowered = " ".join([vehicle_id, vehicle_type]).lower()
+        is_bus = vehicle_id.startswith("bus_") or "bus" in lowered or "stcp" in lowered
+        is_emergency = "emergency" in lowered or vehicle_id.startswith("ev_")
+        is_priority = is_bus or is_emergency
         rows.append({
             "id": vehicle_id,
             "vType": vehicle_type,
             "is_bus": is_bus,
+            "is_emergency": is_emergency,
+            "is_priority": is_priority,
             "duration": _num(node.attrib.get("duration")),
             "waitingTime": _num(node.attrib.get("waitingTime")),
             "timeLoss": _num(node.attrib.get("timeLoss")),
             "departDelay": _num(node.attrib.get("departDelay")),
+            "waitingCount": _num(node.attrib.get("waitingCount")),
         })
 
-    def group(is_bus: bool | None) -> list[dict]:
-        if is_bus is None:
+    def group(field: str | None, expected: bool | None = None) -> list[dict]:
+        if field is None:
             return rows
-        return [r for r in rows if r["is_bus"] == is_bus]
+        return [r for r in rows if r[field] == expected]
 
     def summarize(items: list[dict]) -> dict:
         return {
@@ -53,13 +70,18 @@ def parse_tripinfo(path: Path) -> dict:
             "mean_waiting_time_s": _mean([r["waitingTime"] for r in items]),
             "mean_time_loss_s": _mean([r["timeLoss"] for r in items]),
             "mean_depart_delay_s": _mean([r["departDelay"] for r in items]),
+            "p95_time_loss_s": _percentile([r["timeLoss"] for r in items], 0.95),
+            "mean_stop_count": _mean([r["waitingCount"] for r in items]),
         }
 
     return {
         "source": str(path),
         "all_vehicles": summarize(group(None)),
-        "buses": summarize(group(True)),
-        "general_traffic": summarize(group(False)),
+        "buses": summarize(group("is_bus", True)),
+        "emergency_vehicles": summarize(group("is_emergency", True)),
+        "priority_vehicles": summarize(group("is_priority", True)),
+        "general_traffic": summarize(group("is_priority", False)),
+        "non_priority_vehicles": summarize(group("is_priority", False)),
     }
 
 

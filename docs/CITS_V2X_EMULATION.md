@@ -44,29 +44,6 @@ scripts/run_cits_emulation.py
 tests/test_cits_emulation.py
 ```
 
-## Como executar sem SUMO
-
-O modo `dry-run` valida a camada C-ITS sem arrancar a simulação SUMO:
-
-```bash
-make cits-dryrun
-```
-
-ou:
-
-```bash
-python scripts/run_cits_emulation.py --mode dry-run --steps 60
-```
-
-Este modo gera:
-
-```text
-outputs/cits_messages.jsonl
-outputs/cits_mapem_snapshot.json
-outputs/cits_spatem_snapshot.json
-reports/cits_emulation_summary.json
-```
-
 ## Como executar com SUMO/TraCI
 
 Depois de instalar SUMO e compilar a rede:
@@ -127,15 +104,14 @@ Isto é deliberado: a RSU ainda não altera semáforos. A atuação semafórica 
 - Não há ainda codificação C-ITS ASN.1 real.
 - Não há ainda comunicação rádio ITS-G5/C-V2X real.
 - Não há ainda atuação semafórica, apenas emulação de pedidos e respostas.
-- O cálculo de atraso usa `demo_force_bus_delay_s` no modo inicial, para garantir geração de pedidos em ambiente de desenvolvimento.
 - A leitura de estado semafórico via TraCI só funciona se a rede estiver compilada e SUMO estiver instalado.
 
 ## Critérios de aceitação do C-ITS/V2X emulation
 
 - O sistema gera `MAPEM_like` para as 7 interseções.
-- O sistema gera `SPATEM_like` em modo dry-run e SUMO.
+- O sistema gera `SPATEM_like` a partir do estado SUMO/TraCI.
 - A OBU gera `SREM_like` quando um autocarro elegível entra na janela de pedido.
 - A RSU gera `SSEM_like` com aceitação ou rejeição justificada.
 - Todas as mensagens ficam registadas em JSONL.
 - Existe relatório resumido de mensagens.
-- Existem testes unitários para broker, mensagens, OBU, RSU e dry-run.
+- Existem testes unitários para broker, mensagens, OBU e RSU.

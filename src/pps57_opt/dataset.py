@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Synthetic offline scenarios for TSP policy optimization and RL training."""
+"""Unit-test fixture scenarios for TSP policy optimization and RL training.
+
+Runtime optimization/training loads event-derived scenarios from SUMO/TraCI logs.
+These fixtures are injected explicitly by tests and are not a production data
+source.
+"""
 from __future__ import annotations
 
 from typing import List
@@ -16,7 +21,7 @@ def build_offline_scenarios(config: CITSConfig) -> List[OfflineScenario]:
     return [
         OfflineScenario(
             scenario_id="OPT_GREEN_EXTENSION_SHORT_GREEN",
-            description="Delayed bus reaches the stop line near the end of the corridor green.",
+            description="Delayed public-transport vehicle reaches the stop line near the end of the priority movement green.",
             expected_case="green_extension",
             sim_time_s=100.0,
             request=_request(intersections["I2"], edge_id="I1_I2", lane_id="I1_I2_0", eta=16.0, distance=160.0),
@@ -110,6 +115,28 @@ def build_offline_scenarios(config: CITSConfig) -> List[OfflineScenario]:
             signal_state=_state(intersections["I2"], phase=0, ryg="GGrr", next_switch=130.0, spent=10.0),
             initial_consecutive_interventions_by_tls={"I2": 2},
         ),
+        OfflineScenario(
+            scenario_id="OPT_HIGH_TRAFFIC_PRESSURE_REEVALUATE",
+            description="Baseline would extend green, but high conflicting traffic pressure makes reevaluation preferable.",
+            expected_case="traffic_pressure_reevaluate",
+            sim_time_s=100.0,
+            request=_request(
+                intersections["I5"],
+                edge_id="I4_I5",
+                lane_id="I4_I5_0",
+                eta=18.0,
+                distance=180.0,
+                delay=90.0,
+            ),
+            signal_state=_state(intersections["I5"], phase=0, ryg="GGrr", next_switch=102.0, spent=33.0),
+            active_request_count=3,
+            queue_vehicle_count=14,
+            halted_vehicle_count=10,
+            mean_speed_mps=1.2,
+            waiting_time_s=180.0,
+            occupancy=0.82,
+            spillback_risk=True,
+        ),
     ]
 
 
@@ -125,6 +152,10 @@ def _request(
     maneuver: str = RequestedManeuver.GREEN_EXTENSION.value,
     priority: str = PriorityLevel.PUBLIC_TRANSPORT_HIGH_DELAY.value,
 ) -> SREMLike:
+    movement = next(
+        (item for item in intersection.priority_movements if edge_id in item.approach_edges),
+        None,
+    )
     return SREMLike(
         source_id=f"OBU_bus_{intersection.tls_id}",
         destination_id=intersection.rsu_id,
@@ -138,6 +169,8 @@ def _request(
         rsu_id=intersection.rsu_id,
         current_edge_id=edge_id,
         current_lane_id=lane_id,
+        priority_movement_id=movement.movement_id if movement is not None else "",
+        target_signal_group_id=movement.target_signal_group_id if movement is not None else "",
         speed_mps=max(distance / max(eta, 0.1), 0.1),
         distance_to_stopline_m=distance,
         eta_to_stopline_s=eta,

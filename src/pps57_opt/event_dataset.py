@@ -207,6 +207,8 @@ def _srem_from_payload(payload: Dict[str, Any]) -> SREMLike:
         rsu_id=str(payload["rsu_id"]),
         current_edge_id=str(payload["current_edge_id"]),
         current_lane_id=str(payload["current_lane_id"]),
+        priority_movement_id=str(payload.get("priority_movement_id", "")),
+        target_signal_group_id=str(payload.get("target_signal_group_id", "")),
         speed_mps=_float(payload["speed_mps"]),
         distance_to_stopline_m=_float(payload["distance_to_stopline_m"]),
         eta_to_stopline_s=_float(payload["eta_to_stopline_s"]),

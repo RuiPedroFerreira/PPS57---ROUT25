@@ -6,7 +6,7 @@ alignment_level: topological_proxy_realistic
 calibration_status:
   network_geometry: proxy_not_calibrated
   public_transport: proxy_lines_based_on_STCP_line_catalogue
-  traffic_demand: synthetic_am_peak
+  traffic_demand: sumo_am_peak_from_config
   signal_plans: generated_by_netconvert_until_real_controller_data_available
 
 required_real_inputs:

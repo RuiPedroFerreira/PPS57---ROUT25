@@ -35,7 +35,11 @@ def build_mapem_messages(config: CITSConfig, sim_time_s: float = 0.0) -> List[MA
                 approach_id=f"{intersection.intersection_id}:{edge_id}",
                 edge_id=edge_id,
                 direction=direction_for_edge(edge_id),
-                is_priority_corridor=edge_id in intersection.main_corridor_edges,
+                priority_movement_ids=[
+                    movement.movement_id
+                    for movement in intersection.priority_movements
+                    if edge_id in movement.approach_edges
+                ],
                 lane_ids=[f"{edge_id}_0"],
             )
             for edge_id in intersection.controlled_approach_edges
@@ -69,25 +73,3 @@ def build_spatem_message_from_state(state: SignalState) -> SPATEMLike:
         spent_duration_s=state.spent_duration_s,
         controlled_lanes=state.controlled_lanes,
     )
-
-
-def build_static_spatem_messages(config: CITSConfig, sim_time_s: float = 0.0) -> List[SPATEMLike]:
-    """SPATEM-like sem SUMO ativo, útil para dry-run e validação estática."""
-    messages: List[SPATEMLike] = []
-    for intersection in config.intersections:
-        messages.append(
-            SPATEMLike(
-                source_id=intersection.rsu_id,
-                destination_id="BROADCAST",
-                timestamp_s=sim_time_s,
-                intersection_id=intersection.intersection_id,
-                tls_id=intersection.tls_id,
-                current_phase_index=0,
-                current_program_id="static_dry_run",
-                red_yellow_green_state="GGrr",
-                next_switch_s=sim_time_s + 35,
-                spent_duration_s=0,
-                controlled_lanes=[f"{edge}_0" for edge in intersection.controlled_approach_edges],
-            )
-        )
-    return messages

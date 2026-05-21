@@ -7,9 +7,8 @@ import json
 from typing import Dict, Iterable, List, Optional
 
 from pps57_cits.config import CITSConfig
-from pps57_cits.models import SignalState
-from pps57_cits.util import optional_int as _optional_int
 from pps57_tsp.config import TSPConfig
+from pps57_tsp.action_planner import decision_for_action
 from pps57_tsp.engine import TSPDecisionEngine
 from pps57_tsp.models import DecisionStatus, TSPAction, TSPDecision
 from pps57_tsp.safety import TSPSafetyLayer
@@ -79,7 +78,7 @@ class OfflineOptimizationController:
 
         candidates = [baseline_candidate]
         for action in self.optimization_config.offline_training.get("candidate_actions", []):
-            decision = self._candidate_decision(action, baseline, scenario.signal_state)
+            decision = self._candidate_decision(action, baseline)
             candidates.append(
                 self._evaluate_candidate(
                     scenario,
@@ -89,36 +88,13 @@ class OfflineOptimizationController:
             )
         return candidates
 
-    def _candidate_decision(self, action: str, baseline: TSPDecision, signal_state: SignalState) -> TSPDecision:
-        policy = self.tsp_config.decision_policy
-        mapping = self.tsp_config.phase_mapping_for_tls(baseline.tls_id)
-        target_phase = _optional_int(mapping.get("corridor_green_phase_index"))
-
-        if action == TSPAction.GREEN_EXTENSION.value:
-            extension_s = baseline.extension_s if baseline.extension_s > 0 else float(policy.get("green_extension_default_s", 8))
-            return baseline.copy_with(
-                action=action,
-                status=DecisionStatus.PROPOSED.value,
-                reason="offline_candidate_green_extension",
-                extension_s=extension_s,
-                phase_duration_s=None,
-                target_phase_index=None,
-                notes=["Offline policy candidate: green extension."],
-            )
-
-        if action == TSPAction.EARLY_GREEN.value:
-            return baseline.copy_with(
-                action=action,
-                status=DecisionStatus.PROPOSED.value,
-                reason="offline_candidate_early_green",
-                extension_s=0.0,
-                phase_duration_s=float(policy.get("red_truncation_to_s", 2)),
-                target_phase_index=target_phase,
-                notes=["Offline policy candidate: early green."],
-            )
-
+    def _candidate_decision(self, action: str, baseline: TSPDecision) -> TSPDecision:
         if action == TSPAction.NO_ACTION.value:
             reason = "offline_candidate_no_action"
+        elif action == TSPAction.GREEN_EXTENSION.value:
+            reason = "offline_candidate_green_extension"
+        elif action == TSPAction.EARLY_GREEN.value:
+            reason = "offline_candidate_early_green"
         elif action == TSPAction.REEVALUATE_NEXT_CYCLE.value:
             reason = "offline_candidate_reevaluate_next_cycle"
         elif action == TSPAction.REJECT.value:
@@ -126,13 +102,11 @@ class OfflineOptimizationController:
         else:
             reason = f"offline_candidate_unsupported:{action}"
 
-        return baseline.copy_with(
+        return decision_for_action(
+            self.tsp_config,
             action=action,
-            status=DecisionStatus.PROPOSED.value,
+            baseline=baseline,
             reason=reason,
-            extension_s=0.0,
-            phase_duration_s=None,
-            target_phase_index=None,
             notes=[f"Offline policy candidate: {action}."],
         )
 
@@ -208,10 +182,10 @@ class OfflineOptimizationController:
             return benefit - truncation * traffic_penalty - 2.0
 
         if decision.action == TSPAction.NO_ACTION.value:
-            corridor_phase = self._corridor_phase(decision.tls_id)
+            target_phase = self._target_phase(decision)
             enough_green = (
-                corridor_phase is not None
-                and scenario.signal_state.current_phase_index == corridor_phase
+                target_phase is not None
+                and scenario.signal_state.current_phase_index == target_phase
                 and remaining_s >= required_green_s
             )
             return benefit + 5.0 if enough_green else -benefit * 0.8
@@ -229,9 +203,13 @@ class OfflineOptimizationController:
 
         return -50.0
 
-    def _corridor_phase(self, tls_id: str) -> int | None:
-        mapping = self.tsp_config.phase_mapping_for_tls(tls_id)
-        return _optional_int(mapping.get("corridor_green_phase_index"))
+    def _target_phase(self, decision: TSPDecision) -> int | None:
+        mapping = self.tsp_config.phase_mapping_for_movement(decision.priority_movement_id, decision.tls_id)
+        raw = mapping.get("target_phase_index")
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return None
 
     def _state_bucket(self, scenario: OfflineScenario) -> str:
         return state_bucket_for_context(

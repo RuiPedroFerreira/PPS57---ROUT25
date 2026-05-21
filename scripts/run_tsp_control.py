@@ -21,13 +21,17 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="TSP Decision Engine + Safety Layer.")
     parser.add_argument("--config", default="configs/cits_config.json", help="Configuração C-ITS base.")
     parser.add_argument("--tsp-config", default="configs/tsp_config.json", help="Configuração do motor TSP.")
-    parser.add_argument("--mode", choices=["dry-run", "sumo"], default="dry-run", help="Modo de execução.")
+    parser.add_argument("--mode", choices=["sumo"], default="sumo", help="Modo de execução. Apenas SUMO/TraCI é suportado.")
     parser.add_argument("--steps", type=int, default=None, help="Número máximo de passos.")
     parser.add_argument("--sumo-binary", default="sumo", help="Binário SUMO para TraCI.")
     parser.add_argument("--gui", action="store_true", help="Usa sumo-gui em vez de sumo.")
     parser.add_argument("--no-actuation", action="store_true", help="No modo SUMO, calcula decisões mas não aplica comandos TraCI.")
-    parser.add_argument("--policy-mode", choices=["baseline", "optimized"], default="baseline", help="Runtime policy mode.")
-    parser.add_argument("--policy-report", default=None, help="Path to exported runtime policy report.")
+    parser.add_argument("--policy-mode", choices=["baseline", "optimized", "rl"], default="baseline", help="Runtime policy mode.")
+    parser.add_argument(
+        "--policy-report",
+        default=None,
+        help="Path to exported runtime policy report. Defaults to reports/policy_report.json for optimized and reports/tabular_q_policy_report.json for rl.",
+    )
     return parser.parse_args()
 
 
@@ -43,15 +47,12 @@ def main() -> int:
     )
 
     try:
-        if args.mode == "dry-run":
-            summary = controller.run_dry_run(steps=args.steps)
-        else:
-            summary = controller.run_with_sumo(
-                steps=args.steps,
-                sumo_binary=args.sumo_binary,
-                gui=args.gui,
-                apply_actuation=not args.no_actuation,
-            )
+        summary = controller.run_with_sumo(
+            steps=args.steps,
+            sumo_binary=args.sumo_binary,
+            gui=args.gui,
+            apply_actuation=not args.no_actuation,
+        )
     except TraciUnavailableError as exc:
         print(f"Erro TraCI/SUMO: {exc}", file=sys.stderr)
         return 2

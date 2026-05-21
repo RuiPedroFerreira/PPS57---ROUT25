@@ -22,6 +22,7 @@ from pps57_tsp.controller import TSPControlController
 from pps57_tsp.engine import TSPDecisionEngine
 from pps57_tsp.models import DecisionStatus, TSPAction
 from pps57_tsp.safety import TSPSafetyLayer
+from pps57_tsp.signal_control import SimulatedControllerAdapter, build_controller_contracts
 
 
 class Package4TSPTestCase(unittest.TestCase):
@@ -45,6 +46,8 @@ class Package4TSPTestCase(unittest.TestCase):
             rsu_id="RSU_BOAVISTA_02",
             current_edge_id="I1_I2",
             current_lane_id="I1_I2_0",
+            priority_movement_id="I2_westbound_public_transport",
+            target_signal_group_id="I2_priority_westbound",
             speed_mps=10.0,
             distance_to_stopline_m=160.0,
             eta_to_stopline_s=16.0,
@@ -115,6 +118,8 @@ class Package4TSPTestCase(unittest.TestCase):
             rsu_id="RSU_BOAVISTA_06",
             current_edge_id="I7_I6",
             current_lane_id="I7_I6_0",
+            priority_movement_id="I6_eastbound_public_transport",
+            target_signal_group_id="I6_priority_eastbound",
             requested_maneuver=RequestedManeuver.EARLY_GREEN.value,
         )
         state = SignalState(
@@ -137,6 +142,8 @@ class Package4TSPTestCase(unittest.TestCase):
         request = self._request(
             current_edge_id="I3_I2",
             current_lane_id="I3_I2_0",
+            priority_movement_id="I2_eastbound_public_transport",
+            target_signal_group_id="I2_priority_eastbound",
             eta_to_stopline_s=9.0,
             requested_maneuver=RequestedManeuver.EARLY_GREEN.value,
         )
@@ -164,6 +171,8 @@ class Package4TSPTestCase(unittest.TestCase):
             rsu_id="RSU_BOAVISTA_06",
             current_edge_id="I7_I6",
             current_lane_id="I7_I6_0",
+            priority_movement_id="I6_eastbound_public_transport",
+            target_signal_group_id="I6_priority_eastbound",
             requested_maneuver=RequestedManeuver.EARLY_GREEN.value,
         )
         state = SignalState(
@@ -191,29 +200,26 @@ class Package4TSPTestCase(unittest.TestCase):
         self.assertEqual(result.reason, "current_phase_is_yellow_wait_for_next_cycle")
 
     def test_safety_yellow_check_is_per_movement_not_global(self) -> None:
-        # L1: amarelo numa aproximação SECUNDÁRIA com o corredor verde estável
-        # não deve bloquear a extensão do corredor. Posições 0,1 = corredor
-        # (I1_I2_0, I3_I2_0); posições 2,3 = secundário (N_I2_I2_0, S_I2_I2_0).
+        # L1: amarelo numa aproximação secundária não deve bloquear a extensão
+        # quando o movimento prioritário alvo está em verde estável.
         safety = TSPSafetyLayer(self.cits, self.tsp)
         decision = self.engine.decide(self._request(), self._state(), sim_time_s=100.0)
-        state = self._state(red_yellow_green_state="GGyy")  # corredor verde, secundário amarelo
+        state = self._state(red_yellow_green_state="GGyy")
         result = safety.validate(decision, state, sim_time_s=100.0)
         self.assertTrue(result.approved, msg=f"reason={result.reason}")
 
-    def test_safety_blocks_green_extension_outside_corridor_green_phase(self) -> None:
+    def test_safety_blocks_green_extension_outside_priority_movement_green_phase(self) -> None:
         safety = TSPSafetyLayer(self.cits, self.tsp)
         decision = self.engine.decide(self._request(), self._state(), sim_time_s=100.0)
         state = self._state(current_phase_index=2, red_yellow_green_state="rrGG")
         result = safety.validate(decision, state, sim_time_s=100.0)
         self.assertFalse(result.approved)
-        self.assertEqual(result.reason, "green_extension_requires_corridor_green_phase")
+        self.assertEqual(result.reason, "green_extension_requires_priority_movement_green_phase")
 
     def test_safety_blocks_early_green_when_phase_sequence_does_not_reach_target(self) -> None:
         raw = deepcopy(self.tsp.raw)
-        raw["phase_mapping"]["I6"] = {
-            "corridor_green_phase_index": 0,
-            "minor_green_phase_index": 2,
-            "phase_sequence": [0, 2, 1, 3],
+        raw["controller_contracts"]["controllers"] = {
+            "I6": {"phase_sequence": [2, 3, 1]}
         }
         tsp = TSPConfig(root=self.tsp.root, raw=raw)
         engine = TSPDecisionEngine(self.cits, tsp)
@@ -225,6 +231,8 @@ class Package4TSPTestCase(unittest.TestCase):
             rsu_id="RSU_BOAVISTA_06",
             current_edge_id="I7_I6",
             current_lane_id="I7_I6_0",
+            priority_movement_id="I6_eastbound_public_transport",
+            target_signal_group_id="I6_priority_eastbound",
             requested_maneuver=RequestedManeuver.EARLY_GREEN.value,
         )
         state = SignalState(
@@ -242,7 +250,7 @@ class Package4TSPTestCase(unittest.TestCase):
         decision = engine.decide(request, state, sim_time_s=100.0)
         result = safety.validate(decision, state, sim_time_s=100.0)
         self.assertFalse(result.approved)
-        self.assertEqual(result.reason, "early_green_target_phase_not_next_after_transition")
+        self.assertEqual(result.reason, "early_green_phase_not_in_configured_sequence")
 
     def test_safety_fails_closed_when_remaining_phase_time_unknown(self) -> None:
         # C2: sem next_switch não é possível provar max_total_green -> bloquear.
@@ -266,10 +274,8 @@ class Package4TSPTestCase(unittest.TestCase):
     def test_safety_blocks_early_green_that_would_skip_clearance_phase(self) -> None:
         # C1: never_skip_yellow_or_all_red é agora efetivamente verificado.
         raw = deepcopy(self.tsp.raw)
-        raw["phase_mapping"]["I6"] = {
-            "corridor_green_phase_index": 0,
-            "minor_green_phase_index": 2,
-            "phase_sequence": [2, 0, 1, 3],
+        raw["controller_contracts"]["controllers"] = {
+            "I6": {"phase_sequence": [2, 0, 1, 3]}
         }
         tsp = TSPConfig(root=self.tsp.root, raw=raw)
         engine = TSPDecisionEngine(self.cits, tsp)
@@ -281,6 +287,8 @@ class Package4TSPTestCase(unittest.TestCase):
             rsu_id="RSU_BOAVISTA_06",
             current_edge_id="I7_I6",
             current_lane_id="I7_I6_0",
+            priority_movement_id="I6_eastbound_public_transport",
+            target_signal_group_id="I6_priority_eastbound",
             requested_maneuver=RequestedManeuver.EARLY_GREEN.value,
         )
         state = SignalState(
@@ -425,7 +433,7 @@ class Package4TSPTestCase(unittest.TestCase):
 
         class _CleanAdapter:
             def read_program_phase_count(self, tls_id: str) -> int:
-                return 4
+                return 6
 
             def read_program_type(self, tls_id: str) -> str:
                 return "0"
@@ -434,8 +442,11 @@ class Package4TSPTestCase(unittest.TestCase):
                 return True
 
             def read_program_phase_states(self, tls_id: str):
-                # 0=corridor green, 1=yellow clearance, 2=minor green, 3=yellow clearance
-                return ["GGgrrrr", "yyyrrrr", "rrrGGgr", "rrryyyy"]
+                # 0=priority movement green, 1=yellow clearance, 2=secondary green, 3=yellow clearance
+                return ["GGgrrrr", "yyyrrrr", "rrrrrrr", "rrrGGgr", "rrryyyy", "rrrrrrr"]
+
+            def read_program_phase_durations(self, tls_id: str):
+                return [42, 3, 1, 42, 3, 1]
 
         class _BadAdapter:
             def read_program_phase_count(self, tls_id: str):
@@ -469,7 +480,7 @@ class Package4TSPTestCase(unittest.TestCase):
 
         class _NoClearanceAdapter:
             def read_program_phase_count(self, tls_id: str) -> int:
-                return 4
+                return 6
 
             def read_program_type(self, tls_id: str) -> str:
                 return "0"
@@ -479,11 +490,60 @@ class Package4TSPTestCase(unittest.TestCase):
 
             def read_program_phase_states(self, tls_id: str):
                 # Fase 1 (intermédia) ainda tem 'G' — green->green sem clearance.
-                return ["GGgrrrr", "GGgrrrr", "rrrGGgr", "rrryyyy"]
+                return ["GGgrrrr", "GGgrrrr", "rrrrrrr", "rrrGGgr", "rrryyyy", "rrrrrrr"]
+
+            def read_program_phase_durations(self, tls_id: str):
+                return [42, 3, 1, 42, 3, 1]
 
         problems = controller._verify_signal_programs(_NoClearanceAdapter())
         self.assertTrue(problems)
         self.assertTrue(any("fase 1" in p and "clearance" in p for p in problems))
+
+    def test_controller_contract_requires_conflict_matrix(self) -> None:
+        raw = deepcopy(self.tsp.raw)
+        raw["controller_contracts"]["controllers"]["I2"]["signal_groups"]["I2_priority_westbound"]["conflicts_with"] = []
+        controller = TSPControlController(self.cits, TSPConfig(root=self.tsp.root, raw=raw))
+
+        class _CleanAdapter:
+            def read_program_phase_count(self, tls_id: str) -> int:
+                return 6
+
+            def read_program_type(self, tls_id: str) -> str:
+                return "0"
+
+            def read_program_is_fixed_time(self, tls_id: str) -> bool:
+                return True
+
+            def read_program_phase_states(self, tls_id: str):
+                return ["GGgrrrr", "yyyrrrr", "rrrrrrr", "rrrGGgr", "rrryyyy", "rrrrrrr"]
+
+            def read_program_phase_durations(self, tls_id: str):
+                return [42, 3, 1, 42, 3, 1]
+
+        problems = controller._verify_signal_programs(_CleanAdapter())
+        self.assertTrue(any("sem matriz de conflitos" in item for item in problems))
+
+    def test_controller_contract_requires_signal_group_green_phase(self) -> None:
+        controller = TSPControlController(self.cits, self.tsp)
+
+        class _NoGreenAdapter:
+            def read_program_phase_count(self, tls_id: str) -> int:
+                return 6
+
+            def read_program_type(self, tls_id: str) -> str:
+                return "0"
+
+            def read_program_is_fixed_time(self, tls_id: str) -> bool:
+                return True
+
+            def read_program_phase_states(self, tls_id: str):
+                return ["rrrrrrr", "yyyrrrr", "rrrrrrr", "rrrGGgr", "rrryyyy", "rrrrrrr"]
+
+            def read_program_phase_durations(self, tls_id: str):
+                return [42, 3, 1, 42, 3, 1]
+
+        problems = controller._verify_signal_programs(_NoGreenAdapter())
+        self.assertTrue(any("sem verde" in item for item in problems))
 
     def test_traci_adapter_selects_current_program_logic_for_verification(self) -> None:
         from types import SimpleNamespace
@@ -516,6 +576,8 @@ class Package4TSPTestCase(unittest.TestCase):
             rsu_id="RSU_BOAVISTA_06",
             current_edge_id="I7_I6",
             current_lane_id="I7_I6_0",
+            priority_movement_id="I6_eastbound_public_transport",
+            target_signal_group_id="I6_priority_eastbound",
             requested_maneuver=RequestedManeuver.EARLY_GREEN.value,
         )
         state = SignalState(
@@ -548,6 +610,8 @@ class Package4TSPTestCase(unittest.TestCase):
             rsu_id="RSU_BOAVISTA_06",
             current_edge_id="I7_I6",
             current_lane_id="I7_I6_0",
+            priority_movement_id="I6_eastbound_public_transport",
+            target_signal_group_id="I6_priority_eastbound",
             requested_maneuver=RequestedManeuver.EARLY_GREEN.value,
         )
         state = SignalState(
@@ -585,6 +649,87 @@ class Package4TSPTestCase(unittest.TestCase):
         self.assertTrue(result.no_actuation)
         self.assertEqual(result.reason, "sumo_no_actuation_flag_would_apply")
         self.assertEqual(result.severity, "info")
+
+    def test_simulated_controller_rejects_manual_mode_before_traci(self) -> None:
+        class _BaseAdapter:
+            called = False
+
+            def set_phase_duration(self, tls_id: str, duration_s: float) -> None:
+                self.called = True
+
+        base = _BaseAdapter()
+        simulated = SimulatedControllerAdapter(
+            base=base,  # type: ignore[arg-type]
+            contracts=build_controller_contracts(self.cits, self.tsp),
+            config={"default_mode": "manual"},
+        )
+        decision = self.engine.decide(self._request(), self._state(), sim_time_s=100.0)
+        safe = decision.copy_with(status=DecisionStatus.APPROVED.value)
+        result = TraciTSPActuator(adapter=simulated, apply_actuation=True).apply(safe, self._state(), sim_time_s=100.0)
+        self.assertFalse(result.applied)
+        self.assertFalse(base.called)
+        self.assertEqual(result.reason, "controller_locked_manual_mode")
+        self.assertFalse(result.controller_response["accepted"])
+
+    def test_simulated_controller_accepts_and_logs_effective_time(self) -> None:
+        class _BaseAdapter:
+            duration_s = None
+
+            def set_phase_duration(self, tls_id: str, duration_s: float) -> None:
+                self.duration_s = duration_s
+
+        base = _BaseAdapter()
+        simulated = SimulatedControllerAdapter(
+            base=base,  # type: ignore[arg-type]
+            contracts=build_controller_contracts(self.cits, self.tsp),
+            config={"default_mode": "automatic", "command_latency_s": 0.5, "pending_lock_s": 0.5},
+        )
+        decision = self.engine.decide(self._request(), self._state(), sim_time_s=100.0)
+        safe = decision.copy_with(status=DecisionStatus.APPROVED.value)
+        result = TraciTSPActuator(adapter=simulated, apply_actuation=True).apply(safe, self._state(), sim_time_s=100.0)
+        self.assertTrue(result.applied)
+        self.assertIsNotNone(base.duration_s)
+        self.assertEqual(result.controller_response["reason"], "controller_command_accepted")
+        self.assertEqual(result.controller_response["effective_at_s"], 100.5)
+        self.assertEqual(result.parameters["controller_adapter"], "simulated_real_controller")
+
+    def test_simulated_controller_rejects_active_pedestrian_call(self) -> None:
+        class _BaseAdapter:
+            def set_phase_duration(self, tls_id: str, duration_s: float) -> None:
+                raise AssertionError("TraCI must not be called when controller rejects")
+
+        request = self._request(
+            destination_id="RSU_BOAVISTA_06",
+            intersection_id="I6",
+            tls_id="I6",
+            rsu_id="RSU_BOAVISTA_06",
+            current_edge_id="I7_I6",
+            current_lane_id="I7_I6_0",
+            priority_movement_id="I6_eastbound_public_transport",
+            target_signal_group_id="I6_priority_eastbound",
+            requested_maneuver=RequestedManeuver.EARLY_GREEN.value,
+        )
+        state = SignalState(
+            intersection_id="I6",
+            tls_id="I6",
+            rsu_id="RSU_BOAVISTA_06",
+            timestamp_s=100.0,
+            current_phase_index=2,
+            current_program_id="test",
+            red_yellow_green_state="rrGG",
+            next_switch_s=125.0,
+            spent_duration_s=20.0,
+            controlled_lanes=["I5_I6_0", "I7_I6_0", "N_I6_I6_0", "S_I6_I6_0"],
+        )
+        decision = self.engine.decide(request, state, sim_time_s=100.0).copy_with(status=DecisionStatus.APPROVED.value)
+        simulated = SimulatedControllerAdapter(
+            base=_BaseAdapter(),  # type: ignore[arg-type]
+            contracts=build_controller_contracts(self.cits, self.tsp),
+            config={"default_mode": "automatic", "active_pedestrian_calls_by_tls": ["I6"]},
+        )
+        result = TraciTSPActuator(adapter=simulated, apply_actuation=True).apply(decision, state, sim_time_s=100.0)
+        self.assertFalse(result.applied)
+        self.assertEqual(result.reason, "controller_rejected_pedestrian_call_active")
 
     def test_actuation_error_sets_severity_error_and_forces_cooldown(self) -> None:
         # Auditoria deve detectar falhas via severity=error, e o TLS num estado

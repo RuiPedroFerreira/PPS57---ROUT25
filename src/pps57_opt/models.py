@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from pps57_tsp.models import TSPDecision
 
@@ -21,6 +21,14 @@ class OfflineScenario:
     # Layer (cooldown, consecutive_interventions). Cada chave mapeia tls_id -> valor.
     initial_last_intervention_time_by_tls: Dict[str, float] = field(default_factory=dict)
     initial_consecutive_interventions_by_tls: Dict[str, int] = field(default_factory=dict)
+    active_request_count: int = 1
+    queue_vehicle_count: int = 0
+    halted_vehicle_count: int = 0
+    mean_speed_mps: float = 0.0
+    waiting_time_s: float = 0.0
+    occupancy: float = 0.0
+    spillback_risk: bool = False
+    seconds_since_last_intervention_s: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -32,6 +40,14 @@ class OfflineScenario:
             "signal_state": asdict(self.signal_state),
             "initial_last_intervention_time_by_tls": dict(self.initial_last_intervention_time_by_tls),
             "initial_consecutive_interventions_by_tls": dict(self.initial_consecutive_interventions_by_tls),
+            "active_request_count": self.active_request_count,
+            "queue_vehicle_count": self.queue_vehicle_count,
+            "halted_vehicle_count": self.halted_vehicle_count,
+            "mean_speed_mps": self.mean_speed_mps,
+            "waiting_time_s": self.waiting_time_s,
+            "occupancy": self.occupancy,
+            "spillback_risk": self.spillback_risk,
+            "seconds_since_last_intervention_s": self.seconds_since_last_intervention_s,
         }
 
 

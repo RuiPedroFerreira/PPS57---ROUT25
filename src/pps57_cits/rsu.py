@@ -163,6 +163,8 @@ class RSUAgent:
 
     def _priority_condition_met(self, request: SREMLike) -> bool:
         policy = self.config.obu_policy
+        if bool(policy.get("allow_nominal_priority_requests", False)):
+            return True
         return (
             request.schedule_delay_s >= float(policy.get("delay_threshold_s", 60))
             or abs(request.headway_deviation_s) >= float(policy.get("headway_deviation_threshold_s", 120))

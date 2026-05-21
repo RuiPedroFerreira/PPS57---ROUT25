@@ -19,8 +19,8 @@ from pps57_cits.traci_adapter import TraciUnavailableError  # noqa: E402
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="C-ITS/V2X emulation for traffic-signal priority.")
     parser.add_argument("--config", default="configs/cits_config.json", help="Ficheiro JSON de configuração C-ITS.")
-    parser.add_argument("--mode", choices=["dry-run", "sumo"], default="dry-run", help="Modo de execução.")
-    parser.add_argument("--steps", type=int, default=60, help="Número máximo de passos no modo dry-run ou SUMO.")
+    parser.add_argument("--mode", choices=["sumo"], default="sumo", help="Modo de execução. Apenas SUMO/TraCI é suportado.")
+    parser.add_argument("--steps", type=int, default=60, help="Número máximo de passos no SUMO.")
     parser.add_argument("--sumo-binary", default="sumo", help="Binário SUMO para TraCI.")
     parser.add_argument("--gui", action="store_true", help="Usa sumo-gui em vez de sumo.")
     return parser.parse_args()
@@ -32,10 +32,7 @@ def main() -> int:
     controller = CITSEmulationController(config)
 
     try:
-        if args.mode == "dry-run":
-            summary = controller.run_dry_run(steps=args.steps)
-        else:
-            summary = controller.run_with_sumo(steps=args.steps, sumo_binary=args.sumo_binary, gui=args.gui)
+        summary = controller.run_with_sumo(steps=args.steps, sumo_binary=args.sumo_binary, gui=args.gui)
     except TraciUnavailableError as exc:
         print(f"Erro TraCI/SUMO: {exc}", file=sys.stderr)
         return 2

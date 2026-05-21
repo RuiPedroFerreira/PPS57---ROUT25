@@ -11,7 +11,7 @@ OBU -> SREM-like -> RSU -> SSEM-like
 para um fluxo operacional controlado:
 
 ```text
-OBU -> RSU -> Motor TSP -> Safety Layer -> Atuador TraCI/dry-run
+OBU -> RSU -> Motor TSP -> Safety Layer -> Atuador TraCI
 ```
 
 ## Componentes implementados
@@ -65,12 +65,38 @@ Localização:
 
 ```text
 src/pps57_tsp/actuator.py
+src/pps57_tsp/signal_control.py
 ```
 
-Foram implementados dois atuadores:
+Foi implementado o `TraciTSPActuator`, que aplica comandos seguros via TraCI
+quando o SUMO está ativo. O modo `--no-actuation` continua ligado ao SUMO/TraCI:
+lê dados reais, calcula decisões e regista que a atuação não foi aplicada.
 
-- `DryRunTSPActuator`: não usa TraCI; regista o que seria aplicado.
-- `TraciTSPActuator`: aplica comandos seguros via TraCI quando o SUMO está ativo.
+O atuador usa a fronteira `SignalControlAdapter`. A implementação atual é
+`TraciSignalControlAdapter`, que encapsula SUMO/TraCI. Um controlador real deve
+implementar a mesma fronteira sem alterar o `TSPDecisionEngine`.
+
+Entre o TSP e o TraCI existe também `SimulatedControllerAdapter`, ativado por
+`controller_simulation` em `configs/tsp_config.json`. Esta camada simula
+comportamento típico de controlador real: modo manual/automático, latência,
+comando pendente, intervalo mínimo entre comandos e rejeição determinística por
+pedido pedonal ativo. Quando rejeita, o comando não chega ao TraCI e o log de
+atuação inclui `controller_response`.
+
+Antes de permitir atuação, o controller valida `controller_contracts` em
+`configs/tsp_config.json` contra o programa semafórico lido por TraCI. O contrato
+declara:
+
+- signal groups que servem movimentos prioritários;
+- fases SUMO associadas a cada signal group;
+- matriz de conflitos;
+- fases intergreen;
+- limites por signal group (`min_green_s`, `max_green_s`, `max_extension_s`);
+- se o programa deve ser de tempo fixo.
+
+Além do contrato default, o ficheiro define contratos específicos por TLS em
+`controller_contracts.controllers`, para evitar que a rede dependa de um proxy
+global.
 
 No MVP, o comando principal é:
 
@@ -80,27 +106,10 @@ trafficlight.setPhaseDuration
 
 Isto permite:
 
-- estender a fase corrente quando o corredor já está verde;
+- estender a fase corrente quando o movimento prioritário já está verde;
 - encurtar a fase corrente para antecipar a transição do plano SUMO.
 
 O TSP Safety Layer evita `setRedYellowGreenState` e evita saltos diretos de fase por defeito.
-
-## Como executar sem SUMO
-
-```bash
-make validate
-make test
-make tsp-dryrun
-```
-
-Outputs esperados:
-
-```text
-outputs/cits_messages.jsonl
-outputs/tsp_decisions.jsonl
-outputs/tsp_actuation.jsonl
-reports/tsp_emulation_summary.json
-```
 
 ## Como executar com SUMO/TraCI
 
@@ -117,17 +126,9 @@ Modo SUMO sem aplicar comandos, útil para validação:
 make tsp-sumo-no-actuation
 ```
 
-## Resultado esperado em dry-run
-
-O dry-run força três casos funcionais:
-
-1. `green_extension` em I2: autocarro chega perto do fim do verde.
-2. `early_green` em I6: autocarro chega com o corredor em vermelho e fase conflitante já cumpriu verde mínimo.
-3. `no_action` em I4: o verde existente já é suficiente.
-
 ## Limitações conhecidas
 
 - O mapeamento de fases ainda é proxy e está em `configs/tsp_config.json`.
 - A calibração real depende de planos semafóricos municipais e signal groups reais.
 - O early green é implementado como truncagem de duração da fase corrente; a sequência real de amarelo/all-red depende do programa SUMO existente.
-- O asset ainda não otimiza offsets de corredor; essa etapa fica para Policy Optimization.
+- O asset ainda não otimiza offsets de rede/coordenados; essa etapa fica para Policy Optimization.
