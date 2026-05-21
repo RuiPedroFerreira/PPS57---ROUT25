@@ -2,7 +2,7 @@
 """Modelos internos para decisões TSP, validação de segurança e atuação."""
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from enum import Enum
 import json
 from typing import Any, Dict, List, Optional
@@ -57,10 +57,13 @@ class TSPDecision:
         return self.action in {TSPAction.GREEN_EXTENSION.value, TSPAction.EARLY_GREEN.value}
 
     def copy_with(self, **changes: Any) -> "TSPDecision":
-        payload = self.to_dict()
-        payload.update(changes)
-        # Remove fields that are properties or not constructor compatible.
-        return TSPDecision(**payload)
+        # `dataclasses.replace` preserva tipos (sem o round-trip JSON de
+        # `to_dict()`). `notes` é o único campo mutável: copia-se a lista
+        # quando o chamador não a substitui, para o novo objeto não partilhar
+        # a lista do original (mantém a semântica do antigo asdict deep-copy).
+        if "notes" not in changes:
+            changes["notes"] = list(self.notes)
+        return replace(self, **changes)
 
     def to_dict(self) -> Dict[str, Any]:
         return _normalise(asdict(self))

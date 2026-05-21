@@ -63,18 +63,22 @@ def load_cits_config(path: str | Path, root: Optional[str | Path] = None) -> CIT
     with config_path.open("r", encoding="utf-8") as handle:
         raw = json.load(handle)
 
-    intersections = [
-        IntersectionConfig(
-            intersection_id=item["intersection_id"],
-            tls_id=item["tls_id"],
-            rsu_id=item["rsu_id"],
-            name=item.get("name", item["intersection_id"]),
-            controlled_approach_edges=list(item.get("controlled_approach_edges", [])),
-            main_corridor_edges=list(item.get("main_corridor_edges", [])),
-            priority_movements=dict(item.get("priority_movements", {})),
+    intersections: List[IntersectionConfig] = []
+    for index, item in enumerate(raw.get("intersections", [])):
+        # Erro claro em vez de um KeyError nu vindo do fundo de uma list
+        # comprehension quando um bloco de intersection está malformado.
+        require_keys(item, ("intersection_id", "tls_id", "rsu_id"), f"intersections[{index}]")
+        intersections.append(
+            IntersectionConfig(
+                intersection_id=item["intersection_id"],
+                tls_id=item["tls_id"],
+                rsu_id=item["rsu_id"],
+                name=item.get("name", item["intersection_id"]),
+                controlled_approach_edges=list(item.get("controlled_approach_edges", [])),
+                main_corridor_edges=list(item.get("main_corridor_edges", [])),
+                priority_movements=dict(item.get("priority_movements", {})),
+            )
         )
-        for item in raw.get("intersections", [])
-    ]
 
     edge_to_intersection: Dict[str, IntersectionConfig] = {}
     rsu_to_intersection: Dict[str, IntersectionConfig] = {}

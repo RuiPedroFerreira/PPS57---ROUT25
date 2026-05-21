@@ -15,6 +15,7 @@ from pps57_cits.models import NetworkStateSnapshot, SignalState
 from pps57_cits.obu import OBUEmulator
 from pps57_cits.rsu import build_rsu_agents
 from pps57_cits.traci_adapter import TraciSimulationAdapter, TraciUnavailableError
+from pps57_cits.util import optional_int as _optional_int
 from pps57_opt.policy_runtime import RuntimePolicy
 
 from .actuator import TraciTSPActuator
@@ -412,14 +413,6 @@ class TSPControlController:
             messages = self.broker.consume(rsu_id)
             responses.extend(agent.handle_messages(messages, sim_time_s))
         return responses
-
-def _optional_int(value: object) -> Optional[int]:
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
 
 
 def _network_state_note(state: NetworkStateSnapshot) -> str:

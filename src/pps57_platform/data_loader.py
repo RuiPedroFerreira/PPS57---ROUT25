@@ -300,15 +300,6 @@ def build_aggregates(
     }
 
 
-def read_json(path: Path, default: Any) -> Any:
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return default
-    except json.JSONDecodeError:
-        return default
-
-
 def read_json_with_status(key: str, label: str, path: Path) -> Tuple[Dict[str, Any], ArtifactStatus]:
     if not path.exists():
         return {}, ArtifactStatus(key=key, label=label, path=str(path), exists=False)

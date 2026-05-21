@@ -567,6 +567,15 @@ class Package4TSPTestCase(unittest.TestCase):
         self.assertTrue(result.approved, msg=f"reason={result.reason}")
         self.assertEqual(result.reason, "approved_red_truncation")
 
+    def test_copy_with_does_not_alias_notes_list(self) -> None:
+        # copy_with passou a usar dataclasses.replace; sem a cópia explícita
+        # de `notes`, o objeto copiado partilharia a lista do original.
+        decision = self.engine.decide(self._request(), self._state(), sim_time_s=100.0)
+        clone = decision.copy_with(status=DecisionStatus.APPROVED.value)
+        self.assertIsNot(clone.notes, decision.notes)
+        clone.notes.append("nota só do clone")
+        self.assertNotIn("nota só do clone", decision.notes)
+
     def test_traci_no_actuation_does_not_report_applied(self) -> None:
         decision = self.engine.decide(self._request(), self._state(), sim_time_s=100.0)
         safe = decision.copy_with(status=DecisionStatus.APPROVED.value)

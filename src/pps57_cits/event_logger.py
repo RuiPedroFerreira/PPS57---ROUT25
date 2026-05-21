@@ -95,36 +95,16 @@ class IncrementalCITSSummary:
 
 
 def summarise_messages(messages: List[CITSMessage]) -> Dict[str, object]:
-    by_type: Dict[str, int] = {}
-    acknowledged = 0
-    rejected = 0
-    request_ids = set()
-    vehicle_ids = set()
-    rsu_ids = set()
+    """Resumo batch das mensagens C-ITS.
 
+    É um wrapper fino sobre `IncrementalCITSSummary` para que as duas vias
+    (batch e incremental) não possam divergir — antes eram duas
+    implementações independentes da mesma agregação.
+    """
+    summary = IncrementalCITSSummary()
     for message in messages:
-        by_type[message.message_type] = by_type.get(message.message_type, 0) + 1
-        payload = message.to_dict()
-        if "request_id" in payload:
-            request_ids.add(payload["request_id"])
-        if "vehicle_id" in payload and payload["vehicle_id"]:
-            vehicle_ids.add(payload["vehicle_id"])
-        if "rsu_id" in payload and payload["rsu_id"]:
-            rsu_ids.add(payload["rsu_id"])
-        if payload.get("status") == RequestStatus.ACKNOWLEDGED.value:
-            acknowledged += 1
-        if payload.get("status") == RequestStatus.REJECTED.value:
-            rejected += 1
-
-    return {
-        "total_messages": len(messages),
-        "by_type": by_type,
-        "unique_request_ids": len(request_ids),
-        "unique_vehicle_ids": len(vehicle_ids),
-        "unique_rsu_ids": len(rsu_ids),
-        "acknowledged_messages": acknowledged,
-        "rejected_messages": rejected,
-    }
+        summary.add(message)
+    return summary.to_dict()
 
 
 def write_summary(path: str | Path, messages: List[CITSMessage], extra: Dict[str, object] | None = None) -> Dict[str, object]:

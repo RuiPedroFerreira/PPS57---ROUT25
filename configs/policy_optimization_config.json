@@ -9,7 +9,8 @@
     "policy_report": "reports/policy_report.json",
     "summary_report": "reports/policy_optimization_summary.json",
     "q_table_report": "reports/tabular_q_policy_report.json",
-    "rl_training_summary": "reports/rl_training_summary.json"
+    "rl_training_summary": "reports/rl_training_summary.json",
+    "event_training_dataset": "outputs/event_training_dataset.jsonl"
   },
   "offline_training": {
     "episodes": 1,
@@ -23,8 +24,16 @@
     "state_buckets": {
       "eta_close_s": 10,
       "eta_far_s": 25,
+      "medium_delay_s": 60,
       "high_delay_s": 90,
-      "phase_switch_close_s": 5
+      "phase_switch_close_s": 5,
+      "high_active_requests": 2,
+      "high_queue_vehicle_count": 8,
+      "high_halted_vehicle_count": 8,
+      "low_mean_speed_mps": 2.0,
+      "high_waiting_time_s": 120,
+      "high_occupancy": 0.6,
+      "cooldown_recent_s": 90
     }
   },
   "reward": {
@@ -32,10 +41,10 @@
     "headway_weight": 0.25,
     "proximity_weight": 0.3,
     "general_traffic_penalty_per_second": 0.35,
+    "traffic_pressure_penalty_multiplier": 8.0,
     "reevaluate_penalty": 8.0,
     "reject_penalty": 20.0,
-    "unsafe_candidate_penalty": 1000.0,
-    "baseline_fallback_margin": 0.0
+    "unsafe_candidate_penalty": 1000.0
   },
   "reinforcement_learning": {
     "algorithm": "tabular_q_learning",

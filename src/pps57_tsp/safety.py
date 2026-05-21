@@ -28,6 +28,7 @@ from typing import Dict, Optional
 
 from pps57_cits.config import CITSConfig
 from pps57_cits.models import SignalState
+from pps57_cits.util import optional_int as _optional_int
 
 from .config import TSPConfig
 from .engine import TSPDecisionEngine
@@ -365,15 +366,6 @@ class TSPSafetyLayer:
             safe_decision=safe,
             notes=list(notes or []) + [f"Safety Layer bloqueou decisão: {reason}."],
         )
-
-
-def _optional_int(value: object) -> Optional[int]:
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
 
 
 def _lane_belongs_to_edge_set(lane_id: Optional[str], edges: set[str]) -> bool:

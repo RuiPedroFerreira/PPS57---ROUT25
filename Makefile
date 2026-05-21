@@ -1,4 +1,4 @@
-.PHONY: validate build run gui kpis cits-sumo compare-tsp-rl evaluate-decision-outcomes build-event-training-dataset tsp-sumo tsp-sumo-no-actuation tsp-gui tsp-gui-no-actuation optimize-offline train-rl-policy platform platform-api platform-check dashboard sort-routes test clean
+.PHONY: validate build run gui kpis cits-sumo compare-tsp-rl compare-sumo-kpis evaluate-decision-outcomes build-event-training-dataset tsp-sumo tsp-sumo-no-actuation tsp-gui tsp-gui-no-actuation optimize-offline train-rl-policy platform platform-api platform-check dashboard sort-routes test clean
 
 # Hardening: cada receita corre como `bash -ec`, garantindo `set -e` mesmo
 # em linhas encadeadas e abortando à primeira falha. Sem isto, alguém a
@@ -36,6 +36,13 @@ cits-sumo: build
 
 compare-tsp-rl: build
 	$(PYTHON) scripts/compare_tsp_baseline_rl.py --steps 7200 --train-rl
+
+# Compara dois ficheiros de KPIs SUMO já gerados (parse_tripinfo). Os caminhos
+# são overridable: make compare-sumo-kpis BASELINE_KPIS=... RL_KPIS=...
+BASELINE_KPIS ?= reports/baseline_kpis.json
+RL_KPIS ?= reports/rl_kpis.json
+compare-sumo-kpis:
+	$(PYTHON) scripts/compare_sumo_kpis.py --baseline-kpis $(BASELINE_KPIS) --rl-kpis $(RL_KPIS)
 
 evaluate-decision-outcomes: build
 	$(PYTHON) scripts/evaluate_decision_outcomes.py --steps 7200 --train-rl

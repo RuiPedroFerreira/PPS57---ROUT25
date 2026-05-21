@@ -4,18 +4,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-from typing import Dict, Iterable, List
+from typing import Dict, Iterable, List, Optional
 
 from pps57_cits.config import CITSConfig
 from pps57_cits.models import SignalState
+from pps57_cits.util import optional_int as _optional_int
 from pps57_tsp.config import TSPConfig
 from pps57_tsp.engine import TSPDecisionEngine
 from pps57_tsp.models import DecisionStatus, TSPAction, TSPDecision
 from pps57_tsp.safety import TSPSafetyLayer
 
 from .config import OptimizationConfig
-from .dataset import build_offline_scenarios
+from .event_dataset import load_event_training_scenarios
 from .models import CandidateEvaluation, LearnedPolicyRule, OfflineScenario
+from .state import state_bucket_for_context
 
 
 @dataclass
@@ -23,12 +25,13 @@ class OfflineOptimizationController:
     cits_config: CITSConfig
     tsp_config: TSPConfig
     optimization_config: OptimizationConfig
+    scenarios: Optional[List[OfflineScenario]] = None
 
     def __post_init__(self) -> None:
         self.engine = TSPDecisionEngine(self.cits_config, self.tsp_config)
 
     def run(self) -> Dict[str, object]:
-        scenarios = build_offline_scenarios(self.cits_config)
+        scenarios = self.scenarios or self._load_event_scenarios()
         all_candidates: List[CandidateEvaluation] = []
         selected: List[CandidateEvaluation] = []
         policy_rules: Dict[str, LearnedPolicyRule] = {}
@@ -53,6 +56,18 @@ class OfflineOptimizationController:
 
         self._write_outputs(scenarios, all_candidates, selected, list(policy_rules.values()))
         return self._summary(scenarios, all_candidates, selected, list(policy_rules.values()))
+
+    def _load_event_scenarios(self) -> List[OfflineScenario]:
+        path = self.optimization_config.path_from_root(
+            self.optimization_config.logging.get("event_training_dataset", "outputs/event_training_dataset.jsonl")
+        )
+        scenarios = load_event_training_scenarios(path)
+        if not scenarios:
+            raise ValueError(
+                "No SUMO/TraCI event training scenarios found. Run a TSP SUMO execution and "
+                "scripts/build_event_training_dataset.py before policy optimization."
+            )
+        return scenarios
 
     def _evaluate_scenario(self, scenario: OfflineScenario) -> List[CandidateEvaluation]:
         baseline = self.engine.decide(scenario.request, scenario.signal_state, scenario.sim_time_s)
@@ -149,14 +164,14 @@ class OfflineOptimizationController:
     def _select_candidate(self, candidates: List[CandidateEvaluation]) -> CandidateEvaluation:
         allowed = [item for item in candidates if not item.is_safety_blocked]
         if not allowed:
+            # Todos os candidatos foram bloqueados pela Safety Layer: devolve o
+            # baseline (candidates[0]) já na sua forma safe/bloqueada.
             return candidates[0]
-
-        baseline = candidates[0]
-        best = max(allowed, key=lambda item: item.reward)
-        margin = float(self.optimization_config.reward.get("baseline_fallback_margin", 0.0))
-        if best.reward + margin < baseline.reward and not baseline.is_safety_blocked:
-            return baseline
-        return best
+        # argmax sobre candidatos seguros. O baseline está incluído em
+        # `allowed` sempre que ele próprio é seguro, logo o escolhido nunca tem
+        # reward inferior ao baseline — não é preciso um fallback explícito
+        # (o antigo branch baseline_fallback_margin era inalcançável).
+        return max(allowed, key=lambda item: item.reward)
 
     def _reward(self, scenario: OfflineScenario, decision: TSPDecision, safety_status: str) -> float:
         reward_cfg = self.optimization_config.reward
@@ -176,6 +191,7 @@ class OfflineOptimizationController:
         proximity_component = float(reward_cfg.get("proximity_weight", 0.3)) * max(0.0, 45.0 - request.eta_to_stopline_s)
         benefit = delay_component + headway_component + proximity_component
         traffic_penalty = float(reward_cfg.get("general_traffic_penalty_per_second", 0.35))
+        traffic_penalty *= self._traffic_pressure_multiplier(scenario)
 
         if decision.action == TSPAction.GREEN_EXTENSION.value:
             needed = max(0.0, required_green_s - remaining_s)
@@ -218,29 +234,37 @@ class OfflineOptimizationController:
         return _optional_int(mapping.get("corridor_green_phase_index"))
 
     def _state_bucket(self, scenario: OfflineScenario) -> str:
-        buckets = self.optimization_config.offline_training.get("state_buckets", {})
-        eta_close = float(buckets.get("eta_close_s", 10))
-        eta_far = float(buckets.get("eta_far_s", 25))
-        high_delay = float(buckets.get("high_delay_s", 90))
-        switch_close = float(buckets.get("phase_switch_close_s", 5))
-        request = scenario.request
-        state = scenario.signal_state
-        remaining = TSPDecisionEngine.remaining_phase_time_s(state, scenario.sim_time_s)
+        return state_bucket_for_context(
+            self.tsp_config,
+            self.optimization_config.offline_training.get("state_buckets", {}),
+            scenario.request,
+            scenario.signal_state,
+            scenario.sim_time_s,
+            active_request_count=scenario.active_request_count,
+            queue_vehicle_count=scenario.queue_vehicle_count,
+            halted_vehicle_count=scenario.halted_vehicle_count,
+            mean_speed_mps=scenario.mean_speed_mps,
+            waiting_time_s=scenario.waiting_time_s,
+            occupancy=scenario.occupancy,
+            spillback_risk=scenario.spillback_risk,
+            seconds_since_last_intervention_s=scenario.seconds_since_last_intervention_s,
+        )
 
-        eta_bucket = "eta_close" if request.eta_to_stopline_s <= eta_close else "eta_mid"
-        if request.eta_to_stopline_s >= eta_far:
-            eta_bucket = "eta_far"
-        delay_bucket = "delay_high" if request.schedule_delay_s >= high_delay else "delay_low"
-        corridor_phase = self._corridor_phase(state.tls_id)
-        phase_bucket = "phase_unknown"
-        if state.red_yellow_green_state and "y" in state.red_yellow_green_state.lower():
-            phase_bucket = "yellow"
-        elif corridor_phase is not None and state.current_phase_index == corridor_phase:
-            phase_bucket = "corridor_green"
-        elif state.current_phase_index is not None:
-            phase_bucket = "corridor_red"
-        switch_bucket = "switch_close" if remaining is not None and remaining <= switch_close else "switch_open"
-        return "|".join([phase_bucket, eta_bucket, delay_bucket, switch_bucket])
+    def _traffic_pressure_multiplier(self, scenario: OfflineScenario) -> float:
+        reward_cfg = self.optimization_config.reward
+        state_cfg = self.optimization_config.offline_training.get("state_buckets", {})
+        high_queue = int(state_cfg.get("high_queue_vehicle_count", 8))
+        high_occupancy = float(state_cfg.get("high_occupancy", 0.6))
+        high_active_requests = int(state_cfg.get("high_active_requests", 2))
+        if (
+            scenario.queue_vehicle_count >= high_queue
+            or scenario.halted_vehicle_count >= high_queue
+            or scenario.occupancy >= high_occupancy
+            or scenario.active_request_count >= high_active_requests
+            or scenario.spillback_risk
+        ):
+            return float(reward_cfg.get("traffic_pressure_penalty_multiplier", 8.0))
+        return 1.0
 
     def _write_outputs(
         self,
@@ -274,7 +298,7 @@ class OfflineOptimizationController:
                 {
                     "policy_id": "offline_safe_policy_comparison",
                     "baseline_policy": "baseline_tsp_decision_engine",
-                    "methodology": "deterministic_argmax_over_fixed_candidate_actions_per_synthetic_scenario",
+                    "methodology": "deterministic_argmax_over_event_derived_sumo_traci_scenarios",
                     "is_reinforcement_learning": False,
                     "safety_filter_required": True,
                     "rules": [item.to_dict() for item in rules],
@@ -328,7 +352,7 @@ class OfflineOptimizationController:
             "version": self.optimization_config.raw.get("version"),
             "scenario_id": self.optimization_config.raw.get("scenario_id"),
             "mode": "offline-policy-comparison",
-            "methodology": "deterministic_argmax_over_fixed_candidate_actions_per_synthetic_scenario",
+            "methodology": "deterministic_argmax_over_event_derived_sumo_traci_scenarios",
             "is_reinforcement_learning": False,
             "scenario_count": len(scenarios),
             "candidate_count": len(candidates),
@@ -363,12 +387,3 @@ class OfflineOptimizationController:
         )
         summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False, sort_keys=True), encoding="utf-8")
         return summary
-
-
-def _optional_int(value: object) -> int | None:
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None

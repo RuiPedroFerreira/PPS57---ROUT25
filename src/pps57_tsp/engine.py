@@ -8,6 +8,7 @@ from typing import Optional
 from pps57_cits.config import CITSConfig
 from pps57_cits.messages import PriorityLevel, RequestedManeuver, SREMLike
 from pps57_cits.models import SignalState
+from pps57_cits.util import optional_int as _optional_int
 
 from .config import TSPConfig
 from .models import DecisionStatus, TSPAction, TSPDecision
@@ -212,12 +213,3 @@ class TSPDecisionEngine:
 
 def _clip01(value: float) -> float:
     return max(0.0, min(1.0, value))
-
-
-def _optional_int(value: object) -> Optional[int]:
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None

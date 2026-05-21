@@ -268,10 +268,15 @@ def _network_value(value: str) -> Any:
         return True
     if value == "False":
         return False
+    # Tenta int primeiro (preserva inteiros exactos), depois float. Antes,
+    # valores como "1e3" caíam no ramo int(), levantavam ValueError e
+    # vazavam como string crua — type leak silencioso.
     try:
-        if "." in value:
-            return float(value)
         return int(value)
+    except ValueError:
+        pass
+    try:
+        return float(value)
     except ValueError:
         return value
 

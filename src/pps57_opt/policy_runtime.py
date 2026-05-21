@@ -13,6 +13,7 @@ from typing import Any, Dict, Optional
 
 from pps57_cits.messages import SREMLike
 from pps57_cits.models import NetworkStateSnapshot, SignalState
+from pps57_cits.util import optional_int as _optional_int
 from pps57_tsp.config import TSPConfig
 from pps57_tsp.models import DecisionStatus, TSPAction, TSPDecision
 
@@ -217,12 +218,3 @@ def state_bucket_for(
         spillback_risk=spillback_risk,
         seconds_since_last_intervention_s=seconds_since_last_intervention_s,
     )
-
-
-def _optional_int(value: Any) -> Optional[int]:
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
