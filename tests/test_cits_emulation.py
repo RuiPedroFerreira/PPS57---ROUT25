@@ -356,6 +356,50 @@ class Package3CITSTestCase(unittest.TestCase):
             )
             validate_routes_sorted(sorted_path)  # must not raise
 
+    def test_safety_config_validation_accepts_current_configs(self) -> None:
+        from pps57_sumo.validate_project import validate_safety_configs
+
+        validate_safety_configs(ROOT)  # must not raise
+
+    def test_safety_config_validation_rejects_inverted_green_extension(self) -> None:
+        from pps57_sumo.validate_project import validate_safety_configs
+        import shutil
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_root = Path(tmp)
+            (tmp_root / "configs").mkdir()
+            shutil.copy(ROOT / "configs/cits_config.json", tmp_root / "configs/cits_config.json")
+            tsp = json.loads((ROOT / "configs/tsp_config.json").read_text(encoding="utf-8"))
+            # Inverte min > max: a Safety Layer nunca conseguiria propor uma
+            # extensão coerente — tem de ser apanhado estaticamente.
+            tsp["decision_policy"]["green_extension_min_s"] = 20
+            tsp["decision_policy"]["green_extension_max_s"] = 12
+            (tmp_root / "configs/tsp_config.json").write_text(
+                json.dumps(tsp), encoding="utf-8"
+            )
+            with self.assertRaises(SystemExit) as ctx:
+                validate_safety_configs(tmp_root)
+            self.assertIn("green_extension", str(ctx.exception))
+
+    def test_safety_config_validation_rejects_weights_not_summing_to_one(self) -> None:
+        from pps57_sumo.validate_project import validate_safety_configs
+        import shutil
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_root = Path(tmp)
+            (tmp_root / "configs").mkdir()
+            shutil.copy(ROOT / "configs/cits_config.json", tmp_root / "configs/cits_config.json")
+            tsp = json.loads((ROOT / "configs/tsp_config.json").read_text(encoding="utf-8"))
+            tsp["decision_policy"]["weights"]["schedule_delay"] = 0.9  # soma deixa de ser 1.0
+            (tmp_root / "configs/tsp_config.json").write_text(
+                json.dumps(tsp), encoding="utf-8"
+            )
+            with self.assertRaises(SystemExit) as ctx:
+                validate_safety_configs(tmp_root)
+            self.assertIn("weights", str(ctx.exception))
+
     def test_traci_gui_command_includes_start_flag(self) -> None:
         from pps57_cits.traci_adapter import TraciSimulationAdapter
 

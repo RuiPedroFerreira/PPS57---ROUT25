@@ -21,13 +21,15 @@ dist/
 .idea/
 .vscode/
 
-# Generated SUMO outputs
-outputs/*.xml
-outputs/*.csv
-outputs/*.json
-outputs/*.jsonl
-outputs/*.log
-reports/*.json
+# Generated SUMO/pipeline outputs.
+# Padrões recursivos (**/): cobrem também subdiretórios de snapshot como
+# outputs/runs/baseline/ e outputs/runs/rl/ produzidos por compare-tsp-rl.
+outputs/**/*.xml
+outputs/**/*.csv
+outputs/**/*.json
+outputs/**/*.jsonl
+outputs/**/*.log
+reports/**/*.json
 sumo/network/*.net.xml
 
 # Editor / tooling metadata (downloads helpers, gh cache, etc.)

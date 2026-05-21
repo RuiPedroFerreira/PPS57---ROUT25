@@ -11,10 +11,10 @@ The repository is designed for technical demonstration and validation. It is not
 - Generates bus priority requests from emulated OBUs and validates them through RSUs.
 - Converts accepted priority requests into TSP decisions.
 - Applies a Safety Layer before any signal actuation.
-- Supports dry-run actuation and TraCI actuation.
+- Supports SUMO/TraCI actuation and SUMO/TraCI no-actuation observation mode.
 - Exports JSONL logs and JSON reports for auditability.
 - Compares offline policy candidates against the baseline TSP engine.
-- Trains a tabular Q-learning policy in simulated offline scenarios.
+- Trains a tabular Q-learning policy from SUMO/TraCI event-derived scenarios.
 - Loads exported policies for runtime inference in semi-live TSP runs.
 - Serves a local FastAPI control plane and a Streamlit dashboard for demos.
 
@@ -54,6 +54,18 @@ python -m venv .venv
 .venv/bin/python -m pip install -r requirements-dashboard.txt
 ```
 
+For a reproducible install with exact pinned versions (releases, CI, dependency
+regression triage), use the lockfile instead:
+
+```bash
+python -m venv .venv
+.venv/bin/python -m pip install -r requirements.lock
+```
+
+`requirements.txt` declares flexible version ranges; `requirements.lock`
+captures the full transitive closure at exact versions. Regenerate the lockfile
+after changing `requirements.txt` with `pip freeze > requirements.lock`.
+
 Full SUMO execution also requires SUMO CLI tools in `PATH`:
 
 ```text
@@ -62,15 +74,17 @@ sumo
 sumo-gui
 ```
 
-## Quick Start Without SUMO
+## Quick Start
 
-These commands run with the Python code and generated proxy data only:
+These commands validate the project and run non-simulation utilities. Operational C-ITS/TSP data is produced only by SUMO/TraCI runs:
 
 ```bash
 make validate
 make test
-make cits-dryrun
-make tsp-dryrun
+make build
+make cits-sumo
+make tsp-sumo-no-actuation
+make build-event-training-dataset
 make optimize-offline
 make train-rl-policy
 make platform-check
@@ -101,9 +115,7 @@ API docs:  http://127.0.0.1:8000/docs
 | `make run` | Build and run the SUMO baseline | Yes |
 | `make gui` | Build and open the SUMO GUI baseline | Yes |
 | `make kpis` | Parse `outputs/tripinfo.xml` into `reports/baseline_kpis.json` | Needs tripinfo |
-| `make cits-dryrun` | Run C-ITS message emulation without SUMO | No |
 | `make cits-sumo` | Run C-ITS emulation connected to SUMO/TraCI | Yes |
-| `make tsp-dryrun` | Run C-ITS + TSP + Safety Layer without SUMO | No |
 | `make tsp-sumo` | Run TSP with SUMO and TraCI actuation | Yes |
 | `make tsp-sumo-no-actuation` | Run TSP with SUMO observation only | Yes |
 | `make tsp-gui` | Run TSP with SUMO GUI and TraCI actuation | Yes |
@@ -111,7 +123,6 @@ API docs:  http://127.0.0.1:8000/docs
 | `make optimize-offline` | Compare safe offline policy candidates | No |
 | `make train-rl-policy` | Train tabular Q-learning policy offline | No |
 | `make platform-check` | Aggregate and validate dashboard artifacts | No |
-| `make platform-demo-data` | Generate demo artifacts when no run data exists | No |
 | `make platform-api` | Start the FastAPI control API | No |
 | `make platform` | Start the Streamlit dashboard | No |
 | `make dashboard` | Alias for `make platform` | No |
@@ -200,12 +211,6 @@ reports/baseline_kpis.json
 
 ### 5. Run C-ITS/V2X Emulation
 
-Dry-run, without SUMO:
-
-```bash
-.venv/bin/python scripts/run_cits_emulation.py --mode dry-run --steps 60
-```
-
 With SUMO/TraCI:
 
 ```bash
@@ -230,12 +235,6 @@ reports/cits_emulation_summary.json
 ```
 
 ### 6. Run TSP Control With Safety Layer
-
-Dry-run baseline:
-
-```bash
-.venv/bin/python scripts/run_tsp_control.py --mode dry-run --steps 90
-```
 
 SUMO with TraCI actuation:
 
@@ -262,11 +261,64 @@ Runtime inference from an exported policy:
 
 ```bash
 .venv/bin/python scripts/run_tsp_control.py \
-  --mode dry-run \
-  --steps 90 \
+  --mode sumo \
+  --steps 7200 \
   --policy-mode optimized \
   --policy-report reports/policy_report.json
 ```
+
+Runtime inference from an exported RL policy:
+
+```bash
+make train-rl-policy
+.venv/bin/python scripts/run_tsp_control.py \
+  --mode sumo \
+  --steps 7200 \
+  --policy-mode rl
+```
+
+Baseline vs RL comparison table:
+
+```bash
+make compare-tsp-rl
+```
+
+This writes:
+
+```text
+reports/tsp_baseline_vs_rl_comparison.md
+reports/tsp_baseline_vs_rl_comparison.json
+```
+
+Decision outcome evaluation:
+
+```bash
+make evaluate-decision-outcomes
+```
+
+This writes:
+
+```text
+reports/decision_outcome_evaluation.md
+reports/decision_outcome_evaluation.json
+```
+
+The evaluator is intentionally conservative. Without paired SUMO KPI reports it
+can classify decisions as same, blocked/unsafe, or less intrusive, but it keeps
+network impact as `inconclusive_without_kpis`.
+
+In `--mode sumo`, runtime RL decisions receive instantaneous TraCI network
+features per TLS: queue/halting counts, lane vehicle count, mean speed, waiting
+time, occupancy, spillback risk and active TSP request count.
+
+Event-log training dataset seed:
+
+```bash
+make build-event-training-dataset
+```
+
+This writes `outputs/event_training_dataset.jsonl` by joining C-ITS messages,
+TSP decisions and actuation logs produced by SUMO/TraCI.
 
 Generated outputs:
 
@@ -290,7 +342,7 @@ make optimize-offline
 
 What it does:
 
-- Builds synthetic offline scenarios.
+- Loads SUMO/TraCI event-derived scenarios from `outputs/event_training_dataset.jsonl`.
 - Evaluates the baseline TSP decision.
 - Evaluates candidate actions: `no_action`, `green_extension`, `early_green`, `reevaluate_next_cycle`, `reject`.
 - Sends every candidate through the Safety Layer.
@@ -320,7 +372,7 @@ make train-rl-policy
 
 What it does:
 
-- Runs tabular Q-learning over simulated offline scenarios.
+- Runs tabular Q-learning over SUMO/TraCI event-derived scenarios.
 - Keeps production online learning disabled.
 - Exports a policy report that can be inspected or loaded for runtime inference.
 - Keeps the Safety Layer as a mandatory guardrail.
@@ -352,21 +404,7 @@ Generated output:
 reports/platform_snapshot.json
 ```
 
-### 10. Generate Demo Data
-
-```bash
-.venv/bin/python scripts/generate_platform_demo_data.py --overwrite
-```
-
-Or:
-
-```bash
-make platform-demo-data
-```
-
-This creates representative artifacts for dashboard demos when no simulation outputs exist yet.
-
-### 11. Run FastAPI Control Plane
+### 10. Run FastAPI Control Plane
 
 ```bash
 .venv/bin/python scripts/run_platform_api.py --host 127.0.0.1 --port 8000
@@ -391,12 +429,12 @@ Core endpoints:
 | `GET` | `/artifacts/snapshot` | Aggregated dashboard snapshot |
 | `GET` | `/events/recent` | Recent JSONL events for one artifact |
 
-Start a TSP dry-run through the API:
+Start a TSP SUMO/TraCI observation run through the API:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/runs/start \
   -H 'Content-Type: application/json' \
-  -d '{"kind":"tsp-dry-run","steps":90,"policy_mode":"baseline"}'
+  -d '{"kind":"tsp-sumo-no-actuation","steps":7200,"policy_mode":"baseline"}'
 ```
 
 Start optimized runtime inference through the API:
@@ -404,7 +442,7 @@ Start optimized runtime inference through the API:
 ```bash
 curl -X POST http://127.0.0.1:8000/runs/start \
   -H 'Content-Type: application/json' \
-  -d '{"kind":"tsp-dry-run","steps":90,"policy_mode":"optimized","policy_report":"reports/policy_report.json"}'
+  -d '{"kind":"tsp-sumo-no-actuation","steps":7200,"policy_mode":"optimized","policy_report":"reports/policy_report.json"}'
 ```
 
 Start RL training through the API:
@@ -418,18 +456,15 @@ curl -X POST http://127.0.0.1:8000/runs/start \
 Supported API job kinds:
 
 ```text
-cits-dry-run
 cits-sumo
-tsp-dry-run
 tsp-sumo
 tsp-sumo-no-actuation
 optimize-offline
 train-rl-policy
-platform-demo-data
 platform-check
 ```
 
-### 12. Run Dashboard
+### 11. Run Dashboard
 
 ```bash
 .venv/bin/python -m streamlit run dashboard/app.py
@@ -609,7 +644,7 @@ Example TSP decision after Safety Layer approval:
 }
 ```
 
-Example dry-run actuation result:
+Example SUMO/TraCI actuation result:
 
 ```json
 {
@@ -618,9 +653,9 @@ Example dry-run actuation result:
   "tls_id": "I2",
   "action": "green_extension",
   "applied": true,
-  "dry_run": true,
+  "no_actuation": false,
   "command": "setPhaseDuration",
-  "reason": "dry_run",
+  "reason": "traci_green_extension_applied",
   "parameters": {
     "extension_s": 12.0
   }
@@ -635,7 +670,7 @@ Example dry-run actuation result:
 | `outputs/cits_mapem_snapshot.json` | C-ITS runs | Latest generated MAPEM-like topology snapshot |
 | `outputs/cits_spatem_snapshot.json` | C-ITS runs | Latest generated SPATEM-like signal snapshot |
 | `outputs/tsp_decisions.jsonl` | TSP runs | TSP decisions after Safety Layer validation |
-| `outputs/tsp_actuation.jsonl` | TSP runs | Dry-run or TraCI actuation events |
+| `outputs/tsp_actuation.jsonl` | TSP runs | SUMO/TraCI actuation or no-actuation observation events |
 | `outputs/offline_policy_samples.jsonl` | Policy optimization | Offline training/evaluation scenarios |
 | `outputs/policy_candidates.jsonl` | Policy optimization | Candidate action evaluations |
 | `outputs/tripinfo.xml` | SUMO baseline | Per-vehicle SUMO trip information |
@@ -665,20 +700,27 @@ The current runtime-policy path only proposes a decision. It does not bypass saf
 
 ## Runtime Policy Modes
 
-`scripts/run_tsp_control.py` supports two policy modes:
+`scripts/run_tsp_control.py` supports three policy modes:
 
 | Mode | Behavior |
 |---|---|
 | `baseline` | Uses the explainable TSP decision engine directly |
 | `optimized` | Loads an exported policy report and proposes runtime actions before Safety Layer validation |
+| `rl` | Loads the exported RL policy report, by default `reports/tabular_q_policy_report.json`, and proposes runtime actions before Safety Layer validation |
 
 Example:
 
 ```bash
 .venv/bin/python scripts/run_tsp_control.py \
-  --mode dry-run \
+  --mode sumo \
   --policy-mode optimized \
   --policy-report reports/policy_report.json
+```
+
+The RL training path remains outside the TSP Decision Engine:
+
+```text
+SUMO/TraCI event logs -> event training dataset -> RL training -> exported policy report -> runtime inference -> Safety Layer
 ```
 
 ## Configuration Files
@@ -709,10 +751,12 @@ git diff --check
 
 If `sumo` or `netconvert` is missing, install SUMO and ensure the binaries are in `PATH`.
 
-If the dashboard has no data, generate demo artifacts:
+If the dashboard has no data, run a SUMO/TraCI workflow first:
 
 ```bash
-make platform-demo-data
+make build
+make tsp-sumo-no-actuation
+make build-event-training-dataset
 make platform-check
 make platform
 ```
@@ -734,5 +778,5 @@ If an optimized runtime policy is not loaded, regenerate the policy report:
 
 ```bash
 make optimize-offline
-.venv/bin/python scripts/run_tsp_control.py --mode dry-run --policy-mode optimized --policy-report reports/policy_report.json
+.venv/bin/python scripts/run_tsp_control.py --mode sumo --policy-mode optimized --policy-report reports/policy_report.json
 ```
