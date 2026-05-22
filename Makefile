@@ -10,16 +10,16 @@ PYTHON := $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 
 validate:
 	$(PYTHON) src/pps57_sumo/validate_project.py --root .
-	$(PYTHON) -m json.tool configs/cits_config.json >/dev/null
-	$(PYTHON) -m json.tool configs/tsp_config.json >/dev/null
-	$(PYTHON) -m json.tool configs/policy_optimization_config.json >/dev/null
+	$(PYTHON) -m json.tool configs/cits_v2x_config.json >/dev/null
+	$(PYTHON) -m json.tool configs/tsp_safety_config.json >/dev/null
+	$(PYTHON) -m json.tool configs/policy_training_config.json >/dev/null
 	$(PYTHON) -m json.tool configs/platform_config.json >/dev/null
 
 # `validate` corre antes de `build` para que toda a cadeia (run/cits-sumo/
 # tsp-sumo/etc., que dependem de build) execute o gate fail-closed de XML
 # bem-formado e rotas ordenadas. Antes ficava órfão e podia ser ignorado.
 build: validate
-	$(PYTHON) src/pps57_sumo/generate_plain_corridor.py --config configs/corridor_config.json --output sumo/plain
+	$(PYTHON) src/pps57_sumo/generate_plain_corridor.py --config configs/sumo_scenario_base.json --output sumo/plain
 	netconvert --node-files sumo/plain/corredor.nod.xml --edge-files sumo/plain/corredor.edg.xml --output-file sumo/network/corredor.net.xml --no-turnarounds true --tls.default-type static --tls.cycle.time 90 --tls.yellow.time 3
 
 run: build

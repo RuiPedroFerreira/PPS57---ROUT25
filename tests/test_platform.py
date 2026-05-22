@@ -197,6 +197,33 @@ class PlatformDataLoaderTest(unittest.TestCase):
             self.assertEqual(overview["blocked_by_safety"], 5)
             self.assertEqual(overview["applied_actuation_events"], 3)
 
+    def test_snapshot_warns_about_stale_global_reports(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "configs").mkdir()
+            (root / "outputs").mkdir()
+            (root / "reports").mkdir()
+            (root / "configs" / "platform_config.json").write_text(
+                json.dumps(
+                    {
+                        "artifacts": {
+                            "tsp_decisions": "outputs/tsp_decisions.jsonl",
+                            "tsp_summary": "reports/tsp_emulation_summary.json",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            write_jsonl(root / "outputs" / "tsp_decisions.jsonl", [{"status": "approved"} for _ in range(3)])
+            (root / "reports" / "tsp_emulation_summary.json").write_text(
+                json.dumps({"total_decisions": 1}),
+                encoding="utf-8",
+            )
+
+            warnings = collect_snapshot(root)["artifact_warnings"]
+
+            self.assertTrue(any("stale_or_inconsistent:tsp_summary.total_decisions" in item for item in warnings))
+
     def test_corrupt_platform_config_surfaces_error_without_crashing(self) -> None:
         # M5: config inválido -> defaults + config_error visível, sem rebentar.
         with tempfile.TemporaryDirectory() as tmp:
@@ -325,6 +352,23 @@ class PlatformDataLoaderTest(unittest.TestCase):
         self.assertFalse(_is_loopback("10.0.0.5"))
         self.assertFalse(_is_loopback("not-a-host"))
 
+    def test_run_platform_api_blocks_non_loopback_without_explicit_opt_in(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts" / "run_platform_api.py"),
+                "--host",
+                "0.0.0.0",
+            ],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("BLOQUEADO", result.stderr)
+
     def test_platform_runner_reads_recent_jsonl_events(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -339,6 +383,25 @@ class PlatformDataLoaderTest(unittest.TestCase):
             payload = PlatformRunner(root).recent_events("tsp_decisions", limit=2)
 
             self.assertEqual([item["i"] for item in payload["events"]], [3, 4])
+
+    def test_platform_runner_snapshots_artifacts_by_run_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "configs").mkdir()
+            (root / "outputs").mkdir()
+            (root / "reports").mkdir()
+            (root / "configs" / "platform_config.json").write_text(
+                json.dumps({"artifacts": {"tsp_decisions": "outputs/tsp_decisions.jsonl"}}),
+                encoding="utf-8",
+            )
+            write_jsonl(root / "outputs" / "tsp_decisions.jsonl", [{"decision_id": "d1"}])
+            runner = PlatformRunner(root)
+            runner.current_state = {"run_id": "run-test"}
+
+            snapshot_dir = runner._snapshot_run_artifacts_locked()
+
+            self.assertEqual(snapshot_dir, root / "outputs" / "runs" / "run-test")
+            self.assertTrue((snapshot_dir / "outputs" / "tsp_decisions.jsonl").exists())
 
     def test_fastapi_control_plane_exposes_expected_routes(self) -> None:
         from pps57_platform.api import RunStartRequest, create_app

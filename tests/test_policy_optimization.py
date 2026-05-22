@@ -30,9 +30,9 @@ from pps57_tsp.controller import TSPControlController
 class PolicyOptimizationTestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.cits = load_cits_config(ROOT / "configs/cits_config.json", root=ROOT)
-        cls.tsp = load_tsp_config(ROOT / "configs/tsp_config.json", root=ROOT)
-        cls.opt = load_policy_optimization_config(ROOT / "configs/policy_optimization_config.json", root=ROOT)
+        cls.cits = load_cits_config(ROOT / "configs/cits_v2x_config.json", root=ROOT)
+        cls.tsp = load_tsp_config(ROOT / "configs/tsp_safety_config.json", root=ROOT)
+        cls.opt = load_policy_optimization_config(ROOT / "configs/policy_training_config.json", root=ROOT)
 
     def _isolated_opt(self, tmp_root: Path):
         return replace(self.opt, root=tmp_root)

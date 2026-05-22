@@ -48,8 +48,8 @@ SNAPSHOT_PATHS = (
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the SUMO/TraCI TSP demonstrator and write evidence reports.")
-    parser.add_argument("--config", default="configs/cits_config.json", help="Base C-ITS configuration.")
-    parser.add_argument("--tsp-config", default="configs/tsp_config.json", help="TSP/Safety Layer configuration.")
+    parser.add_argument("--config", default="configs/cits_v2x_config.json", help="Base C-ITS configuration.")
+    parser.add_argument("--tsp-config", default="configs/tsp_safety_config.json", help="TSP/Safety Layer configuration.")
     parser.add_argument("--policy-config", default=None, help="Accepted for platform command compatibility; not used.")
     parser.add_argument("--steps", type=int, default=7200, help="SUMO/TraCI steps for TSP runs.")
     parser.add_argument("--sumo-binary", default="sumo", help="SUMO binary for TraCI.")
@@ -186,7 +186,7 @@ def _build_network(*, tls_type: str) -> None:
             sys.executable,
             "src/pps57_sumo/generate_plain_corridor.py",
             "--config",
-            "configs/corridor_config.json",
+            "configs/sumo_scenario_base.json",
             "--output",
             "sumo/plain",
         ],

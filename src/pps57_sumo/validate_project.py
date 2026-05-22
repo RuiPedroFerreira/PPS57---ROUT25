@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static validation for the PPS57 SUMO realistic scenario.
+"""Static validation for the PPS57 SUMO base scenario.
 
 This does not replace validation with SUMO. It checks the file structure, XML
 well-formedness, and the safety-critical numeric invariants of the TSP/C-ITS
@@ -17,18 +17,17 @@ except ImportError:  # pragma: no cover - exercised in minimal CI images.
     from xml.etree import ElementTree as ET  # type: ignore[no-redef]
 
 REQUIRED_FILES = [
-    "configs/corridor_config.json",
-    "configs/corridor_config_porto_boavista_realistic.json",
-    "configs/scenarios.yaml",
-    "configs/cits_config.json",
-    "configs/tsp_config.json",
+    "configs/sumo_scenario_base.json",
+    "configs/scenario_catalog.yaml",
+    "configs/cits_v2x_config.json",
+    "configs/tsp_safety_config.json",
+    "configs/policy_training_config.json",
     "sumo/plain/corredor.nod.xml",
     "sumo/plain/corredor.edg.xml",
     "sumo/routes/routes.rou.xml",
     "sumo/additional/bus_stops.add.xml",
     "sumo/additional/detectors.add.xml",
     "sumo/corredor.sumocfg",
-    "docs/CENARIO_REALISTA_BOAVISTA.md",
 ]
 
 XML_FILES = [
@@ -96,8 +95,8 @@ def validate_safety_configs(root: Path) -> None:
     hipóteses) como comportamento estranho da Safety Layer em runtime.
     Fail-closed: a primeira violação aborta com SystemExit.
     """
-    cits = json.loads((root / "configs/cits_config.json").read_text(encoding="utf-8"))
-    tsp = json.loads((root / "configs/tsp_config.json").read_text(encoding="utf-8"))
+    cits = json.loads((root / "configs/cits_v2x_config.json").read_text(encoding="utf-8"))
+    tsp = json.loads((root / "configs/tsp_safety_config.json").read_text(encoding="utf-8"))
 
     safety = cits.get("safety_constraints", {})
     min_green = _require_number(safety, "min_green_s", "cits.safety_constraints")

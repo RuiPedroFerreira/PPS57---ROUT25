@@ -43,6 +43,7 @@ class CITSEmulationController:
             mapem = build_mapem_messages(self.config, sim_time_s=0.0)
             self._publish_log_collect(mapem, logger, summary)
             self._write_snapshots(mapem, [])
+            latest_spatem: List[CITSMessage] = []
 
             step_count = 0
             try:
@@ -62,6 +63,7 @@ class CITSEmulationController:
 
                     signal_states = [adapter.read_signal_state(intersection, sim_time_s) for intersection in self.config.intersections]
                     spatem = [build_spatem_message_from_state(state) for state in signal_states]
+                    latest_spatem = list(spatem)
                     self._publish_log_collect(spatem, logger, summary)
 
                     observations = adapter.read_vehicle_observations()
@@ -72,6 +74,7 @@ class CITSEmulationController:
                     self._publish_log_collect(responses, logger, summary)
             finally:
                 adapter.close()
+            self._write_snapshots(mapem, latest_spatem)
 
         summary_path = self.config.path_from_root(self.config.logging.get("summary_report", "reports/cits_emulation_summary.json"))
         return write_summary_dict(

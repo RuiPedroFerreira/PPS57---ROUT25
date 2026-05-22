@@ -1,95 +1,139 @@
 <?xml version="1.0" ?>
 <additional>
-  <inductionLoop id="e1_CITY_EAST_I1_0" lane="CITY_EAST_I1_0" pos="335.3" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_CITY_EAST_I1_0" lane="CITY_EAST_I1_0" pos="300.3" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_CITY_EAST_I1_1" lane="CITY_EAST_I1_1" pos="335.3" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_CITY_EAST_I1_1" lane="CITY_EAST_I1_1" pos="300.3" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_I1_I2_0" lane="I1_I2_0" pos="565.5" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_I1_I2_0" lane="I1_I2_0" pos="530.5" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_I1_I2_1" lane="I1_I2_1" pos="565.5" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_I1_I2_1" lane="I1_I2_1" pos="530.5" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_I2_I3_0" lane="I2_I3_0" pos="617.6" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_I2_I3_0" lane="I2_I3_0" pos="582.6" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_I2_I3_1" lane="I2_I3_1" pos="617.6" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_I2_I3_1" lane="I2_I3_1" pos="582.6" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_I3_I4_0" lane="I3_I4_0" pos="716.3" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_I3_I4_0" lane="I3_I4_0" pos="681.3" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_I3_I4_1" lane="I3_I4_1" pos="716.3" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_I3_I4_1" lane="I3_I4_1" pos="681.3" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_I4_I5_0" lane="I4_I5_0" pos="716.6" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_I4_I5_0" lane="I4_I5_0" pos="681.6" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_I4_I5_1" lane="I4_I5_1" pos="716.6" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_I4_I5_1" lane="I4_I5_1" pos="681.6" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_I5_I6_0" lane="I5_I6_0" pos="793.9" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_I5_I6_0" lane="I5_I6_0" pos="758.9" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_I5_I6_1" lane="I5_I6_1" pos="793.9" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_I5_I6_1" lane="I5_I6_1" pos="758.9" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_I6_I7_0" lane="I6_I7_0" pos="748.8" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_I6_I7_0" lane="I6_I7_0" pos="713.8" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_I6_I7_1" lane="I6_I7_1" pos="748.8" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_I6_I7_1" lane="I6_I7_1" pos="713.8" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
   <inductionLoop id="e1_ATLANTIC_WEST_I7_0" lane="ATLANTIC_WEST_I7_0" pos="317.5" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_ATLANTIC_WEST_I7_0" lane="ATLANTIC_WEST_I7_0" pos="282.5" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
+  <laneAreaDetector id="e2_ATLANTIC_WEST_I7_0" lane="ATLANTIC_WEST_I7_0" pos="277.5" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
   <inductionLoop id="e1_ATLANTIC_WEST_I7_1" lane="ATLANTIC_WEST_I7_1" pos="317.5" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_ATLANTIC_WEST_I7_1" lane="ATLANTIC_WEST_I7_1" pos="282.5" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_I7_I6_0" lane="I7_I6_0" pos="748.8" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_I7_I6_0" lane="I7_I6_0" pos="713.8" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_I7_I6_1" lane="I7_I6_1" pos="748.8" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_I7_I6_1" lane="I7_I6_1" pos="713.8" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_I6_I5_0" lane="I6_I5_0" pos="793.9" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_I6_I5_0" lane="I6_I5_0" pos="758.9" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_I6_I5_1" lane="I6_I5_1" pos="793.9" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_I6_I5_1" lane="I6_I5_1" pos="758.9" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_I5_I4_0" lane="I5_I4_0" pos="716.6" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_I5_I4_0" lane="I5_I4_0" pos="681.6" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_I5_I4_1" lane="I5_I4_1" pos="716.6" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_I5_I4_1" lane="I5_I4_1" pos="681.6" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_I4_I3_0" lane="I4_I3_0" pos="716.3" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_I4_I3_0" lane="I4_I3_0" pos="681.3" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_I4_I3_1" lane="I4_I3_1" pos="716.3" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_I4_I3_1" lane="I4_I3_1" pos="681.3" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_I3_I2_0" lane="I3_I2_0" pos="617.6" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_I3_I2_0" lane="I3_I2_0" pos="582.6" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_I3_I2_1" lane="I3_I2_1" pos="617.6" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_I3_I2_1" lane="I3_I2_1" pos="582.6" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
+  <laneAreaDetector id="e2_ATLANTIC_WEST_I7_1" lane="ATLANTIC_WEST_I7_1" pos="277.5" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_CITY_EAST_I1_0" lane="CITY_EAST_I1_0" pos="335.3" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_CITY_EAST_I1_0" lane="CITY_EAST_I1_0" pos="295.3" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_CITY_EAST_I1_1" lane="CITY_EAST_I1_1" pos="335.3" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_CITY_EAST_I1_1" lane="CITY_EAST_I1_1" pos="295.3" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I1_CITY_EAST_0" lane="I1_CITY_EAST_0" pos="335.3" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I1_CITY_EAST_0" lane="I1_CITY_EAST_0" pos="295.3" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I1_CITY_EAST_1" lane="I1_CITY_EAST_1" pos="335.3" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I1_CITY_EAST_1" lane="I1_CITY_EAST_1" pos="295.3" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I1_I2_0" lane="I1_I2_0" pos="565.5" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I1_I2_0" lane="I1_I2_0" pos="525.5" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I1_I2_1" lane="I1_I2_1" pos="565.5" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I1_I2_1" lane="I1_I2_1" pos="525.5" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I1_N_I1_0" lane="I1_N_I1_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I1_N_I1_0" lane="I1_N_I1_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I1_N_I1_1" lane="I1_N_I1_1" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I1_N_I1_1" lane="I1_N_I1_1" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I1_S_I1_0" lane="I1_S_I1_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I1_S_I1_0" lane="I1_S_I1_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I1_S_I1_1" lane="I1_S_I1_1" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I1_S_I1_1" lane="I1_S_I1_1" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
   <inductionLoop id="e1_I2_I1_0" lane="I2_I1_0" pos="565.5" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_I2_I1_0" lane="I2_I1_0" pos="530.5" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
+  <laneAreaDetector id="e2_I2_I1_0" lane="I2_I1_0" pos="525.5" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
   <inductionLoop id="e1_I2_I1_1" lane="I2_I1_1" pos="565.5" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_I2_I1_1" lane="I2_I1_1" pos="530.5" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
+  <laneAreaDetector id="e2_I2_I1_1" lane="I2_I1_1" pos="525.5" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I2_I3_0" lane="I2_I3_0" pos="617.6" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I2_I3_0" lane="I2_I3_0" pos="577.6" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I2_I3_1" lane="I2_I3_1" pos="617.6" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I2_I3_1" lane="I2_I3_1" pos="577.6" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I2_N_I2_0" lane="I2_N_I2_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I2_N_I2_0" lane="I2_N_I2_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I2_S_I2_0" lane="I2_S_I2_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I2_S_I2_0" lane="I2_S_I2_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I3_I2_0" lane="I3_I2_0" pos="617.6" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I3_I2_0" lane="I3_I2_0" pos="577.6" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I3_I2_1" lane="I3_I2_1" pos="617.6" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I3_I2_1" lane="I3_I2_1" pos="577.6" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I3_I4_0" lane="I3_I4_0" pos="716.3" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I3_I4_0" lane="I3_I4_0" pos="676.3" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I3_I4_1" lane="I3_I4_1" pos="716.3" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I3_I4_1" lane="I3_I4_1" pos="676.3" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I3_N_I3_0" lane="I3_N_I3_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I3_N_I3_0" lane="I3_N_I3_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I3_S_I3_0" lane="I3_S_I3_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I3_S_I3_0" lane="I3_S_I3_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I4_I3_0" lane="I4_I3_0" pos="716.3" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I4_I3_0" lane="I4_I3_0" pos="676.3" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I4_I3_1" lane="I4_I3_1" pos="716.3" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I4_I3_1" lane="I4_I3_1" pos="676.3" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I4_I5_0" lane="I4_I5_0" pos="716.6" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I4_I5_0" lane="I4_I5_0" pos="676.6" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I4_I5_1" lane="I4_I5_1" pos="716.6" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I4_I5_1" lane="I4_I5_1" pos="676.6" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I4_N_I4_0" lane="I4_N_I4_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I4_N_I4_0" lane="I4_N_I4_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I4_S_I4_0" lane="I4_S_I4_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I4_S_I4_0" lane="I4_S_I4_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I5_I4_0" lane="I5_I4_0" pos="716.6" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I5_I4_0" lane="I5_I4_0" pos="676.6" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I5_I4_1" lane="I5_I4_1" pos="716.6" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I5_I4_1" lane="I5_I4_1" pos="676.6" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I5_I6_0" lane="I5_I6_0" pos="793.9" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I5_I6_0" lane="I5_I6_0" pos="753.9" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I5_I6_1" lane="I5_I6_1" pos="793.9" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I5_I6_1" lane="I5_I6_1" pos="753.9" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I5_N_I5_0" lane="I5_N_I5_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I5_N_I5_0" lane="I5_N_I5_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I5_S_I5_0" lane="I5_S_I5_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I5_S_I5_0" lane="I5_S_I5_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I6_I5_0" lane="I6_I5_0" pos="793.9" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I6_I5_0" lane="I6_I5_0" pos="753.9" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I6_I5_1" lane="I6_I5_1" pos="793.9" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I6_I5_1" lane="I6_I5_1" pos="753.9" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I6_I7_0" lane="I6_I7_0" pos="748.8" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I6_I7_0" lane="I6_I7_0" pos="708.8" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I6_I7_1" lane="I6_I7_1" pos="748.8" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I6_I7_1" lane="I6_I7_1" pos="708.8" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I6_N_I6_0" lane="I6_N_I6_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I6_N_I6_0" lane="I6_N_I6_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I6_N_I6_1" lane="I6_N_I6_1" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I6_N_I6_1" lane="I6_N_I6_1" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I6_S_I6_0" lane="I6_S_I6_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I6_S_I6_0" lane="I6_S_I6_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I6_S_I6_1" lane="I6_S_I6_1" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I6_S_I6_1" lane="I6_S_I6_1" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I7_ATLANTIC_WEST_0" lane="I7_ATLANTIC_WEST_0" pos="317.5" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I7_ATLANTIC_WEST_0" lane="I7_ATLANTIC_WEST_0" pos="277.5" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I7_ATLANTIC_WEST_1" lane="I7_ATLANTIC_WEST_1" pos="317.5" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I7_ATLANTIC_WEST_1" lane="I7_ATLANTIC_WEST_1" pos="277.5" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I7_I6_0" lane="I7_I6_0" pos="748.8" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I7_I6_0" lane="I7_I6_0" pos="708.8" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I7_I6_1" lane="I7_I6_1" pos="748.8" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I7_I6_1" lane="I7_I6_1" pos="708.8" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I7_N_I7_0" lane="I7_N_I7_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I7_N_I7_0" lane="I7_N_I7_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_I7_S_I7_0" lane="I7_S_I7_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_I7_S_I7_0" lane="I7_S_I7_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
   <inductionLoop id="e1_N_I1_I1_0" lane="N_I1_I1_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_N_I1_I1_0" lane="N_I1_I1_0" pos="300.0" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
+  <laneAreaDetector id="e2_N_I1_I1_0" lane="N_I1_I1_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
   <inductionLoop id="e1_N_I1_I1_1" lane="N_I1_I1_1" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_N_I1_I1_1" lane="N_I1_I1_1" pos="300.0" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_S_I1_I1_0" lane="S_I1_I1_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_S_I1_I1_0" lane="S_I1_I1_0" pos="300.0" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_S_I1_I1_1" lane="S_I1_I1_1" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_S_I1_I1_1" lane="S_I1_I1_1" pos="300.0" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
+  <laneAreaDetector id="e2_N_I1_I1_1" lane="N_I1_I1_1" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
   <inductionLoop id="e1_N_I2_I2_0" lane="N_I2_I2_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_N_I2_I2_0" lane="N_I2_I2_0" pos="300.0" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_S_I2_I2_0" lane="S_I2_I2_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_S_I2_I2_0" lane="S_I2_I2_0" pos="300.0" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
+  <laneAreaDetector id="e2_N_I2_I2_0" lane="N_I2_I2_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
   <inductionLoop id="e1_N_I3_I3_0" lane="N_I3_I3_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_N_I3_I3_0" lane="N_I3_I3_0" pos="300.0" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_S_I3_I3_0" lane="S_I3_I3_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_S_I3_I3_0" lane="S_I3_I3_0" pos="300.0" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
+  <laneAreaDetector id="e2_N_I3_I3_0" lane="N_I3_I3_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
   <inductionLoop id="e1_N_I4_I4_0" lane="N_I4_I4_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_N_I4_I4_0" lane="N_I4_I4_0" pos="300.0" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_S_I4_I4_0" lane="S_I4_I4_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_S_I4_I4_0" lane="S_I4_I4_0" pos="300.0" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
+  <laneAreaDetector id="e2_N_I4_I4_0" lane="N_I4_I4_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
   <inductionLoop id="e1_N_I5_I5_0" lane="N_I5_I5_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_N_I5_I5_0" lane="N_I5_I5_0" pos="300.0" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_S_I5_I5_0" lane="S_I5_I5_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_S_I5_I5_0" lane="S_I5_I5_0" pos="300.0" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
+  <laneAreaDetector id="e2_N_I5_I5_0" lane="N_I5_I5_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
   <inductionLoop id="e1_N_I6_I6_0" lane="N_I6_I6_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_N_I6_I6_0" lane="N_I6_I6_0" pos="300.0" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
+  <laneAreaDetector id="e2_N_I6_I6_0" lane="N_I6_I6_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
   <inductionLoop id="e1_N_I6_I6_1" lane="N_I6_I6_1" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_N_I6_I6_1" lane="N_I6_I6_1" pos="300.0" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_S_I6_I6_0" lane="S_I6_I6_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_S_I6_I6_0" lane="S_I6_I6_0" pos="300.0" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
-  <inductionLoop id="e1_S_I6_I6_1" lane="S_I6_I6_1" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_S_I6_I6_1" lane="S_I6_I6_1" pos="300.0" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
+  <laneAreaDetector id="e2_N_I6_I6_1" lane="N_I6_I6_1" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
   <inductionLoop id="e1_N_I7_I7_0" lane="N_I7_I7_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_N_I7_I7_0" lane="N_I7_I7_0" pos="300.0" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
+  <laneAreaDetector id="e2_N_I7_I7_0" lane="N_I7_I7_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_S_I1_I1_0" lane="S_I1_I1_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_S_I1_I1_0" lane="S_I1_I1_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_S_I1_I1_1" lane="S_I1_I1_1" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_S_I1_I1_1" lane="S_I1_I1_1" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_S_I2_I2_0" lane="S_I2_I2_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_S_I2_I2_0" lane="S_I2_I2_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_S_I3_I3_0" lane="S_I3_I3_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_S_I3_I3_0" lane="S_I3_I3_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_S_I4_I4_0" lane="S_I4_I4_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_S_I4_I4_0" lane="S_I4_I4_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_S_I5_I5_0" lane="S_I5_I5_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_S_I5_I5_0" lane="S_I5_I5_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_S_I6_I6_0" lane="S_I6_I6_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_S_I6_I6_0" lane="S_I6_I6_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
+  <inductionLoop id="e1_S_I6_I6_1" lane="S_I6_I6_1" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
+  <laneAreaDetector id="e2_S_I6_I6_1" lane="S_I6_I6_1" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
   <inductionLoop id="e1_S_I7_I7_0" lane="S_I7_I7_0" pos="335.0" freq="60" file="../../outputs/e1_detectors.xml"/>
-  <laneAreaDetector id="e2_S_I7_I7_0" lane="S_I7_I7_0" pos="300.0" length="80" freq="60" file="../../outputs/e2_queues.xml"/>
+  <laneAreaDetector id="e2_S_I7_I7_0" lane="S_I7_I7_0" pos="295.0" length="80.0" freq="60" file="../../outputs/e2_queues.xml"/>
 </additional>

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and run the PPS57 Porto/Boavista realistic SUMO baseline scenario."""
+"""Build and run the PPS57 Porto/Boavista SUMO base scenario."""
 from __future__ import annotations
 
 import shutil
@@ -31,14 +31,14 @@ def main() -> None:
     (ROOT / "reports").mkdir(exist_ok=True)
     (ROOT / "sumo/network").mkdir(parents=True, exist_ok=True)
 
-    run([sys.executable, "src/pps57_sumo/generate_plain_corridor.py", "--config", "configs/corridor_config.json", "--output", "sumo/plain"])
+    run([sys.executable, "src/pps57_sumo/generate_plain_corridor.py", "--config", "configs/sumo_scenario_base.json", "--output", "sumo/plain"])
     run([
         "netconvert",
         "--node-files", "sumo/plain/corredor.nod.xml",
         "--edge-files", "sumo/plain/corredor.edg.xml",
         "--output-file", "sumo/network/corredor.net.xml",
         "--no-turnarounds", "true",
-        "--tls.default-type", "actuated",
+        "--tls.default-type", "static",
         "--tls.cycle.time", "90",
         "--tls.yellow.time", "3",
     ])

@@ -25,7 +25,7 @@ from pps57_cits.traci_adapter import TraciSimulationAdapter
 class Package3CITSTestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.config = load_cits_config(ROOT / "configs/cits_config.json", root=ROOT)
+        cls.config = load_cits_config(ROOT / "configs/cits_v2x_config.json", root=ROOT)
 
     def test_config_indexes_edges_to_intersections(self) -> None:
         self.assertIn("I1_I2", self.config.edge_to_intersection)
@@ -391,13 +391,13 @@ class Package3CITSTestCase(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_root = Path(tmp)
             (tmp_root / "configs").mkdir()
-            shutil.copy(ROOT / "configs/cits_config.json", tmp_root / "configs/cits_config.json")
-            tsp = json.loads((ROOT / "configs/tsp_config.json").read_text(encoding="utf-8"))
+            shutil.copy(ROOT / "configs/cits_v2x_config.json", tmp_root / "configs/cits_v2x_config.json")
+            tsp = json.loads((ROOT / "configs/tsp_safety_config.json").read_text(encoding="utf-8"))
             # Inverte min > max: a Safety Layer nunca conseguiria propor uma
             # extensão coerente — tem de ser apanhado estaticamente.
             tsp["decision_policy"]["green_extension_min_s"] = 20
             tsp["decision_policy"]["green_extension_max_s"] = 12
-            (tmp_root / "configs/tsp_config.json").write_text(
+            (tmp_root / "configs/tsp_safety_config.json").write_text(
                 json.dumps(tsp), encoding="utf-8"
             )
             with self.assertRaises(SystemExit) as ctx:
@@ -412,10 +412,10 @@ class Package3CITSTestCase(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_root = Path(tmp)
             (tmp_root / "configs").mkdir()
-            shutil.copy(ROOT / "configs/cits_config.json", tmp_root / "configs/cits_config.json")
-            tsp = json.loads((ROOT / "configs/tsp_config.json").read_text(encoding="utf-8"))
+            shutil.copy(ROOT / "configs/cits_v2x_config.json", tmp_root / "configs/cits_v2x_config.json")
+            tsp = json.loads((ROOT / "configs/tsp_safety_config.json").read_text(encoding="utf-8"))
             tsp["decision_policy"]["weights"]["schedule_delay"] = 0.9  # soma deixa de ser 1.0
-            (tmp_root / "configs/tsp_config.json").write_text(
+            (tmp_root / "configs/tsp_safety_config.json").write_text(
                 json.dumps(tsp), encoding="utf-8"
             )
             with self.assertRaises(SystemExit) as ctx:

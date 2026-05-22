@@ -50,14 +50,24 @@ def main() -> int:
     else:
         print("- missing_critical_artifacts: none")
 
+    warnings = snapshot.get("artifact_warnings", [])
+    if warnings:
+        print("- artifact_warnings: " + "; ".join(str(item) for item in warnings))
+    else:
+        print("- artifact_warnings: none")
+
     config_error = snapshot.get("config_error")
     if config_error:
         print(f"- config_error: {config_error}")
 
-    if args.strict and (missing or config_error):
+    if args.strict and (missing or config_error or warnings):
         print(
             json.dumps(
-                {"missing_critical_artifacts": missing, "config_error": config_error},
+                {
+                    "missing_critical_artifacts": missing,
+                    "artifact_warnings": warnings,
+                    "config_error": config_error,
+                },
                 indent=2,
                 ensure_ascii=False,
             ),

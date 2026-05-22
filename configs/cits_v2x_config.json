@@ -1,6 +1,6 @@
 {
     "component_id": "cits_v2x_emulation",
-    "scenario_id": "porto_boavista_realistic_cits_v2x",
+    "scenario_id": "porto_boavista_base_v03_cits_v2x",
     "description": "C-ITS/V2X emulation for public transport traffic-signal priority requests in the Porto/Boavista corridor.",
     "protocol_profile": {
         "profile_name": "C-ITS TLC emulado",

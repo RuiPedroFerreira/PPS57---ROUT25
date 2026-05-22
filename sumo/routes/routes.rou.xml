@@ -1,408 +1,400 @@
 <?xml version="1.0" ?>
-<!-- generated on 2026-05-19 17:12:50.431758 by Eclipse SUMO sort_routes.py v1.26.0
-  options: sumo/routes/routes.rou.xml -o sumo/routes/routes.sorted.rou.xml
--->
-
-<!-- generated on 2026-05-20 10:22:23.377455 by Eclipse SUMO sort_routes.py v1.26.0
-  options: sumo/routes/routes.rou.xml -o sumo/routes/routes.rou.xml.sorted
--->
-
 <routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
-    <vType id="car" vClass="passenger" length="5.0" accel="2.4" decel="4.5" sigma="0.5" maxSpeed="13.89" color="0.7,0.7,0.7"/>
-    <vType id="bus_12m" vClass="bus" length="12.0" accel="1.1" decel="3.5" sigma="0.25" maxSpeed="13.89" guiShape="bus" color="0,0,1"/>
-    <vType id="emergency_vehicle" vClass="emergency" length="5.5" accel="2.8" decel="5.0" sigma="0.2" maxSpeed="16.67" guiShape="emergency" color="1,0,0"/>
-    <route id="route_boavista_east_to_west" edges="CITY_EAST_I1 I1_I2 I2_I3 I3_I4 I4_I5 I5_I6 I6_I7 I7_ATLANTIC_WEST"/>
-    <route id="route_boavista_west_to_east" edges="ATLANTIC_WEST_I7 I7_I6 I6_I5 I5_I4 I4_I3 I3_I2 I2_I1 I1_CITY_EAST"/>
-    <route id="route_emergency_west_to_east" edges="ATLANTIC_WEST_I7 I7_I6 I6_I5 I5_I4 I4_I3 I3_I2 I2_I1 I1_CITY_EAST"/>
-    <route id="route_cross_NS_1" edges="N_I1_I1 I1_S_I1"/>
-    <route id="route_cross_SN_1" edges="S_I1_I1 I1_N_I1"/>
-    <route id="route_cross_NS_2" edges="N_I2_I2 I2_S_I2"/>
-    <route id="route_cross_SN_2" edges="S_I2_I2 I2_N_I2"/>
-    <route id="route_cross_NS_3" edges="N_I3_I3 I3_S_I3"/>
-    <route id="route_cross_SN_3" edges="S_I3_I3 I3_N_I3"/>
-    <route id="route_cross_NS_4" edges="N_I4_I4 I4_S_I4"/>
-    <route id="route_cross_SN_4" edges="S_I4_I4 I4_N_I4"/>
-    <route id="route_cross_NS_5" edges="N_I5_I5 I5_S_I5"/>
-    <route id="route_cross_SN_5" edges="S_I5_I5 I5_N_I5"/>
-    <route id="route_cross_NS_6" edges="N_I6_I6 I6_S_I6"/>
-    <route id="route_cross_SN_6" edges="S_I6_I6 I6_N_I6"/>
-    <route id="route_cross_NS_7" edges="N_I7_I7 I7_S_I7"/>
-    <route id="route_cross_SN_7" edges="S_I7_I7 I7_N_I7"/>
-    <flow id="flow_car_inbound_west_to_east_am_peak" type="car" route="route_boavista_west_to_east" begin="0" end="7200" period="6.5" departLane="best" departSpeed="max"/>
-    <flow id="flow_car_outbound_east_to_west_am_peak" type="car" route="route_boavista_east_to_west" begin="0" end="7200" period="10.5" departLane="best" departSpeed="max"/>
-    <vehicle id="bus_STCP500_W_0000" type="bus_12m" route="route_boavista_east_to_west" depart="0" line="STCP500_PROXY_W" departLane="best" departSpeed="max">
-    <stop busStop="bs_casa_musica_w" duration="20"/>
+  <vType id="car" vClass="passenger" length="5.0" accel="2.4" decel="4.5" sigma="0.5" maxSpeed="13.89" color="0.7,0.7,0.7"/>
+  <vType id="bus_12m" vClass="bus" length="12.0" accel="1.1" decel="3.5" sigma="0.25" maxSpeed="13.89" guiShape="bus" color="0,0,1"/>
+  <vType id="emergency_vehicle" vClass="emergency" length="5.5" accel="2.8" decel="5.0" sigma="0.2" maxSpeed="16.67" guiShape="emergency" color="1,0,0"/>
+  <route id="route_boavista_east_to_west" edges="CITY_EAST_I1 I1_I2 I2_I3 I3_I4 I4_I5 I5_I6 I6_I7 I7_ATLANTIC_WEST"/>
+  <route id="route_boavista_west_to_east" edges="ATLANTIC_WEST_I7 I7_I6 I6_I5 I5_I4 I4_I3 I3_I2 I2_I1 I1_CITY_EAST"/>
+  <route id="route_emergency_west_to_east" edges="ATLANTIC_WEST_I7 I7_I6 I6_I5 I5_I4 I4_I3 I3_I2 I2_I1 I1_CITY_EAST"/>
+  <route id="route_cross_NS_I1" edges="N_I1_I1 I1_S_I1"/>
+  <route id="route_cross_SN_I1" edges="S_I1_I1 I1_N_I1"/>
+  <route id="route_cross_NS_I2" edges="N_I2_I2 I2_S_I2"/>
+  <route id="route_cross_SN_I2" edges="S_I2_I2 I2_N_I2"/>
+  <route id="route_cross_NS_I3" edges="N_I3_I3 I3_S_I3"/>
+  <route id="route_cross_SN_I3" edges="S_I3_I3 I3_N_I3"/>
+  <route id="route_cross_NS_I4" edges="N_I4_I4 I4_S_I4"/>
+  <route id="route_cross_SN_I4" edges="S_I4_I4 I4_N_I4"/>
+  <route id="route_cross_NS_I5" edges="N_I5_I5 I5_S_I5"/>
+  <route id="route_cross_SN_I5" edges="S_I5_I5 I5_N_I5"/>
+  <route id="route_cross_NS_I6" edges="N_I6_I6 I6_S_I6"/>
+  <route id="route_cross_SN_I6" edges="S_I6_I6 I6_N_I6"/>
+  <route id="route_cross_NS_I7" edges="N_I7_I7 I7_S_I7"/>
+  <route id="route_cross_SN_I7" edges="S_I7_I7 I7_N_I7"/>
+  <flow id="flow_car_inbound_west_to_east_am_peak" type="car" route="route_boavista_west_to_east" begin="0" end="7200" period="7.5" departLane="best" departSpeed="max"/>
+  <flow id="flow_car_outbound_east_to_west_am_peak" type="car" route="route_boavista_east_to_west" begin="0" end="7200" period="11.0" departLane="best" departSpeed="max"/>
+  <vehicle id="bus_STCP500_W_0000" type="bus_12m" route="route_boavista_east_to_west" depart="0" line="STCP500_PROXY_W" departLane="best" departSpeed="max">
+    <stop busStop="bs_casa_musica_w" duration="22"/>
     <stop busStop="bs_bessa_w" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_w" duration="20"/>
-    <stop busStop="bs_serralves_w" duration="20"/>
+    <stop busStop="bs_antunes_guimaraes_w" duration="18"/>
+    <stop busStop="bs_serralves_w" duration="24"/>
     <stop busStop="bs_marechal_w" duration="20"/>
-    <stop busStop="bs_praca_imperio_w" duration="20"/>
+    <stop busStop="bs_praca_imperio_w" duration="26"/>
     <stop busStop="bs_castelo_queijo_w" duration="20"/>
   </vehicle>
-    <flow id="flow_minor_NS_1" type="car" route="route_cross_NS_1" begin="10" end="7200" period="29" departLane="best" departSpeed="max"/>
-    <flow id="flow_minor_SN_1" type="car" route="route_cross_SN_1" begin="14" end="7200" period="35" departLane="best" departSpeed="max"/>
-    <flow id="flow_minor_NS_2" type="car" route="route_cross_NS_2" begin="20" end="7200" period="30" departLane="best" departSpeed="max"/>
-    <flow id="flow_minor_SN_2" type="car" route="route_cross_SN_2" begin="28" end="7200" period="36" departLane="best" departSpeed="max"/>
-    <flow id="flow_minor_NS_3" type="car" route="route_cross_NS_3" begin="30" end="7200" period="31" departLane="best" departSpeed="max"/>
-    <flow id="flow_minor_NS_4" type="car" route="route_cross_NS_4" begin="40" end="7200" period="32" departLane="best" departSpeed="max"/>
-    <flow id="flow_minor_SN_3" type="car" route="route_cross_SN_3" begin="42" end="7200" period="37" departLane="best" departSpeed="max"/>
-    <flow id="flow_minor_NS_5" type="car" route="route_cross_NS_5" begin="50" end="7200" period="33" departLane="best" departSpeed="max"/>
-    <flow id="flow_minor_SN_4" type="car" route="route_cross_SN_4" begin="56" end="7200" period="38" departLane="best" departSpeed="max"/>
-    <flow id="flow_minor_NS_6" type="car" route="route_cross_NS_6" begin="60" end="7200" period="34" departLane="best" departSpeed="max"/>
-    <flow id="flow_minor_SN_5" type="car" route="route_cross_SN_5" begin="70" end="7200" period="39" departLane="best" departSpeed="max"/>
-    <flow id="flow_minor_NS_7" type="car" route="route_cross_NS_7" begin="70" end="7200" period="35" departLane="best" departSpeed="max"/>
-    <flow id="flow_minor_SN_6" type="car" route="route_cross_SN_6" begin="84" end="7200" period="40" departLane="best" departSpeed="max"/>
-    <flow id="flow_minor_SN_7" type="car" route="route_cross_SN_7" begin="98" end="7200" period="41" departLane="best" departSpeed="max"/>
-    <vehicle id="bus_STCP502_W_0180" type="bus_12m" route="route_boavista_east_to_west" depart="180" line="STCP502_PROXY_W" departLane="best" departSpeed="max">
-    <stop busStop="bs_casa_musica_w" duration="20"/>
+  <flow id="flow_minor_NS_I1" type="car" route="route_cross_NS_I1" begin="10" end="7200" period="31" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_SN_I1" type="car" route="route_cross_SN_I1" begin="14" end="7200" period="37" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_NS_I2" type="car" route="route_cross_NS_I2" begin="20" end="7200" period="34" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_SN_I2" type="car" route="route_cross_SN_I2" begin="28" end="7200" period="40" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_NS_I3" type="car" route="route_cross_NS_I3" begin="30" end="7200" period="36" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_NS_I4" type="car" route="route_cross_NS_I4" begin="40" end="7200" period="37" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_SN_I3" type="car" route="route_cross_SN_I3" begin="42" end="7200" period="42" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_NS_I5" type="car" route="route_cross_NS_I5" begin="50" end="7200" period="36" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_SN_I4" type="car" route="route_cross_SN_I4" begin="56" end="7200" period="43" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_NS_I6" type="car" route="route_cross_NS_I6" begin="60" end="7200" period="33" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_SN_I5" type="car" route="route_cross_SN_I5" begin="70" end="7200" period="42" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_NS_I7" type="car" route="route_cross_NS_I7" begin="70" end="7200" period="35" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_SN_I6" type="car" route="route_cross_SN_I6" begin="84" end="7200" period="39" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_SN_I7" type="car" route="route_cross_SN_I7" begin="98" end="7200" period="41" departLane="best" departSpeed="max"/>
+  <vehicle id="bus_STCP502_W_0180" type="bus_12m" route="route_boavista_east_to_west" depart="180" line="STCP502_PROXY_W" departLane="best" departSpeed="max">
+    <stop busStop="bs_casa_musica_w" duration="22"/>
     <stop busStop="bs_bessa_w" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_w" duration="20"/>
-    <stop busStop="bs_serralves_w" duration="20"/>
+    <stop busStop="bs_antunes_guimaraes_w" duration="18"/>
+    <stop busStop="bs_serralves_w" duration="24"/>
     <stop busStop="bs_marechal_w" duration="20"/>
-    <stop busStop="bs_praca_imperio_w" duration="20"/>
+    <stop busStop="bs_praca_imperio_w" duration="26"/>
     <stop busStop="bs_castelo_queijo_w" duration="20"/>
   </vehicle>
-    <vehicle id="bus_STCP500_E_0300" type="bus_12m" route="route_boavista_west_to_east" depart="300" line="STCP500_PROXY_E" departLane="best" departSpeed="max">
+  <vehicle id="bus_STCP500_E_0300" type="bus_12m" route="route_boavista_west_to_east" depart="300" line="STCP500_PROXY_E" departLane="best" departSpeed="max">
     <stop busStop="bs_castelo_queijo_e" duration="20"/>
-    <stop busStop="bs_praca_imperio_e" duration="20"/>
+    <stop busStop="bs_praca_imperio_e" duration="26"/>
     <stop busStop="bs_marechal_e" duration="20"/>
-    <stop busStop="bs_serralves_e" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_e" duration="20"/>
+    <stop busStop="bs_serralves_e" duration="24"/>
+    <stop busStop="bs_antunes_guimaraes_e" duration="18"/>
     <stop busStop="bs_bessa_e" duration="20"/>
-    <stop busStop="bs_casa_musica_e" duration="20"/>
+    <stop busStop="bs_casa_musica_e" duration="22"/>
   </vehicle>
-    <vehicle id="bus_STCP500_W_0600" type="bus_12m" route="route_boavista_east_to_west" depart="600" line="STCP500_PROXY_W" departLane="best" departSpeed="max">
-    <stop busStop="bs_casa_musica_w" duration="20"/>
+  <vehicle id="bus_STCP500_W_0600" type="bus_12m" route="route_boavista_east_to_west" depart="600" line="STCP500_PROXY_W" departLane="best" departSpeed="max">
+    <stop busStop="bs_casa_musica_w" duration="22"/>
     <stop busStop="bs_bessa_w" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_w" duration="20"/>
-    <stop busStop="bs_serralves_w" duration="20"/>
+    <stop busStop="bs_antunes_guimaraes_w" duration="18"/>
+    <stop busStop="bs_serralves_w" duration="24"/>
     <stop busStop="bs_marechal_w" duration="20"/>
-    <stop busStop="bs_praca_imperio_w" duration="20"/>
+    <stop busStop="bs_praca_imperio_w" duration="26"/>
     <stop busStop="bs_castelo_queijo_w" duration="20"/>
   </vehicle>
-    <vehicle id="bus_STCP502_E_0630" type="bus_12m" route="route_boavista_west_to_east" depart="630" line="STCP502_PROXY_E" departLane="best" departSpeed="max">
+  <vehicle id="bus_STCP502_E_0630" type="bus_12m" route="route_boavista_west_to_east" depart="630" line="STCP502_PROXY_E" departLane="best" departSpeed="max">
     <stop busStop="bs_castelo_queijo_e" duration="20"/>
-    <stop busStop="bs_praca_imperio_e" duration="20"/>
+    <stop busStop="bs_praca_imperio_e" duration="26"/>
     <stop busStop="bs_marechal_e" duration="20"/>
-    <stop busStop="bs_serralves_e" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_e" duration="20"/>
+    <stop busStop="bs_serralves_e" duration="24"/>
+    <stop busStop="bs_antunes_guimaraes_e" duration="18"/>
     <stop busStop="bs_bessa_e" duration="20"/>
-    <stop busStop="bs_casa_musica_e" duration="20"/>
+    <stop busStop="bs_casa_musica_e" duration="22"/>
   </vehicle>
-    <vehicle id="bus_STCP500_E_0900" type="bus_12m" route="route_boavista_west_to_east" depart="900" line="STCP500_PROXY_E" departLane="best" departSpeed="max">
+  <vehicle id="bus_STCP500_E_0900" type="bus_12m" route="route_boavista_west_to_east" depart="900" line="STCP500_PROXY_E" departLane="best" departSpeed="max">
     <stop busStop="bs_castelo_queijo_e" duration="20"/>
-    <stop busStop="bs_praca_imperio_e" duration="20"/>
+    <stop busStop="bs_praca_imperio_e" duration="26"/>
     <stop busStop="bs_marechal_e" duration="20"/>
-    <stop busStop="bs_serralves_e" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_e" duration="20"/>
+    <stop busStop="bs_serralves_e" duration="24"/>
+    <stop busStop="bs_antunes_guimaraes_e" duration="18"/>
     <stop busStop="bs_bessa_e" duration="20"/>
-    <stop busStop="bs_casa_musica_e" duration="20"/>
+    <stop busStop="bs_casa_musica_e" duration="22"/>
   </vehicle>
-    <vehicle id="bus_STCP502_W_1080" type="bus_12m" route="route_boavista_east_to_west" depart="1080" line="STCP502_PROXY_W" departLane="best" departSpeed="max">
-    <stop busStop="bs_casa_musica_w" duration="20"/>
+  <vehicle id="bus_STCP502_W_1080" type="bus_12m" route="route_boavista_east_to_west" depart="1080" line="STCP502_PROXY_W" departLane="best" departSpeed="max">
+    <stop busStop="bs_casa_musica_w" duration="22"/>
     <stop busStop="bs_bessa_w" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_w" duration="20"/>
-    <stop busStop="bs_serralves_w" duration="20"/>
+    <stop busStop="bs_antunes_guimaraes_w" duration="18"/>
+    <stop busStop="bs_serralves_w" duration="24"/>
     <stop busStop="bs_marechal_w" duration="20"/>
-    <stop busStop="bs_praca_imperio_w" duration="20"/>
+    <stop busStop="bs_praca_imperio_w" duration="26"/>
     <stop busStop="bs_castelo_queijo_w" duration="20"/>
   </vehicle>
-    <vehicle id="bus_STCP500_W_1200" type="bus_12m" route="route_boavista_east_to_west" depart="1200" line="STCP500_PROXY_W" departLane="best" departSpeed="max">
-    <stop busStop="bs_casa_musica_w" duration="20"/>
+  <vehicle id="bus_STCP500_W_1200" type="bus_12m" route="route_boavista_east_to_west" depart="1200" line="STCP500_PROXY_W" departLane="best" departSpeed="max">
+    <stop busStop="bs_casa_musica_w" duration="22"/>
     <stop busStop="bs_bessa_w" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_w" duration="20"/>
-    <stop busStop="bs_serralves_w" duration="20"/>
+    <stop busStop="bs_antunes_guimaraes_w" duration="18"/>
+    <stop busStop="bs_serralves_w" duration="24"/>
     <stop busStop="bs_marechal_w" duration="20"/>
-    <stop busStop="bs_praca_imperio_w" duration="20"/>
+    <stop busStop="bs_praca_imperio_w" duration="26"/>
     <stop busStop="bs_castelo_queijo_w" duration="20"/>
   </vehicle>
-    <vehicle id="bus_STCP500_E_1500" type="bus_12m" route="route_boavista_west_to_east" depart="1500" line="STCP500_PROXY_E" departLane="best" departSpeed="max">
+  <vehicle id="bus_STCP500_E_1500" type="bus_12m" route="route_boavista_west_to_east" depart="1500" line="STCP500_PROXY_E" departLane="best" departSpeed="max">
     <stop busStop="bs_castelo_queijo_e" duration="20"/>
-    <stop busStop="bs_praca_imperio_e" duration="20"/>
+    <stop busStop="bs_praca_imperio_e" duration="26"/>
     <stop busStop="bs_marechal_e" duration="20"/>
-    <stop busStop="bs_serralves_e" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_e" duration="20"/>
+    <stop busStop="bs_serralves_e" duration="24"/>
+    <stop busStop="bs_antunes_guimaraes_e" duration="18"/>
     <stop busStop="bs_bessa_e" duration="20"/>
-    <stop busStop="bs_casa_musica_e" duration="20"/>
+    <stop busStop="bs_casa_musica_e" duration="22"/>
   </vehicle>
-    <vehicle id="bus_STCP502_E_1530" type="bus_12m" route="route_boavista_west_to_east" depart="1530" line="STCP502_PROXY_E" departLane="best" departSpeed="max">
+  <vehicle id="bus_STCP502_E_1530" type="bus_12m" route="route_boavista_west_to_east" depart="1530" line="STCP502_PROXY_E" departLane="best" departSpeed="max">
     <stop busStop="bs_castelo_queijo_e" duration="20"/>
-    <stop busStop="bs_praca_imperio_e" duration="20"/>
+    <stop busStop="bs_praca_imperio_e" duration="26"/>
     <stop busStop="bs_marechal_e" duration="20"/>
-    <stop busStop="bs_serralves_e" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_e" duration="20"/>
+    <stop busStop="bs_serralves_e" duration="24"/>
+    <stop busStop="bs_antunes_guimaraes_e" duration="18"/>
     <stop busStop="bs_bessa_e" duration="20"/>
-    <stop busStop="bs_casa_musica_e" duration="20"/>
+    <stop busStop="bs_casa_musica_e" duration="22"/>
   </vehicle>
-    <vehicle id="bus_STCP500_W_1800" type="bus_12m" route="route_boavista_east_to_west" depart="1800" line="STCP500_PROXY_W" departLane="best" departSpeed="max">
-    <stop busStop="bs_casa_musica_w" duration="20"/>
+  <vehicle id="bus_STCP500_W_1800" type="bus_12m" route="route_boavista_east_to_west" depart="1800" line="STCP500_PROXY_W" departLane="best" departSpeed="max">
+    <stop busStop="bs_casa_musica_w" duration="22"/>
     <stop busStop="bs_bessa_w" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_w" duration="20"/>
-    <stop busStop="bs_serralves_w" duration="20"/>
+    <stop busStop="bs_antunes_guimaraes_w" duration="18"/>
+    <stop busStop="bs_serralves_w" duration="24"/>
     <stop busStop="bs_marechal_w" duration="20"/>
-    <stop busStop="bs_praca_imperio_w" duration="20"/>
+    <stop busStop="bs_praca_imperio_w" duration="26"/>
     <stop busStop="bs_castelo_queijo_w" duration="20"/>
   </vehicle>
-    <vehicle id="bus_STCP502_W_1980" type="bus_12m" route="route_boavista_east_to_west" depart="1980" line="STCP502_PROXY_W" departLane="best" departSpeed="max">
-    <stop busStop="bs_casa_musica_w" duration="20"/>
+  <vehicle id="bus_STCP502_W_1980" type="bus_12m" route="route_boavista_east_to_west" depart="1980" line="STCP502_PROXY_W" departLane="best" departSpeed="max">
+    <stop busStop="bs_casa_musica_w" duration="22"/>
     <stop busStop="bs_bessa_w" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_w" duration="20"/>
-    <stop busStop="bs_serralves_w" duration="20"/>
+    <stop busStop="bs_antunes_guimaraes_w" duration="18"/>
+    <stop busStop="bs_serralves_w" duration="24"/>
     <stop busStop="bs_marechal_w" duration="20"/>
-    <stop busStop="bs_praca_imperio_w" duration="20"/>
+    <stop busStop="bs_praca_imperio_w" duration="26"/>
     <stop busStop="bs_castelo_queijo_w" duration="20"/>
   </vehicle>
-    <vehicle id="bus_STCP500_E_2100" type="bus_12m" route="route_boavista_west_to_east" depart="2100" line="STCP500_PROXY_E" departLane="best" departSpeed="max">
+  <vehicle id="bus_STCP500_E_2100" type="bus_12m" route="route_boavista_west_to_east" depart="2100" line="STCP500_PROXY_E" departLane="best" departSpeed="max">
     <stop busStop="bs_castelo_queijo_e" duration="20"/>
-    <stop busStop="bs_praca_imperio_e" duration="20"/>
+    <stop busStop="bs_praca_imperio_e" duration="26"/>
     <stop busStop="bs_marechal_e" duration="20"/>
-    <stop busStop="bs_serralves_e" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_e" duration="20"/>
+    <stop busStop="bs_serralves_e" duration="24"/>
+    <stop busStop="bs_antunes_guimaraes_e" duration="18"/>
     <stop busStop="bs_bessa_e" duration="20"/>
-    <stop busStop="bs_casa_musica_e" duration="20"/>
+    <stop busStop="bs_casa_musica_e" duration="22"/>
   </vehicle>
-    <vehicle id="bus_STCP500_W_2400" type="bus_12m" route="route_boavista_east_to_west" depart="2400" line="STCP500_PROXY_W" departLane="best" departSpeed="max">
-    <stop busStop="bs_casa_musica_w" duration="20"/>
+  <vehicle id="bus_STCP500_W_2400" type="bus_12m" route="route_boavista_east_to_west" depart="2400" line="STCP500_PROXY_W" departLane="best" departSpeed="max">
+    <stop busStop="bs_casa_musica_w" duration="22"/>
     <stop busStop="bs_bessa_w" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_w" duration="20"/>
-    <stop busStop="bs_serralves_w" duration="20"/>
+    <stop busStop="bs_antunes_guimaraes_w" duration="18"/>
+    <stop busStop="bs_serralves_w" duration="24"/>
     <stop busStop="bs_marechal_w" duration="20"/>
-    <stop busStop="bs_praca_imperio_w" duration="20"/>
+    <stop busStop="bs_praca_imperio_w" duration="26"/>
     <stop busStop="bs_castelo_queijo_w" duration="20"/>
   </vehicle>
-    <vehicle id="bus_STCP502_E_2430" type="bus_12m" route="route_boavista_west_to_east" depart="2430" line="STCP502_PROXY_E" departLane="best" departSpeed="max">
+  <vehicle id="bus_STCP502_E_2430" type="bus_12m" route="route_boavista_west_to_east" depart="2430" line="STCP502_PROXY_E" departLane="best" departSpeed="max">
     <stop busStop="bs_castelo_queijo_e" duration="20"/>
-    <stop busStop="bs_praca_imperio_e" duration="20"/>
+    <stop busStop="bs_praca_imperio_e" duration="26"/>
     <stop busStop="bs_marechal_e" duration="20"/>
-    <stop busStop="bs_serralves_e" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_e" duration="20"/>
+    <stop busStop="bs_serralves_e" duration="24"/>
+    <stop busStop="bs_antunes_guimaraes_e" duration="18"/>
     <stop busStop="bs_bessa_e" duration="20"/>
-    <stop busStop="bs_casa_musica_e" duration="20"/>
+    <stop busStop="bs_casa_musica_e" duration="22"/>
   </vehicle>
-    <vehicle id="bus_STCP500_E_2700" type="bus_12m" route="route_boavista_west_to_east" depart="2700" line="STCP500_PROXY_E" departLane="best" departSpeed="max">
+  <vehicle id="bus_STCP500_E_2700" type="bus_12m" route="route_boavista_west_to_east" depart="2700" line="STCP500_PROXY_E" departLane="best" departSpeed="max">
     <stop busStop="bs_castelo_queijo_e" duration="20"/>
-    <stop busStop="bs_praca_imperio_e" duration="20"/>
+    <stop busStop="bs_praca_imperio_e" duration="26"/>
     <stop busStop="bs_marechal_e" duration="20"/>
-    <stop busStop="bs_serralves_e" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_e" duration="20"/>
+    <stop busStop="bs_serralves_e" duration="24"/>
+    <stop busStop="bs_antunes_guimaraes_e" duration="18"/>
     <stop busStop="bs_bessa_e" duration="20"/>
-    <stop busStop="bs_casa_musica_e" duration="20"/>
+    <stop busStop="bs_casa_musica_e" duration="22"/>
   </vehicle>
-    <vehicle id="bus_STCP502_W_2880" type="bus_12m" route="route_boavista_east_to_west" depart="2880" line="STCP502_PROXY_W" departLane="best" departSpeed="max">
-    <stop busStop="bs_casa_musica_w" duration="20"/>
+  <vehicle id="bus_STCP502_W_2880" type="bus_12m" route="route_boavista_east_to_west" depart="2880" line="STCP502_PROXY_W" departLane="best" departSpeed="max">
+    <stop busStop="bs_casa_musica_w" duration="22"/>
     <stop busStop="bs_bessa_w" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_w" duration="20"/>
-    <stop busStop="bs_serralves_w" duration="20"/>
+    <stop busStop="bs_antunes_guimaraes_w" duration="18"/>
+    <stop busStop="bs_serralves_w" duration="24"/>
     <stop busStop="bs_marechal_w" duration="20"/>
-    <stop busStop="bs_praca_imperio_w" duration="20"/>
+    <stop busStop="bs_praca_imperio_w" duration="26"/>
     <stop busStop="bs_castelo_queijo_w" duration="20"/>
   </vehicle>
-    <vehicle id="bus_STCP500_W_3000" type="bus_12m" route="route_boavista_east_to_west" depart="3000" line="STCP500_PROXY_W" departLane="best" departSpeed="max">
-    <stop busStop="bs_casa_musica_w" duration="20"/>
+  <vehicle id="bus_STCP500_W_3000" type="bus_12m" route="route_boavista_east_to_west" depart="3000" line="STCP500_PROXY_W" departLane="best" departSpeed="max">
+    <stop busStop="bs_casa_musica_w" duration="22"/>
     <stop busStop="bs_bessa_w" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_w" duration="20"/>
-    <stop busStop="bs_serralves_w" duration="20"/>
+    <stop busStop="bs_antunes_guimaraes_w" duration="18"/>
+    <stop busStop="bs_serralves_w" duration="24"/>
     <stop busStop="bs_marechal_w" duration="20"/>
-    <stop busStop="bs_praca_imperio_w" duration="20"/>
+    <stop busStop="bs_praca_imperio_w" duration="26"/>
     <stop busStop="bs_castelo_queijo_w" duration="20"/>
   </vehicle>
-    <vehicle id="bus_STCP500_E_3300" type="bus_12m" route="route_boavista_west_to_east" depart="3300" line="STCP500_PROXY_E" departLane="best" departSpeed="max">
+  <vehicle id="bus_STCP500_E_3300" type="bus_12m" route="route_boavista_west_to_east" depart="3300" line="STCP500_PROXY_E" departLane="best" departSpeed="max">
     <stop busStop="bs_castelo_queijo_e" duration="20"/>
-    <stop busStop="bs_praca_imperio_e" duration="20"/>
+    <stop busStop="bs_praca_imperio_e" duration="26"/>
     <stop busStop="bs_marechal_e" duration="20"/>
-    <stop busStop="bs_serralves_e" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_e" duration="20"/>
+    <stop busStop="bs_serralves_e" duration="24"/>
+    <stop busStop="bs_antunes_guimaraes_e" duration="18"/>
     <stop busStop="bs_bessa_e" duration="20"/>
-    <stop busStop="bs_casa_musica_e" duration="20"/>
+    <stop busStop="bs_casa_musica_e" duration="22"/>
   </vehicle>
-    <vehicle id="bus_STCP502_E_3330" type="bus_12m" route="route_boavista_west_to_east" depart="3330" line="STCP502_PROXY_E" departLane="best" departSpeed="max">
+  <vehicle id="bus_STCP502_E_3330" type="bus_12m" route="route_boavista_west_to_east" depart="3330" line="STCP502_PROXY_E" departLane="best" departSpeed="max">
     <stop busStop="bs_castelo_queijo_e" duration="20"/>
-    <stop busStop="bs_praca_imperio_e" duration="20"/>
+    <stop busStop="bs_praca_imperio_e" duration="26"/>
     <stop busStop="bs_marechal_e" duration="20"/>
-    <stop busStop="bs_serralves_e" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_e" duration="20"/>
+    <stop busStop="bs_serralves_e" duration="24"/>
+    <stop busStop="bs_antunes_guimaraes_e" duration="18"/>
     <stop busStop="bs_bessa_e" duration="20"/>
-    <stop busStop="bs_casa_musica_e" duration="20"/>
+    <stop busStop="bs_casa_musica_e" duration="22"/>
   </vehicle>
-    <vehicle id="bus_STCP500_W_3600" type="bus_12m" route="route_boavista_east_to_west" depart="3600" line="STCP500_PROXY_W" departLane="best" departSpeed="max">
-    <stop busStop="bs_casa_musica_w" duration="20"/>
+  <vehicle id="bus_STCP500_W_3600" type="bus_12m" route="route_boavista_east_to_west" depart="3600" line="STCP500_PROXY_W" departLane="best" departSpeed="max">
+    <stop busStop="bs_casa_musica_w" duration="22"/>
     <stop busStop="bs_bessa_w" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_w" duration="20"/>
-    <stop busStop="bs_serralves_w" duration="20"/>
+    <stop busStop="bs_antunes_guimaraes_w" duration="18"/>
+    <stop busStop="bs_serralves_w" duration="24"/>
     <stop busStop="bs_marechal_w" duration="20"/>
-    <stop busStop="bs_praca_imperio_w" duration="20"/>
+    <stop busStop="bs_praca_imperio_w" duration="26"/>
     <stop busStop="bs_castelo_queijo_w" duration="20"/>
   </vehicle>
-    <vehicle id="ev_test_west_to_east_3600" type="emergency_vehicle" route="route_emergency_west_to_east" depart="3600" line="EMERGENCY_TEST" departLane="best" departSpeed="max"/>
-    <vehicle id="bus_STCP502_W_3780" type="bus_12m" route="route_boavista_east_to_west" depart="3780" line="STCP502_PROXY_W" departLane="best" departSpeed="max">
-    <stop busStop="bs_casa_musica_w" duration="20"/>
+  <vehicle id="ev_test_west_to_east_3600" type="emergency_vehicle" route="route_emergency_west_to_east" line="EMERGENCY_TEST" departLane="best" departSpeed="max" depart="3600"/>
+  <vehicle id="bus_STCP502_W_3780" type="bus_12m" route="route_boavista_east_to_west" depart="3780" line="STCP502_PROXY_W" departLane="best" departSpeed="max">
+    <stop busStop="bs_casa_musica_w" duration="22"/>
     <stop busStop="bs_bessa_w" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_w" duration="20"/>
-    <stop busStop="bs_serralves_w" duration="20"/>
+    <stop busStop="bs_antunes_guimaraes_w" duration="18"/>
+    <stop busStop="bs_serralves_w" duration="24"/>
     <stop busStop="bs_marechal_w" duration="20"/>
-    <stop busStop="bs_praca_imperio_w" duration="20"/>
+    <stop busStop="bs_praca_imperio_w" duration="26"/>
     <stop busStop="bs_castelo_queijo_w" duration="20"/>
   </vehicle>
-    <vehicle id="bus_STCP500_E_3900" type="bus_12m" route="route_boavista_west_to_east" depart="3900" line="STCP500_PROXY_E" departLane="best" departSpeed="max">
+  <vehicle id="bus_STCP500_E_3900" type="bus_12m" route="route_boavista_west_to_east" depart="3900" line="STCP500_PROXY_E" departLane="best" departSpeed="max">
     <stop busStop="bs_castelo_queijo_e" duration="20"/>
-    <stop busStop="bs_praca_imperio_e" duration="20"/>
+    <stop busStop="bs_praca_imperio_e" duration="26"/>
     <stop busStop="bs_marechal_e" duration="20"/>
-    <stop busStop="bs_serralves_e" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_e" duration="20"/>
+    <stop busStop="bs_serralves_e" duration="24"/>
+    <stop busStop="bs_antunes_guimaraes_e" duration="18"/>
     <stop busStop="bs_bessa_e" duration="20"/>
-    <stop busStop="bs_casa_musica_e" duration="20"/>
+    <stop busStop="bs_casa_musica_e" duration="22"/>
   </vehicle>
-    <vehicle id="bus_STCP500_W_4200" type="bus_12m" route="route_boavista_east_to_west" depart="4200" line="STCP500_PROXY_W" departLane="best" departSpeed="max">
-    <stop busStop="bs_casa_musica_w" duration="20"/>
+  <vehicle id="bus_STCP500_W_4200" type="bus_12m" route="route_boavista_east_to_west" depart="4200" line="STCP500_PROXY_W" departLane="best" departSpeed="max">
+    <stop busStop="bs_casa_musica_w" duration="22"/>
     <stop busStop="bs_bessa_w" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_w" duration="20"/>
-    <stop busStop="bs_serralves_w" duration="20"/>
+    <stop busStop="bs_antunes_guimaraes_w" duration="18"/>
+    <stop busStop="bs_serralves_w" duration="24"/>
     <stop busStop="bs_marechal_w" duration="20"/>
-    <stop busStop="bs_praca_imperio_w" duration="20"/>
+    <stop busStop="bs_praca_imperio_w" duration="26"/>
     <stop busStop="bs_castelo_queijo_w" duration="20"/>
   </vehicle>
-    <vehicle id="bus_STCP502_E_4230" type="bus_12m" route="route_boavista_west_to_east" depart="4230" line="STCP502_PROXY_E" departLane="best" departSpeed="max">
+  <vehicle id="bus_STCP502_E_4230" type="bus_12m" route="route_boavista_west_to_east" depart="4230" line="STCP502_PROXY_E" departLane="best" departSpeed="max">
     <stop busStop="bs_castelo_queijo_e" duration="20"/>
-    <stop busStop="bs_praca_imperio_e" duration="20"/>
+    <stop busStop="bs_praca_imperio_e" duration="26"/>
     <stop busStop="bs_marechal_e" duration="20"/>
-    <stop busStop="bs_serralves_e" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_e" duration="20"/>
+    <stop busStop="bs_serralves_e" duration="24"/>
+    <stop busStop="bs_antunes_guimaraes_e" duration="18"/>
     <stop busStop="bs_bessa_e" duration="20"/>
-    <stop busStop="bs_casa_musica_e" duration="20"/>
+    <stop busStop="bs_casa_musica_e" duration="22"/>
   </vehicle>
-    <vehicle id="bus_STCP500_E_4500" type="bus_12m" route="route_boavista_west_to_east" depart="4500" line="STCP500_PROXY_E" departLane="best" departSpeed="max">
+  <vehicle id="bus_STCP500_E_4500" type="bus_12m" route="route_boavista_west_to_east" depart="4500" line="STCP500_PROXY_E" departLane="best" departSpeed="max">
     <stop busStop="bs_castelo_queijo_e" duration="20"/>
-    <stop busStop="bs_praca_imperio_e" duration="20"/>
+    <stop busStop="bs_praca_imperio_e" duration="26"/>
     <stop busStop="bs_marechal_e" duration="20"/>
-    <stop busStop="bs_serralves_e" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_e" duration="20"/>
+    <stop busStop="bs_serralves_e" duration="24"/>
+    <stop busStop="bs_antunes_guimaraes_e" duration="18"/>
     <stop busStop="bs_bessa_e" duration="20"/>
-    <stop busStop="bs_casa_musica_e" duration="20"/>
+    <stop busStop="bs_casa_musica_e" duration="22"/>
   </vehicle>
-    <vehicle id="bus_STCP502_W_4680" type="bus_12m" route="route_boavista_east_to_west" depart="4680" line="STCP502_PROXY_W" departLane="best" departSpeed="max">
-    <stop busStop="bs_casa_musica_w" duration="20"/>
+  <vehicle id="bus_STCP502_W_4680" type="bus_12m" route="route_boavista_east_to_west" depart="4680" line="STCP502_PROXY_W" departLane="best" departSpeed="max">
+    <stop busStop="bs_casa_musica_w" duration="22"/>
     <stop busStop="bs_bessa_w" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_w" duration="20"/>
-    <stop busStop="bs_serralves_w" duration="20"/>
+    <stop busStop="bs_antunes_guimaraes_w" duration="18"/>
+    <stop busStop="bs_serralves_w" duration="24"/>
     <stop busStop="bs_marechal_w" duration="20"/>
-    <stop busStop="bs_praca_imperio_w" duration="20"/>
+    <stop busStop="bs_praca_imperio_w" duration="26"/>
     <stop busStop="bs_castelo_queijo_w" duration="20"/>
   </vehicle>
-    <vehicle id="bus_STCP500_W_4800" type="bus_12m" route="route_boavista_east_to_west" depart="4800" line="STCP500_PROXY_W" departLane="best" departSpeed="max">
-    <stop busStop="bs_casa_musica_w" duration="20"/>
+  <vehicle id="bus_STCP500_W_4800" type="bus_12m" route="route_boavista_east_to_west" depart="4800" line="STCP500_PROXY_W" departLane="best" departSpeed="max">
+    <stop busStop="bs_casa_musica_w" duration="22"/>
     <stop busStop="bs_bessa_w" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_w" duration="20"/>
-    <stop busStop="bs_serralves_w" duration="20"/>
+    <stop busStop="bs_antunes_guimaraes_w" duration="18"/>
+    <stop busStop="bs_serralves_w" duration="24"/>
     <stop busStop="bs_marechal_w" duration="20"/>
-    <stop busStop="bs_praca_imperio_w" duration="20"/>
+    <stop busStop="bs_praca_imperio_w" duration="26"/>
     <stop busStop="bs_castelo_queijo_w" duration="20"/>
   </vehicle>
-    <vehicle id="bus_STCP500_E_5100" type="bus_12m" route="route_boavista_west_to_east" depart="5100" line="STCP500_PROXY_E" departLane="best" departSpeed="max">
+  <vehicle id="bus_STCP500_E_5100" type="bus_12m" route="route_boavista_west_to_east" depart="5100" line="STCP500_PROXY_E" departLane="best" departSpeed="max">
     <stop busStop="bs_castelo_queijo_e" duration="20"/>
-    <stop busStop="bs_praca_imperio_e" duration="20"/>
+    <stop busStop="bs_praca_imperio_e" duration="26"/>
     <stop busStop="bs_marechal_e" duration="20"/>
-    <stop busStop="bs_serralves_e" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_e" duration="20"/>
+    <stop busStop="bs_serralves_e" duration="24"/>
+    <stop busStop="bs_antunes_guimaraes_e" duration="18"/>
     <stop busStop="bs_bessa_e" duration="20"/>
-    <stop busStop="bs_casa_musica_e" duration="20"/>
+    <stop busStop="bs_casa_musica_e" duration="22"/>
   </vehicle>
-    <vehicle id="bus_STCP502_E_5130" type="bus_12m" route="route_boavista_west_to_east" depart="5130" line="STCP502_PROXY_E" departLane="best" departSpeed="max">
+  <vehicle id="bus_STCP502_E_5130" type="bus_12m" route="route_boavista_west_to_east" depart="5130" line="STCP502_PROXY_E" departLane="best" departSpeed="max">
     <stop busStop="bs_castelo_queijo_e" duration="20"/>
-    <stop busStop="bs_praca_imperio_e" duration="20"/>
+    <stop busStop="bs_praca_imperio_e" duration="26"/>
     <stop busStop="bs_marechal_e" duration="20"/>
-    <stop busStop="bs_serralves_e" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_e" duration="20"/>
+    <stop busStop="bs_serralves_e" duration="24"/>
+    <stop busStop="bs_antunes_guimaraes_e" duration="18"/>
     <stop busStop="bs_bessa_e" duration="20"/>
-    <stop busStop="bs_casa_musica_e" duration="20"/>
+    <stop busStop="bs_casa_musica_e" duration="22"/>
   </vehicle>
-    <vehicle id="bus_STCP500_W_5400" type="bus_12m" route="route_boavista_east_to_west" depart="5400" line="STCP500_PROXY_W" departLane="best" departSpeed="max">
-    <stop busStop="bs_casa_musica_w" duration="20"/>
+  <vehicle id="bus_STCP500_W_5400" type="bus_12m" route="route_boavista_east_to_west" depart="5400" line="STCP500_PROXY_W" departLane="best" departSpeed="max">
+    <stop busStop="bs_casa_musica_w" duration="22"/>
     <stop busStop="bs_bessa_w" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_w" duration="20"/>
-    <stop busStop="bs_serralves_w" duration="20"/>
+    <stop busStop="bs_antunes_guimaraes_w" duration="18"/>
+    <stop busStop="bs_serralves_w" duration="24"/>
     <stop busStop="bs_marechal_w" duration="20"/>
-    <stop busStop="bs_praca_imperio_w" duration="20"/>
+    <stop busStop="bs_praca_imperio_w" duration="26"/>
     <stop busStop="bs_castelo_queijo_w" duration="20"/>
   </vehicle>
-    <vehicle id="bus_STCP502_W_5580" type="bus_12m" route="route_boavista_east_to_west" depart="5580" line="STCP502_PROXY_W" departLane="best" departSpeed="max">
-    <stop busStop="bs_casa_musica_w" duration="20"/>
+  <vehicle id="bus_STCP502_W_5580" type="bus_12m" route="route_boavista_east_to_west" depart="5580" line="STCP502_PROXY_W" departLane="best" departSpeed="max">
+    <stop busStop="bs_casa_musica_w" duration="22"/>
     <stop busStop="bs_bessa_w" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_w" duration="20"/>
-    <stop busStop="bs_serralves_w" duration="20"/>
+    <stop busStop="bs_antunes_guimaraes_w" duration="18"/>
+    <stop busStop="bs_serralves_w" duration="24"/>
     <stop busStop="bs_marechal_w" duration="20"/>
-    <stop busStop="bs_praca_imperio_w" duration="20"/>
+    <stop busStop="bs_praca_imperio_w" duration="26"/>
     <stop busStop="bs_castelo_queijo_w" duration="20"/>
   </vehicle>
-    <vehicle id="bus_STCP500_E_5700" type="bus_12m" route="route_boavista_west_to_east" depart="5700" line="STCP500_PROXY_E" departLane="best" departSpeed="max">
+  <vehicle id="bus_STCP500_E_5700" type="bus_12m" route="route_boavista_west_to_east" depart="5700" line="STCP500_PROXY_E" departLane="best" departSpeed="max">
     <stop busStop="bs_castelo_queijo_e" duration="20"/>
-    <stop busStop="bs_praca_imperio_e" duration="20"/>
+    <stop busStop="bs_praca_imperio_e" duration="26"/>
     <stop busStop="bs_marechal_e" duration="20"/>
-    <stop busStop="bs_serralves_e" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_e" duration="20"/>
+    <stop busStop="bs_serralves_e" duration="24"/>
+    <stop busStop="bs_antunes_guimaraes_e" duration="18"/>
     <stop busStop="bs_bessa_e" duration="20"/>
-    <stop busStop="bs_casa_musica_e" duration="20"/>
+    <stop busStop="bs_casa_musica_e" duration="22"/>
   </vehicle>
-    <vehicle id="bus_STCP500_W_6000" type="bus_12m" route="route_boavista_east_to_west" depart="6000" line="STCP500_PROXY_W" departLane="best" departSpeed="max">
-    <stop busStop="bs_casa_musica_w" duration="20"/>
+  <vehicle id="bus_STCP500_W_6000" type="bus_12m" route="route_boavista_east_to_west" depart="6000" line="STCP500_PROXY_W" departLane="best" departSpeed="max">
+    <stop busStop="bs_casa_musica_w" duration="22"/>
     <stop busStop="bs_bessa_w" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_w" duration="20"/>
-    <stop busStop="bs_serralves_w" duration="20"/>
+    <stop busStop="bs_antunes_guimaraes_w" duration="18"/>
+    <stop busStop="bs_serralves_w" duration="24"/>
     <stop busStop="bs_marechal_w" duration="20"/>
-    <stop busStop="bs_praca_imperio_w" duration="20"/>
+    <stop busStop="bs_praca_imperio_w" duration="26"/>
     <stop busStop="bs_castelo_queijo_w" duration="20"/>
   </vehicle>
-    <vehicle id="bus_STCP502_E_6030" type="bus_12m" route="route_boavista_west_to_east" depart="6030" line="STCP502_PROXY_E" departLane="best" departSpeed="max">
+  <vehicle id="bus_STCP502_E_6030" type="bus_12m" route="route_boavista_west_to_east" depart="6030" line="STCP502_PROXY_E" departLane="best" departSpeed="max">
     <stop busStop="bs_castelo_queijo_e" duration="20"/>
-    <stop busStop="bs_praca_imperio_e" duration="20"/>
+    <stop busStop="bs_praca_imperio_e" duration="26"/>
     <stop busStop="bs_marechal_e" duration="20"/>
-    <stop busStop="bs_serralves_e" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_e" duration="20"/>
+    <stop busStop="bs_serralves_e" duration="24"/>
+    <stop busStop="bs_antunes_guimaraes_e" duration="18"/>
     <stop busStop="bs_bessa_e" duration="20"/>
-    <stop busStop="bs_casa_musica_e" duration="20"/>
+    <stop busStop="bs_casa_musica_e" duration="22"/>
   </vehicle>
-    <vehicle id="bus_STCP500_E_6300" type="bus_12m" route="route_boavista_west_to_east" depart="6300" line="STCP500_PROXY_E" departLane="best" departSpeed="max">
+  <vehicle id="bus_STCP500_E_6300" type="bus_12m" route="route_boavista_west_to_east" depart="6300" line="STCP500_PROXY_E" departLane="best" departSpeed="max">
     <stop busStop="bs_castelo_queijo_e" duration="20"/>
-    <stop busStop="bs_praca_imperio_e" duration="20"/>
+    <stop busStop="bs_praca_imperio_e" duration="26"/>
     <stop busStop="bs_marechal_e" duration="20"/>
-    <stop busStop="bs_serralves_e" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_e" duration="20"/>
+    <stop busStop="bs_serralves_e" duration="24"/>
+    <stop busStop="bs_antunes_guimaraes_e" duration="18"/>
     <stop busStop="bs_bessa_e" duration="20"/>
-    <stop busStop="bs_casa_musica_e" duration="20"/>
+    <stop busStop="bs_casa_musica_e" duration="22"/>
   </vehicle>
-    <vehicle id="bus_STCP502_W_6480" type="bus_12m" route="route_boavista_east_to_west" depart="6480" line="STCP502_PROXY_W" departLane="best" departSpeed="max">
-    <stop busStop="bs_casa_musica_w" duration="20"/>
+  <vehicle id="bus_STCP502_W_6480" type="bus_12m" route="route_boavista_east_to_west" depart="6480" line="STCP502_PROXY_W" departLane="best" departSpeed="max">
+    <stop busStop="bs_casa_musica_w" duration="22"/>
     <stop busStop="bs_bessa_w" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_w" duration="20"/>
-    <stop busStop="bs_serralves_w" duration="20"/>
+    <stop busStop="bs_antunes_guimaraes_w" duration="18"/>
+    <stop busStop="bs_serralves_w" duration="24"/>
     <stop busStop="bs_marechal_w" duration="20"/>
-    <stop busStop="bs_praca_imperio_w" duration="20"/>
+    <stop busStop="bs_praca_imperio_w" duration="26"/>
     <stop busStop="bs_castelo_queijo_w" duration="20"/>
   </vehicle>
-    <vehicle id="bus_STCP500_W_6600" type="bus_12m" route="route_boavista_east_to_west" depart="6600" line="STCP500_PROXY_W" departLane="best" departSpeed="max">
-    <stop busStop="bs_casa_musica_w" duration="20"/>
+  <vehicle id="bus_STCP500_W_6600" type="bus_12m" route="route_boavista_east_to_west" depart="6600" line="STCP500_PROXY_W" departLane="best" departSpeed="max">
+    <stop busStop="bs_casa_musica_w" duration="22"/>
     <stop busStop="bs_bessa_w" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_w" duration="20"/>
-    <stop busStop="bs_serralves_w" duration="20"/>
+    <stop busStop="bs_antunes_guimaraes_w" duration="18"/>
+    <stop busStop="bs_serralves_w" duration="24"/>
     <stop busStop="bs_marechal_w" duration="20"/>
-    <stop busStop="bs_praca_imperio_w" duration="20"/>
+    <stop busStop="bs_praca_imperio_w" duration="26"/>
     <stop busStop="bs_castelo_queijo_w" duration="20"/>
   </vehicle>
-    <vehicle id="bus_STCP500_E_6900" type="bus_12m" route="route_boavista_west_to_east" depart="6900" line="STCP500_PROXY_E" departLane="best" departSpeed="max">
+  <vehicle id="bus_STCP500_E_6900" type="bus_12m" route="route_boavista_west_to_east" depart="6900" line="STCP500_PROXY_E" departLane="best" departSpeed="max">
     <stop busStop="bs_castelo_queijo_e" duration="20"/>
-    <stop busStop="bs_praca_imperio_e" duration="20"/>
+    <stop busStop="bs_praca_imperio_e" duration="26"/>
     <stop busStop="bs_marechal_e" duration="20"/>
-    <stop busStop="bs_serralves_e" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_e" duration="20"/>
+    <stop busStop="bs_serralves_e" duration="24"/>
+    <stop busStop="bs_antunes_guimaraes_e" duration="18"/>
     <stop busStop="bs_bessa_e" duration="20"/>
-    <stop busStop="bs_casa_musica_e" duration="20"/>
+    <stop busStop="bs_casa_musica_e" duration="22"/>
   </vehicle>
-    <vehicle id="bus_STCP502_E_6930" type="bus_12m" route="route_boavista_west_to_east" depart="6930" line="STCP502_PROXY_E" departLane="best" departSpeed="max">
+  <vehicle id="bus_STCP502_E_6930" type="bus_12m" route="route_boavista_west_to_east" depart="6930" line="STCP502_PROXY_E" departLane="best" departSpeed="max">
     <stop busStop="bs_castelo_queijo_e" duration="20"/>
-    <stop busStop="bs_praca_imperio_e" duration="20"/>
+    <stop busStop="bs_praca_imperio_e" duration="26"/>
     <stop busStop="bs_marechal_e" duration="20"/>
-    <stop busStop="bs_serralves_e" duration="20"/>
-    <stop busStop="bs_antunes_guimaraes_e" duration="20"/>
+    <stop busStop="bs_serralves_e" duration="24"/>
+    <stop busStop="bs_antunes_guimaraes_e" duration="18"/>
     <stop busStop="bs_bessa_e" duration="20"/>
-    <stop busStop="bs_casa_musica_e" duration="20"/>
+    <stop busStop="bs_casa_musica_e" duration="22"/>
   </vehicle>
 </routes>

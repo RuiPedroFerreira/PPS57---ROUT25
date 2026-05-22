@@ -1,0 +1,550 @@
+{
+  "scenario_id": "porto_boavista_base_v03",
+  "description": "Cenario-base SUMO controlado para a Avenida da Boavista, ancorado em geometria e operacao plausiveis e preparado para calibracao com GTFS/contagens/planos reais.",
+  "city": "Porto",
+  "corridor_name": "Avenida da Boavista / Casa da Musica - Bessa - Serralves - Praca do Imperio - Castelo do Queijo",
+  "alignment_level": "controlled_sumo_base_proxy",
+  "important_note": "A rede e gerada internamente para ser estavel e auditavel. Usa OSM/GTFS como referencia operacional, mas nao faz importacao automatica de topografia OSM nesta versao.",
+  "simulation_begin_s": 0,
+  "simulation_end_s": 7200,
+  "random_seed": 57,
+  "active_demand_profile": "am_peak",
+  "network": {
+    "default_major_speed_mps": 13.89,
+    "default_minor_speed_mps": 8.33,
+    "default_major_lanes": 2,
+    "default_minor_lanes": 1,
+    "major_priority": 4,
+    "minor_priority": 2,
+    "minor_approach_length_m": 420,
+    "terminals": [
+      {
+        "id": "CITY_EAST",
+        "name": "Entrada leste - Boavista/Casa da Musica",
+        "x": -420,
+        "y": 15,
+        "type": "priority"
+      },
+      {
+        "id": "ATLANTIC_WEST",
+        "name": "Saida oeste - Castelo do Queijo/Matosinhos",
+        "x": 5050,
+        "y": 170,
+        "type": "priority"
+      }
+    ],
+    "intersections": [
+      {
+        "id": "I1",
+        "name": "Casa da Musica / Boavista",
+        "x": 0,
+        "y": 0,
+        "type": "traffic_light",
+        "major_lanes": 2,
+        "minor_lanes": 2,
+        "rsu_id": "RSU_BOAVISTA_01"
+      },
+      {
+        "id": "I2",
+        "name": "Av. Boavista / Bessa",
+        "x": 650,
+        "y": -25,
+        "type": "traffic_light",
+        "major_lanes": 2,
+        "minor_lanes": 1,
+        "rsu_id": "RSU_BOAVISTA_02"
+      },
+      {
+        "id": "I3",
+        "name": "Av. Boavista / Antunes Guimaraes",
+        "x": 1350,
+        "y": -85,
+        "type": "traffic_light",
+        "major_lanes": 2,
+        "minor_lanes": 1,
+        "rsu_id": "RSU_BOAVISTA_03"
+      },
+      {
+        "id": "I4",
+        "name": "Av. Boavista / Serralves",
+        "x": 2150,
+        "y": -130,
+        "type": "traffic_light",
+        "major_lanes": 2,
+        "minor_lanes": 1,
+        "rsu_id": "RSU_BOAVISTA_04"
+      },
+      {
+        "id": "I5",
+        "name": "Av. Boavista / Marechal Gomes da Costa",
+        "x": 2950,
+        "y": -80,
+        "type": "traffic_light",
+        "major_lanes": 2,
+        "minor_lanes": 1,
+        "rsu_id": "RSU_BOAVISTA_05"
+      },
+      {
+        "id": "I6",
+        "name": "Praca do Imperio",
+        "x": 3820,
+        "y": 45,
+        "type": "traffic_light",
+        "major_lanes": 2,
+        "minor_lanes": 2,
+        "rsu_id": "RSU_BOAVISTA_06"
+      },
+      {
+        "id": "I7",
+        "name": "Castelo do Queijo / Matosinhos",
+        "x": 4650,
+        "y": 125,
+        "type": "traffic_light",
+        "major_lanes": 2,
+        "minor_lanes": 1,
+        "rsu_id": "RSU_BOAVISTA_07"
+      }
+    ]
+  },
+  "vehicle_types": [
+    {
+      "id": "car",
+      "vClass": "passenger",
+      "length": 5.0,
+      "accel": 2.4,
+      "decel": 4.5,
+      "sigma": 0.5,
+      "maxSpeed": 13.89,
+      "color": "0.7,0.7,0.7"
+    },
+    {
+      "id": "bus_12m",
+      "vClass": "bus",
+      "length": 12.0,
+      "accel": 1.1,
+      "decel": 3.5,
+      "sigma": 0.25,
+      "maxSpeed": 13.89,
+      "guiShape": "bus",
+      "color": "0,0,1"
+    },
+    {
+      "id": "emergency_vehicle",
+      "vClass": "emergency",
+      "length": 5.5,
+      "accel": 2.8,
+      "decel": 5.0,
+      "sigma": 0.2,
+      "maxSpeed": 16.67,
+      "guiShape": "emergency",
+      "color": "1,0,0"
+    }
+  ],
+  "public_transport": {
+    "source_note": "Linhas e paragens sao uma base declarativa compativel com GTFS STCP; os IDs mantem compatibilidade com a camada C-ITS existente.",
+    "lines": [
+      {
+        "id": "STCP500",
+        "name": "500 - Matosinhos / Centro do Porto",
+        "vehicle_type": "bus_12m"
+      },
+      {
+        "id": "STCP502",
+        "name": "502 - Matosinhos / Bolhao",
+        "vehicle_type": "bus_12m"
+      }
+    ],
+    "stops": [
+      {
+        "id": "bs_casa_musica_w",
+        "name": "Casa da Musica sentido oeste",
+        "edge_id": "I1_I2",
+        "lane_index": 0,
+        "center_m": 140,
+        "length_m": 30,
+        "dwell_s": 22
+      },
+      {
+        "id": "bs_bessa_w",
+        "name": "Bessa sentido oeste",
+        "edge_id": "I2_I3",
+        "lane_index": 0,
+        "center_m": 150,
+        "length_m": 30,
+        "dwell_s": 20
+      },
+      {
+        "id": "bs_antunes_guimaraes_w",
+        "name": "Antunes Guimaraes sentido oeste",
+        "edge_id": "I3_I4",
+        "lane_index": 0,
+        "center_m": 170,
+        "length_m": 30,
+        "dwell_s": 18
+      },
+      {
+        "id": "bs_serralves_w",
+        "name": "Serralves sentido oeste",
+        "edge_id": "I4_I5",
+        "lane_index": 0,
+        "center_m": 190,
+        "length_m": 30,
+        "dwell_s": 24
+      },
+      {
+        "id": "bs_marechal_w",
+        "name": "Marechal Gomes da Costa sentido oeste",
+        "edge_id": "I5_I6",
+        "lane_index": 0,
+        "center_m": 180,
+        "length_m": 30,
+        "dwell_s": 20
+      },
+      {
+        "id": "bs_praca_imperio_w",
+        "name": "Praca do Imperio sentido oeste",
+        "edge_id": "I6_I7",
+        "lane_index": 0,
+        "center_m": 160,
+        "length_m": 30,
+        "dwell_s": 26
+      },
+      {
+        "id": "bs_castelo_queijo_w",
+        "name": "Castelo do Queijo sentido oeste",
+        "edge_id": "I7_ATLANTIC_WEST",
+        "lane_index": 0,
+        "center_m": 170,
+        "length_m": 30,
+        "dwell_s": 20
+      },
+      {
+        "id": "bs_castelo_queijo_e",
+        "name": "Castelo do Queijo sentido este",
+        "edge_id": "I7_I6",
+        "lane_index": 0,
+        "center_m": 160,
+        "length_m": 30,
+        "dwell_s": 20
+      },
+      {
+        "id": "bs_praca_imperio_e",
+        "name": "Praca do Imperio sentido este",
+        "edge_id": "I6_I5",
+        "lane_index": 0,
+        "center_m": 180,
+        "length_m": 30,
+        "dwell_s": 26
+      },
+      {
+        "id": "bs_marechal_e",
+        "name": "Marechal Gomes da Costa sentido este",
+        "edge_id": "I5_I4",
+        "lane_index": 0,
+        "center_m": 190,
+        "length_m": 30,
+        "dwell_s": 20
+      },
+      {
+        "id": "bs_serralves_e",
+        "name": "Serralves sentido este",
+        "edge_id": "I4_I3",
+        "lane_index": 0,
+        "center_m": 170,
+        "length_m": 30,
+        "dwell_s": 24
+      },
+      {
+        "id": "bs_antunes_guimaraes_e",
+        "name": "Antunes Guimaraes sentido este",
+        "edge_id": "I3_I2",
+        "lane_index": 0,
+        "center_m": 150,
+        "length_m": 30,
+        "dwell_s": 18
+      },
+      {
+        "id": "bs_bessa_e",
+        "name": "Bessa sentido este",
+        "edge_id": "I2_I1",
+        "lane_index": 0,
+        "center_m": 140,
+        "length_m": 30,
+        "dwell_s": 20
+      },
+      {
+        "id": "bs_casa_musica_e",
+        "name": "Casa da Musica sentido este",
+        "edge_id": "I1_CITY_EAST",
+        "lane_index": 0,
+        "center_m": 135,
+        "length_m": 30,
+        "dwell_s": 22
+      }
+    ],
+    "services": [
+      {
+        "line_id": "STCP500",
+        "line_code": "STCP500_PROXY_W",
+        "direction": "W",
+        "route": "route_boavista_east_to_west",
+        "begin_s": 0,
+        "end_s": 7200,
+        "headway_s": 600,
+        "offset_s": 0,
+        "stops": [
+          "bs_casa_musica_w",
+          "bs_bessa_w",
+          "bs_antunes_guimaraes_w",
+          "bs_serralves_w",
+          "bs_marechal_w",
+          "bs_praca_imperio_w",
+          "bs_castelo_queijo_w"
+        ]
+      },
+      {
+        "line_id": "STCP500",
+        "line_code": "STCP500_PROXY_E",
+        "direction": "E",
+        "route": "route_boavista_west_to_east",
+        "begin_s": 0,
+        "end_s": 7200,
+        "headway_s": 600,
+        "offset_s": 300,
+        "stops": [
+          "bs_castelo_queijo_e",
+          "bs_praca_imperio_e",
+          "bs_marechal_e",
+          "bs_serralves_e",
+          "bs_antunes_guimaraes_e",
+          "bs_bessa_e",
+          "bs_casa_musica_e"
+        ]
+      },
+      {
+        "line_id": "STCP502",
+        "line_code": "STCP502_PROXY_W",
+        "direction": "W",
+        "route": "route_boavista_east_to_west",
+        "begin_s": 0,
+        "end_s": 7200,
+        "headway_s": 900,
+        "offset_s": 180,
+        "stops": [
+          "bs_casa_musica_w",
+          "bs_bessa_w",
+          "bs_antunes_guimaraes_w",
+          "bs_serralves_w",
+          "bs_marechal_w",
+          "bs_praca_imperio_w",
+          "bs_castelo_queijo_w"
+        ]
+      },
+      {
+        "line_id": "STCP502",
+        "line_code": "STCP502_PROXY_E",
+        "direction": "E",
+        "route": "route_boavista_west_to_east",
+        "begin_s": 0,
+        "end_s": 7200,
+        "headway_s": 900,
+        "offset_s": 630,
+        "stops": [
+          "bs_castelo_queijo_e",
+          "bs_praca_imperio_e",
+          "bs_marechal_e",
+          "bs_serralves_e",
+          "bs_antunes_guimaraes_e",
+          "bs_bessa_e",
+          "bs_casa_musica_e"
+        ]
+      }
+    ]
+  },
+  "demand_profiles": {
+    "am_peak": {
+      "description": "Ponta da manha sintetica: inbound oeste->este mais pesado, eixo principal dominante e procura transversal moderada.",
+      "flows": [
+        {
+          "id": "flow_car_inbound_west_to_east_am_peak",
+          "type": "car",
+          "route": "route_boavista_west_to_east",
+          "begin": 0,
+          "end": 7200,
+          "period": 7.5,
+          "departLane": "best",
+          "departSpeed": "max"
+        },
+        {
+          "id": "flow_car_outbound_east_to_west_am_peak",
+          "type": "car",
+          "route": "route_boavista_east_to_west",
+          "begin": 0,
+          "end": 7200,
+          "period": 11.0,
+          "departLane": "best",
+          "departSpeed": "max"
+        },
+        {
+          "id": "flow_minor_NS_I1",
+          "type": "car",
+          "route": "route_cross_NS_I1",
+          "begin": 10,
+          "end": 7200,
+          "period": 31,
+          "departLane": "best",
+          "departSpeed": "max"
+        },
+        {
+          "id": "flow_minor_SN_I1",
+          "type": "car",
+          "route": "route_cross_SN_I1",
+          "begin": 14,
+          "end": 7200,
+          "period": 37,
+          "departLane": "best",
+          "departSpeed": "max"
+        },
+        {
+          "id": "flow_minor_NS_I2",
+          "type": "car",
+          "route": "route_cross_NS_I2",
+          "begin": 20,
+          "end": 7200,
+          "period": 34,
+          "departLane": "best",
+          "departSpeed": "max"
+        },
+        {
+          "id": "flow_minor_SN_I2",
+          "type": "car",
+          "route": "route_cross_SN_I2",
+          "begin": 28,
+          "end": 7200,
+          "period": 40,
+          "departLane": "best",
+          "departSpeed": "max"
+        },
+        {
+          "id": "flow_minor_NS_I3",
+          "type": "car",
+          "route": "route_cross_NS_I3",
+          "begin": 30,
+          "end": 7200,
+          "period": 36,
+          "departLane": "best",
+          "departSpeed": "max"
+        },
+        {
+          "id": "flow_minor_SN_I3",
+          "type": "car",
+          "route": "route_cross_SN_I3",
+          "begin": 42,
+          "end": 7200,
+          "period": 42,
+          "departLane": "best",
+          "departSpeed": "max"
+        },
+        {
+          "id": "flow_minor_NS_I4",
+          "type": "car",
+          "route": "route_cross_NS_I4",
+          "begin": 40,
+          "end": 7200,
+          "period": 37,
+          "departLane": "best",
+          "departSpeed": "max"
+        },
+        {
+          "id": "flow_minor_SN_I4",
+          "type": "car",
+          "route": "route_cross_SN_I4",
+          "begin": 56,
+          "end": 7200,
+          "period": 43,
+          "departLane": "best",
+          "departSpeed": "max"
+        },
+        {
+          "id": "flow_minor_NS_I5",
+          "type": "car",
+          "route": "route_cross_NS_I5",
+          "begin": 50,
+          "end": 7200,
+          "period": 36,
+          "departLane": "best",
+          "departSpeed": "max"
+        },
+        {
+          "id": "flow_minor_SN_I5",
+          "type": "car",
+          "route": "route_cross_SN_I5",
+          "begin": 70,
+          "end": 7200,
+          "period": 42,
+          "departLane": "best",
+          "departSpeed": "max"
+        },
+        {
+          "id": "flow_minor_NS_I6",
+          "type": "car",
+          "route": "route_cross_NS_I6",
+          "begin": 60,
+          "end": 7200,
+          "period": 33,
+          "departLane": "best",
+          "departSpeed": "max"
+        },
+        {
+          "id": "flow_minor_SN_I6",
+          "type": "car",
+          "route": "route_cross_SN_I6",
+          "begin": 84,
+          "end": 7200,
+          "period": 39,
+          "departLane": "best",
+          "departSpeed": "max"
+        },
+        {
+          "id": "flow_minor_NS_I7",
+          "type": "car",
+          "route": "route_cross_NS_I7",
+          "begin": 70,
+          "end": 7200,
+          "period": 35,
+          "departLane": "best",
+          "departSpeed": "max"
+        },
+        {
+          "id": "flow_minor_SN_I7",
+          "type": "car",
+          "route": "route_cross_SN_I7",
+          "begin": 98,
+          "end": 7200,
+          "period": 41,
+          "departLane": "best",
+          "departSpeed": "max"
+        }
+      ]
+    }
+  },
+  "events": [
+    {
+      "id": "ev_test_west_to_east_3600",
+      "type": "emergency_vehicle",
+      "route": "route_emergency_west_to_east",
+      "depart": 3600,
+      "line": "EMERGENCY_TEST",
+      "departLane": "best",
+      "departSpeed": "max",
+      "description": "Evento deterministico de veiculo de emergencia para testar hierarquia de prioridade."
+    }
+  ],
+  "detectors": {
+    "frequency_s": 60,
+    "stopline_setback_m": 85,
+    "queue_detector_length_m": 80,
+    "e1_output": "../../outputs/e1_detectors.xml",
+    "e2_output": "../../outputs/e2_queues.xml"
+  }
+}
