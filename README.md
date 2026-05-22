@@ -110,6 +110,9 @@ API docs:  http://127.0.0.1:8000/docs
 | `make run` | Build and run the SUMO baseline | Yes |
 | `make gui` | Build and open the SUMO GUI baseline | Yes |
 | `make kpis` | Parse `outputs/tripinfo.xml` into `reports/baseline_kpis.json` | Needs tripinfo |
+| `make scenario-list` | List configured SUMO validation scenarios and estimated demand | No |
+| `make scenario-run SCENARIO=baseline_am_peak RUN_TYPE=baseline` | Generate, run and export KPIs for one scenario/run type | Yes |
+| `make scenario-suite RUN_TYPE=baseline` | Run every configured scenario and export per-scenario KPIs | Yes |
 | `make cits-sumo` | Run C-ITS emulation connected to SUMO/TraCI | Yes |
 | `make tsp-demonstrator` | Run SUMO baseline, direct TSP and TSP with simulated controller, then write evidence reports | Yes |
 | `make tsp-sumo` | Run TSP with SUMO and TraCI actuation | Yes |
@@ -201,6 +204,43 @@ outputs/tripinfo.xml
 outputs/summary.xml
 outputs/statistics.xml
 reports/baseline_kpis.json
+```
+
+### 5. Run Scenario Suite
+
+The scenario suite is declared in `configs/sumo_scenario_base.json` and
+described in `configs/scenario_catalog.yaml`. Each scenario has a demand profile,
+public-transport service assumptions, event configuration and KPI focus.
+
+```bash
+make scenario-list
+make scenario-run SCENARIO=baseline_am_peak
+make scenario-run SCENARIO=cross_traffic_pressure RUN_TYPE=all
+make scenario-suite RUN_TYPE=baseline
+```
+
+Supported run types are `baseline`, `cits`, `tsp_no_actuation`,
+`tsp_actuation`, and `all`.
+
+Scenario KPIs include tripinfo metrics (duration, speed, waiting time,
+timeLoss, bus headways and priority/general/emergency vehicle groups) plus E1/E2
+detector-derived queue metrics. Each run gets a verdict and scenarios with a
+baseline plus TSP run get automatic baseline-vs-TSP comparisons.
+
+Per-scenario artifacts are written under:
+
+```text
+outputs/scenarios/<scenario_id>/<run_type>/
+reports/scenarios/<scenario_id>/<run_type>/kpis.json
+reports/scenarios/<scenario_id>/scenario_report.md
+reports/scenarios/scenario_suite_summary.json
+reports/scenarios/scenario_suite_report.md
+```
+
+When running C-ITS/TSP modes in restricted environments, set a fixed TraCI port:
+
+```bash
+TRACI_PORT=8813 make scenario-run SCENARIO=baseline_off_peak RUN_TYPE=tsp_no_actuation
 ```
 
 ### 5. Run C-ITS/V2X Emulation

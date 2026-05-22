@@ -11,9 +11,16 @@ import argparse
 import json
 import math
 from pathlib import Path
+import sys
 from typing import Any, Dict, Iterable, List
 from xml.dom import minidom
 from xml.etree import ElementTree as ET
+
+SRC = Path(__file__).resolve().parents[1]
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from pps57_sumo.scenarios import apply_scenario_profile
 
 
 def _pretty_xml(element: ET.Element) -> str:
@@ -317,12 +324,14 @@ def _format_time(value: Any) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True, type=Path)
+    parser.add_argument("--scenario", help="Scenario profile id from the config's scenario_profiles mapping.")
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--routes-output", default=Path("sumo/routes/routes.rou.xml"), type=Path)
     parser.add_argument("--bus-stops-output", default=Path("sumo/additional/bus_stops.add.xml"), type=Path)
     parser.add_argument("--detectors-output", default=Path("sumo/additional/detectors.add.xml"), type=Path)
     args = parser.parse_args()
     config = json.loads(args.config.read_text(encoding="utf-8"))
+    config = apply_scenario_profile(config, args.scenario)
     generate(
         config,
         args.output,
@@ -330,7 +339,8 @@ def main() -> None:
         bus_stops_output=args.bus_stops_output,
         detectors_output=args.detectors_output,
     )
-    print(f"Generated PPS57 corridor scenario from {args.config}")
+    suffix = f" scenario={args.scenario}" if args.scenario else ""
+    print(f"Generated PPS57 corridor scenario from {args.config}{suffix}")
 
 
 if __name__ == "__main__":

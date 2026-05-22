@@ -10,11 +10,18 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import sys
 from typing import Any, Dict
 try:
     from defusedxml import ElementTree as ET  # type: ignore[import-untyped]
 except ImportError:  # pragma: no cover - exercised in minimal CI images.
     from xml.etree import ElementTree as ET  # type: ignore[no-redef]
+
+SRC = Path(__file__).resolve().parents[1]
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from pps57_sumo.scenarios import load_catalog, validate_scenario_catalog  # noqa: E402
 
 REQUIRED_FILES = [
     "configs/sumo_scenario_base.json",
@@ -286,6 +293,22 @@ def validate_safety_configs(root: Path) -> None:
     print("OK config: invariantes safety-critical de cits/tsp config verificadas.")
 
 
+def validate_scenario_profiles(root: Path) -> None:
+    config = json.loads((root / "configs/sumo_scenario_base.json").read_text(encoding="utf-8"))
+    catalog = load_catalog(root / "configs/scenario_catalog.yaml")
+    summaries = validate_scenario_catalog(config, catalog)
+    if not summaries:
+        raise SystemExit("Config inválida: nenhum cenário SUMO validado.")
+    weak = [
+        summary["scenario_id"]
+        for summary in summaries
+        if summary["estimated_car_departures"] <= 0 or summary["estimated_bus_departures"] <= 0
+    ]
+    if weak:
+        raise SystemExit("Config inválida: cenários sem procura operacional: " + ", ".join(weak))
+    print(f"OK scenarios: {len(summaries)} scenario profiles validated.")
+
+
 def validate(root: Path) -> None:
     missing = [path for path in REQUIRED_FILES if not (root / path).exists()]
     if missing:
@@ -295,6 +318,7 @@ def validate(root: Path) -> None:
         print(f"OK XML: {rel}")
     validate_routes_sorted(root / "sumo/routes/routes.rou.xml")
     validate_safety_configs(root)
+    validate_scenario_profiles(root)
     print("Static validation completed. Runtime validation with netconvert/sumo is still required.")
 
 

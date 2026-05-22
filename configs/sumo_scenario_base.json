@@ -526,20 +526,209 @@
           "departSpeed": "max"
         }
       ]
+    },
+    "off_peak": {
+      "description": "Periodo fora de ponta: mesma geometria e movimentos, com procura geral cerca de metade do pico e headways TP mais espacados no perfil de cenario.",
+      "derived_from": "am_peak",
+      "period_scale": 1.9,
+      "id_suffix": "off_peak"
+    },
+    "high_demand_corridor": {
+      "description": "Eixo Boavista em pressao: procura no corredor principal aumenta e transversais mantem nivel moderado para expor saturacao longitudinal.",
+      "derived_from": "am_peak",
+      "period_scale": 1.0,
+      "route_period_scale": {
+        "route_boavista_west_to_east": 0.65,
+        "route_boavista_east_to_west": 0.72
+      },
+      "id_suffix": "high_corridor"
+    },
+    "cross_traffic_pressure": {
+      "description": "Pressao transversal em Bessa e Praca do Imperio, mantendo o corredor principal proximo do pico para testar rejeicoes por impacto lateral.",
+      "derived_from": "am_peak",
+      "period_scale": 1.08,
+      "flow_period_override": {
+        "flow_minor_NS_I2": 12,
+        "flow_minor_SN_I2": 14,
+        "flow_minor_NS_I6": 13,
+        "flow_minor_SN_I6": 15
+      },
+      "id_suffix": "cross_pressure"
+    },
+    "delayed_bus_westbound": {
+      "description": "Pico com sentido cidade->mar carregado e condicoes para gerar atraso operacional no TP westbound.",
+      "derived_from": "am_peak",
+      "period_scale": 1.0,
+      "route_period_scale": {
+        "route_boavista_east_to_west": 0.78
+      },
+      "id_suffix": "delayed_bus_w"
+    },
+    "delayed_bus_eastbound": {
+      "description": "Pico com sentido mar->cidade carregado e condicoes para gerar atraso operacional no TP eastbound.",
+      "derived_from": "am_peak",
+      "period_scale": 1.0,
+      "route_period_scale": {
+        "route_boavista_west_to_east": 0.70
+      },
+      "id_suffix": "delayed_bus_e"
+    },
+    "bunched_buses": {
+      "description": "Procura de pico com dois servicos TP aproximados para provocar headway curto e testar recuperacao de regularidade.",
+      "derived_from": "am_peak",
+      "period_scale": 1.0,
+      "id_suffix": "bunched_buses"
+    },
+    "long_dwell_stop": {
+      "description": "Paragem critica com dwell elevado em Serralves, representando maior carga/descarga de passageiros.",
+      "derived_from": "am_peak",
+      "period_scale": 1.0,
+      "id_suffix": "long_dwell"
+    },
+    "incident_minor_road_queue": {
+      "description": "Incidente operacional numa via transversal: procura forte e persistente numa aproximacao secundaria.",
+      "derived_from": "am_peak",
+      "period_scale": 1.05,
+      "flow_period_override": {
+        "flow_minor_NS_I4": 9,
+        "flow_minor_SN_I4": 11
+      },
+      "id_suffix": "minor_incident"
+    },
+    "emergency_vehicle_conflict": {
+      "description": "Pico com evento pontual de emergencia concorrente com TP no corredor principal.",
+      "derived_from": "am_peak",
+      "period_scale": 1.0,
+      "id_suffix": "emergency_conflict"
     }
   },
-  "events": [
-    {
-      "id": "ev_test_west_to_east_3600",
-      "type": "emergency_vehicle",
-      "route": "route_emergency_west_to_east",
-      "depart": 3600,
-      "line": "EMERGENCY_TEST",
-      "departLane": "best",
-      "departSpeed": "max",
-      "description": "Evento deterministico de veiculo de emergencia para testar hierarquia de prioridade."
+  "events": [],
+  "scenario_profiles": {
+    "baseline_am_peak": {
+      "description": "Referencia principal de ponta da manha no corredor Boavista.",
+      "justification": "Janela de 2h, sentido oeste->este mais forte e headways TP de 10-15 min sao plausiveis para uma arterial urbana radial em periodo de entrada na cidade.",
+      "demand_profile": "am_peak",
+      "events": [],
+      "kpi_focus": ["travel_time", "bus_time_loss", "general_traffic_delay", "queue_baseline"],
+      "expected_behaviour": "Sem eventos especiais; deve servir como baseline comparavel para TSP."
+    },
+    "baseline_off_peak": {
+      "description": "Referencia fora de ponta para validar comportamento em regime fluido.",
+      "justification": "Procura geral aproximadamente metade do pico e headways TP mais espacados representam periodo intermedio sem saturacao.",
+      "demand_profile": "off_peak",
+      "service_overrides": [
+        {"line_id": "STCP500", "direction": "W", "headway_s": 900},
+        {"line_id": "STCP500", "direction": "E", "headway_s": 900},
+        {"line_id": "STCP502", "direction": "W", "headway_s": 1200},
+        {"line_id": "STCP502", "direction": "E", "headway_s": 1200}
+      ],
+      "events": [],
+      "kpi_focus": ["low_delay_regime", "unnecessary_interventions", "travel_time_variability"],
+      "expected_behaviour": "A rede deve operar sem filas persistentes; prioridade nominal deve ter impacto pequeno."
+    },
+    "high_demand_corridor": {
+      "description": "Procura elevada no eixo principal para observar saturacao longitudinal.",
+      "justification": "Aumenta sobretudo o eixo Boavista, onde ha maior capacidade e maior risco de penalizar o trafego geral com extensoes de verde repetidas.",
+      "demand_profile": "high_demand_corridor",
+      "events": [],
+      "kpi_focus": ["corridor_throughput", "bus_time_loss", "general_traffic_penalty", "queue_growth"],
+      "expected_behaviour": "O baseline deve mostrar maiores perdas; TSP deve ser medido contra custo no trafego geral."
+    },
+    "cross_traffic_pressure": {
+      "description": "Pressao transversal em Bessa e Praca do Imperio.",
+      "justification": "Transversais com procura elevada representam zonas onde dar prioridade ao TP pode agravar filas laterais; e um caso essencial para safety/negociacao.",
+      "demand_profile": "cross_traffic_pressure",
+      "events": [],
+      "kpi_focus": ["cross_street_queues", "blocked_by_safety", "controller_rejections", "bus_vs_general_tradeoff"],
+      "expected_behaviour": "O sistema deve justificar rejeicoes quando a fila transversal excede limites."
+    },
+    "delayed_bus_westbound": {
+      "description": "Autocarro westbound atrasado no sentido cidade->mar.",
+      "justification": "Carga adicional no sentido oeste e dwell ligeiramente maior criam atraso operacional sem inventar telemetria externa.",
+      "demand_profile": "delayed_bus_westbound",
+      "service_overrides": [
+        {"line_id": "STCP500", "direction": "W", "headway_s": 600, "offset_s": 120},
+        {"line_id": "STCP502", "direction": "W", "headway_s": 900, "offset_s": 300}
+      ],
+      "stop_overrides": [
+        {"id": "bs_bessa_w", "dwell_s": 35},
+        {"id": "bs_serralves_w", "dwell_s": 38}
+      ],
+      "events": [],
+      "kpi_focus": ["westbound_bus_delay", "priority_request_rate", "green_extension_effect"],
+      "expected_behaviour": "Pedidos westbound devem aparecer quando o atraso acumulado/espera se aproxima dos limiares."
+    },
+    "delayed_bus_eastbound": {
+      "description": "Autocarro eastbound atrasado no sentido mar->cidade.",
+      "justification": "O sentido inverso valida simetria funcional e evita calibrar o algoritmo apenas para um movimento prioritario.",
+      "demand_profile": "delayed_bus_eastbound",
+      "service_overrides": [
+        {"line_id": "STCP500", "direction": "E", "headway_s": 600, "offset_s": 180},
+        {"line_id": "STCP502", "direction": "E", "headway_s": 900, "offset_s": 420}
+      ],
+      "stop_overrides": [
+        {"id": "bs_praca_imperio_e", "dwell_s": 36},
+        {"id": "bs_bessa_e", "dwell_s": 34}
+      ],
+      "events": [],
+      "kpi_focus": ["eastbound_bus_delay", "priority_request_rate", "early_green_effect"],
+      "expected_behaviour": "Pedidos eastbound devem ser elegiveis nas intersecoes a jusante, sem enviesamento westbound."
+    },
+    "bunched_buses": {
+      "description": "Dois autocarros da mesma linha circulam demasiado proximos.",
+      "justification": "Offsets proximos simulam irregularidade de headway, frequente em corredores urbanos quando um veiculo perde tempo em paragens.",
+      "demand_profile": "bunched_buses",
+      "service_overrides": [
+        {"line_id": "STCP500", "direction": "W", "headway_s": 600, "offset_s": 0},
+        {"line_id": "STCP502", "direction": "W", "headway_s": 600, "offset_s": 90}
+      ],
+      "stop_overrides": [
+        {"id": "bs_casa_musica_w", "dwell_s": 40}
+      ],
+      "events": [],
+      "kpi_focus": ["headway_variability", "second_bus_priority_suppression", "bus_bunching"],
+      "expected_behaviour": "A avaliacao deve distinguir atraso real de simples proximidade entre autocarros."
+    },
+    "long_dwell_stop": {
+      "description": "Paragens Serralves com tempos de embarque/desembarque elevados.",
+      "justification": "Dwell de 75-90s representa paragem carregada ou acessibilidade reduzida, separando atraso de paragem de atraso semaforico.",
+      "demand_profile": "long_dwell_stop",
+      "stop_overrides": [
+        {"id": "bs_serralves_w", "dwell_s": 90},
+        {"id": "bs_serralves_e", "dwell_s": 75}
+      ],
+      "events": [],
+      "kpi_focus": ["dwell_induced_delay", "schedule_delay", "priority_effectiveness_limit"],
+      "expected_behaviour": "TSP pode reduzir perdas semaforicas, mas nao deve prometer recuperar todo o atraso de dwell."
+    },
+    "incident_minor_road_queue": {
+      "description": "Fila anomala numa via secundaria junto a Serralves.",
+      "justification": "Procura transversal muito elevada numa intersecao cria um caso conservador para testar protecao do trafego conflitante.",
+      "demand_profile": "incident_minor_road_queue",
+      "events": [],
+      "kpi_focus": ["minor_road_queue", "safety_blocks", "general_traffic_penalty"],
+      "expected_behaviour": "Prioridades que agravem a transversal devem ser rejeitadas ou adiadas."
+    },
+    "emergency_vehicle_conflict": {
+      "description": "Veiculo de emergencia compete com TP no corredor.",
+      "justification": "Evento pontual a meio da janela permite validar hierarquia sem contaminar todos os KPIs de baseline.",
+      "demand_profile": "emergency_vehicle_conflict",
+      "events": [
+        {
+          "id": "ev_conflict_west_to_east_3600",
+          "type": "emergency_vehicle",
+          "route": "route_emergency_west_to_east",
+          "depart": 3600,
+          "line": "EMERGENCY_TEST",
+          "departLane": "best",
+          "departSpeed": "max",
+          "description": "Evento deterministico de veiculo de emergencia para testar hierarquia de prioridade."
+        }
+      ],
+      "kpi_focus": ["emergency_travel_time", "priority_hierarchy", "bus_priority_preemption"],
+      "expected_behaviour": "Emergencia deve prevalecer sobre TP e trafego geral."
     }
-  ],
+  },
   "detectors": {
     "frequency_s": 60,
     "stopline_setback_m": 85,

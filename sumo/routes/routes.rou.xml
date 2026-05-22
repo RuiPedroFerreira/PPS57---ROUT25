@@ -225,7 +225,6 @@
     <stop busStop="bs_praca_imperio_w" duration="26"/>
     <stop busStop="bs_castelo_queijo_w" duration="20"/>
   </vehicle>
-  <vehicle id="ev_test_west_to_east_3600" type="emergency_vehicle" route="route_emergency_west_to_east" line="EMERGENCY_TEST" departLane="best" departSpeed="max" depart="3600"/>
   <vehicle id="bus_STCP502_W_3780" type="bus_12m" route="route_boavista_east_to_west" depart="3780" line="STCP502_PROXY_W" departLane="best" departSpeed="max">
     <stop busStop="bs_casa_musica_w" duration="22"/>
     <stop busStop="bs_bessa_w" duration="20"/>
