@@ -1,35 +1,131 @@
 scenario_set: pps57_porto_boavista_base_v03
 metadata:
   city: Porto
-  corridor: Avenida da Boavista / Casa da Música - Praça do Império - Castelo do Queijo
+  corridor: Avenida da Boavista / Casa da Musica - Praca do Imperio - Castelo do Queijo
   alignment_level: controlled_sumo_base_proxy
+  base_config: configs/sumo_scenario_base.json
   simulation_duration_s: 7200
   notes: >
-    Cenários gerados a partir de configs/sumo_scenario_base.json. A rede é SUMO
-    controlada e auditável, com geometria/procura/paragens/serviços
-    parametrizados para calibração posterior com GTFS, contagens e planos reais.
+    Catalogo de cenarios SUMO controlados, repetiveis e justificaveis. A rede
+    nao importa topografia OSM nesta fase; a aproximacao ao real vem de uma
+    geometria de corredor plausivel, headways tipo STCP, dwell times urbanos,
+    procura relativa por eixo e eventos operacionais calibraveis.
 
 scenarios:
   baseline_am_peak:
-    description: Plano semafórico estático gerado pelo netconvert, sem prioridade semafórica.
-    route_file: sumo/routes/routes.rou.xml
-    sumocfg: sumo/corredor.sumocfg
-    expected_use: medir KPIs base para autocarros e tráfego geral.
+    description: Referencia principal de ponta da manha sem eventos especiais.
+    realism_basis: >
+      Janela de 2 horas, eixo principal dominante, procura inbound mais forte e
+      headways TP de 10-15 minutos sao plausiveis para uma arterial urbana de
+      entrada na cidade.
+    kpi_focus:
+      - bus_time_loss
+      - general_traffic_delay
+      - queue_baseline
+      - travel_time_variability
+    expected_use: Baseline para comparar cenarios TSP/C-ITS e calibrar procura.
 
-  tsp_green_extension_candidate:
-    description: Cenário a usar no C-ITS/V2X emulation/4 com pedidos OBU e green extension nos RSU.
-    additional_modules: [OBU_emulator, RSU_agent, TraCI_adapter]
-    expected_use: comparar contra baseline_am_peak.
+  baseline_off_peak:
+    description: Referencia fora de ponta em regime mais fluido.
+    realism_basis: >
+      Procura geral reduzida e headways TP mais espacados representam periodos
+      intermedios onde a prioridade semaforica deve intervir pouco.
+    kpi_focus:
+      - unnecessary_interventions
+      - low_delay_regime
+      - bus_headway
+    expected_use: Detectar algoritmos que criam intervencoes sem necessidade.
 
-  tsp_early_green_candidate:
-    description: Cenário a usar no TSP Safety Layer com encurtamento de vermelho/early green, sob safety layer.
-    additional_modules: [decision_engine, safety_layer]
-    expected_use: avaliar impacto em headway, tempo de viagem e filas transversais.
+  high_demand_corridor:
+    description: Procura elevada no eixo Boavista.
+    realism_basis: >
+      Aumenta sobretudo o corredor principal, preservando transversais
+      moderadas, para testar saturacao longitudinal sem confundir com incidente
+      transversal.
+    kpi_focus:
+      - corridor_throughput
+      - bus_time_loss
+      - general_traffic_penalty
+      - queue_growth
+    expected_use: Avaliar se ganhos do TP compensam perdas no trafego geral.
+
+  cross_traffic_pressure:
+    description: Pressao transversal em Bessa e Praca do Imperio.
+    realism_basis: >
+      Algumas transversais podem ficar dominantes por escolas, servicos,
+      estacionamento ou redistribuicao local; o cenario testa trade-offs reais
+      entre corredor e ruas conflitantes.
+    kpi_focus:
+      - cross_street_queues
+      - blocked_by_safety
+      - controller_rejections
+      - bus_vs_general_tradeoff
+    expected_use: Validar rejeicoes fundamentadas e limites de impacto lateral.
+
+  delayed_bus_westbound:
+    description: Autocarro atrasado no sentido cidade para mar.
+    realism_basis: >
+      Dwell ligeiramente mais elevado em paragens intermédias e procura maior no
+      sentido westbound criam atraso operacional observavel, sem injectar atraso
+      artificial fora da simulacao.
+    kpi_focus:
+      - westbound_bus_delay
+      - priority_request_rate
+      - green_extension_effect
+    expected_use: Validar prioridade em movimento westbound.
+
+  delayed_bus_eastbound:
+    description: Autocarro atrasado no sentido mar para cidade.
+    realism_basis: >
+      Espelha o caso westbound para evitar que o sistema seja calibrado apenas
+      para um sentido do corredor.
+    kpi_focus:
+      - eastbound_bus_delay
+      - priority_request_rate
+      - early_green_effect
+    expected_use: Validar simetria do algoritmo e mappings de fases.
+
+  bunched_buses:
+    description: Dois autocarros circulam demasiado proximos no mesmo sentido.
+    realism_basis: >
+      Headways irregulares sao comuns em corredores urbanos quando uma viagem
+      perde tempo em paragens; offsets proximos simulam bunching operacional.
+    kpi_focus:
+      - headway_variability
+      - bus_bunching
+      - second_bus_priority_suppression
+    expected_use: Separar prioridade por atraso real de prioridade cega ao TP.
+
+  long_dwell_stop:
+    description: Paragem critica com dwell time elevado em Serralves.
+    realism_basis: >
+      Tempos de 75-90 segundos representam carga elevada de passageiros,
+      acessibilidade reduzida ou paragem bloqueada; isto separa atraso de
+      paragem de atraso semaforico.
+    kpi_focus:
+      - dwell_induced_delay
+      - schedule_delay
+      - priority_effectiveness_limit
+    expected_use: Verificar que TSP nao promete recuperar atraso que nao vem dos semaforos.
 
   incident_minor_road_queue:
-    description: Aumento sintético de procura numa via transversal para testar rejeição fundamentada de prioridade.
-    expected_use: validar trade-off entre prioridade ao TP e impacto no tráfego geral.
+    description: Fila anomala numa via secundaria junto a Serralves.
+    realism_basis: >
+      Aumento persistente de procura numa aproximacao secundaria simula uma
+      perturbacao operacional local e pressiona a safety layer.
+    kpi_focus:
+      - minor_road_queue
+      - safety_blocks
+      - general_traffic_penalty
+    expected_use: Validar decisao conservadora quando a prioridade agrava conflitos.
 
   emergency_vehicle_conflict:
-    description: Evento de veículo de emergência no segundo período da simulação para testar hierarquia de prioridades.
-    expected_use: validar emergência > transporte público > tráfego geral.
+    description: Veiculo de emergencia concorre com transporte publico.
+    realism_basis: >
+      Um evento pontual a meio da janela permite validar hierarquia de
+      prioridades sem contaminar todos os KPIs de baseline.
+    kpi_focus:
+      - emergency_travel_time
+      - priority_hierarchy
+      - bus_priority_preemption
+    expected_use: Confirmar emergencia acima de TP e trafego geral.

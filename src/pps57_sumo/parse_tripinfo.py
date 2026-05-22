@@ -43,7 +43,10 @@ def parse_tripinfo(path: Path) -> dict:
         vehicle_type = node.attrib.get("vType", "")
         lowered = " ".join([vehicle_id, vehicle_type]).lower()
         is_bus = vehicle_id.startswith("bus_") or "bus" in lowered or "stcp" in lowered
-        is_emergency = "emergency" in lowered or vehicle_id.startswith("ev_")
+        is_emergency = (
+            vehicle_id.startswith(("ev_", "emergency_"))
+            or vehicle_type.lower() in {"emergency_vehicle", "emergency"}
+        )
         is_priority = is_bus or is_emergency
         rows.append({
             "id": vehicle_id,
@@ -51,7 +54,12 @@ def parse_tripinfo(path: Path) -> dict:
             "is_bus": is_bus,
             "is_emergency": is_emergency,
             "is_priority": is_priority,
+            "line_key": _line_key(vehicle_id),
+            "direction": _direction_key(vehicle_id),
+            "depart": _num(node.attrib.get("depart")),
+            "arrival": _num(node.attrib.get("arrival")),
             "duration": _num(node.attrib.get("duration")),
+            "routeLength": _num(node.attrib.get("routeLength")),
             "waitingTime": _num(node.attrib.get("waitingTime")),
             "timeLoss": _num(node.attrib.get("timeLoss")),
             "departDelay": _num(node.attrib.get("departDelay")),
@@ -67,6 +75,14 @@ def parse_tripinfo(path: Path) -> dict:
         return {
             "vehicles": len(items),
             "mean_duration_s": _mean([r["duration"] for r in items]),
+            "p95_duration_s": _percentile([r["duration"] for r in items], 0.95),
+            "mean_route_length_m": _mean([r["routeLength"] for r in items]),
+            "mean_speed_mps": _mean([
+                (r["routeLength"] / r["duration"])
+                if r["routeLength"] is not None and r["duration"] not in (None, 0)
+                else None
+                for r in items
+            ]),
             "mean_waiting_time_s": _mean([r["waitingTime"] for r in items]),
             "mean_time_loss_s": _mean([r["timeLoss"] for r in items]),
             "mean_depart_delay_s": _mean([r["departDelay"] for r in items]),
@@ -82,7 +98,47 @@ def parse_tripinfo(path: Path) -> dict:
         "priority_vehicles": summarize(group("is_priority", True)),
         "general_traffic": summarize(group("is_priority", False)),
         "non_priority_vehicles": summarize(group("is_priority", False)),
+        "bus_headways": _bus_headways(rows),
     }
+
+
+def _line_key(vehicle_id: str) -> str:
+    parts = vehicle_id.split("_")
+    if len(parts) >= 3 and parts[0] == "bus":
+        return parts[1]
+    return ""
+
+
+def _direction_key(vehicle_id: str) -> str:
+    parts = vehicle_id.split("_")
+    if len(parts) >= 4 and parts[0] == "bus":
+        return parts[2]
+    return ""
+
+
+def _bus_headways(rows: list[dict]) -> dict:
+    groups: dict[str, list[float]] = {}
+    for row in rows:
+        if not row["is_bus"]:
+            continue
+        key = ":".join(item for item in [row.get("line_key", ""), row.get("direction", "")] if item)
+        if not key:
+            continue
+        depart = row.get("depart")
+        if depart is not None:
+            groups.setdefault(key, []).append(float(depart))
+
+    result: dict[str, dict] = {}
+    for key, departures in sorted(groups.items()):
+        departures = sorted(departures)
+        gaps = [departures[i] - departures[i - 1] for i in range(1, len(departures))]
+        result[key] = {
+            "departures": len(departures),
+            "mean_headway_s": _mean(gaps),
+            "min_headway_s": round(min(gaps), 3) if gaps else None,
+            "max_headway_s": round(max(gaps), 3) if gaps else None,
+        }
+    return result
 
 
 def main() -> None:

@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-"""Run the PPS57 local FastAPI control plane.
+"""Run the local PPS57 scenario dashboard.
 
-Modelo de ameaça
-----------------
-Os endpoints mutating (`/runs/start|stop|pause|resume`) **não têm autenticação**
-— este servidor é assumido como local-only. O default `--host=127.0.0.1`
-restringe o socket a loopback. Hosts não-loopback são bloqueados salvo opt-in
-explícito com `--allow-non-loopback`.
+The dashboard can start SUMO/TraCI scenario runs and is intentionally local by
+default. Binding to non-loopback interfaces is blocked unless explicitly
+requested with --allow-non-loopback.
 """
 from __future__ import annotations
 
@@ -22,14 +19,14 @@ if str(SRC) not in sys.path:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Arranca a API local de controlo da plataforma PPS57.")
+    parser = argparse.ArgumentParser(description="Arranca a dashboard local de cenários PPS57.")
     parser.add_argument("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1 / loopback only).")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--reload", action="store_true")
     parser.add_argument(
         "--allow-non-loopback",
         action="store_true",
-        help="Allow binding the unauthenticated control API to a non-loopback address.",
+        help="Allow binding the unauthenticated local dashboard to a non-loopback address.",
     )
     return parser.parse_args()
 
@@ -52,9 +49,9 @@ def main() -> int:
     args = parse_args()
     if not _is_loopback(args.host) and not args.allow_non_loopback:
         print(
-            f"[run_platform_api] BLOQUEADO: --host={args.host!r} não é loopback e "
-            "os endpoints /runs/* não têm autenticação. Usa --host=127.0.0.1 "
-            "ou passa --allow-non-loopback conscientemente após restringires a rede.",
+            f"[run_dashboard] BLOQUEADO: --host={args.host!r} não é loopback e "
+            "a dashboard local não tem autenticação. Usa --host=127.0.0.1 "
+            "ou passa --allow-non-loopback apenas atrás de restrições de rede.",
             file=sys.stderr,
             flush=True,
         )
