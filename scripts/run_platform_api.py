@@ -5,10 +5,8 @@ Modelo de ameaça
 ----------------
 Os endpoints mutating (`/runs/start|stop|pause|resume`) **não têm autenticação**
 — este servidor é assumido como local-only. O default `--host=127.0.0.1`
-restringe o socket a loopback. Se o utilizador passar um host não-loopback
-(ex.: `0.0.0.0`, IP da LAN), qualquer máquina alcançável pode despoletar
-corridas SUMO; o script imprime um warning de stderr para forçar a decisão
-ser consciente.
+restringe o socket a loopback. Hosts não-loopback são bloqueados salvo opt-in
+explícito com `--allow-non-loopback`.
 """
 from __future__ import annotations
 
@@ -28,6 +26,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1 / loopback only).")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--reload", action="store_true")
+    parser.add_argument(
+        "--allow-non-loopback",
+        action="store_true",
+        help="Allow binding the unauthenticated control API to a non-loopback address.",
+    )
     return parser.parse_args()
 
 
@@ -47,15 +50,15 @@ def main() -> int:
         raise SystemExit("FastAPI/uvicorn não instalados. Executa: pip install -r requirements.txt") from exc
 
     args = parse_args()
-    if not _is_loopback(args.host):
+    if not _is_loopback(args.host) and not args.allow_non_loopback:
         print(
-            f"[run_platform_api] AVISO: --host={args.host!r} não é loopback. "
-            "Os endpoints /runs/* são UNAUTHENTICATED e qualquer máquina com "
-            "acesso de rede a este host pode despoletar corridas SUMO/TraCI. "
-            "Restringe via firewall ou usa --host=127.0.0.1.",
+            f"[run_platform_api] BLOQUEADO: --host={args.host!r} não é loopback e "
+            "os endpoints /runs/* não têm autenticação. Usa --host=127.0.0.1 "
+            "ou passa --allow-non-loopback conscientemente após restringires a rede.",
             file=sys.stderr,
             flush=True,
         )
+        return 2
     uvicorn.run(
         "pps57_platform.api:app",
         host=args.host,

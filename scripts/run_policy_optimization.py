@@ -19,9 +19,9 @@ from pps57_tsp.config import load_tsp_config  # noqa: E402
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Offline policy optimization with a mandatory Safety Layer.")
-    parser.add_argument("--config", default="configs/cits_config.json", help="Configuração C-ITS base.")
-    parser.add_argument("--tsp-config", default="configs/tsp_config.json", help="Configuração TSP/Safety Layer.")
-    parser.add_argument("--policy-config", default="configs/policy_optimization_config.json", help="Policy optimization configuration.")
+    parser.add_argument("--config", default="configs/cits_v2x_config.json", help="Configuração C-ITS base.")
+    parser.add_argument("--tsp-config", default="configs/tsp_safety_config.json", help="Configuração TSP/Safety Layer.")
+    parser.add_argument("--policy-config", default="configs/policy_training_config.json", help="Policy optimization configuration.")
     return parser.parse_args()
 
 

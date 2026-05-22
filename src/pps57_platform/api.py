@@ -29,9 +29,9 @@ class RunStartRequest(BaseModel):
     sumo_binary: str = "sumo"
     max_records: int = Field(default=5000, ge=1)
     strict: bool = False
-    config: str = "configs/cits_config.json"
-    tsp_config: str = "configs/tsp_config.json"
-    policy_config: str = "configs/policy_optimization_config.json"
+    config: str = "configs/cits_v2x_config.json"
+    tsp_config: str = "configs/tsp_safety_config.json"
+    policy_config: str = "configs/policy_training_config.json"
     policy_mode: str = Field(default="baseline", description="baseline, optimized or rl")
     policy_report: Optional[str] = None
 

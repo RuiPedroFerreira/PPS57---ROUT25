@@ -28,8 +28,8 @@ from pps57_tsp.signal_control import SimulatedControllerAdapter, build_controlle
 class Package4TSPTestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.cits = load_cits_config(ROOT / "configs/cits_config.json", root=ROOT)
-        cls.tsp = load_tsp_config(ROOT / "configs/tsp_config.json", root=ROOT)
+        cls.cits = load_cits_config(ROOT / "configs/cits_v2x_config.json", root=ROOT)
+        cls.tsp = load_tsp_config(ROOT / "configs/tsp_safety_config.json", root=ROOT)
         cls.engine = TSPDecisionEngine(cls.cits, cls.tsp)
 
     def _request(self, **overrides):

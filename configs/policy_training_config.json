@@ -1,7 +1,7 @@
 {
   "component_id": "transit_signal_priority_policy_optimization",
   "version": "1.0.0",
-  "scenario_id": "porto_boavista_realistic_policy_optimization",
+  "scenario_id": "porto_boavista_base_v03_policy_training",
   "description": "Offline policy optimization and tabular reinforcement-learning training for explainable transit signal priority with a mandatory safety filter.",
   "logging": {
     "sample_log": "outputs/offline_policy_samples.jsonl",

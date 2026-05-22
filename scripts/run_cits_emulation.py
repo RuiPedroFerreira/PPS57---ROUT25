@@ -18,7 +18,7 @@ from pps57_cits.traci_adapter import TraciUnavailableError  # noqa: E402
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="C-ITS/V2X emulation for traffic-signal priority.")
-    parser.add_argument("--config", default="configs/cits_config.json", help="Ficheiro JSON de configuração C-ITS.")
+    parser.add_argument("--config", default="configs/cits_v2x_config.json", help="Ficheiro JSON de configuração C-ITS.")
     parser.add_argument("--mode", choices=["sumo"], default="sumo", help="Modo de execução. Apenas SUMO/TraCI é suportado.")
     parser.add_argument("--steps", type=int, default=60, help="Número máximo de passos no SUMO.")
     parser.add_argument("--sumo-binary", default="sumo", help="Binário SUMO para TraCI.")

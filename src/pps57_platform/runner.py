@@ -13,13 +13,14 @@ import json
 import os
 from pathlib import Path
 import signal
+import shutil
 import subprocess
 import sys
 import threading
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
-from .data_loader import JSONL_ARTIFACTS, collect_snapshot, load_platform_config
+from .data_loader import DEFAULT_ARTIFACTS, JSONL_ARTIFACTS, collect_snapshot, load_platform_config
 
 
 RUN_KINDS = {
@@ -57,9 +58,9 @@ class RunOptions:
     sumo_binary: str = "sumo"
     max_records: int = 5000
     strict: bool = False
-    config: str = "configs/cits_config.json"
-    tsp_config: str = "configs/tsp_config.json"
-    policy_config: str = "configs/policy_optimization_config.json"
+    config: str = "configs/cits_v2x_config.json"
+    tsp_config: str = "configs/tsp_safety_config.json"
+    policy_config: str = "configs/policy_training_config.json"
     policy_mode: str = "baseline"
     policy_report: Optional[str] = None
 
@@ -133,6 +134,7 @@ class PlatformRunner:
                 "returncode": None,
                 "stdout_log": str(stdout_log),
                 "stderr_log": str(stderr_log),
+                "artifact_snapshot_dir": None,
                 "message": "Run started.",
                 "managed_by_current_process": True,
             }
@@ -337,8 +339,34 @@ class PlatformRunner:
             "Run completed successfully." if returncode == 0 else f"Run exited with code {returncode}."
         )
         self.current_state["managed_by_current_process"] = True
+        self.current_state["artifact_snapshot_dir"] = str(self._snapshot_run_artifacts_locked())
         self._write_state_locked()
         self.process = None
+
+    def _snapshot_run_artifacts_locked(self) -> Path:
+        assert self.current_state is not None
+        run_id = str(self.current_state.get("run_id") or "unknown")
+        snapshot_dir = self.root / "outputs" / "runs" / run_id
+        config = load_platform_config(self.root)
+        artifact_paths = {**DEFAULT_ARTIFACTS, **config.get("artifacts", {})}
+        paths = set(str(path) for path in artifact_paths.values())
+        for log_key in ("stdout_log", "stderr_log"):
+            raw_log = self.current_state.get(log_key)
+            if raw_log:
+                paths.add(str(raw_log))
+        for raw_path in sorted(paths):
+            raw = Path(raw_path)
+            src = raw.resolve() if raw.is_absolute() else (self.root / raw).resolve()
+            try:
+                src.relative_to(self.root)
+            except ValueError:
+                continue
+            if not src.is_file():
+                continue
+            dst = snapshot_dir / src.relative_to(self.root)
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+        return snapshot_dir
 
     def _terminate_process_group(self, process: subprocess.Popen) -> None:
         try:
@@ -373,6 +401,7 @@ class PlatformRunner:
             "returncode": None,
             "stdout_log": None,
             "stderr_log": None,
+            "artifact_snapshot_dir": None,
             "message": message,
             "managed_by_current_process": True,
         }

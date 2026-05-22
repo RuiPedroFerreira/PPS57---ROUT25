@@ -75,7 +75,7 @@ def build_demonstrator_report(
         "tsp_controller_vs_tsp_runtime": _runtime_delta(tsp, tsp_controller),
     }
     return {
-        "report_type": "tsp_realistic_demonstrator",
+        "report_type": "tsp_control_demonstrator",
         "data_policy": {
             "operational_data_source": "SUMO/TraCI run artifacts",
             "synthetic_operational_data": False,

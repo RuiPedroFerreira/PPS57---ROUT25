@@ -1,7 +1,7 @@
 {
   "component_id": "tsp_safety_layer",
   "version": "0.4.0",
-  "scenario_id": "porto_boavista_realistic_tsp_safety_layer",
+  "scenario_id": "porto_boavista_base_v03_tsp_safety_layer",
   "description": "Motor de decisão TSP e Safety Layer para prioridade semafórica contextual em movimentos prioritários configurados.",
   "logging": {
     "decision_log": "outputs/tsp_decisions.jsonl",

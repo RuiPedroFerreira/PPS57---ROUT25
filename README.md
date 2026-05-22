@@ -1,8 +1,8 @@
 # PPS57 ROUT25 Traffic Priority Platform
 
-PPS57 ROUT25 is a local validation platform for public-transport traffic-signal priority on a realistic Porto/Boavista corridor model. It combines a SUMO digital twin, C-ITS/V2X message emulation, an explainable TSP decision engine, a mandatory Safety Layer, offline policy optimization, tabular reinforcement-learning training, and a FastAPI control plane.
+PPS57 ROUT25 is a local validation platform for public-transport traffic-signal priority on a simulated Porto/Boavista corridor model. It combines a SUMO digital twin, C-ITS/V2X message emulation, an explainable TSP decision engine, a mandatory Safety Layer, offline policy optimization, tabular reinforcement-learning training, and a FastAPI control plane.
 
-The repository is designed for technical demonstration and validation. It is not yet an operationally calibrated traffic-control deployment: network geometry, demand, public-transport lines and signal plans are proxy assets that must be replaced or calibrated with real OSM, GTFS, traffic-count and signal-controller data before any production use.
+The repository is designed for technical demonstration and validation. It is not an operational traffic-control deployment: network geometry, demand, public-transport lines and signal plans are synthetic SUMO assets for simulation only.
 
 ## What It Does
 
@@ -28,7 +28,6 @@ The repository is designed for technical demonstration and validation. It is not
 
 ```text
 configs/                 Runtime configuration for C-ITS, TSP, policy training and platform checks
-docs/                    Technical documentation
 outputs/                 Generated JSONL/XML/log artifacts
 reports/                 Generated summaries, KPIs and policy reports
 scripts/                 User-facing command-line entry points
@@ -135,9 +134,9 @@ make validate
 Checks the repository structure and validates the main JSON configs:
 
 ```text
-configs/cits_config.json
-configs/tsp_config.json
-configs/policy_optimization_config.json
+configs/cits_v2x_config.json
+configs/tsp_safety_config.json
+configs/policy_training_config.json
 configs/platform_config.json
 ```
 
@@ -169,7 +168,7 @@ Direct equivalent:
 
 ```bash
 .venv/bin/python src/pps57_sumo/generate_plain_corridor.py \
-  --config configs/corridor_config.json \
+  --config configs/sumo_scenario_base.json \
   --output sumo/plain
 
 netconvert \
@@ -430,6 +429,9 @@ reports/platform_snapshot.json
 ```bash
 .venv/bin/python scripts/run_platform_api.py --host 127.0.0.1 --port 8000
 ```
+
+The control endpoints are unauthenticated. Non-loopback hosts are blocked by
+default; use `--allow-non-loopback` only behind an explicit network restriction.
 
 With reload:
 
@@ -743,14 +745,13 @@ SUMO/TraCI event logs -> event training dataset -> RL training -> exported polic
 
 | Config | Purpose |
 |---|---|
-| `configs/corridor_config.json` | Corridor geometry and SUMO generation inputs |
-| `configs/cits_config.json` | OBU, RSU, C-ITS logging and safety constraints |
-| `configs/tsp_config.json` | TSP scoring, actuation and runtime policy settings |
-| `configs/policy_optimization_config.json` | Candidate actions, reward and RL training settings |
+| `configs/sumo_scenario_base.json` | Corridor geometry, demand, PT services, stops and SUMO generation inputs |
+| `configs/cits_v2x_config.json` | OBU, RSU, C-ITS logging and safety constraints |
+| `configs/tsp_safety_config.json` | TSP scoring, actuation and runtime policy settings |
+| `configs/policy_training_config.json` | Candidate actions, reward and RL training settings |
 | `configs/platform_config.json` | Platform artifact paths, labels and load limits |
-| `configs/scenarios.yaml` | Scenario descriptors |
+| `configs/scenario_catalog.yaml` | Scenario descriptors |
 | `configs/signal_policy_constraints.yaml` | Signal policy constraints |
-| `configs/calibration_targets.yaml` | Calibration target placeholders |
 
 ## Development Checks
 

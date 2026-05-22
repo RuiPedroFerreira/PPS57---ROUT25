@@ -25,9 +25,9 @@ from pps57_tsp.controller import TSPControlController  # noqa: E402
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate whether RL TSP decisions are safer, worse, or inconclusive.")
-    parser.add_argument("--config", default="configs/cits_config.json", help="Base C-ITS configuration.")
-    parser.add_argument("--tsp-config", default="configs/tsp_config.json", help="TSP/Safety Layer configuration.")
-    parser.add_argument("--policy-config", default="configs/policy_optimization_config.json", help="RL training configuration.")
+    parser.add_argument("--config", default="configs/cits_v2x_config.json", help="Base C-ITS configuration.")
+    parser.add_argument("--tsp-config", default="configs/tsp_safety_config.json", help="TSP/Safety Layer configuration.")
+    parser.add_argument("--policy-config", default="configs/policy_training_config.json", help="RL training configuration.")
     parser.add_argument("--policy-report", default="reports/tabular_q_policy_report.json", help="Exported RL policy report.")
     parser.add_argument("--steps", type=int, default=7200, help="SUMO/TraCI steps when generating fresh paired runs.")
     parser.add_argument("--sumo-binary", default="sumo", help="SUMO binary for TraCI.")

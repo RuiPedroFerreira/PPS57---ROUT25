@@ -171,6 +171,7 @@ def collect_snapshot(
     missing_critical = [
         item.key for item in statuses if item.key in set(config.get("critical_artifacts", [])) and not item.exists
     ]
+    artifact_warnings = build_artifact_warnings(json_payloads, statuses_by_key)
 
     return {
         "root": str(root),
@@ -178,6 +179,7 @@ def collect_snapshot(
         "config_error": config.get("config_error"),
         "artifacts": status_payload,
         "missing_critical_artifacts": missing_critical,
+        "artifact_warnings": artifact_warnings,
         "records": jsonl_records,
         "reports": json_payloads,
         "tripinfo": tripinfo_summary,
@@ -485,6 +487,65 @@ def valid_jsonl_records(records: Iterable[Dict[str, Any]]) -> List[Dict[str, Any
     return [item for item in records if "__parse_error__" not in item]
 
 
+def build_artifact_warnings(
+    json_payloads: Mapping[str, Dict[str, Any]],
+    artifact_statuses: Mapping[str, ArtifactStatus],
+) -> List[str]:
+    warnings: List[str] = []
+
+    _warn_if_summary_count_mismatch(
+        warnings,
+        artifact_statuses,
+        json_payloads,
+        artifact_key="cits_messages",
+        summary_key="cits_summary",
+        summary_count_key="total_messages",
+    )
+    _warn_if_summary_count_mismatch(
+        warnings,
+        artifact_statuses,
+        json_payloads,
+        artifact_key="tsp_decisions",
+        summary_key="tsp_summary",
+        summary_count_key="total_decisions",
+    )
+    _warn_if_summary_count_mismatch(
+        warnings,
+        artifact_statuses,
+        json_payloads,
+        artifact_key="tsp_actuation",
+        summary_key="tsp_summary",
+        summary_count_key="actuation_events",
+    )
+    _warn_if_summary_count_mismatch(
+        warnings,
+        artifact_statuses,
+        json_payloads,
+        artifact_key="policy_candidates",
+        summary_key="optimization_summary",
+        summary_count_key="candidate_count",
+    )
+    _warn_if_summary_count_mismatch(
+        warnings,
+        artifact_statuses,
+        json_payloads,
+        artifact_key="offline_samples",
+        summary_key="optimization_summary",
+        summary_count_key="scenario_count",
+    )
+
+    _warn_if_report_older_than_sources(warnings, artifact_statuses, "cits_summary", ["cits_messages"])
+    _warn_if_report_older_than_sources(warnings, artifact_statuses, "tsp_summary", ["tsp_decisions", "tsp_actuation"])
+    _warn_if_report_older_than_sources(
+        warnings,
+        artifact_statuses,
+        "optimization_summary",
+        ["offline_samples", "policy_candidates"],
+    )
+    _warn_if_report_older_than_sources(warnings, artifact_statuses, "baseline_kpis", ["tripinfo"])
+    return warnings
+
+
 def latest_records(records: List[Dict[str, Any]], limit: int = 20) -> List[Dict[str, Any]]:
     """Return the last N records without mutating the original list."""
     if limit <= 0:
@@ -643,6 +704,52 @@ def _count_with_summary_fallback(
     if status is not None and status.exists:
         return computed_count
     return _safe_int(fallback_value, default=computed_count)
+
+
+def _warn_if_summary_count_mismatch(
+    warnings: List[str],
+    artifact_statuses: Mapping[str, ArtifactStatus],
+    json_payloads: Mapping[str, Dict[str, Any]],
+    *,
+    artifact_key: str,
+    summary_key: str,
+    summary_count_key: str,
+) -> None:
+    artifact = artifact_statuses.get(artifact_key)
+    summary = artifact_statuses.get(summary_key)
+    if artifact is None or summary is None or not artifact.exists or not summary.exists or artifact.truncated:
+        return
+    expected = json_payloads.get(summary_key, {}).get(summary_count_key)
+    if expected is None:
+        return
+    expected_count = _safe_int(expected, default=-1)
+    if expected_count >= 0 and artifact.record_count != expected_count:
+        warnings.append(
+            f"stale_or_inconsistent:{summary_key}.{summary_count_key}={expected_count} "
+            f"but {artifact_key}.record_count={artifact.record_count}"
+        )
+
+
+def _warn_if_report_older_than_sources(
+    warnings: List[str],
+    artifact_statuses: Mapping[str, ArtifactStatus],
+    report_key: str,
+    source_keys: List[str],
+) -> None:
+    report = artifact_statuses.get(report_key)
+    if report is None or not report.exists:
+        return
+    report_path = Path(report.path)
+    if not report_path.exists():
+        return
+    report_mtime = report_path.stat().st_mtime
+    for source_key in source_keys:
+        source = artifact_statuses.get(source_key)
+        if source is None or not source.exists:
+            continue
+        source_path = Path(source.path)
+        if source_path.exists() and source_path.stat().st_mtime > report_mtime + 1e-6:
+            warnings.append(f"stale_report:{report_key} older than {source_key}")
 
 
 def _avg(values: List[float]) -> float:

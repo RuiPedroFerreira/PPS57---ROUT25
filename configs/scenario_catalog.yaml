@@ -1,16 +1,17 @@
-scenario_set: pps57_porto_boavista_realistic_v02
+scenario_set: pps57_porto_boavista_base_v03
 metadata:
   city: Porto
   corridor: Avenida da Boavista / Casa da Música - Praça do Império - Castelo do Queijo
-  alignment_level: topological_proxy_realistic
+  alignment_level: controlled_sumo_base_proxy
   simulation_duration_s: 7200
   notes: >
-    Cenários realistas de desenvolvimento. A rede usa nós e procura sintéticos, mas ancorados num corredor urbano real do Porto.
-    A calibração operacional exige import OSM/GTFS e dados reais de contagens e planos semafóricos.
+    Cenários gerados a partir de configs/sumo_scenario_base.json. A rede é SUMO
+    controlada e auditável, com geometria/procura/paragens/serviços
+    parametrizados para calibração posterior com GTFS, contagens e planos reais.
 
 scenarios:
   baseline_am_peak:
-    description: Plano semafórico gerado pelo netconvert, sem prioridade semafórica.
+    description: Plano semafórico estático gerado pelo netconvert, sem prioridade semafórica.
     route_file: sumo/routes/routes.rou.xml
     sumocfg: sumo/corredor.sumocfg
     expected_use: medir KPIs base para autocarros e tráfego geral.
