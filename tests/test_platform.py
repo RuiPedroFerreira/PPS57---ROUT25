@@ -14,7 +14,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from pps57_platform.data_loader import collect_snapshot, latest_records, parse_tripinfo, read_jsonl
-from pps57_platform.runner import PlatformRunner, RunOptions, RunnerUnsupportedError
+from pps57_platform.runner import ScenarioRunOptions, ScenarioRunner, RunnerUnsupportedError
 
 
 class PlatformDataLoaderTest(unittest.TestCase):
@@ -293,57 +293,42 @@ class PlatformDataLoaderTest(unittest.TestCase):
             self.assertTrue(expected.exists())
             self.assertIn(str(expected), result.stdout)
 
-    def test_platform_runner_builds_safe_known_commands(self) -> None:
-        runner = PlatformRunner(ROOT)
-        command = runner._command_for("tsp-sumo-no-actuation", RunOptions(steps=30, gui=True))
-        self.assertIn("scripts/run_tsp_control.py", command)
-        self.assertIn("--mode", command)
-        self.assertIn("sumo", command)
+    def test_scenario_runner_builds_safe_scenario_command(self) -> None:
+        runner = ScenarioRunner(ROOT)
+        options = ScenarioRunOptions(
+            scenario_id="baseline_am_peak",
+            run_type="comparison",
+            steps=30,
+            sumo_binary="sumo",
+            gui=True,
+            traci_port=8813,
+        )
+        command = runner._command_for(options)
+        self.assertIn("scripts/run_sumo_scenario.py", command)
+        self.assertIn("--scenario", command)
+        self.assertIn("baseline_am_peak", command)
+        self.assertIn("--run-type", command)
+        self.assertIn("comparison", command)
+        self.assertIn("--sumo-binary", command)
         self.assertIn("--steps", command)
         self.assertIn("30", command)
         self.assertIn("--gui", command)
-        self.assertIn("--no-actuation", command)
+        self.assertEqual(runner._environment_for(options)["TRACI_PORT"], "8813")
 
-        comparison_command = runner._command_for("compare-tsp-rl", RunOptions(steps=30, no_actuation=True))
-        self.assertIn("scripts/compare_tsp_baseline_rl.py", comparison_command)
-        self.assertIn("--config", comparison_command)
-        self.assertIn("--tsp-config", comparison_command)
-        self.assertIn("--policy-config", comparison_command)
-        self.assertIn("--sumo-binary", comparison_command)
-        self.assertIn("--no-actuation", comparison_command)
+        all_command = runner._command_for(ScenarioRunOptions(all_scenarios=True, run_type="baseline"))
+        self.assertIn("--all", all_command)
+        self.assertNotIn("--scenario", all_command)
 
-        demonstrator_command = runner._command_for("tsp-demonstrator", RunOptions(steps=30, no_actuation=True))
-        self.assertIn("scripts/run_tsp_demonstrator.py", demonstrator_command)
-        self.assertIn("--config", demonstrator_command)
-        self.assertIn("--tsp-config", demonstrator_command)
-        self.assertIn("--policy-config", demonstrator_command)
-        self.assertIn("--sumo-binary", demonstrator_command)
-        self.assertIn("--no-actuation", demonstrator_command)
-
+    def test_scenario_runner_rejects_unknown_scenario_and_bad_run_type(self) -> None:
+        runner = ScenarioRunner(ROOT)
         with self.assertRaises(RunnerUnsupportedError):
-            runner._command_for("shell-arbitrary", RunOptions())
+            runner._validate_options(ScenarioRunOptions(scenario_id="unknown"))
+        with self.assertRaises(RunnerUnsupportedError):
+            runner._validate_options(ScenarioRunOptions(run_type="shell-arbitrary"))  # type: ignore[arg-type]
+        self.assertIsNone(runner.process)
 
-    def test_platform_runner_rejects_path_traversal_in_run_start(self) -> None:
-        # api.py forwards RunStartRequest fields directly to the subprocess.
-        # Without validation, "../../etc/passwd" or "/etc/shadow" reaches the
-        # worker — defense-in-depth: reject before spawning anything.
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "configs").mkdir()
-            (root / "outputs").mkdir()
-            runner = PlatformRunner(root)
-
-            with self.assertRaises(RunnerUnsupportedError):
-                runner.start_run("tsp-sumo", RunOptions(config="../escape.json"))
-            with self.assertRaises(RunnerUnsupportedError):
-                runner.start_run("tsp-sumo", RunOptions(tsp_config="/etc/shadow"))
-            with self.assertRaises(RunnerUnsupportedError):
-                runner.start_run("tsp-sumo", RunOptions(policy_report="../../leak.json"))
-            # No process should have been started for any of the above.
-            self.assertIsNone(runner.process)
-
-    def test_run_platform_api_loopback_detection(self) -> None:
-        from scripts.run_platform_api import _is_loopback  # type: ignore[import-not-found]
+    def test_run_dashboard_loopback_detection(self) -> None:
+        from scripts.run_dashboard import _is_loopback  # type: ignore[import-not-found]
 
         self.assertTrue(_is_loopback("127.0.0.1"))
         self.assertTrue(_is_loopback("localhost"))
@@ -352,11 +337,11 @@ class PlatformDataLoaderTest(unittest.TestCase):
         self.assertFalse(_is_loopback("10.0.0.5"))
         self.assertFalse(_is_loopback("not-a-host"))
 
-    def test_run_platform_api_blocks_non_loopback_without_explicit_opt_in(self) -> None:
+    def test_run_dashboard_blocks_non_loopback_without_explicit_opt_in(self) -> None:
         result = subprocess.run(
             [
                 sys.executable,
-                str(ROOT / "scripts" / "run_platform_api.py"),
+                str(ROOT / "scripts" / "run_dashboard.py"),
                 "--host",
                 "0.0.0.0",
             ],
@@ -369,58 +354,35 @@ class PlatformDataLoaderTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("BLOQUEADO", result.stderr)
 
-    def test_platform_runner_reads_recent_jsonl_events(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "configs").mkdir()
-            (root / "outputs").mkdir()
-            (root / "configs" / "platform_config.json").write_text(
-                json.dumps({"artifacts": {"tsp_decisions": "outputs/tsp_decisions.jsonl"}}),
-                encoding="utf-8",
-            )
-            write_jsonl(root / "outputs" / "tsp_decisions.jsonl", [{"i": i} for i in range(5)])
+    def test_fastapi_dashboard_exposes_expected_routes(self) -> None:
+        from pps57_platform.api import ScenarioRunRequest, create_app
 
-            payload = PlatformRunner(root).recent_events("tsp_decisions", limit=2)
-
-            self.assertEqual([item["i"] for item in payload["events"]], [3, 4])
-
-    def test_platform_runner_snapshots_artifacts_by_run_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "configs").mkdir()
             (root / "outputs").mkdir()
             (root / "reports").mkdir()
-            (root / "configs" / "platform_config.json").write_text(
-                json.dumps({"artifacts": {"tsp_decisions": "outputs/tsp_decisions.jsonl"}}),
+            (root / "configs" / "sumo_scenario_base.json").write_text(
+                (ROOT / "configs" / "sumo_scenario_base.json").read_text(encoding="utf-8"),
                 encoding="utf-8",
             )
-            write_jsonl(root / "outputs" / "tsp_decisions.jsonl", [{"decision_id": "d1"}])
-            runner = PlatformRunner(root)
-            runner.current_state = {"run_id": "run-test"}
-
-            snapshot_dir = runner._snapshot_run_artifacts_locked()
-
-            self.assertEqual(snapshot_dir, root / "outputs" / "runs" / "run-test")
-            self.assertTrue((snapshot_dir / "outputs" / "tsp_decisions.jsonl").exists())
-
-    def test_fastapi_control_plane_exposes_expected_routes(self) -> None:
-        from pps57_platform.api import RunStartRequest, create_app
-
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "outputs").mkdir()
+            (root / "configs" / "scenario_catalog.yaml").write_text(
+                (ROOT / "configs" / "scenario_catalog.yaml").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
             app = create_app(root)
             paths = {route.path for route in app.routes}
 
-            self.assertIn("/health", paths)
-            self.assertIn("/runs/start", paths)
-            self.assertIn("/runs/current", paths)
-            self.assertIn("/artifacts/snapshot", paths)
-            self.assertEqual(RunStartRequest(kind="tsp-sumo", steps=3).to_options().steps, 3)
-            self.assertEqual(
-                RunStartRequest(kind="tsp-sumo", config="configs/custom_cits.json").to_options().config,
-                "configs/custom_cits.json",
-            )
+            self.assertIn("/", paths)
+            self.assertIn("/dashboard", paths)
+            self.assertIn("/api/scenarios", paths)
+            self.assertIn("/api/runs/start", paths)
+            self.assertIn("/api/runs/current", paths)
+            self.assertIn("/api/reports", paths)
+            options = ScenarioRunRequest(scenario_id="baseline_am_peak", steps=3, run_type="comparison").to_options()
+            self.assertEqual(options.steps, 3)
+            self.assertEqual(options.scenario_id, "baseline_am_peak")
+            self.assertFalse(options.gui)
 
 
 def write_jsonl(path: Path, rows: list[dict]) -> None:

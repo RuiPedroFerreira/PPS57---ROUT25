@@ -1,6 +1,6 @@
 # PPS57 ROUT25 Traffic Priority Platform
 
-PPS57 ROUT25 is a local validation platform for public-transport traffic-signal priority on a simulated Porto/Boavista corridor model. It combines a SUMO digital twin, C-ITS/V2X message emulation, an explainable TSP decision engine, a mandatory Safety Layer, offline policy optimization, tabular reinforcement-learning training, and a FastAPI control plane.
+PPS57 ROUT25 is a local validation platform for public-transport traffic-signal priority on a simulated Porto/Boavista corridor model. It combines a SUMO digital twin, C-ITS/V2X message emulation, an explainable TSP decision engine, a mandatory Safety Layer, offline policy optimization, tabular reinforcement-learning training, and a scenario dashboard.
 
 The repository is designed for technical demonstration and validation. It is not an operational traffic-control deployment: network geometry, demand, public-transport lines and signal plans are synthetic SUMO assets for simulation only.
 
@@ -22,7 +22,7 @@ The repository is designed for technical demonstration and validation. It is not
 - Compares offline policy candidates against the baseline TSP engine.
 - Trains a tabular Q-learning policy from SUMO/TraCI event-derived scenarios.
 - Loads exported policies for runtime inference in semi-live TSP runs.
-- Serves a local FastAPI control plane for demos and artifact inspection.
+- Serves a local scenario dashboard for running scenarios and comparing KPIs.
 
 ## Repository Layout
 
@@ -87,16 +87,16 @@ make train-rl-policy
 make platform-check
 ```
 
-Start the local API:
+Start the local scenario dashboard:
 
 ```bash
-make platform-api
+make dashboard
 ```
 
 Default URLs:
 
 ```text
-FastAPI:   http://127.0.0.1:8000
+Dashboard: http://127.0.0.1:8000
 API docs:  http://127.0.0.1:8000/docs
 ```
 
@@ -122,7 +122,7 @@ API docs:  http://127.0.0.1:8000/docs
 | `make optimize-offline` | Compare safe offline policy candidates | No |
 | `make train-rl-policy` | Train tabular Q-learning policy offline | No |
 | `make platform-check` | Aggregate and validate platform artifacts | No |
-| `make platform-api` | Start the FastAPI control API | No |
+| `make dashboard` | Start the local scenario dashboard and API | No |
 | `make sort-routes` | Sort SUMO route definitions by departure time | No |
 | `make clean` | Remove known generated artifacts | No |
 
@@ -215,12 +215,12 @@ public-transport service assumptions, event configuration and KPI focus.
 ```bash
 make scenario-list
 make scenario-run SCENARIO=baseline_am_peak
-make scenario-run SCENARIO=cross_traffic_pressure RUN_TYPE=all
+make scenario-run SCENARIO=cross_traffic_pressure RUN_TYPE=comparison
 make scenario-suite RUN_TYPE=baseline
 ```
 
 Supported run types are `baseline`, `cits`, `tsp_no_actuation`,
-`tsp_actuation`, and `all`.
+`tsp_actuation`, `comparison` (baseline + no-actuation + actuation), and `all`.
 
 Scenario KPIs include tripinfo metrics (duration, speed, waiting time,
 timeLoss, bus headways and priority/general/emergency vehicle groups) plus E1/E2
@@ -464,67 +464,51 @@ Generated output:
 reports/platform_snapshot.json
 ```
 
-### 10. Run FastAPI Control Plane
+### 10. Run Scenario Dashboard
 
 ```bash
-.venv/bin/python scripts/run_platform_api.py --host 127.0.0.1 --port 8000
+.venv/bin/python scripts/run_dashboard.py --host 127.0.0.1 --port 8000
 ```
 
-The control endpoints are unauthenticated. Non-loopback hosts are blocked by
+The dashboard and local API are unauthenticated. Non-loopback hosts are blocked by
 default; use `--allow-non-loopback` only behind an explicit network restriction.
 
 With reload:
 
 ```bash
-.venv/bin/python scripts/run_platform_api.py --reload
+.venv/bin/python scripts/run_dashboard.py --reload
 ```
 
-Core endpoints:
+Dashboard endpoints:
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| `GET` | `/health` | API and runner status |
-| `GET` | `/runs/current` | Current or last managed run |
-| `POST` | `/runs/start` | Start a supported job |
-| `POST` | `/runs/stop` | Stop the active managed job |
-| `POST` | `/runs/pause` | Pause the active managed job, where supported |
-| `POST` | `/runs/resume` | Resume a paused managed job, where supported |
-| `GET` | `/artifacts/snapshot` | Aggregated artifact snapshot |
-| `GET` | `/events/recent` | Recent JSONL events for one artifact |
+| `GET` | `/` | Scenario dashboard UI |
+| `GET` | `/api/health` | API and runner status |
+| `GET` | `/api/scenarios` | Configured scenario catalog |
+| `GET` | `/api/runs/current` | Current or last managed scenario run |
+| `POST` | `/api/runs/start` | Start a scenario run |
+| `POST` | `/api/runs/stop` | Stop the active managed scenario run |
+| `GET` | `/api/reports` | Latest per-scenario KPI reports |
+| `GET` | `/api/reports/{scenario_id}` | KPI comparison for one scenario |
 
-Start a TSP SUMO/TraCI observation run through the API:
-
-```bash
-curl -X POST http://127.0.0.1:8000/runs/start \
-  -H 'Content-Type: application/json' \
-  -d '{"kind":"tsp-sumo-no-actuation","steps":7200,"policy_mode":"baseline"}'
-```
-
-Start optimized runtime inference through the API:
+Start a full baseline / no-actuation / actuation comparison through the API:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/runs/start \
+curl -X POST http://127.0.0.1:8000/api/runs/start \
   -H 'Content-Type: application/json' \
-  -d '{"kind":"tsp-sumo-no-actuation","steps":7200,"policy_mode":"optimized","policy_report":"reports/policy_report.json"}'
+  -d '{"scenario_id":"baseline_am_peak","run_type":"comparison","steps":7200,"traci_port":8813}'
 ```
 
-Start RL training through the API:
+Set `"gui": true` in the request, or enable `Abrir sumo-gui` in the dashboard,
+to run the selected scenario visually with SUMO GUI.
+
+Run every configured scenario with the same comparison:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/runs/start \
+curl -X POST http://127.0.0.1:8000/api/runs/start \
   -H 'Content-Type: application/json' \
-  -d '{"kind":"train-rl-policy"}'
-```
-
-Supported API job kinds:
-
-```text
-cits-sumo
-tsp-sumo
-tsp-sumo-no-actuation
-optimize-offline
-train-rl-policy
-platform-check
+  -d '{"all_scenarios":true,"run_type":"comparison","steps":7200,"traci_port":8813}'
 ```
 
 ### 11. Inspect Platform Artifacts
@@ -817,16 +801,16 @@ make build-event-training-dataset
 make platform-check
 ```
 
-To control runs, start the API in another terminal:
+To control scenario runs, start the dashboard in another terminal:
 
 ```bash
-make platform-api
+make dashboard
 ```
 
 If port `8000` is already in use, run the script directly with a different port:
 
 ```bash
-.venv/bin/python scripts/run_platform_api.py --port 8001
+.venv/bin/python scripts/run_dashboard.py --port 8001
 ```
 
 If an optimized runtime policy is not loaded, regenerate the policy report:

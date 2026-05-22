@@ -42,12 +42,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--generate-only", action="store_true", help="Generate SUMO XMLs but do not execute SUMO.")
     parser.add_argument(
         "--run-type",
-        choices=[*RUN_TYPES, "all"],
+        choices=[*RUN_TYPES, "comparison", "all"],
         default="baseline",
         help="Pipeline to run for each scenario.",
     )
     parser.add_argument("--steps", type=int, default=None, help="Optional max simulation steps for C-ITS/TSP runs.")
     parser.add_argument("--sumo-binary", default="sumo")
+    parser.add_argument("--gui", action="store_true", help="Use sumo-gui for visual scenario execution.")
     parser.add_argument("--skip-build", action="store_true", help="Skip netconvert after generating plain files.")
     parser.add_argument("--outputs-dir", default=Path("outputs/scenarios"), type=Path)
     parser.add_argument("--reports-dir", default=Path("reports/scenarios"), type=Path)
@@ -103,7 +104,10 @@ def run_scenario(args: argparse.Namespace, base_config: dict, catalog: dict, sce
     scenario_output_dir.mkdir(parents=True, exist_ok=True)
     scenario_report_dir.mkdir(parents=True, exist_ok=True)
 
-    run_types = list(RUN_TYPES) if args.run_type == "all" else [args.run_type]
+    if args.run_type == "comparison":
+        run_types = ["baseline", "tsp_no_actuation", "tsp_actuation"]
+    else:
+        run_types = list(RUN_TYPES) if args.run_type == "all" else [args.run_type]
     scenario_runs: dict[str, dict] = {}
     for run_type in run_types:
         scenario_runs[run_type] = run_scenario_type(
@@ -215,8 +219,9 @@ def build_network() -> None:
 
 
 def run_baseline_sumo(args: argparse.Namespace, config: dict, run_output_dir: Path) -> None:
-    _run([
-        args.sumo_binary,
+    binary = config.get("sumo", {}).get("default_gui_binary", "sumo-gui") if args.gui else args.sumo_binary
+    cmd = [
+        binary,
         "-c", "sumo/corredor.sumocfg",
         "--duration-log.statistics",
         "--tripinfo-output", str(run_output_dir / "tripinfo.xml"),
@@ -224,7 +229,10 @@ def run_baseline_sumo(args: argparse.Namespace, config: dict, run_output_dir: Pa
         "--statistic-output", str(run_output_dir / "statistics.xml"),
         "--seed", str(config.get("random_seed", 57)),
         "--end", str(config.get("simulation_end_s", 7200)),
-    ])
+    ]
+    if args.gui:
+        cmd.extend(["--start", "--quit-on-end"])
+    _run(cmd)
 
 
 def run_cits(args: argparse.Namespace, scenario_id: str, run_output_dir: Path, run_report_dir: Path) -> None:
@@ -232,7 +240,7 @@ def run_cits(args: argparse.Namespace, scenario_id: str, run_output_dir: Path, r
     config_path = write_cits_config(scenario_id, run_output_dir, run_report_dir)
     config = load_cits_config(config_path, root=ROOT)
     controller = CITSEmulationController(config)
-    controller.run_with_sumo(steps=args.steps, sumo_binary=args.sumo_binary, gui=False)
+    controller.run_with_sumo(steps=args.steps, sumo_binary=args.sumo_binary, gui=args.gui)
 
 
 def run_tsp(
@@ -252,7 +260,7 @@ def run_tsp(
     controller.run_with_sumo(
         steps=args.steps,
         sumo_binary=args.sumo_binary,
-        gui=False,
+        gui=args.gui,
         apply_actuation=apply_actuation,
     )
 
