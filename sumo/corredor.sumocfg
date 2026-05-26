@@ -4,19 +4,14 @@
     <net-file value="network/corredor.net.xml"/>
     <route-files value="routes/routes.rou.xml"/>
     <additional-files value="additional/bus_stops.add.xml,additional/detectors.add.xml,additional/parking.add.xml"/>
-    <!--
-      additional/calibrators.add.xml is GENERATED as scaffolding but NOT LOADED.
-      Calibradores em SUMO sao enforcement (inserem/removem veiculos para bater
-      no target). Activa-los com targets sinteticos distorce o cenario. So
-      devem ser activados quando os targets estiverem ancorados em dados reais
-      (deteccoes/contagens da CMP, GTFS-AVL STCP, etc.). Ate la, ver
-      calibration_status = "scaffolding_pending_data" em sumo_scenario_base.json.
-    -->
+    <!-- Calibrators are generated as scaffolding but intentionally not loaded.
+         SUMO calibrators enforce synthetic targets by inserting/removing
+         vehicles, so they should only be activated with real count data. -->
   </input>
   <time>
     <begin value="0"/>
     <end value="7200"/>
-    <step-length value="1.0"/>
+    <step-length value="0.5"/>
   </time>
   <output>
     <tripinfo-output value="../outputs/tripinfo.xml"/>
@@ -29,11 +24,10 @@
   </report>
   <processing>
     <time-to-teleport value="300"/>
-    <!-- Item 6: ignore-route-errors REMOVIDO. Antes mascarava rotas fora de
-         ordem (autocarros descartados em silêncio). Agora `make validate`
-         bloqueia esse caso (validate_routes_sorted) e `make sort-routes` é
-         a forma documentada de o corrigir. Se voltar a haver erro de rota,
-         queremos que o SUMO falhe ruidosamente em vez de silenciosamente. -->
+    <tls.actuated.detector-gap value="2.5"/>
+    <tls.actuated.jam-threshold value="30"/>
+    <!-- Do not enable ignore-route-errors here: sorted route validation should
+         fail loudly instead of silently dropping out-of-order vehicles. -->
   </processing>
   <random_number>
     <seed value="57"/>

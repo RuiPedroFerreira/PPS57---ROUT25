@@ -20,6 +20,15 @@ built, this module reads a `tlsOffsetOverrides` XML produced by
     link-vector length. The function is idempotent: any pre-existing all-red
     phase is removed before insertion so re-running the script after another
     rebuild yields the same final plan.
+  * if the override contains ``<phase role="pedestrian">``, inserts a new
+    exclusive pedestrian ``<phase>`` after ``all_red_cross_to_main`` (or after
+    ``cross_yellow`` if no all-red is configured). The state is ``r`` on every
+    vehicle link and ``G`` on the indices that netconvert assigned to
+    pedestrian ``<crossing>`` connections (identified by having ``G`` in both
+    the main_green and cross_green source phases). This turns concurrent
+    crossings into a Barnes Dance, eliminating the turn-on-crossing conflict.
+    Idempotent: any pre-existing exclusive-ped phase is stripped before
+    insertion.
 
 Without the offset step every signal starts at t=0 and the corridor acts like
 seven independent timers. Without the phase-duration step every TLS keeps the
@@ -42,6 +51,7 @@ _PRECEDING_YELLOW_FOR_ALL_RED = {
     "all_red_main_to_cross": "main_yellow",
     "all_red_cross_to_main": "cross_yellow",
 }
+_PED_INSERT_ROLE = "pedestrian"
 
 
 def apply_tls_offsets(net_path: Path, overrides_path: Path) -> int:
@@ -132,8 +142,32 @@ def _apply_phase_program(
         )
 
     will_insert_all_red = any(role in role_durations for role in _ALL_RED_INSERT_ROLES)
+    will_insert_ped = _PED_INSERT_ROLE in role_durations
     if will_insert_all_red:
         _strip_all_red_phases(tl_logic)
+    ped_indices: set[int] = set()
+    if will_insert_ped:
+        ped_indices = _ped_link_indices(connections)
+        if not ped_indices:
+            raise ValueError(
+                f"TLS {tls_id}: cannot insert exclusive pedestrian phase because no "
+                f"pedestrian/crossing linkIndex slots were found on this TLS's connections. "
+                f"Was the network built with --crossings.guess and --walkingareas?"
+            )
+        _strip_ped_phases(tl_logic, main_links, cross_links)
+        # An exclusive Barnes Dance replaces concurrent pedestrian crossings.
+        # netconvert always emits a "flashing don't walk" sub-phase after each
+        # vehicle green to clear those concurrent crossings; once we strip them
+        # we must also turn the crossing indices to red in the surviving
+        # vehicle green phases (otherwise peds keep getting concurrent G in
+        # main_green / cross_green, and the FDW would still be needed). Both
+        # operations are guarded behind will_insert_ped so non-ped TLS keep the
+        # netconvert default plan intact. Vehicle turns (one main edge, one
+        # cross edge) are NOT in ped_indices and are left untouched.
+        _strip_concurrent_ped_clearance_phases(
+            tl_logic, main_links, cross_links, ped_indices, tls_id=tls_id
+        )
+        _disable_concurrent_crossings(tl_logic, ped_indices)
 
     role_to_phase: dict[str, ET.Element] = {}
     for phase in tl_logic.findall("phase"):
@@ -142,7 +176,7 @@ def _apply_phase_program(
             role_to_phase[role] = phase
 
     for role, duration in role_durations.items():
-        if role in _ALL_RED_INSERT_ROLES:
+        if role in _ALL_RED_INSERT_ROLES or role == _PED_INSERT_ROLE:
             continue
         phase = role_to_phase.get(role)
         if phase is None:
@@ -152,7 +186,7 @@ def _apply_phase_program(
             )
         phase.attrib["duration"] = f"{duration:.1f}"
 
-    if not will_insert_all_red:
+    if not (will_insert_all_red or will_insert_ped):
         return
 
     state_length = _state_length(role_to_phase)
@@ -177,15 +211,205 @@ def _apply_phase_program(
         )
         tl_logic.insert(anchor_idx + 1, new_phase)
 
+    if not will_insert_ped:
+        return
+
+    cross_yellow = role_to_phase.get("cross_yellow")
+    if cross_yellow is None:
+        raise ValueError(
+            f"TLS {tls_id}: cannot insert exclusive pedestrian phase because no 'cross_yellow' "
+            f"phase was found (available: {sorted(role_to_phase)})."
+        )
+    ped_state = _build_ped_state(ped_indices, state_length)
+    # Anchor after cross_yellow, then skip past any all-red that was just
+    # inserted by the loop above so the ped phase lands at end-of-cycle.
+    children = list(tl_logic)
+    anchor_idx = children.index(cross_yellow)
+    while anchor_idx + 1 < len(children) and _is_all_red_phase(children[anchor_idx + 1]):
+        anchor_idx += 1
+    ped_phase = ET.Element(
+        "phase",
+        {"duration": f"{role_durations[_PED_INSERT_ROLE]:.1f}", "state": ped_state},
+    )
+    tl_logic.insert(anchor_idx + 1, ped_phase)
+
 
 def _strip_all_red_phases(tl_logic: ET.Element) -> None:
     """Remove pre-existing all-red phases so re-runs do not duplicate them."""
     for child in list(tl_logic):
         if child.tag != "phase":
             continue
-        state = child.attrib.get("state", "")
-        if state and all(c == "r" for c in state):
+        if _is_all_red_phase(child):
             tl_logic.remove(child)
+
+
+def _is_all_red_phase(phase: ET.Element) -> bool:
+    state = phase.attrib.get("state", "")
+    return bool(state) and all(c == "r" for c in state)
+
+
+def _strip_concurrent_ped_clearance_phases(
+    tl_logic: ET.Element,
+    main_links: Iterable[int],
+    cross_links: Iterable[int],
+    ped_indices: Iterable[int],
+    *,
+    tls_id: str,
+) -> None:
+    """Remove the netconvert flashing-don't-walk phases that clear concurrent crossings.
+
+    With ``--crossings.guess`` netconvert generates 8 phases per cycle: each
+    vehicle-green phase is followed by a near-duplicate that only differs in
+    the crossing indices (those flip to ``r`` while vehicles still have
+    green) so pedestrians mid-crossing have time to finish. Two safeguards
+    keep the strip from over-reaching if the netconvert output deviates:
+
+    1. The candidate phase's vehicle state (state with ped indices masked
+       out) must equal that of the earlier same-role phase — i.e., the
+       vehicle program is *literally* unchanged.
+    2. Every difference between the two states must be on a ped index, and
+       must be of the form ``G/g → r`` (a clearance), not ``r → G`` (a
+       promotion). A phase that brightens peds is not a clearance and
+       deserves to stay.
+
+    After the strip the function asserts that exactly one ``main_green`` and
+    one ``cross_green`` phase remain — if either count is off, the
+    netconvert plan no longer matches the assumed shape and we fail loud
+    instead of silently corrupting the cycle.
+    """
+    ped_set = {int(i) for i in ped_indices}
+    first_by_role: dict[str, ET.Element] = {}
+    for child in list(tl_logic):
+        if child.tag != "phase":
+            continue
+        role = _classify_phase_role(child.attrib.get("state", ""), main_links, cross_links)
+        if role not in ("main_green", "cross_green"):
+            continue
+        if role not in first_by_role:
+            first_by_role[role] = child
+            continue
+        first = first_by_role[role]
+        if _is_ped_clearance_of(
+            child.attrib.get("state", ""),
+            first.attrib.get("state", ""),
+            ped_set,
+        ):
+            tl_logic.remove(child)
+
+    role_counts = {"main_green": 0, "cross_green": 0}
+    for phase in tl_logic.findall("phase"):
+        role = _classify_phase_role(
+            phase.attrib.get("state", ""), main_links, cross_links
+        )
+        if role in role_counts:
+            role_counts[role] += 1
+    for role, count in role_counts.items():
+        if count != 1:
+            raise ValueError(
+                f"TLS {tls_id}: after stripping ped-clearance phases expected exactly "
+                f"one '{role}' phase, got {count}. The netconvert output may have changed; "
+                f"inspect the generated tlLogic before forcing an exclusive ped phase."
+            )
+
+
+def _is_ped_clearance_of(
+    candidate_state: str,
+    original_state: str,
+    ped_set: set[int],
+) -> bool:
+    """True iff ``candidate_state`` is the flashing-don't-walk sub-phase of ``original_state``.
+
+    Required pattern: same length, identical on every non-ped index, and on
+    each ped index either unchanged or transitioning ``G/g → r`` (clearance).
+    Any vehicle-side delta or a ``r → G`` ped delta disqualifies the
+    candidate as a clearance.
+    """
+    if len(candidate_state) != len(original_state):
+        return False
+    for i, (c, o) in enumerate(zip(candidate_state, original_state)):
+        if i in ped_set:
+            if c == o:
+                continue
+            if o in ("G", "g") and c == "r":
+                continue
+            return False
+        elif c != o:
+            return False
+    return True
+
+
+def _disable_concurrent_crossings(
+    tl_logic: ET.Element,
+    ped_indices: Iterable[int],
+) -> None:
+    """Turn the supplied pedestrian indices to red inside every phase.
+
+    Without this step the inserted exclusive ped phase would coexist with
+    netconvert's concurrent crossings — peds would get green twice per cycle
+    (once with each vehicle phase, once exclusive). This function enforces a
+    pure Barnes Dance by zeroing the crossing slots across the whole cycle;
+    the exclusive ped phase (inserted later) then reopens them. Vehicle
+    indices (main, cross, and turns) are untouched.
+    """
+    ped_set = {int(i) for i in ped_indices}
+    if not ped_set:
+        return
+    for child in tl_logic.findall("phase"):
+        state = list(child.attrib.get("state", ""))
+        changed = False
+        for i in ped_set:
+            if 0 <= i < len(state) and state[i] in ("G", "g"):
+                state[i] = "r"
+                changed = True
+        if changed:
+            child.attrib["state"] = "".join(state)
+
+
+def _strip_ped_phases(
+    tl_logic: ET.Element,
+    main_links: Iterable[int],
+    cross_links: Iterable[int],
+) -> None:
+    """Remove pre-existing exclusive-pedestrian phases so re-runs do not duplicate them.
+
+    Exclusive ped phases are those classified as ``pedestrian`` by
+    :func:`_classify_phase_role` — vehicle indices all red, crossing indices
+    green. The netconvert-generated concurrent-crossing phases keep their G's
+    on the parent vehicle phase (main_green / cross_green) and are not touched.
+    """
+    main_set = set(main_links)
+    cross_set = set(cross_links)
+    for child in list(tl_logic):
+        if child.tag != "phase":
+            continue
+        role = _classify_phase_role(child.attrib.get("state", ""), main_set, cross_set)
+        if role == "pedestrian":
+            tl_logic.remove(child)
+
+
+def _ped_link_indices(connections: dict[int, tuple[str, str]]) -> set[int]:
+    """linkIndex slots whose ``<connection>`` runs through an internal junction edge.
+
+    netconvert uses ``:I<n>_w<k>`` for walking-area internal edges and
+    ``:I<n>_c<k>`` for crossing internal edges; vehicular connections always
+    run between real (non-prefixed) edges. So every slot whose either endpoint
+    starts with ``:`` is a pedestrian movement.
+    """
+    return {
+        idx
+        for idx, (from_edge, to_edge) in connections.items()
+        if from_edge.startswith(":") or to_edge.startswith(":")
+    }
+
+
+def _build_ped_state(ped_indices: Iterable[int], state_length: int) -> str:
+    """Construct the state string for the exclusive ped phase: ``G`` on every
+    pedestrian slot, ``r`` everywhere else."""
+    chars = ["r"] * state_length
+    for idx in ped_indices:
+        if 0 <= int(idx) < state_length:
+            chars[int(idx)] = "G"
+    return "".join(chars)
 
 
 def _state_length(role_to_phase: dict[str, ET.Element]) -> int:
@@ -204,10 +428,13 @@ def _classify_links(connections: dict[int, tuple[str, str]]) -> tuple[set[int], 
     ``S_`` (cross approaches) or contain ``_N_`` / ``_S_`` (cross exits). A
     link is "main through" when both endpoints are corridor edges; "cross
     through" when both endpoints are cross edges. Pedestrian links (added by
-    --crossings.guess) are not in this mapping because they have no
-    ``<connection>`` element with a ``linkIndex`` — they live on
-    ``<crossing>`` elements and contribute to a separate slice of the state
-    string. They are therefore naturally ignored by this classifier.
+    ``--crossings.guess`` / ``--walkingareas``) DO get their own
+    ``<connection>`` elements with ``tl=`` and ``linkIndex=`` attributes — their
+    endpoints are internal junction edges prefixed with ``:`` (e.g.
+    ``:I1_w0`` → ``:I1_c3``). This classifier ignores them because neither
+    endpoint matches the main- or cross-edge naming, so they end up in
+    neither set. See :func:`_ped_link_indices` for the dedicated pedestrian
+    identifier used by the exclusive ped-phase insertion path.
     """
     main_links: set[int] = set()
     cross_links: set[int] = set()

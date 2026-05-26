@@ -19,6 +19,7 @@ from pps57_sumo.generate_plain_corridor import (  # noqa: E402
     build_tls_offsets,
     generate,
 )
+from pps57_sumo.build_network import build_sumo_artifacts  # noqa: E402
 from pps57_sumo.detector_kpis import parse_detector_kpis  # noqa: E402
 from pps57_sumo.parse_tripinfo import parse_tripinfo  # noqa: E402
 from pps57_sumo.parse_emissions import parse_emissions  # noqa: E402
@@ -151,13 +152,99 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
             float(flows["route_boavista_west_to_east"]["period"]),
         )
 
+    def test_actuated_tls_type_propagates_to_generated_nodes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            generate(
+                self.base,
+                tmp_path,
+                routes_output=tmp_path / "routes.rou.xml",
+                bus_stops_output=tmp_path / "bus_stops.add.xml",
+                detectors_output=tmp_path / "detectors.add.xml",
+            )
+            nod_text = (tmp_path / "corredor.nod.xml").read_text(encoding="utf-8")
+        actuated_ids = {
+            inter["id"]
+            for inter in self.base["network"]["intersections"]
+            if inter.get("tls_type") == "actuated"
+        }
+        self.assertTrue(actuated_ids, msg="expected at least one actuated intersection in base config")
+        for inter_id in actuated_ids:
+            self.assertIn(f'id="{inter_id}"', nod_text)
+            self.assertIn('tlType="actuated"', nod_text)
+        # Static intersections must NOT carry a tlType attribute on the node.
+        static_inter = next(
+            inter for inter in self.base["network"]["intersections"]
+            if inter.get("type") == "traffic_light" and "tls_type" not in inter
+        )
+        static_line = next(line for line in nod_text.splitlines() if f'id="{static_inter["id"]}"' in line)
+        self.assertNotIn("tlType=", static_line)
+
+    def test_sumocfg_emits_actuated_flags_only_when_needed(self) -> None:
+        # tls.actuated.* are sumo-runtime options, not netconvert flags — they
+        # belong in the sumocfg <processing> block. netconvert 1.26 rejects
+        # them outright on the command line.
+        from pps57_sumo.build_network import artifact_paths, netconvert_command, write_sumocfg
+
+        artifacts = artifact_paths(ROOT / "sumo")
+        cmd = netconvert_command(self.base, artifacts)
+        self.assertNotIn("--tls.actuated.detector-gap", cmd)
+        self.assertNotIn("--tls.actuated.jam-threshold", cmd)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            tmp_artifacts = artifact_paths(tmp_path)
+            tmp_artifacts.sumocfg_file.parent.mkdir(parents=True, exist_ok=True)
+            write_sumocfg(self.base, tmp_artifacts, output_dir=tmp_path / "outputs")
+            sumocfg = tmp_artifacts.sumocfg_file.read_text(encoding="utf-8")
+            self.assertIn('<tls.actuated.detector-gap value="2.5"/>', sumocfg)
+            self.assertIn('<tls.actuated.jam-threshold value="30"/>', sumocfg)
+
+            # Strip all tls_type=actuated and confirm the lines disappear.
+            static_only = json.loads(json.dumps(self.base))
+            for inter in static_only["network"]["intersections"]:
+                inter.pop("tls_type", None)
+            write_sumocfg(static_only, tmp_artifacts, output_dir=tmp_path / "outputs")
+            sumocfg_static = tmp_artifacts.sumocfg_file.read_text(encoding="utf-8")
+            self.assertNotIn("tls.actuated.detector-gap", sumocfg_static)
+            self.assertNotIn("tls.actuated.jam-threshold", sumocfg_static)
+
+    def test_roundabout_element_lists_ring_edges_and_nodes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            generate(
+                self.base,
+                tmp_path,
+                routes_output=tmp_path / "routes.rou.xml",
+                bus_stops_output=tmp_path / "bus_stops.add.xml",
+                detectors_output=tmp_path / "detectors.add.xml",
+            )
+            edg_text = (tmp_path / "corredor.edg.xml").read_text(encoding="utf-8")
+        self.assertIn("<roundabout", edg_text)
+        # 4 ring edges + 4 ring nodes for I6.
+        for arm in ("CITY_TO_NORTH", "NORTH_TO_ATLANTIC", "ATLANTIC_TO_SOUTH", "SOUTH_TO_CITY"):
+            self.assertIn(f"RB_I6_{arm}", edg_text)
+        for node in ("RB_I6_CITY", "RB_I6_NORTH", "RB_I6_ATLANTIC", "RB_I6_SOUTH"):
+            self.assertIn(node, edg_text)
+        # Ring lanes upgraded from 1 to 2 — match on the ring edge specifically.
+        ring_line = next(
+            line for line in edg_text.splitlines()
+            if 'id="RB_I6_CITY_TO_NORTH"' in line
+        )
+        self.assertIn('numLanes="2"', ring_line)
+
     def test_av_penetration_high_replaces_urban_mix(self) -> None:
         av = apply_scenario_profile(self.base, "av_penetration_high")
         urban = next(d for d in av["vehicle_type_distributions"] if d["id"] == "urban_mix")
         types = {c["type"]: float(c["probability"]) for c in urban["components"]}
         self.assertIn("car_acc", types)
         self.assertIn("car_cacc", types)
-        self.assertGreater(types["car_acc"] + types["car_cacc"], 0.5)
+        self.assertIn("car_acc_ev", types)
+        self.assertIn("car_cacc_ev", types)
+        automated_share = sum(prob for typ, prob in types.items() if typ.startswith(("car_acc", "car_cacc")))
+        electric_automated_share = types["car_acc_ev"] + types["car_cacc_ev"]
+        self.assertGreater(automated_share, 0.5)
+        self.assertGreater(electric_automated_share, 0.0)
 
     def test_av_penetration_rejects_unknown_vtype(self) -> None:
         broken = json.loads(json.dumps(self.base))
@@ -186,13 +273,14 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
         cfg = apply_scenario_profile(self.base, "baseline_am_peak")
         intersections = cfg["network"]["intersections"]
         self.assertEqual(len(intersections), 7)
-        # I6 (Praca do Imperio) is modelled as a priority intersection (rotunda approximation),
-        # so it does not carry a TLS offset. The remaining six intersections form the
+        # I6 (Praca do Imperio) is modelled as a priority ring roundabout, so
+        # it does not carry a TLS offset. The remaining six intersections form the
         # signalised corridor and must carry coordination offsets.
         tls_intersections = [i for i in intersections if i.get("type") == "traffic_light"]
         self.assertEqual(len(tls_intersections), 6)
         priority_intersections = [i for i in intersections if i.get("type") == "priority"]
         self.assertEqual([i["id"] for i in priority_intersections], ["I6"])
+        self.assertEqual(priority_intersections[0].get("roundabout_model"), "ring")
         positive_offsets = sum(
             1 for i in tls_intersections if i.get("tls_offset_s") and float(i["tls_offset_s"]) > 0
         )
@@ -306,12 +394,17 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
             for required in required_keys:
                 self.assertIn(required, program, msg=inter["id"])
             cycle = float(inter["tls_cycle_s"])
-            program_sum = sum(float(program[k]) for k in required_keys)
+            optional_keys = ("green_ped_s",)
+            sum_keys = required_keys + tuple(k for k in optional_keys if k in program)
+            program_sum = sum(float(program[k]) for k in sum_keys)
             self.assertAlmostEqual(program_sum, cycle, delta=0.5, msg=inter["id"])
             # g/C for the main approach should fall in the [0.45, 0.70] window — HCM-credible
-            # for an urban arterial with light-to-moderate cross-traffic.
+            # for an urban arterial with light-to-moderate cross-traffic. When an
+            # exclusive pedestrian phase is configured the floor drops to 0.30 because
+            # the ped phase deliberately trades main green for pedestrian protection.
             g_over_c_main = float(program["green_main_s"]) / cycle
-            self.assertGreaterEqual(g_over_c_main, 0.45, msg=inter["id"])
+            g_min = 0.30 if float(program.get("green_ped_s", 0)) > 0 else 0.45
+            self.assertGreaterEqual(g_over_c_main, g_min, msg=inter["id"])
             self.assertLessEqual(g_over_c_main, 0.70, msg=inter["id"])
             # All-red clearance must be strictly positive — safety-critical.
             self.assertGreater(float(program["all_red_main_to_cross_s"]), 0, msg=inter["id"])
@@ -325,13 +418,20 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
         tls_elements = {elem.attrib["id"]: elem for elem in overrides_root.findall("tls")}
         # I1..I5, I7 are signalised; I6 became priority.
         self.assertEqual(set(tls_elements), {"I1", "I2", "I3", "I4", "I5", "I7"})
-        expected_roles = [
+        base_roles = [
             "main_green", "main_yellow", "all_red_main_to_cross",
             "cross_green", "cross_yellow", "all_red_cross_to_main",
         ]
+        intersections_by_id = {
+            inter["id"]: inter for inter in cfg["network"]["intersections"]
+        }
         for tls_id, elem in tls_elements.items():
             phase_roles = [p.attrib["role"] for p in elem.findall("phase")]
-            self.assertEqual(phase_roles, expected_roles, msg=tls_id)
+            program = intersections_by_id[tls_id].get("tls_program", {})
+            expected = list(base_roles)
+            if float(program.get("green_ped_s", 0)) > 0:
+                expected.append("pedestrian")
+            self.assertEqual(phase_roles, expected, msg=tls_id)
 
     def test_build_tls_offsets_rejects_program_sum_mismatch(self) -> None:
         broken = json.loads(json.dumps(self.base))
@@ -548,6 +648,8 @@ class SumoKpiParsingTestCase(unittest.TestCase):
             # vTypes for AVs are present
             self.assertIn("car_acc", routes)
             self.assertIn("car_cacc", routes)
+            self.assertIn("car_acc_ev", routes)
+            self.assertIn("car_cacc_ev", routes)
             # Driver state params emitted as <param> children
             self.assertIn("has.driverstate.device", routes)
             # actionStepLength forwarded as attribute
@@ -568,6 +670,9 @@ class SumoKpiParsingTestCase(unittest.TestCase):
             self.assertIn('id="I2"', tls_offsets)
             # Bus-only lane child elements present on edges
             self.assertIn("allow=\"bus emergency taxi\"", edges)
+            # I6 roundabout emits a circulating ring and routes through it.
+            self.assertIn("RB_I6_CITY_TO_NORTH", edges)
+            self.assertIn("RB_I6_NORTH_TO_ATLANTIC", routes)
             # Elevation z attribute present on nodes
             self.assertIn("z=\"95.00\"", nodes)
             # Edge width attribute present
@@ -730,6 +835,264 @@ class SumoKpiParsingTestCase(unittest.TestCase):
             self.assertEqual(len(phases), 6, msg="all-red phases were duplicated on second run")
             self.assertEqual([float(p.attrib["duration"]) for p in phases], [51.0, 3.0, 1.0, 31.0, 3.0, 1.0])
 
+    def _write_synthetic_i2_net_with_crossings(self, net_path: Path) -> None:
+        """Synthetic I2 with 14 vehicle linkIndices + 4 pedestrian crossing slots.
+
+        Mirrors the netconvert layout produced under ``--crossings.guess``:
+        a pair of vehicle-green phases (with concurrent crossings G's at the
+        trailing indices), each followed by a flashing-don't-walk sub-phase
+        that clears the crossings, then yellow + all-red. Pedestrian indices
+        14-17 ride internal walking-area/crossing edges (``:I2_wN`` /
+        ``:I2_cN``).
+        """
+        net_path.write_text(
+            '<?xml version="1.0"?>'
+            '<net>'
+            '<tlLogic id="I2" programID="0" offset="0" type="static">'
+            '<phase duration="51" state="rrrGGGgrrrGGGgGrGr"/>'
+            '<phase duration="5"  state="rrrGGGgrrrGGGgrrrr"/>'
+            '<phase duration="3"  state="rrryyyyrrryyyyrrrr"/>'
+            '<phase duration="1"  state="rrrrrrrrrrrrrrrrrr"/>'
+            '<phase duration="31" state="GGgrrrrGGgrrrrrGrG"/>'
+            '<phase duration="5"  state="GGgrrrrGGgrrrrrrrr"/>'
+            '<phase duration="3"  state="yyyrrrryyyrrrrrrrr"/>'
+            '<phase duration="1"  state="rrrrrrrrrrrrrrrrrr"/>'
+            '</tlLogic>'
+            '<connection from="N_I2_I2" to="I2_I1" tl="I2" linkIndex="0"/>'
+            '<connection from="N_I2_I2" to="I2_S_I2" tl="I2" linkIndex="1"/>'
+            '<connection from="N_I2_I2" to="I2_I3" tl="I2" linkIndex="2"/>'
+            '<connection from="I3_I2" to="I2_N_I2" tl="I2" linkIndex="3"/>'
+            '<connection from="I3_I2" to="I2_I1" tl="I2" linkIndex="4"/>'
+            '<connection from="I3_I2" to="I2_I1" tl="I2" linkIndex="5"/>'
+            '<connection from="I3_I2" to="I2_S_I2" tl="I2" linkIndex="6"/>'
+            '<connection from="S_I2_I2" to="I2_I3" tl="I2" linkIndex="7"/>'
+            '<connection from="S_I2_I2" to="I2_N_I2" tl="I2" linkIndex="8"/>'
+            '<connection from="S_I2_I2" to="I2_I1" tl="I2" linkIndex="9"/>'
+            '<connection from="I1_I2" to="I2_S_I2" tl="I2" linkIndex="10"/>'
+            '<connection from="I1_I2" to="I2_I3" tl="I2" linkIndex="11"/>'
+            '<connection from="I1_I2" to="I2_I3" tl="I2" linkIndex="12"/>'
+            '<connection from="I1_I2" to="I2_N_I2" tl="I2" linkIndex="13"/>'
+            '<connection from=":I2_w0" to=":I2_c0" tl="I2" linkIndex="14"/>'
+            '<connection from=":I2_w1" to=":I2_c1" tl="I2" linkIndex="15"/>'
+            '<connection from=":I2_w2" to=":I2_c2" tl="I2" linkIndex="16"/>'
+            '<connection from=":I2_w3" to=":I2_c3" tl="I2" linkIndex="17"/>'
+            '</net>',
+            encoding="utf-8",
+        )
+
+    def test_apply_tls_offsets_inserts_exclusive_pedestrian_phase(self) -> None:
+        """Seven-role override inserts an exclusive ped phase, strips the FDW,
+        disables concurrent crossings inside the surviving vehicle greens, and
+        keeps every vehicle turn ('g' permissive) untouched."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            net = tmp_path / "corredor.net.xml"
+            self._write_synthetic_i2_net_with_crossings(net)
+            overrides = tmp_path / "tls.add.xml"
+            overrides.write_text(
+                '<tlsOffsetOverrides>'
+                '<tls id="I2" offset_s="0">'
+                '<phase role="main_green" duration_s="31"/>'
+                '<phase role="main_yellow" duration_s="3"/>'
+                '<phase role="all_red_main_to_cross" duration_s="1"/>'
+                '<phase role="cross_green" duration_s="39"/>'
+                '<phase role="cross_yellow" duration_s="3"/>'
+                '<phase role="all_red_cross_to_main" duration_s="1"/>'
+                '<phase role="pedestrian" duration_s="12"/>'
+                '</tls>'
+                '</tlsOffsetOverrides>',
+                encoding="utf-8",
+            )
+            apply_tls_offsets(net, overrides)
+            from xml.etree import ElementTree as ET
+            tl = ET.parse(net).getroot().find("tlLogic")
+            assert tl is not None
+            phases = tl.findall("phase")
+            # FDW phases stripped → 8 original phases collapse to 6 vehicle phases + 1 ped phase.
+            self.assertEqual(len(phases), 7, msg="expected main_g, main_y, all_red, cross_g, cross_y, all_red, ped")
+            # Cycle sum exact.
+            self.assertAlmostEqual(sum(float(p.attrib["duration"]) for p in phases), 90.0, places=3)
+            # Last phase is the exclusive ped phase: G on indices 14-17, r on 0-13.
+            ped_phase = phases[-1]
+            self.assertEqual(float(ped_phase.attrib["duration"]), 12.0)
+            self.assertEqual(ped_phase.attrib["state"], "r" * 14 + "G" * 4)
+            # Surviving main_green keeps protected G's on through main links AND the
+            # permissive lowercase g's on turns, but the crossing indices flipped to r.
+            self.assertEqual(phases[0].attrib["state"], "rrrGGGgrrrGGGgrrrr")
+            self.assertEqual(phases[3].attrib["state"], "GGgrrrrGGgrrrrrrrr")
+
+    def test_apply_tls_offsets_pedestrian_insertion_is_idempotent(self) -> None:
+        """Re-running the seven-role override does not duplicate ped or all-red phases."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            net = tmp_path / "corredor.net.xml"
+            self._write_synthetic_i2_net_with_crossings(net)
+            overrides = tmp_path / "tls.add.xml"
+            overrides.write_text(
+                '<tlsOffsetOverrides>'
+                '<tls id="I2" offset_s="0">'
+                '<phase role="main_green" duration_s="31"/>'
+                '<phase role="main_yellow" duration_s="3"/>'
+                '<phase role="all_red_main_to_cross" duration_s="1"/>'
+                '<phase role="cross_green" duration_s="39"/>'
+                '<phase role="cross_yellow" duration_s="3"/>'
+                '<phase role="all_red_cross_to_main" duration_s="1"/>'
+                '<phase role="pedestrian" duration_s="12"/>'
+                '</tls>'
+                '</tlsOffsetOverrides>',
+                encoding="utf-8",
+            )
+            apply_tls_offsets(net, overrides)
+            apply_tls_offsets(net, overrides)
+            apply_tls_offsets(net, overrides)
+            from xml.etree import ElementTree as ET
+            tl = ET.parse(net).getroot().find("tlLogic")
+            assert tl is not None
+            phases = tl.findall("phase")
+            self.assertEqual(len(phases), 7, msg="ped/all-red phases were duplicated across runs")
+            self.assertEqual(
+                [float(p.attrib["duration"]) for p in phases],
+                [31.0, 3.0, 1.0, 39.0, 3.0, 1.0, 12.0],
+            )
+
+    def _write_tiny_synthetic_net(self, net_path: Path, *, phases_xml: str) -> None:
+        """Six-link synthetic net (2 main + 2 cross + 2 ped) used by the FDW-strip
+        robustness tests. Callers supply the ``<phase>`` block so each test can
+        provoke a specific netconvert-output shape."""
+        net_path.write_text(
+            '<?xml version="1.0"?>'
+            '<net>'
+            '<tlLogic id="I9" programID="0" offset="0" type="static">'
+            f'{phases_xml}'
+            '</tlLogic>'
+            '<connection from="I1_I9" to="I9_I2" tl="I9" linkIndex="0"/>'
+            '<connection from="I1_I9" to="I9_I2" tl="I9" linkIndex="1"/>'
+            '<connection from="N_I9_I9" to="I9_S_I9" tl="I9" linkIndex="2"/>'
+            '<connection from="N_I9_I9" to="I9_S_I9" tl="I9" linkIndex="3"/>'
+            '<connection from=":I9_w0" to=":I9_c0" tl="I9" linkIndex="4"/>'
+            '<connection from=":I9_w1" to=":I9_c1" tl="I9" linkIndex="5"/>'
+            '</net>',
+            encoding="utf-8",
+        )
+
+    _PED_PHASE_OVERRIDE_I9 = (
+        '<tlsOffsetOverrides>'
+        '<tls id="I9" offset_s="0">'
+        '<phase role="main_green" duration_s="31"/>'
+        '<phase role="main_yellow" duration_s="3"/>'
+        '<phase role="all_red_main_to_cross" duration_s="1"/>'
+        '<phase role="cross_green" duration_s="39"/>'
+        '<phase role="cross_yellow" duration_s="3"/>'
+        '<phase role="all_red_cross_to_main" duration_s="1"/>'
+        '<phase role="pedestrian" duration_s="12"/>'
+        '</tls>'
+        '</tlsOffsetOverrides>'
+    )
+
+    def test_fdw_strip_accepts_genuine_clearance_pattern(self) -> None:
+        """The classic netconvert shape (second vehicle-green identical except for
+        peds flipping G→r) is recognised as a FDW sub-phase and stripped."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            net = tmp_path / "corredor.net.xml"
+            self._write_tiny_synthetic_net(
+                net,
+                phases_xml=(
+                    '<phase duration="20" state="GGrrGG"/>'  # main_green WITH peds
+                    '<phase duration="5"  state="GGrrrr"/>'  # FDW clearance (peds G→r)
+                    '<phase duration="3"  state="yyrrrr"/>'  # main_yellow
+                    '<phase duration="20" state="rrGGGG"/>'  # cross_green WITH peds
+                    '<phase duration="5"  state="rrGGrr"/>'  # FDW clearance
+                    '<phase duration="3"  state="rryyrr"/>'  # cross_yellow
+                ),
+            )
+            overrides = tmp_path / "tls.add.xml"
+            overrides.write_text(self._PED_PHASE_OVERRIDE_I9, encoding="utf-8")
+            apply_tls_offsets(net, overrides)
+            from xml.etree import ElementTree as ET
+            tl = ET.parse(net).getroot().find("tlLogic")
+            assert tl is not None
+            phases = tl.findall("phase")
+            self.assertEqual(len(phases), 7, msg="expected FDW phases stripped + ped phase appended")
+            # Last phase is exclusive ped: r on vehicle indices 0-3, G on ped 4-5.
+            self.assertEqual(phases[-1].attrib["state"], "rrrrGG")
+
+    def test_fdw_strip_rejects_vehicle_state_mismatch(self) -> None:
+        """If two main_green phases disagree on a vehicle index, the second is NOT
+        a FDW sub-phase. The strip function must leave it intact AND raise on
+        the post-assertion (two main_greens remain) so we never silently drop
+        a vehicle program the user actually intended."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            net = tmp_path / "corredor.net.xml"
+            self._write_tiny_synthetic_net(
+                net,
+                phases_xml=(
+                    '<phase duration="20" state="GGrrGG"/>'  # main_green
+                    # Same classification (G's on main, no cross G's) but vehicle
+                    # state DIFFERS (only one main link green this time).
+                    '<phase duration="5"  state="GrrrGG"/>'
+                    '<phase duration="3"  state="yyrrrr"/>'
+                    '<phase duration="20" state="rrGGGG"/>'
+                    '<phase duration="5"  state="rrGGrr"/>'
+                    '<phase duration="3"  state="rryyrr"/>'
+                ),
+            )
+            overrides = tmp_path / "tls.add.xml"
+            overrides.write_text(self._PED_PHASE_OVERRIDE_I9, encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "expected exactly one 'main_green'"):
+                apply_tls_offsets(net, overrides)
+
+    def test_fdw_strip_rejects_ped_promotion_pattern(self) -> None:
+        """A second main_green that *adds* G on a ped index (r→G) is a promotion,
+        not a clearance. The strip function must refuse to drop it and the
+        post-assertion fails because two main_greens survive."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            net = tmp_path / "corredor.net.xml"
+            self._write_tiny_synthetic_net(
+                net,
+                phases_xml=(
+                    '<phase duration="20" state="GGrrrr"/>'  # main_green, peds dark
+                    # Same vehicle state but peds go r→G — a promotion, not FDW.
+                    '<phase duration="5"  state="GGrrGG"/>'
+                    '<phase duration="3"  state="yyrrrr"/>'
+                    '<phase duration="20" state="rrGGGG"/>'
+                    '<phase duration="5"  state="rrGGrr"/>'
+                    '<phase duration="3"  state="rryyrr"/>'
+                ),
+            )
+            overrides = tmp_path / "tls.add.xml"
+            overrides.write_text(self._PED_PHASE_OVERRIDE_I9, encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "expected exactly one 'main_green'"):
+                apply_tls_offsets(net, overrides)
+
+    def test_build_tls_offsets_emits_pedestrian_phase_and_preserves_cycle_sum(self) -> None:
+        """The new green_ped_s field surfaces as a <phase role='pedestrian'> entry and the
+        cycle-sum invariant still holds for the augmented 7-role program."""
+        cfg = json.loads((ROOT / "configs" / "sumo_scenario_base.json").read_text(encoding="utf-8"))
+        # I1, I3, I7 are the three intersections configured with a ped phase in the base config.
+        ped_ids = {"I1", "I3", "I7"}
+        overrides_root = build_tls_offsets(cfg)
+        self.assertIsNotNone(overrides_root)
+        assert overrides_root is not None
+        tls_elements = {elem.attrib["id"]: elem for elem in overrides_root.findall("tls")}
+        for tls_id, elem in tls_elements.items():
+            phases = elem.findall("phase")
+            roles = [p.attrib["role"] for p in phases]
+            durations = [float(p.attrib["duration_s"]) for p in phases]
+            inter = next(i for i in cfg["network"]["intersections"] if i["id"] == tls_id)
+            cycle = float(inter["tls_cycle_s"])
+            self.assertAlmostEqual(sum(durations), cycle, delta=0.5, msg=tls_id)
+            if tls_id in ped_ids:
+                self.assertIn("pedestrian", roles, msg=tls_id)
+                ped_idx = roles.index("pedestrian")
+                # Pedestrian must be the LAST role (end of cycle, after all_red_cross_to_main).
+                self.assertEqual(ped_idx, len(roles) - 1, msg=tls_id)
+                self.assertEqual(durations[ped_idx], 12.0, msg=tls_id)
+            else:
+                self.assertNotIn("pedestrian", roles, msg=tls_id)
+
     def test_classify_phase_role_recognises_pedestrian_and_all_red(self) -> None:
         from pps57_sumo.apply_tls_offsets import _classify_phase_role
         main_links = {3, 4, 5, 6, 10, 11, 12, 13}
@@ -757,6 +1120,57 @@ class SumoKpiParsingTestCase(unittest.TestCase):
         comparison = compare_kpis(baseline, candidate)
         self.assertEqual(comparison["verdict"], "fail")
         self.assertIn("general_traffic_time_loss_penalty_gt_90s", comparison["fail_reasons"])
+
+    def test_shared_build_command_uses_realism_flags(self) -> None:
+        base = json.loads((ROOT / "configs/sumo_scenario_base.json").read_text(encoding="utf-8"))
+        cfg = apply_scenario_profile(base, "baseline_am_peak")
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            calls: list[list[str]] = []
+
+            def fake_runner(cmd, cwd):
+                calls.append(list(cmd))
+                net = tmp_path / "sumo/network/corredor.net.xml"
+                net.parent.mkdir(parents=True, exist_ok=True)
+                net.write_text("<net/>", encoding="utf-8")
+
+            artifacts = build_sumo_artifacts(
+                cfg,
+                root=tmp_path,
+                base_dir=Path("sumo"),
+                build_net=True,
+                runner=fake_runner,
+            )
+            self.assertEqual(artifacts.sumocfg_file, tmp_path / "sumo/corredor.sumocfg")
+            self.assertEqual(len(calls), 1)
+            cmd = calls[0]
+            self.assertIn("--sidewalks.guess", cmd)
+            self.assertIn("--crossings.guess", cmd)
+            self.assertIn("--walkingareas", cmd)
+            self.assertIn(str(tmp_path / "sumo/network/corredor.net.xml"), cmd)
+
+    def test_per_run_sumocfg_points_to_isolated_artifacts(self) -> None:
+        base = json.loads((ROOT / "configs/sumo_scenario_base.json").read_text(encoding="utf-8"))
+        cfg = apply_scenario_profile(base, "baseline_am_peak")
+        cfg.setdefault("detectors", {})
+        cfg["detectors"]["e1_output"] = "../../e1_detectors.xml"
+        cfg["detectors"]["e2_output"] = "../../e2_queues.xml"
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            run_dir = tmp_path / "outputs/scenarios/baseline/seed_57"
+            artifacts = build_sumo_artifacts(
+                cfg,
+                root=tmp_path,
+                base_dir=run_dir / "sumo",
+                output_dir=run_dir,
+                build_net=False,
+            )
+            sumocfg = artifacts.sumocfg_file.read_text(encoding="utf-8")
+            detectors = artifacts.detectors_file.read_text(encoding="utf-8")
+            self.assertIn('net-file value="network/corredor.net.xml"', sumocfg)
+            self.assertIn('route-files value="routes/routes.rou.xml"', sumocfg)
+            self.assertIn('tripinfo-output value="../tripinfo.xml"', sumocfg)
+            self.assertIn('file="../../e1_detectors.xml"', detectors)
 
 
 if __name__ == "__main__":

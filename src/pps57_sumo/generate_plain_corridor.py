@@ -57,6 +57,7 @@ def generate(
     node_z: Dict[str, float] = {}
     edge_defs: Dict[str, Dict[str, Any]] = {}
     edge_lane_overrides: Dict[str, list[dict[str, Any]]] = {}
+    roundabout_arms: Dict[str, dict[str, str]] = {}
 
     network = config["network"]
     edge_widths = network.get("edge_widths", []) or []
@@ -71,12 +72,21 @@ def generate(
     for rule in network.get("lane_allow_rules", []) or []:
         edge_lane_overrides.setdefault(str(rule["edge_id"]), []).append(rule)
 
-    def add_node(node_id: str, x: float, y: float, node_type: str = "priority", z: float | None = None) -> None:
+    def add_node(
+        node_id: str,
+        x: float,
+        y: float,
+        node_type: str = "priority",
+        z: float | None = None,
+        tl_type: str | None = None,
+    ) -> None:
         node_xy[node_id] = (float(x), float(y))
         attrs = {"id": node_id, "x": f"{x:.2f}", "y": f"{y:.2f}", "type": node_type}
         if z is not None:
             attrs["z"] = f"{float(z):.2f}"
             node_z[node_id] = float(z)
+        if tl_type and node_type == "traffic_light":
+            attrs["tlType"] = str(tl_type)
         ET.SubElement(nodes, "node", attrs)
 
     def add_edge(edge_id: str, src: str, dst: str, lanes: int, speed: float, priority: int) -> None:
@@ -103,6 +113,12 @@ def generate(
             ET.SubElement(edge_elem, "lane", lane_attrs)
         edge_defs[edge_id] = attrs
 
+    def is_ring_roundabout(inter: dict[str, Any]) -> bool:
+        return str(inter.get("roundabout_model", "")) == "ring"
+
+    def roundabout_node(inter_id: str, arm: str) -> str:
+        return f"RB_{inter_id}_{arm}"
+
     intersections = network["intersections"]
     terminals = {item["id"]: item for item in network["terminals"]}
     major_speed = float(network.get("default_major_speed_mps", config.get("default_major_speed_mps", 13.89)))
@@ -125,13 +141,28 @@ def generate(
 
     for inter in intersections:
         z_val = inter.get("z")
-        add_node(
-            inter["id"],
-            float(inter["x"]),
-            float(inter["y"]),
-            inter.get("type", "traffic_light"),
-            z=float(z_val) if z_val is not None else None,
-        )
+        if is_ring_roundabout(inter):
+            radius = float(inter.get("roundabout_radius_m", 35.0))
+            inter_id = str(inter["id"])
+            roundabout_arms[inter_id] = {
+                "CITY": roundabout_node(inter_id, "CITY"),
+                "NORTH": roundabout_node(inter_id, "NORTH"),
+                "ATLANTIC": roundabout_node(inter_id, "ATLANTIC"),
+                "SOUTH": roundabout_node(inter_id, "SOUTH"),
+            }
+            add_node(roundabout_arms[inter_id]["CITY"], float(inter["x"]) - radius, float(inter["y"]), "priority", z=float(z_val) if z_val is not None else None)
+            add_node(roundabout_arms[inter_id]["NORTH"], float(inter["x"]), float(inter["y"]) + radius, "priority", z=float(z_val) if z_val is not None else None)
+            add_node(roundabout_arms[inter_id]["ATLANTIC"], float(inter["x"]) + radius, float(inter["y"]), "priority", z=float(z_val) if z_val is not None else None)
+            add_node(roundabout_arms[inter_id]["SOUTH"], float(inter["x"]), float(inter["y"]) - radius, "priority", z=float(z_val) if z_val is not None else None)
+        else:
+            add_node(
+                inter["id"],
+                float(inter["x"]),
+                float(inter["y"]),
+                inter.get("type", "traffic_light"),
+                z=float(z_val) if z_val is not None else None,
+                tl_type=inter.get("tls_type"),
+            )
         for approach in ("N", "S"):
             offset = approach_length_m if approach == "N" else -approach_length_m
             approach_z = None
@@ -168,8 +199,24 @@ def generate(
             int(a.get("major_lanes", network.get("default_major_lanes", 2))),
             int(b.get("major_lanes", network.get("default_major_lanes", 2))),
         )
-        add_edge(f"{a['id']}_{b['id']}", a["id"], b["id"], lanes, major_speed, major_priority)
-        add_edge(f"{b['id']}_{a['id']}", b["id"], a["id"], lanes, major_speed, major_priority)
+        edge_ab = f"{a['id']}_{b['id']}"
+        edge_ba = f"{b['id']}_{a['id']}"
+        add_edge(
+            edge_ab,
+            _corridor_source_node(a, direction="east_to_west", roundabout_arms=roundabout_arms),
+            _corridor_dest_node(b, direction="east_to_west", roundabout_arms=roundabout_arms),
+            lanes,
+            major_speed,
+            _entry_priority_for(edge_ab, b, major_priority, minor_priority),
+        )
+        add_edge(
+            edge_ba,
+            _corridor_source_node(b, direction="west_to_east", roundabout_arms=roundabout_arms),
+            _corridor_dest_node(a, direction="west_to_east", roundabout_arms=roundabout_arms),
+            lanes,
+            major_speed,
+            _entry_priority_for(edge_ba, a, major_priority, minor_priority),
+        )
     add_edge(
         f"{last['id']}_{terminals['ATLANTIC_WEST']['id']}",
         last["id"],
@@ -187,12 +234,33 @@ def generate(
         major_priority,
     )
 
+    roundabout_ring_edges: Dict[str, list[str]] = {}
     for inter in intersections:
         lanes = int(inter.get("minor_lanes", network.get("default_minor_lanes", 1)))
-        add_edge(f"N_{inter['id']}_{inter['id']}", f"N_{inter['id']}", inter["id"], lanes, minor_speed, minor_priority)
-        add_edge(f"{inter['id']}_N_{inter['id']}", inter["id"], f"N_{inter['id']}", lanes, minor_speed, minor_priority)
-        add_edge(f"S_{inter['id']}_{inter['id']}", f"S_{inter['id']}", inter["id"], lanes, minor_speed, minor_priority)
-        add_edge(f"{inter['id']}_S_{inter['id']}", inter["id"], f"S_{inter['id']}", lanes, minor_speed, minor_priority)
+        inter_id = str(inter["id"])
+        if inter_id in roundabout_arms:
+            add_edge(f"N_{inter_id}_{inter_id}", f"N_{inter_id}", roundabout_arms[inter_id]["NORTH"], lanes, minor_speed, minor_priority)
+            add_edge(f"{inter_id}_N_{inter_id}", roundabout_arms[inter_id]["NORTH"], f"N_{inter_id}", lanes, minor_speed, minor_priority)
+            add_edge(f"S_{inter_id}_{inter_id}", f"S_{inter_id}", roundabout_arms[inter_id]["SOUTH"], lanes, minor_speed, minor_priority)
+            add_edge(f"{inter_id}_S_{inter_id}", roundabout_arms[inter_id]["SOUTH"], f"S_{inter_id}", lanes, minor_speed, minor_priority)
+            ring_ids = _add_roundabout_ring_edges(add_edge, inter, roundabout_arms[inter_id], minor_speed)
+            roundabout_ring_edges[inter_id] = ring_ids
+        else:
+            add_edge(f"N_{inter_id}_{inter_id}", f"N_{inter_id}", inter_id, lanes, minor_speed, minor_priority)
+            add_edge(f"{inter_id}_N_{inter_id}", inter_id, f"N_{inter_id}", lanes, minor_speed, minor_priority)
+            add_edge(f"S_{inter_id}_{inter_id}", f"S_{inter_id}", inter_id, lanes, minor_speed, minor_priority)
+            add_edge(f"{inter_id}_S_{inter_id}", inter_id, f"S_{inter_id}", lanes, minor_speed, minor_priority)
+
+    for inter_id, ring_ids in roundabout_ring_edges.items():
+        arms = roundabout_arms[inter_id]
+        ET.SubElement(
+            edges,
+            "roundabout",
+            {
+                "nodes": " ".join(arms[a] for a in ("CITY", "NORTH", "ATLANTIC", "SOUTH")),
+                "edges": " ".join(ring_ids),
+            },
+        )
 
     route_defs = build_routes(config, intersections, terminals)
     bus_stops = build_bus_stops(config, edge_defs, node_xy)
@@ -237,7 +305,102 @@ def build_routes(config: dict, intersections: list[dict], terminals: dict[str, d
 
     for item in config.get("routes", []):
         route_defs[str(item["id"])] = [str(edge) for edge in item["edges"]]
-    return route_defs
+    return _expand_roundabout_routes(route_defs, intersections)
+
+
+def _corridor_source_node(inter: dict[str, Any], *, direction: str, roundabout_arms: dict[str, dict[str, str]]) -> str:
+    inter_id = str(inter["id"])
+    if inter_id not in roundabout_arms:
+        return inter_id
+    return roundabout_arms[inter_id]["ATLANTIC" if direction == "east_to_west" else "CITY"]
+
+
+def _corridor_dest_node(inter: dict[str, Any], *, direction: str, roundabout_arms: dict[str, dict[str, str]]) -> str:
+    inter_id = str(inter["id"])
+    if inter_id not in roundabout_arms:
+        return inter_id
+    return roundabout_arms[inter_id]["CITY" if direction == "east_to_west" else "ATLANTIC"]
+
+
+def _entry_priority_for(edge_id: str, dest_inter: dict[str, Any], major_priority: int, minor_priority: int) -> int:
+    if str(dest_inter.get("roundabout_model", "")) == "ring" and edge_id.endswith(f"_{dest_inter['id']}"):
+        return minor_priority
+    return major_priority
+
+
+def _add_roundabout_ring_edges(add_edge, inter: dict[str, Any], arms: dict[str, str], speed: float) -> list[str]:
+    inter_id = str(inter["id"])
+    lanes = int(inter.get("roundabout_lanes", 2))
+    priority = int(inter.get("roundabout_priority", 6))
+    cycle = ("CITY", "NORTH", "ATLANTIC", "SOUTH")
+    ring_ids: list[str] = []
+    for src, dst in zip(cycle, (*cycle[1:], cycle[0])):
+        edge_id = f"RB_{inter_id}_{src}_TO_{dst}"
+        add_edge(
+            edge_id,
+            arms[src],
+            arms[dst],
+            lanes,
+            float(inter.get("roundabout_speed_mps", speed)),
+            priority,
+        )
+        ring_ids.append(edge_id)
+    return ring_ids
+
+
+def _expand_roundabout_routes(
+    route_defs: Dict[str, List[str]],
+    intersections: list[dict],
+) -> Dict[str, List[str]]:
+    roundabout_ids = {
+        str(inter["id"])
+        for inter in intersections
+        if str(inter.get("roundabout_model", "")) == "ring"
+    }
+    if not roundabout_ids:
+        return route_defs
+    expanded: Dict[str, List[str]] = {}
+    for route_id, edges in route_defs.items():
+        out: list[str] = []
+        for index, edge_id in enumerate(edges):
+            out.append(edge_id)
+            if index + 1 >= len(edges):
+                continue
+            for inter_id in roundabout_ids:
+                internal = _roundabout_internal_path(inter_id, edge_id, edges[index + 1])
+                if internal:
+                    out.extend(internal)
+                    break
+        expanded[route_id] = out
+    return expanded
+
+
+def _roundabout_internal_path(inter_id: str, incoming_edge: str, outgoing_edge: str) -> list[str]:
+    incoming_arm = {
+        f"I5_{inter_id}": "CITY",
+        f"I7_{inter_id}": "ATLANTIC",
+        f"N_{inter_id}_{inter_id}": "NORTH",
+        f"S_{inter_id}_{inter_id}": "SOUTH",
+    }.get(incoming_edge)
+    outgoing_arm = {
+        f"{inter_id}_I5": "CITY",
+        f"{inter_id}_I7": "ATLANTIC",
+        f"{inter_id}_N_{inter_id}": "NORTH",
+        f"{inter_id}_S_{inter_id}": "SOUTH",
+    }.get(outgoing_edge)
+    if incoming_arm is None or outgoing_arm is None:
+        return []
+    cycle = ["CITY", "NORTH", "ATLANTIC", "SOUTH"]
+    if incoming_arm == outgoing_arm:
+        return []
+    current = cycle.index(incoming_arm)
+    target = cycle.index(outgoing_arm)
+    path: list[str] = []
+    while current != target:
+        next_index = (current + 1) % len(cycle)
+        path.append(f"RB_{inter_id}_{cycle[current]}_TO_{cycle[next_index]}")
+        current = next_index
+    return path
 
 
 def _add_turning_movement_routes(
@@ -700,9 +863,13 @@ def build_tls_offsets(config: dict) -> ET.Element | None:
         cycle_s = float(inter.get("tls_cycle_s", 0))
         # Authored phases follow the temporal order of the cycle:
         # main_green → main_yellow → all_red_main_to_cross → cross_green →
-        # cross_yellow → all_red_cross_to_main. The two all-red roles are
-        # optional; when absent the post-build step keeps the netconvert
-        # 4-phase layout unchanged. The cycle sum must equal tls_cycle_s.
+        # cross_yellow → all_red_cross_to_main → pedestrian. The all-red and
+        # pedestrian roles are optional; when absent the post-build step
+        # keeps the netconvert default layout unchanged. The cycle sum must
+        # equal tls_cycle_s. The pedestrian phase is an exclusive Barnes
+        # Dance — main and cross go to red and crossings go to green — so no
+        # extra all-red is needed before returning to main_green (the ped
+        # phase already protects vehicles from crossings).
         role_pairs = [
             ("main_green", "green_main_s"),
             ("main_yellow", "yellow_main_s"),
@@ -710,6 +877,7 @@ def build_tls_offsets(config: dict) -> ET.Element | None:
             ("cross_green", "green_minor_s"),
             ("cross_yellow", "yellow_minor_s"),
             ("all_red_cross_to_main", "all_red_cross_to_main_s"),
+            ("pedestrian", "green_ped_s"),
         ]
         emitted_sum = 0.0
         for role, key in role_pairs:

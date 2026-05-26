@@ -7,6 +7,7 @@
   "important_note": "A rede e gerada internamente para ser estavel e auditavel. Usa OSM/GTFS como referencia operacional, mas nao faz importacao automatica de topografia OSM nesta versao.",
   "simulation_begin_s": 0,
   "simulation_end_s": 7200,
+  "simulation_step_length_s": 0.5,
   "random_seed": 57,
   "active_demand_profile": "am_peak",
   "network": {
@@ -48,13 +49,14 @@
         "tls_offset_s": 0,
         "tls_cycle_s": 90,
         "tls_program": {
-          "green_main_s": 43,
+          "green_main_s": 31,
           "yellow_main_s": 3,
           "all_red_main_to_cross_s": 1,
           "green_minor_s": 39,
           "yellow_minor_s": 3,
           "all_red_cross_to_main_s": 1,
-          "note": "Casa da Musica e um cruzamento com transversal pesada (eixo cultural + pedonal denso); split proximo do equilibrio (g/C_main = 0.48) com 1s de all-red em cada transicao para garantir clearance interval."
+          "green_ped_s": 12,
+          "note": "Casa da Musica: paragem de alta procura pedonal (eixo cultural + bs_casa_musica). Fase peao exclusiva (Barnes Dance) de 12s inserida apos all_red_cross_to_main, com main e cross a vermelho e crossings a verde (turn-on-crossing eliminado). 12s vem do green_main (43->31s, g/C_main=0.34); aceitavel num cruzamento onde a procura pedonal compete com a veicular."
         }
       },
       {
@@ -64,6 +66,7 @@
         "y": -25,
         "z": 88,
         "type": "traffic_light",
+        "tls_type": "actuated",
         "major_lanes": 2,
         "minor_lanes": 1,
         "rsu_id": "RSU_BOAVISTA_02",
@@ -77,7 +80,7 @@
           "green_minor_s": 31,
           "yellow_minor_s": 3,
           "all_red_cross_to_main_s": 1,
-          "note": "Transversal media (rua da Bessa, residencial-comercial); split HCM-tipico (g/C_main = 0.57) com all-red 1s/1s."
+          "note": "Transversal media (rua da Bessa, residencial-comercial); split HCM-tipico (g/C_main = 0.57) com all-red 1s/1s. tlType=actuated: o programa serve de base mas SUMO estende verdes mediante deteccao (max_gap=3s default) — mais realista para uma transversal com procura variavel intra-ciclo."
         }
       },
       {
@@ -94,13 +97,14 @@
         "tls_offset_s": 26,
         "tls_cycle_s": 90,
         "tls_program": {
-          "green_main_s": 51,
+          "green_main_s": 37,
           "yellow_main_s": 3,
-          "all_red_main_to_cross_s": 1,
+          "all_red_main_to_cross_s": 2,
           "green_minor_s": 31,
           "yellow_minor_s": 3,
-          "all_red_cross_to_main_s": 1,
-          "note": "Transversal media; split simetrico ao I2 para manter coordenacao (g/C_main = 0.57) com all-red 1s/1s."
+          "all_red_cross_to_main_s": 2,
+          "green_ped_s": 12,
+          "note": "Antunes Guimaraes: paragem bs_antunes_guimaraes adjacente. Fase peao exclusiva de 12s inserida apos all_red_cross_to_main. Green_main reduzido 49->37s (g/C_main=0.41). All-red mantem-se em 2s/2s para o intergreen HGV ja calculado."
         }
       },
       {
@@ -117,13 +121,13 @@
         "tls_offset_s": 64,
         "tls_cycle_s": 90,
         "tls_program": {
-          "green_main_s": 59,
+          "green_main_s": 57,
           "yellow_main_s": 3,
-          "all_red_main_to_cross_s": 1,
+          "all_red_main_to_cross_s": 2,
           "green_minor_s": 23,
           "yellow_minor_s": 3,
-          "all_red_cross_to_main_s": 1,
-          "note": "Transversal menor (acesso a Fundacao Serralves, baixa procura motorizada); split favorece o corredor (g/C_main = 0.66) com all-red 1s/1s."
+          "all_red_cross_to_main_s": 2,
+          "note": "Transversal menor (acesso a Fundacao Serralves); split favorece o corredor (g/C_main = 0.63). All-red 2s/2s — I4 absorve LCV em entrega (parking de Serralves) e HGV em transito; clearance interval HCM exige tempo extra para o veiculo pesado libertar o cruzamento antes do verde transversal."
         }
       },
       {
@@ -133,6 +137,7 @@
         "y": -80,
         "z": 42,
         "type": "traffic_light",
+        "tls_type": "actuated",
         "major_lanes": 2,
         "minor_lanes": 1,
         "rsu_id": "RSU_BOAVISTA_05",
@@ -146,7 +151,7 @@
           "green_minor_s": 31,
           "yellow_minor_s": 3,
           "all_red_cross_to_main_s": 1,
-          "note": "Transversal media; mesmo split que I2/I3 para preservar bandwidth (g/C_main = 0.57) com all-red 1s/1s."
+          "note": "Transversal media; mesmo split que I2/I3 para preservar bandwidth (g/C_main = 0.57). tlType=actuated: SUMO usa o programa como base mas estende/encurta verdes com base em ocupacao dos detectores E1 (max_gap=3s default), aproximando-se de controlo SCATS/SCOOT real."
         }
       },
       {
@@ -161,7 +166,12 @@
         "rsu_id": "RSU_BOAVISTA_06",
         "cross_street_intensity": "major",
         "roundabout_approximation": true,
-        "note": "Praca do Imperio e uma rotunda real (4 bracos, 2-3 vias circulantes). Modelada aqui como intersecao priority de no unico: o corredor mantem prioridade nominal e o trafego transversal cede como na entrada de uma rotunda. Esta aproximacao captura a dinamica operacional dominante (yield-on-entry) sem o overhead topologico de uma rotunda multi-no. Em pico saturado o gap acceptance gera fila persistente nas aproximacoes N/S, o que reflecte o comportamento real da Praca do Imperio em hora de ponta. Uma futura iteracao pode emitir um anel de 4 nos com edges circulantes."
+        "roundabout_model": "ring",
+        "roundabout_radius_m": 35,
+        "roundabout_lanes": 2,
+        "roundabout_speed_mps": 8.33,
+        "roundabout_priority": 6,
+        "note": "Praca do Imperio: rotunda real com 4 bracos e 2-3 vias circulantes. Modelada como anel de 4 nos com 2 vias circulantes (mais proximo da realidade que a versao anterior de via unica), prioridade superior no anel e entradas de prioridade inferior. O elemento <roundabout> emitido no edg.xml diz ao SUMO para aplicar regras de roundabout (yield-on-entry, weaving entre vias internas) em vez do default priority-junction."
       },
       {
         "id": "I7",
@@ -177,13 +187,14 @@
         "tls_offset_s": 18,
         "tls_cycle_s": 90,
         "tls_program": {
-          "green_main_s": 51,
+          "green_main_s": 39,
           "yellow_main_s": 3,
           "all_red_main_to_cross_s": 1,
           "green_minor_s": 31,
           "yellow_minor_s": 3,
           "all_red_cross_to_main_s": 1,
-          "note": "Transversal media (entrada/saida Matosinhos); split simetrico aos restantes para manter onda verde no corredor (g/C_main = 0.57) com all-red 1s/1s."
+          "green_ped_s": 12,
+          "note": "Castelo do Queijo: TLS mais proximo da paragem bs_praca_imperio (I6 e rotunda priority, nao signalizado). Fase peao exclusiva de 12s inserida apos all_red_cross_to_main. Green_main reduzido 51->39s (g/C_main=0.43)."
         }
       }
     ],
@@ -215,6 +226,11 @@
     "minor_approach_z_drop_m": 1.5,
     "enable_sidewalks": true,
     "enable_pedestrian_crossings": true,
+    "actuated_tls": {
+      "detector_gap_s": 2.5,
+      "jam_threshold_s": 30.0,
+      "note": "Aplicado pelo netconvert quando ha pelo menos uma intersection com tls_type=actuated. detector_gap_s=2.5 (vs default 3.0) reduz extensoes de verde em transversais com straggler unico — mais realista para uma arterial urbana onde o gap util e curto. jam_threshold_s=30.0 forca o max-out quando o detector da fase activa esta ocupado >30s seguidos, prevenindo extensoes sem fim em saturacao — aproxima-se da logica SCATS de proteccao contra spillback."
+    },
     "cross_street_intensity_periods": {
       "major": {"ns": 20, "sn": 24},
       "medium": {"ns": 32, "sn": 40},
@@ -250,7 +266,6 @@
       "jmCrossingGap": "10",
       "jmIgnoreFoeProb": "0.0",
       "impatience": "0.5",
-      "actionStepLength": "1.0",
       "params": [
         {"key": "has.driverstate.device", "value": "true"},
         {"key": "device.driverstate.minAwareness", "value": "0.75"},
@@ -287,7 +302,6 @@
       "jmCrossingGap": "14",
       "jmIgnoreFoeProb": "0.0",
       "impatience": "off",
-      "actionStepLength": "1.5",
       "params": [
         {"key": "has.driverstate.device", "value": "true"},
         {"key": "device.driverstate.minAwareness", "value": "0.90"},
@@ -324,7 +338,6 @@
       "jmCrossingGap": "6",
       "jmIgnoreFoeProb": "0.05",
       "impatience": "1.0",
-      "actionStepLength": "0.5",
       "params": [
         {"key": "has.driverstate.device", "value": "true"},
         {"key": "device.driverstate.minAwareness", "value": "0.55"},
@@ -352,11 +365,11 @@
       "lcImpatience": "0.1",
       "lcStrategic": "1.0",
       "lcKeepRight": "0.7",
-      "emissionClass": "HBEFA3/zero",
+      "emissionClass": "HBEFA3/PC_G_EU6",
       "jmCrossingGap": "8",
       "jmIgnoreFoeProb": "0.0",
       "impatience": "0.2",
-      "actionStepLength": "0.2",
+      "actionStepLength": "0.5",
       "params": [
         {"key": "has.bluelight.device", "value": "false"}
       ],
@@ -381,12 +394,64 @@
       "lcImpatience": "0.05",
       "lcStrategic": "1.0",
       "lcKeepRight": "0.5",
+      "emissionClass": "HBEFA3/PC_G_EU6",
+      "jmCrossingGap": "6",
+      "jmIgnoreFoeProb": "0.0",
+      "impatience": "0.0",
+      "actionStepLength": "0.5",
+      "color": "0.40,0.85,0.40"
+    },
+    {
+      "id": "car_acc_ev",
+      "vClass": "passenger",
+      "length": 5.0,
+      "accel": 2.8,
+      "decel": 4.8,
+      "emergencyDecel": 7.5,
+      "sigma": 0.05,
+      "tau": 0.6,
+      "minGap": 1.5,
+      "maxSpeed": 13.89,
+      "speedFactor": "normc(1.0,0.04,0.9,1.10)",
+      "carFollowModel": "ACC",
+      "laneChangeModel": "LC2013",
+      "lcAssertive": "1.2",
+      "lcCooperative": "0.85",
+      "lcImpatience": "0.1",
+      "lcStrategic": "1.0",
+      "lcKeepRight": "0.7",
+      "emissionClass": "HBEFA3/zero",
+      "jmCrossingGap": "8",
+      "jmIgnoreFoeProb": "0.0",
+      "impatience": "0.2",
+      "actionStepLength": "0.5",
+      "color": "0.10,0.80,1.0"
+    },
+    {
+      "id": "car_cacc_ev",
+      "vClass": "passenger",
+      "length": 5.0,
+      "accel": 3.0,
+      "decel": 5.0,
+      "emergencyDecel": 8.0,
+      "sigma": 0.0,
+      "tau": 0.5,
+      "minGap": 1.0,
+      "maxSpeed": 13.89,
+      "speedFactor": "normc(1.0,0.02,0.95,1.05)",
+      "carFollowModel": "CACC",
+      "laneChangeModel": "LC2013",
+      "lcAssertive": "1.0",
+      "lcCooperative": "1.0",
+      "lcImpatience": "0.05",
+      "lcStrategic": "1.0",
+      "lcKeepRight": "0.5",
       "emissionClass": "HBEFA3/zero",
       "jmCrossingGap": "6",
       "jmIgnoreFoeProb": "0.0",
       "impatience": "0.0",
-      "actionStepLength": "0.1",
-      "color": "0.40,0.85,0.40"
+      "actionStepLength": "0.5",
+      "color": "0.20,0.95,0.55"
     },
     {
       "id": "motorcycle",
@@ -1178,6 +1243,30 @@
       },
       "id_suffix": "pm_peak"
     },
+    "am_peak_low": {
+      "description": "Envelope inferior da ponta da manha: procura 15% abaixo do baseline proxy para representar incerteza sem contagens reais.",
+      "derived_from": "am_peak",
+      "period_scale": 1.15,
+      "id_suffix": "am_low"
+    },
+    "am_peak_high": {
+      "description": "Envelope superior da ponta da manha: procura 15% acima do baseline proxy para testar sensibilidade sem calibradores reais.",
+      "derived_from": "am_peak",
+      "period_scale": 0.85,
+      "id_suffix": "am_high"
+    },
+    "pm_peak_low": {
+      "description": "Envelope inferior da ponta da tarde com o mesmo padrao direcional do PM peak.",
+      "derived_from": "pm_peak",
+      "period_scale": 1.15,
+      "id_suffix": "pm_low"
+    },
+    "pm_peak_high": {
+      "description": "Envelope superior da ponta da tarde com o mesmo padrao direcional do PM peak.",
+      "derived_from": "pm_peak",
+      "period_scale": 0.85,
+      "id_suffix": "pm_high"
+    },
     "congested_am_peak": {
       "description": "Pico saturado: procura agravada em ambos os sentidos do corredor para empurrar o grau de saturacao acima de 0.95 e testar comportamento em regime congestionado.",
       "derived_from": "am_peak",
@@ -1378,6 +1467,38 @@
       "kpi_focus": ["pm_corridor_throughput", "westbound_bus_delay", "direction_symmetry", "queue_baseline"],
       "expected_behaviour": "Baseline simetrico ao AM peak; o TSP deve mostrar ganhos comparaveis em ambos os sentidos."
     },
+    "baseline_am_peak_low": {
+      "description": "Envelope inferior da ponta da manha.",
+      "justification": "Sem contagens reais, o baseline deve ser interpretado como intervalo. Este caso reduz a procura para medir sensibilidade e evitar overfitting ao valor proxy central.",
+      "demand_profile": "am_peak_low",
+      "events": [],
+      "kpi_focus": ["demand_uncertainty_low", "travel_time_range", "queue_range"],
+      "expected_behaviour": "Menos fila e menor timeLoss do que baseline_am_peak."
+    },
+    "baseline_am_peak_high": {
+      "description": "Envelope superior da ponta da manha.",
+      "justification": "Aumenta a procura proxy para testar se conclusoes do TSP se mantem quando o corredor esta mais carregado, sem recorrer a calibradores sinteticos.",
+      "demand_profile": "am_peak_high",
+      "events": [],
+      "kpi_focus": ["demand_uncertainty_high", "travel_time_range", "queue_spillback_risk"],
+      "expected_behaviour": "Mais fila e maior timeLoss do que baseline_am_peak."
+    },
+    "baseline_pm_peak_low": {
+      "description": "Envelope inferior da ponta da tarde.",
+      "justification": "Versao de baixa procura do PM peak para avaliar robustez direcional sob incerteza de procura.",
+      "demand_profile": "pm_peak_low",
+      "events": [],
+      "kpi_focus": ["pm_uncertainty_low", "direction_symmetry", "queue_range"],
+      "expected_behaviour": "Menos fila do que baseline_pm_peak mantendo predominancia cidade->mar."
+    },
+    "baseline_pm_peak_high": {
+      "description": "Envelope superior da ponta da tarde.",
+      "justification": "Versao de alta procura do PM peak para avaliar spillback e robustez sem dados reais de contagem.",
+      "demand_profile": "pm_peak_high",
+      "events": [],
+      "kpi_focus": ["pm_uncertainty_high", "direction_symmetry", "queue_spillback_risk"],
+      "expected_behaviour": "Mais fila do que baseline_pm_peak mantendo predominancia cidade->mar."
+    },
     "congested_am_peak": {
       "description": "Pico da manha saturado: grau de saturacao acima de 0.95 em ambos os sentidos do corredor.",
       "justification": "Testar TSP em condicoes de saturacao e essencial — algoritmos que funcionam bem em fluxo livre podem falhar quando a fila ja atinge o detector de jusante.",
@@ -1451,8 +1572,10 @@
           {"type": "car", "probability": 0.30},
           {"type": "car_cautious", "probability": 0.15},
           {"type": "car_aggressive", "probability": 0.15},
-          {"type": "car_acc", "probability": 0.10},
-          {"type": "car_cacc", "probability": 0.02},
+          {"type": "car_acc", "probability": 0.08},
+          {"type": "car_acc_ev", "probability": 0.02},
+          {"type": "car_cacc", "probability": 0.015},
+          {"type": "car_cacc_ev", "probability": 0.005},
           {"type": "motorcycle", "probability": 0.10},
           {"type": "taxi", "probability": 0.06},
           {"type": "lcv", "probability": 0.08},
@@ -1472,8 +1595,10 @@
           {"type": "car", "probability": 0.20},
           {"type": "car_cautious", "probability": 0.10},
           {"type": "car_aggressive", "probability": 0.10},
-          {"type": "car_acc", "probability": 0.22},
-          {"type": "car_cacc", "probability": 0.08},
+          {"type": "car_acc", "probability": 0.18},
+          {"type": "car_acc_ev", "probability": 0.04},
+          {"type": "car_cacc", "probability": 0.06},
+          {"type": "car_cacc_ev", "probability": 0.02},
           {"type": "motorcycle", "probability": 0.10},
           {"type": "taxi", "probability": 0.06},
           {"type": "lcv", "probability": 0.08},
@@ -1494,8 +1619,10 @@
           {"type": "car", "probability": 0.10},
           {"type": "car_cautious", "probability": 0.05},
           {"type": "car_aggressive", "probability": 0.05},
-          {"type": "car_acc", "probability": 0.35},
-          {"type": "car_cacc", "probability": 0.25},
+          {"type": "car_acc", "probability": 0.27},
+          {"type": "car_acc_ev", "probability": 0.08},
+          {"type": "car_cacc", "probability": 0.18},
+          {"type": "car_cacc_ev", "probability": 0.07},
           {"type": "motorcycle", "probability": 0.05},
           {"type": "taxi", "probability": 0.04},
           {"type": "lcv", "probability": 0.07},
