@@ -1,17 +1,17 @@
 <?xml version="1.0" ?>
 <additional>
-  <busStop id="bs_casa_musica_w" lane="I1_I2_0" startPos="125.0" endPos="155.0" friendlyPos="true"/>
-  <busStop id="bs_bessa_w" lane="I2_I3_0" startPos="135.0" endPos="165.0" friendlyPos="true"/>
-  <busStop id="bs_antunes_guimaraes_w" lane="I3_I4_0" startPos="155.0" endPos="185.0" friendlyPos="true"/>
-  <busStop id="bs_serralves_w" lane="I4_I5_0" startPos="175.0" endPos="205.0" friendlyPos="true"/>
-  <busStop id="bs_marechal_w" lane="I5_I6_0" startPos="165.0" endPos="195.0" friendlyPos="true"/>
-  <busStop id="bs_praca_imperio_w" lane="I6_I7_0" startPos="145.0" endPos="175.0" friendlyPos="true"/>
-  <busStop id="bs_castelo_queijo_w" lane="I7_ATLANTIC_WEST_0" startPos="155.0" endPos="185.0" friendlyPos="true"/>
-  <busStop id="bs_castelo_queijo_e" lane="I7_I6_0" startPos="145.0" endPos="175.0" friendlyPos="true"/>
-  <busStop id="bs_praca_imperio_e" lane="I6_I5_0" startPos="165.0" endPos="195.0" friendlyPos="true"/>
-  <busStop id="bs_marechal_e" lane="I5_I4_0" startPos="175.0" endPos="205.0" friendlyPos="true"/>
-  <busStop id="bs_serralves_e" lane="I4_I3_0" startPos="155.0" endPos="185.0" friendlyPos="true"/>
-  <busStop id="bs_antunes_guimaraes_e" lane="I3_I2_0" startPos="135.0" endPos="165.0" friendlyPos="true"/>
-  <busStop id="bs_bessa_e" lane="I2_I1_0" startPos="125.0" endPos="155.0" friendlyPos="true"/>
-  <busStop id="bs_casa_musica_e" lane="I1_CITY_EAST_0" startPos="120.0" endPos="150.0" friendlyPos="true"/>
+  <busStop id="bs_casa_musica_w" lane="I1_I2_1" startPos="125.0" endPos="155.0" friendlyPos="true"/>
+  <busStop id="bs_bessa_w" lane="I2_I3_1" startPos="135.0" endPos="165.0" friendlyPos="true"/>
+  <busStop id="bs_antunes_guimaraes_w" lane="I3_I4_1" startPos="155.0" endPos="185.0" friendlyPos="true"/>
+  <busStop id="bs_serralves_w" lane="I4_I5_1" startPos="175.0" endPos="205.0" friendlyPos="true"/>
+  <busStop id="bs_marechal_w" lane="I5_I6_1" startPos="165.0" endPos="195.0" friendlyPos="true"/>
+  <busStop id="bs_praca_imperio_w" lane="I6_I7_1" startPos="145.0" endPos="175.0" friendlyPos="true"/>
+  <busStop id="bs_castelo_queijo_w" lane="I7_ATLANTIC_WEST_1" startPos="155.0" endPos="185.0" friendlyPos="true"/>
+  <busStop id="bs_castelo_queijo_e" lane="I7_I6_1" startPos="145.0" endPos="175.0" friendlyPos="true"/>
+  <busStop id="bs_praca_imperio_e" lane="I6_I5_1" startPos="165.0" endPos="195.0" friendlyPos="true"/>
+  <busStop id="bs_marechal_e" lane="I5_I4_1" startPos="175.0" endPos="205.0" friendlyPos="true"/>
+  <busStop id="bs_serralves_e" lane="I4_I3_1" startPos="155.0" endPos="185.0" friendlyPos="true"/>
+  <busStop id="bs_antunes_guimaraes_e" lane="I3_I2_1" startPos="135.0" endPos="165.0" friendlyPos="true"/>
+  <busStop id="bs_bessa_e" lane="I2_I1_1" startPos="125.0" endPos="155.0" friendlyPos="true"/>
+  <busStop id="bs_casa_musica_e" lane="I1_CITY_EAST_1" startPos="120.0" endPos="150.0" friendlyPos="true"/>
 </additional>

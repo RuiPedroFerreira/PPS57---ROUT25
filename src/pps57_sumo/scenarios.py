@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import hashlib
 import math
+import random
 from pathlib import Path
 from typing import Any
 
@@ -41,7 +43,7 @@ def apply_scenario_profile(base_config: dict[str, Any], scenario_id: str | None)
     config["scenario_profile"] = {
         key: deepcopy(value)
         for key, value in profile.items()
-        if key in {"description", "justification", "kpi_focus", "expected_behaviour", "tags"}
+        if key in {"description", "justification", "kpi_focus", "expected_behaviour", "tags", "random_seeds"}
     }
     if "simulation_end_s" in profile:
         config["simulation_end_s"] = profile["simulation_end_s"]
@@ -53,8 +55,11 @@ def apply_scenario_profile(base_config: dict[str, Any], scenario_id: str | None)
     config["demand_profiles"] = resolve_demand_profiles(config.get("demand_profiles", {}))
 
     _apply_public_transport_overrides(config, profile)
+    _apply_vehicle_overrides(config, profile)
+    _apply_vehicle_distribution_overrides(config, profile)
     if "events" in profile:
         config["events"] = deepcopy(profile["events"])
+    _materialize_stochastic_incidents(config, profile, scenario_id=scenario_id)
 
     validate_scenario_config(config, scenario_id=scenario_id)
     return config
@@ -146,8 +151,31 @@ def validate_scenario_config(config: dict[str, Any], *, scenario_id: str | None 
             raise ScenarioConfigError(f"{context}: flow {flow.get('id')} must have period > 0.")
         if flow.get("route") not in route_ids:
             raise ScenarioConfigError(f"{context}: flow {flow.get('id')} references unknown route {flow.get('route')}.")
+        for index, entry in enumerate(flow.get("time_profile", []) or []):
+            entry_context = f"{context}: flow {flow.get('id')} time_profile[{index}]"
+            _validate_time_window(entry, context=entry_context)
+            if "period" in entry and float(entry["period"]) <= 0:
+                raise ScenarioConfigError(f"{entry_context}: period must be > 0.")
+            if "scale" in entry and float(entry["scale"]) <= 0:
+                raise ScenarioConfigError(f"{entry_context}: scale must be > 0.")
 
     stop_ids = {str(stop["id"]) for stop in config.get("public_transport", {}).get("stops", [])}
+    for stop in config.get("public_transport", {}).get("stops", []):
+        spec = stop.get("dwell_s", 20)
+        if isinstance(spec, dict):
+            mean = float(spec.get("mean", 0))
+            std = float(spec.get("std", 0))
+            lo = float(spec.get("min", 0))
+            hi = float(spec.get("max", mean + 3 * std if std else mean))
+            if mean <= 0:
+                raise ScenarioConfigError(f"{context}: stop {stop.get('id')} dwell_s.mean must be > 0.")
+            if std < 0:
+                raise ScenarioConfigError(f"{context}: stop {stop.get('id')} dwell_s.std must be >= 0.")
+            if lo > hi:
+                raise ScenarioConfigError(f"{context}: stop {stop.get('id')} dwell_s.min must be <= dwell_s.max.")
+        elif float(spec) <= 0:
+            raise ScenarioConfigError(f"{context}: stop {stop.get('id')} dwell_s must be > 0.")
+
     for service in config.get("public_transport", {}).get("services", []):
         _validate_time_window(
             {"begin": service.get("begin_s", config.get("simulation_begin_s", 0)), "end": service.get("end_s", config.get("simulation_end_s", 7200))},
@@ -160,6 +188,14 @@ def validate_scenario_config(config: dict[str, Any], *, scenario_id: str | None 
         unknown_stops = [stop_id for stop_id in service.get("stops", []) if str(stop_id) not in stop_ids]
         if unknown_stops:
             raise ScenarioConfigError(f"{context}: service {service.get('line_id')} references unknown stops: {unknown_stops}")
+        if float(service.get("terminus_jitter_s", 0)) < 0:
+            raise ScenarioConfigError(f"{context}: service {service.get('line_id')} {service.get('direction')} terminus_jitter_s must be >= 0.")
+        for index, entry in enumerate(service.get("headway_schedule", []) or []):
+            entry_context = f"{context}: service {service.get('line_id')} {service.get('direction')} headway_schedule[{index}]"
+            entry_window = {"begin": entry.get("begin_s", 0), "end": entry.get("end_s", 0)}
+            _validate_time_window(entry_window, context=entry_context)
+            if float(entry.get("headway_s", 0)) <= 0:
+                raise ScenarioConfigError(f"{entry_context}: headway_s must be > 0.")
 
     for event in config.get("events", []):
         if event.get("route") not in route_ids:
@@ -195,12 +231,21 @@ def _derive_flows(parent_flows: list[dict[str, Any]], profile: dict[str, Any], *
             raise ScenarioConfigError(f"Demand profile {profile_name}: flow scale for {flow_id} must be > 0.")
         flow["id"] = f"{flow_id}_{id_suffix}"
         flow["period"] = round(float(flow["period"]) * scale, 3)
+        if "time_profile" in flow and isinstance(flow["time_profile"], list):
+            scaled_profile = []
+            for entry in flow["time_profile"]:
+                entry_copy = deepcopy(entry)
+                if "period" in entry_copy:
+                    entry_copy["period"] = round(float(entry_copy["period"]) * scale, 3)
+                scaled_profile.append(entry_copy)
+            flow["time_profile"] = scaled_profile
         if "begin" in profile:
             flow["begin"] = profile["begin"]
         if "end" in profile:
             flow["end"] = profile["end"]
         if flow_id in flow_period_override:
             flow["period"] = flow_period_override[flow_id]
+            flow.pop("time_profile", None)
         if flow_id in flow_updates:
             for key, value in flow_updates[flow_id].items():
                 if key != "id":
@@ -210,6 +255,191 @@ def _derive_flows(parent_flows: list[dict[str, Any]], profile: dict[str, Any], *
     for flow in profile.get("additional_flows", []):
         flows.append(deepcopy(flow))
     return flows
+
+
+def _apply_vehicle_overrides(config: dict[str, Any], profile: dict[str, Any]) -> None:
+    """Apply scenario-level overrides to vehicle types (e.g., weather effects).
+
+    Override block schema::
+
+        vehicle_overrides:
+          all:
+            tau_delta: 0.2                # additive seconds
+            speed_factor_multiplier: 0.88 # scales the mean of normc(...)
+            decel_multiplier: 0.85
+            accel_multiplier: 0.95
+            min_gap_multiplier: 1.15
+          by_class:                        # overrides per vClass (e.g., motorcycle)
+            motorcycle: {speed_factor_multiplier: 0.80}
+          by_id:                           # overrides per vType id (e.g., car_aggressive)
+            car_aggressive: {tau_delta: 0.3}
+    """
+    overrides = profile.get("vehicle_overrides")
+    if not isinstance(overrides, dict) or not overrides:
+        return
+    all_override = overrides.get("all", {}) if isinstance(overrides.get("all"), dict) else {}
+    by_class = overrides.get("by_class", {}) if isinstance(overrides.get("by_class"), dict) else {}
+    by_id = overrides.get("by_id", {}) if isinstance(overrides.get("by_id"), dict) else {}
+    vehicle_types = config.get("vehicle_types", [])
+    if not isinstance(vehicle_types, list):
+        return
+    for vtype in vehicle_types:
+        if not isinstance(vtype, dict):
+            continue
+        merged: dict[str, Any] = {}
+        merged.update(all_override)
+        merged.update(by_class.get(str(vtype.get("vClass", "")), {}) or {})
+        merged.update(by_id.get(str(vtype.get("id", "")), {}) or {})
+        if not merged:
+            continue
+        if "tau_delta" in merged:
+            vtype["tau"] = round(float(vtype.get("tau", 1.0)) + float(merged["tau_delta"]), 3)
+        if "accel_multiplier" in merged and "accel" in vtype:
+            vtype["accel"] = round(float(vtype["accel"]) * float(merged["accel_multiplier"]), 3)
+        if "decel_multiplier" in merged and "decel" in vtype:
+            vtype["decel"] = round(float(vtype["decel"]) * float(merged["decel_multiplier"]), 3)
+            if "emergencyDecel" in vtype:
+                vtype["emergencyDecel"] = round(float(vtype["emergencyDecel"]) * float(merged["decel_multiplier"]), 3)
+        if "min_gap_multiplier" in merged and "minGap" in vtype:
+            vtype["minGap"] = round(float(vtype["minGap"]) * float(merged["min_gap_multiplier"]), 3)
+        if "max_speed_multiplier" in merged and "maxSpeed" in vtype:
+            vtype["maxSpeed"] = round(float(vtype["maxSpeed"]) * float(merged["max_speed_multiplier"]), 3)
+        if "speed_factor_multiplier" in merged:
+            vtype["speedFactor"] = _scale_speed_factor(vtype.get("speedFactor"), float(merged["speed_factor_multiplier"]))
+
+
+def _scale_speed_factor(spec: Any, multiplier: float) -> Any:
+    """Scale the *mean* of a SUMO speedFactor expression by ``multiplier``.
+
+    Supports two common forms:
+      * a numeric literal (``"1.05"`` or ``1.05``)
+      * ``"normc(mean,std,lo,hi)"`` — scales mean and clamps lo/hi proportionally.
+
+    Returns the original spec unchanged if it is not parseable, so callers
+    never silently corrupt an unrecognised expression.
+    """
+    if spec is None or multiplier == 1.0:
+        return spec
+    if isinstance(spec, (int, float)):
+        return round(float(spec) * multiplier, 4)
+    text = str(spec).strip()
+    if text.startswith("normc(") and text.endswith(")"):
+        body = text[len("normc("):-1]
+        parts = [p.strip() for p in body.split(",")]
+        if len(parts) == 4:
+            try:
+                mean, std, lo, hi = (float(p) for p in parts)
+            except ValueError:
+                return spec
+            new_mean = mean * multiplier
+            new_lo = lo * multiplier
+            new_hi = hi * multiplier
+            return f"normc({new_mean:.3f},{std:.3f},{new_lo:.3f},{new_hi:.3f})"
+    try:
+        return round(float(text) * multiplier, 4)
+    except ValueError:
+        return spec
+
+
+def _apply_vehicle_distribution_overrides(config: dict[str, Any], profile: dict[str, Any]) -> None:
+    """Replace component lists on named vTypeDistribution(s) at scenario time.
+
+    Schema::
+
+        vehicle_distribution_overrides:
+          urban_mix:
+            - {type: car, probability: 0.30}
+            - {type: car_acc, probability: 0.15}
+            ...
+
+    Probabilities are not auto-normalised — caller is responsible. We validate
+    that referenced vTypes exist in ``vehicle_types`` so a typo fails loud.
+    """
+    overrides = profile.get("vehicle_distribution_overrides")
+    if not isinstance(overrides, dict) or not overrides:
+        return
+    distributions = config.get("vehicle_type_distributions", [])
+    known_vtype_ids = {str(vt["id"]) for vt in config.get("vehicle_types", []) if isinstance(vt, dict) and "id" in vt}
+    for dist in distributions:
+        if not isinstance(dist, dict):
+            continue
+        dist_id = str(dist.get("id", ""))
+        if dist_id not in overrides:
+            continue
+        new_components = overrides[dist_id]
+        if not isinstance(new_components, list) or not new_components:
+            raise ScenarioConfigError(
+                f"vehicle_distribution_overrides[{dist_id}] must be a non-empty list of components."
+            )
+        for component in new_components:
+            type_id = str(component.get("type", ""))
+            if type_id not in known_vtype_ids:
+                raise ScenarioConfigError(
+                    f"vehicle_distribution_overrides[{dist_id}] references unknown vType '{type_id}'."
+                )
+        dist["components"] = deepcopy(new_components)
+
+
+def _materialize_stochastic_incidents(
+    config: dict[str, Any], profile: dict[str, Any], *, scenario_id: str | None
+) -> None:
+    """Turn ``stochastic_incidents`` templates into deterministic events using ``random_seed``.
+
+    Each template describes a probability + sampling parameters. A per-scenario
+    RNG seeded from the scenario_id and config random_seed decides whether the
+    incident fires and at which edge/time/duration. Results are appended to
+    ``config["events"]`` so downstream code treats them identically to manually
+    authored events.
+    """
+    templates = profile.get("stochastic_incidents")
+    if not isinstance(templates, list) or not templates:
+        return
+    base_seed = int(config.get("random_seed", 57))
+    rng = random.Random(_stochastic_incident_seed(base_seed, scenario_id))
+    events = list(config.get("events", []))
+    for index, template in enumerate(templates):
+        if not isinstance(template, dict):
+            continue
+        probability = float(template.get("probability", 1.0))
+        if rng.random() > probability:
+            continue
+        edges = template.get("edge_candidates") or []
+        routes = template.get("route_candidates") or []
+        if not edges or not routes:
+            continue
+        edge_id = rng.choice(list(edges))
+        route_id = rng.choice(list(routes))
+        depart_window = template.get("depart_window_s", [0, 3600])
+        if not isinstance(depart_window, list) or len(depart_window) != 2:
+            depart_window = [0, 3600]
+        depart_s = rng.uniform(float(depart_window[0]), float(depart_window[1]))
+        duration_mean = float(template.get("duration_s_mean", 240.0))
+        duration_std = float(template.get("duration_s_std", 0.0))
+        if duration_std > 0:
+            duration_s = max(30.0, rng.gauss(duration_mean, duration_std))
+        else:
+            duration_s = duration_mean
+        event_id = f"{template.get('id_prefix', 'stoch_incident')}_{index}_{int(depart_s)}"
+        events.append(
+            {
+                "id": event_id,
+                "type": str(template.get("type", "stopped_vehicle")),
+                "vehicle_type": str(template.get("vehicle_type", "lcv")),
+                "route": route_id,
+                "depart": round(depart_s, 1),
+                "stop_edge": edge_id,
+                "stop_duration_s": round(duration_s, 1),
+                "stop_pos_m": float(template.get("stop_pos_m", 80.0)),
+                "description": f"Stochastic incident materialised from template '{template.get('id_prefix', '')}'.",
+            }
+        )
+    config["events"] = events
+
+
+def _stochastic_incident_seed(base_seed: int, scenario_id: str | None) -> int:
+    key = f"{base_seed}:{scenario_id or ''}:stochastic_incidents"
+    digest = hashlib.blake2b(key.encode("utf-8"), digest_size=8).digest()
+    return int.from_bytes(digest, "big")
 
 
 def _apply_public_transport_overrides(config: dict[str, Any], profile: dict[str, Any]) -> None:
@@ -252,8 +482,18 @@ def _known_route_ids(config: dict[str, Any]) -> set[str]:
         "route_emergency_west_to_east",
     }
     for inter in intersections:
-        route_ids.add(f"route_cross_NS_{inter['id']}")
-        route_ids.add(f"route_cross_SN_{inter['id']}")
+        inter_id = inter["id"]
+        route_ids.add(f"route_cross_NS_{inter_id}")
+        route_ids.add(f"route_cross_SN_{inter_id}")
+        # Turning movements (generator emits these for every intersection).
+        route_ids.add(f"route_main_inbound_turn_to_N_{inter_id}")
+        route_ids.add(f"route_main_inbound_turn_to_S_{inter_id}")
+        route_ids.add(f"route_main_outbound_turn_to_N_{inter_id}")
+        route_ids.add(f"route_main_outbound_turn_to_S_{inter_id}")
+        route_ids.add(f"route_minor_N_{inter_id}_to_city")
+        route_ids.add(f"route_minor_N_{inter_id}_to_atlantic")
+        route_ids.add(f"route_minor_S_{inter_id}_to_city")
+        route_ids.add(f"route_minor_S_{inter_id}_to_atlantic")
     route_ids.update(str(item["id"]) for item in config.get("routes", []))
     return route_ids
 
@@ -266,6 +506,25 @@ def _validate_time_window(item: dict[str, Any], *, context: str) -> None:
 
 
 def _estimated_flow_departures(flow: dict[str, Any]) -> int:
+    entries = flow.get("time_profile")
+    if entries:
+        base_period = float(flow.get("period", 0))
+        total = 0
+        for entry in entries:
+            begin = float(entry.get("begin", 0))
+            end = float(entry.get("end", 0))
+            if end <= begin:
+                continue
+            if "period" in entry:
+                period = float(entry["period"])
+            elif base_period > 0:
+                scale = float(entry.get("scale", 1.0))
+                period = base_period / scale if scale > 0 else 0.0
+            else:
+                period = 0.0
+            if period > 0:
+                total += math.ceil((end - begin) / period)
+        return max(0, total)
     begin = float(flow.get("begin", 0))
     end = float(flow.get("end", 0))
     period = float(flow.get("period", 0))

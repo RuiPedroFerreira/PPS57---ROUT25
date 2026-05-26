@@ -299,9 +299,7 @@ class PlatformDataLoaderTest(unittest.TestCase):
             scenario_id="baseline_am_peak",
             run_type="comparison",
             steps=30,
-            sumo_binary="sumo",
             gui=True,
-            traci_port=8813,
         )
         command = runner._command_for(options)
         self.assertIn("scripts/run_sumo_scenario.py", command)
@@ -309,15 +307,9 @@ class PlatformDataLoaderTest(unittest.TestCase):
         self.assertIn("baseline_am_peak", command)
         self.assertIn("--run-type", command)
         self.assertIn("comparison", command)
-        self.assertIn("--sumo-binary", command)
         self.assertIn("--steps", command)
         self.assertIn("30", command)
         self.assertIn("--gui", command)
-        self.assertEqual(runner._environment_for(options)["TRACI_PORT"], "8813")
-
-        all_command = runner._command_for(ScenarioRunOptions(all_scenarios=True, run_type="baseline"))
-        self.assertIn("--all", all_command)
-        self.assertNotIn("--scenario", all_command)
 
     def test_scenario_runner_rejects_unknown_scenario_and_bad_run_type(self) -> None:
         runner = ScenarioRunner(ROOT)
@@ -375,14 +367,37 @@ class PlatformDataLoaderTest(unittest.TestCase):
 
             self.assertIn("/", paths)
             self.assertIn("/dashboard", paths)
+            self.assertIn("/static", paths)
             self.assertIn("/api/scenarios", paths)
             self.assertIn("/api/runs/start", paths)
             self.assertIn("/api/runs/current", paths)
+            self.assertIn("/api/runs/current/logs", paths)
             self.assertIn("/api/reports", paths)
             options = ScenarioRunRequest(scenario_id="baseline_am_peak", steps=3, run_type="comparison").to_options()
             self.assertEqual(options.steps, 3)
             self.assertEqual(options.scenario_id, "baseline_am_peak")
             self.assertFalse(options.gui)
+
+    def test_dashboard_template_uses_static_assets(self) -> None:
+        from pps57_platform.dashboard import STATIC_DIR, dashboard_html
+
+        html = dashboard_html()
+
+        self.assertIn('/static/dashboard.css', html)
+        self.assertIn('/static/dashboard/app.js', html)
+        self.assertTrue((STATIC_DIR / "dashboard.css").exists())
+        self.assertTrue((STATIC_DIR / "dashboard" / "app.js").exists())
+        self.assertTrue((STATIC_DIR / "dashboard" / "api.js").exists())
+        self.assertTrue((STATIC_DIR / "dashboard" / "renderers.js").exists())
+
+    def test_dashboard_js_avoids_dynamic_html_injection(self) -> None:
+        from pps57_platform.dashboard import STATIC_DIR
+
+        forbidden = ("innerHTML", "outerHTML", "insertAdjacentHTML")
+        for path in (STATIC_DIR / "dashboard").glob("*.js"):
+            source = path.read_text(encoding="utf-8")
+            for token in forbidden:
+                self.assertNotIn(token, source, f"{token} should not be used in {path.name}")
 
 
 def write_jsonl(path: Path, rows: list[dict]) -> None:
