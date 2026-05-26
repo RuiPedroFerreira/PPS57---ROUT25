@@ -6,8 +6,14 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+import json
 
 ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from pps57_sumo.build_network import build_sumo_artifacts  # noqa: E402
 
 
 def require(binary: str) -> str:
@@ -31,18 +37,9 @@ def main() -> None:
     (ROOT / "reports").mkdir(exist_ok=True)
     (ROOT / "sumo/network").mkdir(parents=True, exist_ok=True)
 
-    run([sys.executable, "src/pps57_sumo/generate_plain_corridor.py", "--config", "configs/sumo_scenario_base.json", "--output", "sumo/plain"])
-    run([
-        "netconvert",
-        "--node-files", "sumo/plain/corredor.nod.xml",
-        "--edge-files", "sumo/plain/corredor.edg.xml",
-        "--output-file", "sumo/network/corredor.net.xml",
-        "--no-turnarounds", "true",
-        "--tls.default-type", "static",
-        "--tls.cycle.time", "90",
-        "--tls.yellow.time", "3",
-    ])
-    run(["sumo", "-c", "sumo/corredor.sumocfg", "--duration-log.statistics"])
+    config = json.loads((ROOT / "configs/sumo_scenario_base.json").read_text(encoding="utf-8"))
+    artifacts = build_sumo_artifacts(config, root=ROOT, base_dir=Path("sumo"))
+    run(["sumo", "-c", str(artifacts.sumocfg_file), "--duration-log.statistics"])
     run([sys.executable, "src/pps57_sumo/parse_tripinfo.py", "--tripinfo", "outputs/tripinfo.xml", "--out", "reports/baseline_kpis.json"])
 
 

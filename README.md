@@ -40,47 +40,95 @@ sumo/                    SUMO network, routes, additional files and run config
 tests/                   Unit and integration tests
 ```
 
-## Requirements
+## Documentation Map
 
-Use Python 3.11+ or 3.12. The local environment used by this project is `.venv`.
+- [Prerequisites](#prerequisites) and [Environment Setup](#environment-setup)
+  cover the local Python/SUMO setup.
+- [First Run Quick Start](#first-run-quick-start) gives the shortest validation,
+  simulation and dashboard paths.
+- [Available Make Targets](#available-make-targets) is the command reference for
+  common project workflows.
+- [Command-Line Workflows](#command-line-workflows) describes each pipeline and
+  its generated artifacts.
+- [Output Artifacts](#output-artifacts), [Safety Layer Rules](#safety-layer-rules)
+  and [Runtime Policy Modes](#runtime-policy-modes) explain the runtime evidence
+  model.
+- [Troubleshooting](#troubleshooting) lists the most common setup and runtime
+  issues.
 
-For full simulation support:
+## Prerequisites
+
+Run commands from the repository root. The project expects:
+
+- Python 3.11 or 3.12.
+- A local virtual environment at `.venv`.
+- SUMO command-line tools reachable from `PATH` for simulation workflows:
+  `sumo`, `sumo-gui` and `netconvert`.
+
+The pinned dependency set includes the SUMO Python interfaces and, where the
+`eclipse-sumo` wheel supports the platform, SUMO CLI binaries inside `.venv/bin`.
+Activating `.venv` before running `make` makes those binaries available to the
+Makefile. If your platform does not get CLI binaries from the wheel, install
+SUMO separately and put its binaries on `PATH`.
+
+## Environment Setup
+
+Use the lockfile for reproducible local installs:
 
 ```bash
-python -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.lock
 ```
 
-For a reproducible install with exact pinned versions (releases, CI, dependency
-regression triage), use the lockfile instead:
+Verify the environment:
 
 ```bash
-python -m venv .venv
-.venv/bin/python -m pip install -r requirements.lock
+python -m pip check
+python -m unittest discover -s tests -p 'test_*.py'
+sumo --version
+netconvert --version
 ```
 
-`requirements.txt` declares flexible version ranges; `requirements.lock`
-captures the full transitive closure at exact versions. Regenerate the lockfile
-after changing `requirements.txt` with `pip freeze > requirements.lock`.
+Use `requirements.txt` only when intentionally refreshing dependency ranges:
 
-Full SUMO execution also requires SUMO CLI tools in `PATH`:
-
-```text
-netconvert
-sumo
-sumo-gui
+```bash
+python -m pip install -r requirements.txt
+python -m pip freeze > requirements.lock
 ```
 
-## Quick Start
+`requirements.txt` declares flexible version ranges. `requirements.lock`
+captures the full transitive closure at exact versions for repeatable local
+validation, releases, CI and dependency regression triage.
 
-These commands validate the project and run non-simulation utilities. Operational C-ITS/TSP data is produced only by SUMO/TraCI runs:
+## First Run Quick Start
+
+After activating `.venv`, run the fast checks first:
 
 ```bash
 make validate
 make test
+make scenario-list
+```
+
+For a baseline SUMO run and KPI export:
+
+```bash
 make build
+make run
+make kpis
+```
+
+For C-ITS/TSP event data, run one of the SUMO/TraCI workflows:
+
+```bash
 make cits-sumo
 make tsp-sumo-no-actuation
+```
+
+Build learning data and policy reports after those logs exist:
+
+```bash
 make build-event-training-dataset
 make optimize-offline
 make train-rl-policy
@@ -99,6 +147,10 @@ Default URLs:
 Dashboard: http://127.0.0.1:8000
 API docs:  http://127.0.0.1:8000/docs
 ```
+
+If `make build`, `make run` or a scenario command cannot find `sumo` or
+`netconvert`, activate the virtual environment in the current shell or add an
+external SUMO installation to `PATH`.
 
 ## Available Make Targets
 
@@ -126,9 +178,24 @@ API docs:  http://127.0.0.1:8000/docs
 | `make sort-routes` | Sort SUMO route definitions by departure time | No |
 | `make clean` | Remove known generated artifacts | No |
 
+## Choosing A Workflow
+
+| Goal | Start with |
+|---|---|
+| Validate the checkout without running SUMO | `make validate` and `make test` |
+| Confirm the scenario catalog | `make scenario-list` |
+| Build the SUMO network | `make build` |
+| Produce baseline SUMO KPIs | `make run` followed by `make kpis` |
+| Generate C-ITS messages from SUMO/TraCI | `make cits-sumo` |
+| Observe TSP decisions without changing signals | `make tsp-sumo-no-actuation` |
+| Run TSP with TraCI signal actuation | `make tsp-sumo` |
+| Compare baseline, direct TSP and controller-mediated TSP | `make tsp-demonstrator` |
+| Train or refresh runtime policies | `make build-event-training-dataset`, then `make optimize-offline` or `make train-rl-policy` |
+| Inspect artifacts through the local UI | `make dashboard` |
+
 ## Command-Line Workflows
 
-### 1. Static Validation
+### Static Validation
 
 ```bash
 make validate
@@ -143,7 +210,7 @@ configs/policy_training_config.json
 configs/platform_config.json
 ```
 
-### 2. Run Tests
+### Run Tests
 
 ```bash
 make test
@@ -161,7 +228,7 @@ Pytest is also supported:
 .venv/bin/python -m pytest -q
 ```
 
-### 3. Build SUMO Network
+### Build SUMO Network
 
 ```bash
 make build
@@ -184,7 +251,7 @@ netconvert \
   --tls.yellow.time 3
 ```
 
-### 4. Run SUMO Baseline
+### Run SUMO Baseline
 
 ```bash
 make run
@@ -206,7 +273,7 @@ outputs/statistics.xml
 reports/baseline_kpis.json
 ```
 
-### 5. Run Scenario Suite
+### Run Scenario Suite
 
 The scenario suite is declared in `configs/sumo_scenario_base.json` and
 described in `configs/scenario_catalog.yaml`. Each scenario has a demand profile,
@@ -230,12 +297,17 @@ baseline plus TSP run get automatic baseline-vs-TSP comparisons.
 Per-scenario artifacts are written under:
 
 ```text
-outputs/scenarios/<scenario_id>/<run_type>/
-reports/scenarios/<scenario_id>/<run_type>/kpis.json
+outputs/scenarios/<scenario_id>/<run_type>/seed_<seed>/
+reports/scenarios/<scenario_id>/<run_type>/seed_<seed>/kpis.json
 reports/scenarios/<scenario_id>/scenario_report.md
 reports/scenarios/scenario_suite_summary.json
 reports/scenarios/scenario_suite_report.md
 ```
+
+When a scenario defines multiple seeds, or when `--seeds` is passed to
+`scripts/run_sumo_scenario.py`, each replication is stored under its own
+`seed_<seed>` directory and the scenario report includes aggregate KPI
+statistics.
 
 When running C-ITS/TSP modes in restricted environments, set a fixed TraCI port:
 
@@ -243,7 +315,7 @@ When running C-ITS/TSP modes in restricted environments, set a fixed TraCI port:
 TRACI_PORT=8813 make scenario-run SCENARIO=baseline_off_peak RUN_TYPE=tsp_no_actuation
 ```
 
-### 5. Run C-ITS/V2X Emulation
+### Run C-ITS/V2X Emulation
 
 With SUMO/TraCI:
 
@@ -268,7 +340,7 @@ outputs/cits_spatem_snapshot.json
 reports/cits_emulation_summary.json
 ```
 
-### 6. Run TSP Control With Safety Layer
+### Run TSP Control With Safety Layer
 
 SUMO with TraCI actuation:
 
@@ -379,6 +451,8 @@ make build-event-training-dataset
 
 This writes `outputs/event_training_dataset.jsonl` by joining C-ITS messages,
 TSP decisions and actuation logs produced by SUMO/TraCI.
+Run a TSP SUMO workflow first; an empty or missing event dataset is rejected by
+policy optimization and RL training.
 
 Generated outputs:
 
@@ -388,7 +462,7 @@ outputs/tsp_actuation.jsonl
 reports/tsp_emulation_summary.json
 ```
 
-### 7. Run Offline Policy Optimization
+### Run Offline Policy Optimization
 
 ```bash
 .venv/bin/python scripts/run_policy_optimization.py
@@ -402,6 +476,7 @@ make optimize-offline
 
 What it does:
 
+- Requires `outputs/event_training_dataset.jsonl` from a previous TSP SUMO run.
 - Loads SUMO/TraCI event-derived scenarios from `outputs/event_training_dataset.jsonl`.
 - Evaluates the baseline TSP decision.
 - Evaluates candidate actions: `no_action`, `green_extension`, `early_green`, `reevaluate_next_cycle`, `reject`.
@@ -418,7 +493,7 @@ reports/policy_report.json
 reports/policy_optimization_summary.json
 ```
 
-### 8. Train Tabular Reinforcement Learning Policy
+### Train Tabular Reinforcement Learning Policy
 
 ```bash
 .venv/bin/python scripts/run_rl_training.py
@@ -432,6 +507,7 @@ make train-rl-policy
 
 What it does:
 
+- Requires `outputs/event_training_dataset.jsonl` from a previous TSP SUMO run.
 - Runs tabular Q-learning over SUMO/TraCI event-derived scenarios.
 - Keeps production online learning disabled.
 - Exports a policy report that can be inspected or loaded for runtime inference.
@@ -444,7 +520,7 @@ reports/tabular_q_policy_report.json
 reports/rl_training_summary.json
 ```
 
-### 9. Validate Platform Artifacts
+### Validate Platform Artifacts
 
 ```bash
 .venv/bin/python scripts/check_platform_data.py
@@ -464,7 +540,7 @@ Generated output:
 reports/platform_snapshot.json
 ```
 
-### 10. Run Scenario Dashboard
+### Run Scenario Dashboard
 
 ```bash
 .venv/bin/python scripts/run_dashboard.py --host 127.0.0.1 --port 8000
@@ -511,7 +587,7 @@ curl -X POST http://127.0.0.1:8000/api/runs/start \
   -d '{"all_scenarios":true,"run_type":"comparison","steps":7200,"traci_port":8813}'
 ```
 
-### 11. Inspect Platform Artifacts
+### Inspect Platform Artifacts
 
 ```bash
 make platform-check
@@ -716,9 +792,11 @@ Example SUMO/TraCI actuation result:
 | `outputs/offline_policy_samples.jsonl` | Policy optimization | Offline training/evaluation scenarios |
 | `outputs/policy_candidates.jsonl` | Policy optimization | Candidate action evaluations |
 | `outputs/tripinfo.xml` | SUMO baseline | Per-vehicle SUMO trip information |
+| `outputs/scenarios/<scenario>/<run_type>/seed_<seed>/` | Scenario runner | Per-scenario SUMO, C-ITS and TSP run artifacts |
 | `reports/cits_emulation_summary.json` | C-ITS runs | Message counts and request summary |
 | `reports/tsp_emulation_summary.json` | TSP runs | Decision, safety and actuation summary |
 | `reports/baseline_kpis.json` | KPI parser | SUMO baseline KPI summary |
+| `reports/scenarios/<scenario>/<run_type>/seed_<seed>/kpis.json` | Scenario runner | Per-run KPI summary used by scenario reports |
 | `reports/policy_report.json` | Policy optimization | Exported safe runtime policy |
 | `reports/policy_optimization_summary.json` | Policy optimization | Offline comparison summary |
 | `reports/tabular_q_policy_report.json` | RL training | Exported tabular Q-learning policy |
@@ -790,9 +868,26 @@ git diff --check
 
 ## Troubleshooting
 
-If `sumo` or `netconvert` is missing, install SUMO and ensure the binaries are in `PATH`.
+### `sumo` or `netconvert` is missing
 
-If platform artifact checks have no data, run a SUMO/TraCI workflow first:
+Simulation targets call SUMO binaries by name. Activate the virtual environment
+before running `make`, or install SUMO separately and add its binaries to `PATH`:
+
+```bash
+source .venv/bin/activate
+which sumo
+which netconvert
+sumo --version
+netconvert --version
+```
+
+If `sumo-gui` is unavailable or the machine is headless, use the non-GUI targets
+such as `make run`, `make cits-sumo` or `make tsp-sumo-no-actuation`.
+
+### Platform checks have no data
+
+`make platform-check` aggregates existing artifacts; it does not create SUMO,
+C-ITS or TSP logs. Run a SUMO/TraCI workflow first:
 
 ```bash
 make build
@@ -801,19 +896,35 @@ make build-event-training-dataset
 make platform-check
 ```
 
-To control scenario runs, start the dashboard in another terminal:
+### Policy optimization or RL training says no event scenarios were found
+
+The policy commands require `outputs/event_training_dataset.jsonl` with rows
+derived from TSP decisions, SPATEM context and actuation logs:
 
 ```bash
-make dashboard
+make tsp-sumo-no-actuation
+make build-event-training-dataset
+make optimize-offline
+make train-rl-policy
 ```
 
-If port `8000` is already in use, run the script directly with a different port:
+### Dashboard or API port is already in use
+
+Start the dashboard on another port:
 
 ```bash
 .venv/bin/python scripts/run_dashboard.py --port 8001
 ```
 
-If an optimized runtime policy is not loaded, regenerate the policy report:
+### Scenario runs need a fixed TraCI port
+
+```bash
+TRACI_PORT=8813 make scenario-run SCENARIO=baseline_off_peak RUN_TYPE=tsp_no_actuation
+```
+
+### Optimized runtime policy is not loaded
+
+Regenerate the policy report, then pass it explicitly:
 
 ```bash
 make optimize-offline

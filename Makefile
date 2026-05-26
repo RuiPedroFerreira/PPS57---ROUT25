@@ -1,4 +1,4 @@
-.PHONY: validate build run gui kpis scenario-list scenario-run scenario-suite cits-sumo tsp-demonstrator compare-tsp-rl compare-sumo-kpis evaluate-decision-outcomes build-event-training-dataset tsp-sumo tsp-sumo-no-actuation tsp-gui tsp-gui-no-actuation optimize-offline train-rl-policy dashboard platform-check sort-routes test clean
+.PHONY: validate build run gui kpis scenario-list scenario-run scenario-suite sumo-smoke cits-sumo tsp-demonstrator compare-tsp-rl compare-sumo-kpis evaluate-decision-outcomes build-event-training-dataset tsp-sumo tsp-sumo-no-actuation tsp-gui tsp-gui-no-actuation optimize-offline train-rl-policy dashboard platform-check sort-routes test clean
 
 # Hardening: cada receita corre como `bash -ec`, garantindo `set -e` mesmo
 # em linhas encadeadas e abortando à primeira falha. Sem isto, alguém a
@@ -19,8 +19,7 @@ validate:
 # tsp-sumo/etc., que dependem de build) execute o gate fail-closed de XML
 # bem-formado e rotas ordenadas. Antes ficava órfão e podia ser ignorado.
 build: validate
-	$(PYTHON) src/pps57_sumo/generate_plain_corridor.py --config configs/sumo_scenario_base.json --output sumo/plain
-	netconvert --node-files sumo/plain/corredor.nod.xml --edge-files sumo/plain/corredor.edg.xml --output-file sumo/network/corredor.net.xml --no-turnarounds true --tls.default-type static --tls.cycle.time 90 --tls.yellow.time 3
+	$(PYTHON) src/pps57_sumo/build_network.py --config configs/sumo_scenario_base.json --base-dir sumo
 
 run: build
 	sumo -c sumo/corredor.sumocfg --duration-log.statistics
@@ -38,6 +37,9 @@ scenario-run:
 
 scenario-suite:
 	$(PYTHON) scripts/run_sumo_scenario.py --all --run-type $(RUN_TYPE)
+
+sumo-smoke:
+	$(PYTHON) scripts/sumo_smoke.py
 
 gui: build
 	sumo-gui -c sumo/corredor.sumocfg

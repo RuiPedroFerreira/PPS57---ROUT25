@@ -26,16 +26,16 @@
   <edge id="I5_I4" from="I5" to="I4" numLanes="2" speed="13.89" priority="4" width="3.25">
     <lane index="0" allow="bus emergency taxi"/>
   </edge>
-  <edge id="I5_I6" from="I5" to="I6" numLanes="2" speed="13.89" priority="4" width="3.25">
+  <edge id="I5_I6" from="I5" to="RB_I6_CITY" numLanes="2" speed="13.89" priority="2" width="3.25">
     <lane index="0" allow="bus emergency taxi"/>
   </edge>
-  <edge id="I6_I5" from="I6" to="I5" numLanes="2" speed="13.89" priority="4" width="3.25">
+  <edge id="I6_I5" from="RB_I6_CITY" to="I5" numLanes="2" speed="13.89" priority="4" width="3.25">
     <lane index="0" allow="bus emergency taxi"/>
   </edge>
-  <edge id="I6_I7" from="I6" to="I7" numLanes="2" speed="13.89" priority="4" width="3.25">
+  <edge id="I6_I7" from="RB_I6_ATLANTIC" to="I7" numLanes="2" speed="13.89" priority="4" width="3.25">
     <lane index="0" allow="bus emergency taxi"/>
   </edge>
-  <edge id="I7_I6" from="I7" to="I6" numLanes="2" speed="13.89" priority="4" width="3.25">
+  <edge id="I7_I6" from="I7" to="RB_I6_ATLANTIC" numLanes="2" speed="13.89" priority="2" width="3.25">
     <lane index="0" allow="bus emergency taxi"/>
   </edge>
   <edge id="I7_ATLANTIC_WEST" from="I7" to="ATLANTIC_WEST" numLanes="2" speed="13.89" priority="4" width="3.25"/>
@@ -60,12 +60,17 @@
   <edge id="I5_N_I5" from="I5" to="N_I5" numLanes="1" speed="8.33" priority="2" width="3.25"/>
   <edge id="S_I5_I5" from="S_I5" to="I5" numLanes="1" speed="8.33" priority="2" width="3.00"/>
   <edge id="I5_S_I5" from="I5" to="S_I5" numLanes="1" speed="8.33" priority="2" width="3.25"/>
-  <edge id="N_I6_I6" from="N_I6" to="I6" numLanes="2" speed="8.33" priority="2" width="3.00"/>
-  <edge id="I6_N_I6" from="I6" to="N_I6" numLanes="2" speed="8.33" priority="2" width="3.25"/>
-  <edge id="S_I6_I6" from="S_I6" to="I6" numLanes="2" speed="8.33" priority="2" width="3.00"/>
-  <edge id="I6_S_I6" from="I6" to="S_I6" numLanes="2" speed="8.33" priority="2" width="3.25"/>
+  <edge id="N_I6_I6" from="N_I6" to="RB_I6_NORTH" numLanes="2" speed="8.33" priority="2" width="3.00"/>
+  <edge id="I6_N_I6" from="RB_I6_NORTH" to="N_I6" numLanes="2" speed="8.33" priority="2" width="3.25"/>
+  <edge id="S_I6_I6" from="S_I6" to="RB_I6_SOUTH" numLanes="2" speed="8.33" priority="2" width="3.00"/>
+  <edge id="I6_S_I6" from="RB_I6_SOUTH" to="S_I6" numLanes="2" speed="8.33" priority="2" width="3.25"/>
+  <edge id="RB_I6_CITY_TO_NORTH" from="RB_I6_CITY" to="RB_I6_NORTH" numLanes="2" speed="8.33" priority="6"/>
+  <edge id="RB_I6_NORTH_TO_ATLANTIC" from="RB_I6_NORTH" to="RB_I6_ATLANTIC" numLanes="2" speed="8.33" priority="6"/>
+  <edge id="RB_I6_ATLANTIC_TO_SOUTH" from="RB_I6_ATLANTIC" to="RB_I6_SOUTH" numLanes="2" speed="8.33" priority="6"/>
+  <edge id="RB_I6_SOUTH_TO_CITY" from="RB_I6_SOUTH" to="RB_I6_CITY" numLanes="2" speed="8.33" priority="6"/>
   <edge id="N_I7_I7" from="N_I7" to="I7" numLanes="1" speed="8.33" priority="2" width="3.00"/>
   <edge id="I7_N_I7" from="I7" to="N_I7" numLanes="1" speed="8.33" priority="2" width="3.25"/>
   <edge id="S_I7_I7" from="S_I7" to="I7" numLanes="1" speed="8.33" priority="2" width="3.00"/>
   <edge id="I7_S_I7" from="I7" to="S_I7" numLanes="1" speed="8.33" priority="2" width="3.25"/>
+  <roundabout nodes="RB_I6_CITY RB_I6_NORTH RB_I6_ATLANTIC RB_I6_SOUTH" edges="RB_I6_CITY_TO_NORTH RB_I6_NORTH_TO_ATLANTIC RB_I6_ATLANTIC_TO_SOUTH RB_I6_SOUTH_TO_CITY"/>
 </edges>

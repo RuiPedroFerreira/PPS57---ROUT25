@@ -15,12 +15,11 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from pps57_sumo.generate_plain_corridor import generate  # noqa: E402
+from pps57_sumo.build_network import build_sumo_artifacts  # noqa: E402
 from pps57_sumo.detector_kpis import parse_detector_kpis  # noqa: E402
 from pps57_sumo.parse_tripinfo import parse_tripinfo  # noqa: E402
 from pps57_sumo.parse_insertion import parse_insertion_kpis  # noqa: E402
 from pps57_sumo.parse_emissions import parse_emissions  # noqa: E402
-from pps57_sumo.apply_tls_offsets import apply_tls_offsets  # noqa: E402
 from pps57_sumo.scenarios import (  # noqa: E402
     apply_scenario_profile,
     load_catalog,
@@ -261,28 +260,21 @@ def run_scenario_type(
 
     config = deepcopy(base_config)
     config["random_seed"] = int(seed)
-    rel_run_output = run_output_dir.relative_to(ROOT)
     config.setdefault("detectors", {})
-    config["detectors"]["e1_output"] = f"../../{rel_run_output}/e1_detectors.xml"
-    config["detectors"]["e2_output"] = f"../../{rel_run_output}/e2_queues.xml"
+    config["detectors"]["e1_output"] = "../../e1_detectors.xml"
+    config["detectors"]["e2_output"] = "../../e2_queues.xml"
 
-    generate(
+    artifacts = build_sumo_artifacts(
         config,
-        ROOT / "sumo/plain",
-        routes_output=ROOT / "sumo/routes/routes.rou.xml",
-        bus_stops_output=ROOT / "sumo/additional/bus_stops.add.xml",
-        detectors_output=ROOT / "sumo/additional/detectors.add.xml",
-        parking_output=ROOT / "sumo/additional/parking.add.xml",
-        calibrators_output=ROOT / "sumo/additional/calibrators.add.xml",
-        tls_offsets_output=ROOT / "sumo/additional/tls_offsets.add.xml",
+        root=ROOT,
+        base_dir=run_output_dir / "sumo",
+        output_dir=run_output_dir,
+        build_net=not args.skip_build,
     )
     (run_output_dir / "resolved_config.json").write_text(
         json.dumps(config, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
-
-    if not args.skip_build:
-        build_network(config)
 
     summary = scenario_summary(config)
     summary["run_type"] = run_type
@@ -290,19 +282,21 @@ def run_scenario_type(
     summary["outputs_dir"] = str(run_output_dir.relative_to(ROOT))
     summary["reports_dir"] = str(run_report_dir.relative_to(ROOT))
     summary["max_steps"] = args.steps
+    summary["sumocfg"] = str(artifacts.sumocfg_file.relative_to(ROOT))
+    summary["network"] = str(artifacts.network_file.relative_to(ROOT))
 
     if args.generate_only:
         summary["status"] = "generated"
         return summary
 
     if run_type == "baseline":
-        run_baseline_sumo(args, config, run_output_dir)
+        run_baseline_sumo(args, config, run_output_dir, artifacts.sumocfg_file)
     elif run_type == "cits":
-        run_cits(args, scenario_id, run_output_dir, run_report_dir)
+        run_cits(args, scenario_id, run_output_dir, run_report_dir, artifacts)
     elif run_type == "tsp_no_actuation":
-        run_tsp(args, scenario_id, run_output_dir, run_report_dir, apply_actuation=False)
+        run_tsp(args, scenario_id, run_output_dir, run_report_dir, artifacts, apply_actuation=False)
     elif run_type == "tsp_actuation":
-        run_tsp(args, scenario_id, run_output_dir, run_report_dir, apply_actuation=True)
+        run_tsp(args, scenario_id, run_output_dir, run_report_dir, artifacts, apply_actuation=True)
     else:  # pragma: no cover - argparse prevents this.
         raise SystemExit(f"Unknown run type: {run_type}")
 
@@ -317,41 +311,11 @@ def run_scenario_type(
     return summary
 
 
-def build_network(config: dict | None = None) -> None:
-    network_cfg = (config or {}).get("network", {}) if config else {}
-    cycle_time = "90"
-    intersections = network_cfg.get("intersections", []) if network_cfg else []
-    if intersections:
-        cycles = {int(i.get("tls_cycle_s", 90)) for i in intersections if "tls_cycle_s" in i}
-        if cycles and len(cycles) == 1:
-            cycle_time = str(cycles.pop())
-    cmd = [
-        "netconvert",
-        "--node-files", "sumo/plain/corredor.nod.xml",
-        "--edge-files", "sumo/plain/corredor.edg.xml",
-        "--output-file", "sumo/network/corredor.net.xml",
-        "--no-turnarounds", "true",
-        "--tls.default-type", "static",
-        "--tls.cycle.time", cycle_time,
-        "--tls.yellow.time", "3",
-    ]
-    if network_cfg.get("enable_sidewalks"):
-        cmd.extend(["--sidewalks.guess", "true"])
-    if network_cfg.get("enable_pedestrian_crossings"):
-        cmd.extend(["--crossings.guess", "true", "--walkingareas", "true"])
-    _run(cmd)
-    overrides_path = ROOT / "sumo/additional/tls_offsets.add.xml"
-    if overrides_path.exists():
-        modified = apply_tls_offsets(ROOT / "sumo/network/corredor.net.xml", overrides_path)
-        if modified:
-            print(f"applied {modified} tls offsets")
-
-
-def run_baseline_sumo(args: argparse.Namespace, config: dict, run_output_dir: Path) -> None:
+def run_baseline_sumo(args: argparse.Namespace, config: dict, run_output_dir: Path, sumocfg: Path) -> None:
     binary = config.get("sumo", {}).get("default_gui_binary", "sumo-gui") if args.gui else args.sumo_binary
     cmd = [
         binary,
-        "-c", "sumo/corredor.sumocfg",
+        "-c", str(sumocfg),
         "--duration-log.statistics",
         "--tripinfo-output", str(run_output_dir / "tripinfo.xml"),
         "--summary-output", str(run_output_dir / "summary.xml"),
@@ -367,9 +331,9 @@ def run_baseline_sumo(args: argparse.Namespace, config: dict, run_output_dir: Pa
     _run(cmd)
 
 
-def run_cits(args: argparse.Namespace, scenario_id: str, run_output_dir: Path, run_report_dir: Path) -> None:
+def run_cits(args: argparse.Namespace, scenario_id: str, run_output_dir: Path, run_report_dir: Path, artifacts) -> None:
     clear_global_sumo_outputs()
-    config_path = write_cits_config(scenario_id, run_output_dir, run_report_dir)
+    config_path = write_cits_config(scenario_id, run_output_dir, run_report_dir, artifacts)
     config = load_cits_config(config_path, root=ROOT)
     controller = CITSEmulationController(config)
     controller.run_with_sumo(steps=args.steps, sumo_binary=args.sumo_binary, gui=args.gui)
@@ -380,11 +344,12 @@ def run_tsp(
     scenario_id: str,
     run_output_dir: Path,
     run_report_dir: Path,
+    artifacts,
     *,
     apply_actuation: bool,
 ) -> None:
     clear_global_sumo_outputs()
-    cits_config_path = write_cits_config(scenario_id, run_output_dir, run_report_dir)
+    cits_config_path = write_cits_config(scenario_id, run_output_dir, run_report_dir, artifacts)
     tsp_config_path = write_tsp_config(scenario_id, run_output_dir, run_report_dir)
     cits_config = load_cits_config(cits_config_path, root=ROOT)
     tsp_config = load_tsp_config(tsp_config_path, root=ROOT)
@@ -406,9 +371,15 @@ def collect_run_kpis(run_output_dir: Path) -> dict:
     return kpis
 
 
-def write_cits_config(scenario_id: str, run_output_dir: Path, run_report_dir: Path) -> Path:
+def write_cits_config(scenario_id: str, run_output_dir: Path, run_report_dir: Path, artifacts) -> Path:
     raw = json.loads((ROOT / "configs/cits_v2x_config.json").read_text(encoding="utf-8"))
     raw["scenario_id"] = f"{scenario_id}_cits"
+    raw.setdefault("sumo", {}).update(
+        {
+            "sumocfg": str(artifacts.sumocfg_file.relative_to(ROOT)),
+            "network": str(artifacts.network_file.relative_to(ROOT)),
+        }
+    )
     raw.setdefault("logging", {}).update(
         {
             "message_log": str((run_output_dir / "cits_messages.jsonl").relative_to(ROOT)),

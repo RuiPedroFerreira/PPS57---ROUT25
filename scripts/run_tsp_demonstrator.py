@@ -30,6 +30,7 @@ from pps57_opt.demonstrator import (  # noqa: E402
     write_demonstrator_report,
 )
 from pps57_sumo.parse_tripinfo import parse_tripinfo  # noqa: E402
+from pps57_sumo.build_network import build_sumo_artifacts  # noqa: E402
 from pps57_tsp.config import TSPConfig, load_tsp_config  # noqa: E402
 from pps57_tsp.controller import TSPControlController  # noqa: E402
 
@@ -181,39 +182,14 @@ def _build_network(*, tls_type: str) -> None:
     (ROOT / "outputs").mkdir(exist_ok=True)
     (ROOT / "reports").mkdir(exist_ok=True)
     (ROOT / "sumo/network").mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        [
-            sys.executable,
-            "src/pps57_sumo/generate_plain_corridor.py",
-            "--config",
-            "configs/sumo_scenario_base.json",
-            "--output",
-            "sumo/plain",
-        ],
-        cwd=ROOT,
-        check=True,
-    )
-    subprocess.run(
-        [
-            "netconvert",
-            "--node-files",
-            "sumo/plain/corredor.nod.xml",
-            "--edge-files",
-            "sumo/plain/corredor.edg.xml",
-            "--output-file",
-            "sumo/network/corredor.net.xml",
-            "--no-turnarounds",
-            "true",
-            "--tls.default-type",
-            tls_type,
-            "--tls.cycle.time",
-            "90",
-            "--tls.yellow.time",
-            "3",
-        ],
-        cwd=ROOT,
-        check=True,
-    )
+    config = json.loads((ROOT / "configs/sumo_scenario_base.json").read_text(encoding="utf-8"))
+    # The shared builder uses the realism-critical netconvert flags
+    # (sidewalks/crossings/walkingareas) and applies the TLS offset/clearance
+    # patch after netconvert. The demonstrator currently uses static TLS only;
+    # keep the argument for API compatibility with older calls.
+    if tls_type != "static":
+        raise ValueError(f"Unsupported demonstrator tls_type={tls_type!r}; use the scenario runner for actuated builds.")
+    build_sumo_artifacts(config, root=ROOT, base_dir=Path("sumo"))
 
 
 def _write_current_kpis(label: str) -> None:
