@@ -143,6 +143,52 @@ scenarios:
       - queue_baseline
     expected_use: Validar paridade do TSP entre AM e PM peaks.
 
+  baseline_am_peak_low:
+    description: Envelope inferior da ponta da manha.
+    realism_basis: >
+      Sem contagens reais, a procura central deve ser tratada como proxy. Este
+      cenario reduz a procura em cerca de 15% para avaliar se as conclusoes
+      dependem demasiado de uma unica hipotese.
+    kpi_focus:
+      - demand_uncertainty_low
+      - travel_time_range
+      - queue_range
+    expected_use: Limite inferior para relatorios de sensibilidade.
+
+  baseline_am_peak_high:
+    description: Envelope superior da ponta da manha.
+    realism_basis: >
+      Aumenta a procura em cerca de 15% sem recorrer a calibradores
+      sinteticos, expondo risco de spillback e saturacao quando a procura real
+      estiver acima do proxy central.
+    kpi_focus:
+      - demand_uncertainty_high
+      - queue_spillback_risk
+      - travel_time_range
+    expected_use: Limite superior para relatorios de sensibilidade.
+
+  baseline_pm_peak_low:
+    description: Envelope inferior da ponta da tarde.
+    realism_basis: >
+      Mantem o padrao direcional PM mas reduz a procura, permitindo comparar
+      robustez do controlador quando o regresso da tarde e mais fraco.
+    kpi_focus:
+      - pm_uncertainty_low
+      - direction_symmetry
+      - queue_range
+    expected_use: Limite inferior PM para relatorios de sensibilidade.
+
+  baseline_pm_peak_high:
+    description: Envelope superior da ponta da tarde.
+    realism_basis: >
+      Mantem o padrao direcional PM e aumenta a procura para testar se ganhos e
+      penalizacoes se mantem quando a ponta da tarde fica perto da saturacao.
+    kpi_focus:
+      - pm_uncertainty_high
+      - direction_symmetry
+      - queue_spillback_risk
+    expected_use: Limite superior PM para relatorios de sensibilidade.
+
   congested_am_peak:
     description: Pico da manha em regime saturado (grau de saturacao acima de 0.95).
     realism_basis: >

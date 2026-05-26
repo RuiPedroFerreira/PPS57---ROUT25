@@ -125,7 +125,7 @@ def scenario_summary(config: dict[str, Any]) -> dict[str, Any]:
     return {
         "scenario_id": config.get("scenario_id"),
         "active_demand_profile": config.get("active_demand_profile"),
-        "flow_count": len(flows),
+        "flow_count": sum(_expanded_flow_count(flow) for flow in flows),
         "estimated_car_departures": sum(_estimated_flow_departures(flow) for flow in flows),
         "estimated_bus_departures": sum(_estimated_service_departures(service, config) for service in services),
         "event_count": len(events),
@@ -531,6 +531,13 @@ def _estimated_flow_departures(flow: dict[str, Any]) -> int:
     if end <= begin or period <= 0:
         return 0
     return max(0, math.ceil((end - begin) / period))
+
+
+def _expanded_flow_count(flow: dict[str, Any]) -> int:
+    entries = flow.get("time_profile")
+    if isinstance(entries, list) and entries:
+        return len(entries)
+    return 1
 
 
 def _estimated_service_departures(service: dict[str, Any], config: dict[str, Any]) -> int:
