@@ -39,72 +39,187 @@
         "name": "Casa da Musica / Boavista",
         "x": 0,
         "y": 0,
+        "z": 95,
         "type": "traffic_light",
         "major_lanes": 2,
         "minor_lanes": 2,
-        "rsu_id": "RSU_BOAVISTA_01"
+        "rsu_id": "RSU_BOAVISTA_01",
+        "cross_street_intensity": "major",
+        "tls_offset_s": 0,
+        "tls_cycle_s": 90,
+        "tls_program": {
+          "green_main_s": 43,
+          "yellow_main_s": 3,
+          "all_red_main_to_cross_s": 1,
+          "green_minor_s": 39,
+          "yellow_minor_s": 3,
+          "all_red_cross_to_main_s": 1,
+          "note": "Casa da Musica e um cruzamento com transversal pesada (eixo cultural + pedonal denso); split proximo do equilibrio (g/C_main = 0.48) com 1s de all-red em cada transicao para garantir clearance interval."
+        }
       },
       {
         "id": "I2",
         "name": "Av. Boavista / Bessa",
         "x": 650,
         "y": -25,
+        "z": 88,
         "type": "traffic_light",
         "major_lanes": 2,
         "minor_lanes": 1,
-        "rsu_id": "RSU_BOAVISTA_02"
+        "rsu_id": "RSU_BOAVISTA_02",
+        "cross_street_intensity": "medium",
+        "tls_offset_s": 38,
+        "tls_cycle_s": 90,
+        "tls_program": {
+          "green_main_s": 51,
+          "yellow_main_s": 3,
+          "all_red_main_to_cross_s": 1,
+          "green_minor_s": 31,
+          "yellow_minor_s": 3,
+          "all_red_cross_to_main_s": 1,
+          "note": "Transversal media (rua da Bessa, residencial-comercial); split HCM-tipico (g/C_main = 0.57) com all-red 1s/1s."
+        }
       },
       {
         "id": "I3",
         "name": "Av. Boavista / Antunes Guimaraes",
         "x": 1350,
         "y": -85,
+        "z": 72,
         "type": "traffic_light",
         "major_lanes": 2,
         "minor_lanes": 1,
-        "rsu_id": "RSU_BOAVISTA_03"
+        "rsu_id": "RSU_BOAVISTA_03",
+        "cross_street_intensity": "medium",
+        "tls_offset_s": 26,
+        "tls_cycle_s": 90,
+        "tls_program": {
+          "green_main_s": 51,
+          "yellow_main_s": 3,
+          "all_red_main_to_cross_s": 1,
+          "green_minor_s": 31,
+          "yellow_minor_s": 3,
+          "all_red_cross_to_main_s": 1,
+          "note": "Transversal media; split simetrico ao I2 para manter coordenacao (g/C_main = 0.57) com all-red 1s/1s."
+        }
       },
       {
         "id": "I4",
         "name": "Av. Boavista / Serralves",
         "x": 2150,
         "y": -130,
+        "z": 55,
         "type": "traffic_light",
         "major_lanes": 2,
         "minor_lanes": 1,
-        "rsu_id": "RSU_BOAVISTA_04"
+        "rsu_id": "RSU_BOAVISTA_04",
+        "cross_street_intensity": "minor",
+        "tls_offset_s": 64,
+        "tls_cycle_s": 90,
+        "tls_program": {
+          "green_main_s": 59,
+          "yellow_main_s": 3,
+          "all_red_main_to_cross_s": 1,
+          "green_minor_s": 23,
+          "yellow_minor_s": 3,
+          "all_red_cross_to_main_s": 1,
+          "note": "Transversal menor (acesso a Fundacao Serralves, baixa procura motorizada); split favorece o corredor (g/C_main = 0.66) com all-red 1s/1s."
+        }
       },
       {
         "id": "I5",
         "name": "Av. Boavista / Marechal Gomes da Costa",
         "x": 2950,
         "y": -80,
+        "z": 42,
         "type": "traffic_light",
         "major_lanes": 2,
         "minor_lanes": 1,
-        "rsu_id": "RSU_BOAVISTA_05"
+        "rsu_id": "RSU_BOAVISTA_05",
+        "cross_street_intensity": "medium",
+        "tls_offset_s": 12,
+        "tls_cycle_s": 90,
+        "tls_program": {
+          "green_main_s": 51,
+          "yellow_main_s": 3,
+          "all_red_main_to_cross_s": 1,
+          "green_minor_s": 31,
+          "yellow_minor_s": 3,
+          "all_red_cross_to_main_s": 1,
+          "note": "Transversal media; mesmo split que I2/I3 para preservar bandwidth (g/C_main = 0.57) com all-red 1s/1s."
+        }
       },
       {
         "id": "I6",
         "name": "Praca do Imperio",
         "x": 3820,
         "y": 45,
-        "type": "traffic_light",
+        "z": 28,
+        "type": "priority",
         "major_lanes": 2,
         "minor_lanes": 2,
-        "rsu_id": "RSU_BOAVISTA_06"
+        "rsu_id": "RSU_BOAVISTA_06",
+        "cross_street_intensity": "major",
+        "roundabout_approximation": true,
+        "note": "Praca do Imperio e uma rotunda real (4 bracos, 2-3 vias circulantes). Modelada aqui como intersecao priority de no unico: o corredor mantem prioridade nominal e o trafego transversal cede como na entrada de uma rotunda. Esta aproximacao captura a dinamica operacional dominante (yield-on-entry) sem o overhead topologico de uma rotunda multi-no. Em pico saturado o gap acceptance gera fila persistente nas aproximacoes N/S, o que reflecte o comportamento real da Praca do Imperio em hora de ponta. Uma futura iteracao pode emitir um anel de 4 nos com edges circulantes."
       },
       {
         "id": "I7",
         "name": "Castelo do Queijo / Matosinhos",
         "x": 4650,
         "y": 125,
+        "z": 12,
         "type": "traffic_light",
         "major_lanes": 2,
         "minor_lanes": 1,
-        "rsu_id": "RSU_BOAVISTA_07"
+        "rsu_id": "RSU_BOAVISTA_07",
+        "cross_street_intensity": "medium",
+        "tls_offset_s": 18,
+        "tls_cycle_s": 90,
+        "tls_program": {
+          "green_main_s": 51,
+          "yellow_main_s": 3,
+          "all_red_main_to_cross_s": 1,
+          "green_minor_s": 31,
+          "yellow_minor_s": 3,
+          "all_red_cross_to_main_s": 1,
+          "note": "Transversal media (entrada/saida Matosinhos); split simetrico aos restantes para manter onda verde no corredor (g/C_main = 0.57) com all-red 1s/1s."
+        }
       }
-    ]
+    ],
+    "lane_allow_rules": [
+      {"edge_id": "I1_I2", "lane_index": 0, "allow": "bus emergency taxi"},
+      {"edge_id": "I2_I1", "lane_index": 0, "allow": "bus emergency taxi"},
+      {"edge_id": "I2_I3", "lane_index": 0, "allow": "bus emergency taxi"},
+      {"edge_id": "I3_I2", "lane_index": 0, "allow": "bus emergency taxi"},
+      {"edge_id": "I3_I4", "lane_index": 0, "allow": "bus emergency taxi"},
+      {"edge_id": "I4_I3", "lane_index": 0, "allow": "bus emergency taxi"},
+      {"edge_id": "I4_I5", "lane_index": 0, "allow": "bus emergency taxi"},
+      {"edge_id": "I5_I4", "lane_index": 0, "allow": "bus emergency taxi"},
+      {"edge_id": "I5_I6", "lane_index": 0, "allow": "bus emergency taxi"},
+      {"edge_id": "I6_I5", "lane_index": 0, "allow": "bus emergency taxi"},
+      {"edge_id": "I6_I7", "lane_index": 0, "allow": "bus emergency taxi"},
+      {"edge_id": "I7_I6", "lane_index": 0, "allow": "bus emergency taxi"}
+    ],
+    "edge_widths": [
+      {"edge_id_prefix": "I", "width_m": 3.25},
+      {"edge_id_prefix": "CITY_EAST_", "width_m": 3.5},
+      {"edge_id_prefix": "ATLANTIC_WEST_", "width_m": 3.5},
+      {"edge_id_prefix": "N_", "width_m": 3.0},
+      {"edge_id_prefix": "S_", "width_m": 3.0}
+    ],
+    "terminal_z_m": {
+      "CITY_EAST": 102,
+      "ATLANTIC_WEST": 6
+    },
+    "minor_approach_z_drop_m": 1.5,
+    "enable_sidewalks": true,
+    "enable_pedestrian_crossings": true,
+    "cross_street_intensity_periods": {
+      "major": {"ns": 20, "sn": 24},
+      "medium": {"ns": 32, "sn": 40},
+      "minor": {"ns": 50, "sn": 60}
+    }
   },
   "vehicle_types": [
     {
@@ -113,9 +228,291 @@
       "length": 5.0,
       "accel": 2.4,
       "decel": 4.5,
+      "emergencyDecel": 7.0,
       "sigma": 0.5,
+      "tau": 1.1,
+      "minGap": 2.5,
       "maxSpeed": 13.89,
+      "speedFactor": "normc(1.0,0.10,0.7,1.3)",
+      "carFollowModel": "EIDM",
+      "delta": "4.0",
+      "tpreview": "4.0",
+      "tPersDrive": "3.0",
+      "tPersEstimate": "10.0",
+      "ccoolness": "0.99",
+      "laneChangeModel": "LC2013",
+      "lcAssertive": "1.0",
+      "lcCooperative": "0.7",
+      "lcImpatience": "0.3",
+      "lcStrategic": "1.0",
+      "lcKeepRight": "0.8",
+      "emissionClass": "HBEFA3/PC_G_EU6",
+      "jmCrossingGap": "10",
+      "jmIgnoreFoeProb": "0.0",
+      "impatience": "0.5",
+      "actionStepLength": "1.0",
+      "params": [
+        {"key": "has.driverstate.device", "value": "true"},
+        {"key": "device.driverstate.minAwareness", "value": "0.75"},
+        {"key": "device.driverstate.errorTimeScaleCoefficient", "value": "100"},
+        {"key": "device.driverstate.maximalReactionTime", "value": "2.0"}
+      ],
       "color": "0.7,0.7,0.7"
+    },
+    {
+      "id": "car_cautious",
+      "vClass": "passenger",
+      "length": 5.0,
+      "accel": 2.0,
+      "decel": 4.0,
+      "emergencyDecel": 6.5,
+      "sigma": 0.25,
+      "tau": 1.4,
+      "minGap": 3.0,
+      "maxSpeed": 13.89,
+      "speedFactor": "normc(0.92,0.08,0.65,1.10)",
+      "carFollowModel": "EIDM",
+      "delta": "4.0",
+      "tpreview": "5.0",
+      "tPersDrive": "4.0",
+      "tPersEstimate": "12.0",
+      "ccoolness": "0.99",
+      "laneChangeModel": "LC2013",
+      "lcAssertive": "0.5",
+      "lcCooperative": "0.9",
+      "lcImpatience": "0.1",
+      "lcStrategic": "0.7",
+      "lcKeepRight": "1.0",
+      "emissionClass": "HBEFA3/PC_G_EU5",
+      "jmCrossingGap": "14",
+      "jmIgnoreFoeProb": "0.0",
+      "impatience": "off",
+      "actionStepLength": "1.5",
+      "params": [
+        {"key": "has.driverstate.device", "value": "true"},
+        {"key": "device.driverstate.minAwareness", "value": "0.90"},
+        {"key": "device.driverstate.maximalReactionTime", "value": "1.8"}
+      ],
+      "color": "0.55,0.75,0.55"
+    },
+    {
+      "id": "car_aggressive",
+      "vClass": "passenger",
+      "length": 5.0,
+      "accel": 2.8,
+      "decel": 5.0,
+      "emergencyDecel": 8.0,
+      "sigma": 0.8,
+      "tau": 0.8,
+      "minGap": 1.8,
+      "maxSpeed": 13.89,
+      "speedFactor": "normc(1.10,0.12,0.85,1.45)",
+      "carFollowModel": "EIDM",
+      "delta": "4.0",
+      "tpreview": "3.0",
+      "tPersDrive": "2.0",
+      "tPersEstimate": "8.0",
+      "ccoolness": "0.85",
+      "laneChangeModel": "LC2013",
+      "lcAssertive": "1.8",
+      "lcCooperative": "0.4",
+      "lcImpatience": "0.7",
+      "lcStrategic": "1.5",
+      "lcKeepRight": "0.4",
+      "lcSpeedGain": "1.5",
+      "emissionClass": "HBEFA3/PC_G_EU6",
+      "jmCrossingGap": "6",
+      "jmIgnoreFoeProb": "0.05",
+      "impatience": "1.0",
+      "actionStepLength": "0.5",
+      "params": [
+        {"key": "has.driverstate.device", "value": "true"},
+        {"key": "device.driverstate.minAwareness", "value": "0.55"},
+        {"key": "device.driverstate.errorTimeScaleCoefficient", "value": "60"},
+        {"key": "device.driverstate.maximalReactionTime", "value": "2.5"}
+      ],
+      "color": "0.85,0.30,0.30"
+    },
+    {
+      "id": "car_acc",
+      "vClass": "passenger",
+      "length": 5.0,
+      "accel": 2.8,
+      "decel": 4.8,
+      "emergencyDecel": 7.5,
+      "sigma": 0.05,
+      "tau": 0.6,
+      "minGap": 1.5,
+      "maxSpeed": 13.89,
+      "speedFactor": "normc(1.0,0.04,0.9,1.10)",
+      "carFollowModel": "ACC",
+      "laneChangeModel": "LC2013",
+      "lcAssertive": "1.2",
+      "lcCooperative": "0.85",
+      "lcImpatience": "0.1",
+      "lcStrategic": "1.0",
+      "lcKeepRight": "0.7",
+      "emissionClass": "HBEFA3/zero",
+      "jmCrossingGap": "8",
+      "jmIgnoreFoeProb": "0.0",
+      "impatience": "0.2",
+      "actionStepLength": "0.2",
+      "params": [
+        {"key": "has.bluelight.device", "value": "false"}
+      ],
+      "color": "0.25,0.65,1.0"
+    },
+    {
+      "id": "car_cacc",
+      "vClass": "passenger",
+      "length": 5.0,
+      "accel": 3.0,
+      "decel": 5.0,
+      "emergencyDecel": 8.0,
+      "sigma": 0.0,
+      "tau": 0.5,
+      "minGap": 1.0,
+      "maxSpeed": 13.89,
+      "speedFactor": "normc(1.0,0.02,0.95,1.05)",
+      "carFollowModel": "CACC",
+      "laneChangeModel": "LC2013",
+      "lcAssertive": "1.0",
+      "lcCooperative": "1.0",
+      "lcImpatience": "0.05",
+      "lcStrategic": "1.0",
+      "lcKeepRight": "0.5",
+      "emissionClass": "HBEFA3/zero",
+      "jmCrossingGap": "6",
+      "jmIgnoreFoeProb": "0.0",
+      "impatience": "0.0",
+      "actionStepLength": "0.1",
+      "color": "0.40,0.85,0.40"
+    },
+    {
+      "id": "motorcycle",
+      "vClass": "motorcycle",
+      "length": 2.2,
+      "accel": 3.2,
+      "decel": 5.5,
+      "emergencyDecel": 8.5,
+      "sigma": 0.55,
+      "tau": 0.8,
+      "minGap": 1.5,
+      "maxSpeed": 16.67,
+      "speedFactor": "normc(1.05,0.12,0.7,1.4)",
+      "carFollowModel": "EIDM",
+      "delta": "4.0",
+      "tpreview": "3.0",
+      "tPersDrive": "2.0",
+      "tPersEstimate": "8.0",
+      "ccoolness": "0.90",
+      "laneChangeModel": "LC2013",
+      "lcAssertive": "2.0",
+      "lcCooperative": "0.4",
+      "lcImpatience": "0.7",
+      "lcStrategic": "1.5",
+      "lcKeepRight": "0.2",
+      "lcSpeedGain": "2.0",
+      "lcSublane": "1.5",
+      "emissionClass": "HBEFA3/zero",
+      "jmCrossingGap": "5",
+      "jmIgnoreFoeProb": "0.1",
+      "impatience": "1.0",
+      "guiShape": "motorcycle",
+      "color": "1,0.55,0"
+    },
+    {
+      "id": "taxi",
+      "vClass": "taxi",
+      "length": 5.0,
+      "accel": 2.6,
+      "decel": 4.8,
+      "emergencyDecel": 7.5,
+      "sigma": 0.55,
+      "tau": 1.0,
+      "minGap": 2.2,
+      "maxSpeed": 13.89,
+      "speedFactor": "normc(1.05,0.10,0.8,1.3)",
+      "carFollowModel": "EIDM",
+      "delta": "4.0",
+      "tpreview": "3.5",
+      "tPersDrive": "2.5",
+      "tPersEstimate": "9.0",
+      "ccoolness": "0.92",
+      "laneChangeModel": "LC2013",
+      "lcAssertive": "1.5",
+      "lcCooperative": "0.5",
+      "lcImpatience": "0.6",
+      "lcStrategic": "1.2",
+      "lcKeepRight": "0.5",
+      "emissionClass": "HBEFA3/PC_G_EU6",
+      "jmCrossingGap": "7",
+      "jmIgnoreFoeProb": "0.05",
+      "impatience": "0.8",
+      "guiShape": "taxi",
+      "color": "1,0.85,0"
+    },
+    {
+      "id": "lcv",
+      "vClass": "delivery",
+      "length": 6.5,
+      "accel": 1.8,
+      "decel": 4.0,
+      "emergencyDecel": 6.5,
+      "sigma": 0.45,
+      "tau": 1.2,
+      "minGap": 2.8,
+      "maxSpeed": 13.89,
+      "speedFactor": "normc(0.95,0.08,0.7,1.15)",
+      "carFollowModel": "EIDM",
+      "delta": "4.0",
+      "tpreview": "4.0",
+      "tPersDrive": "3.0",
+      "tPersEstimate": "10.0",
+      "ccoolness": "0.95",
+      "laneChangeModel": "LC2013",
+      "lcAssertive": "0.8",
+      "lcCooperative": "0.8",
+      "lcImpatience": "0.2",
+      "lcStrategic": "0.9",
+      "lcKeepRight": "1.0",
+      "emissionClass": "HBEFA3/LDV_D_EU6",
+      "jmCrossingGap": "12",
+      "jmIgnoreFoeProb": "0.0",
+      "impatience": "0.3",
+      "guiShape": "delivery",
+      "color": "0.85,0.85,0.95"
+    },
+    {
+      "id": "hgv",
+      "vClass": "truck",
+      "length": 9.0,
+      "accel": 1.2,
+      "decel": 3.5,
+      "emergencyDecel": 5.5,
+      "sigma": 0.35,
+      "tau": 1.6,
+      "minGap": 3.5,
+      "maxSpeed": 13.89,
+      "speedFactor": "normc(0.90,0.06,0.75,1.05)",
+      "carFollowModel": "EIDM",
+      "delta": "4.0",
+      "tpreview": "5.0",
+      "tPersDrive": "3.5",
+      "tPersEstimate": "11.0",
+      "ccoolness": "0.97",
+      "laneChangeModel": "LC2013",
+      "lcAssertive": "0.6",
+      "lcCooperative": "0.85",
+      "lcImpatience": "0.15",
+      "lcStrategic": "0.8",
+      "lcKeepRight": "1.0",
+      "emissionClass": "HBEFA3/HDV_D_EU6",
+      "jmCrossingGap": "16",
+      "jmIgnoreFoeProb": "0.0",
+      "impatience": "0.2",
+      "guiShape": "truck",
+      "color": "0.4,0.4,0.45"
     },
     {
       "id": "bus_12m",
@@ -123,8 +520,28 @@
       "length": 12.0,
       "accel": 1.1,
       "decel": 3.5,
+      "emergencyDecel": 5.5,
       "sigma": 0.25,
+      "tau": 1.4,
+      "minGap": 3.0,
       "maxSpeed": 13.89,
+      "speedFactor": "normc(0.95,0.05,0.80,1.05)",
+      "carFollowModel": "EIDM",
+      "delta": "4.0",
+      "tpreview": "5.0",
+      "tPersDrive": "3.5",
+      "tPersEstimate": "11.0",
+      "ccoolness": "0.99",
+      "laneChangeModel": "LC2013",
+      "lcAssertive": "0.7",
+      "lcCooperative": "0.9",
+      "lcImpatience": "0.1",
+      "lcStrategic": "0.7",
+      "lcKeepRight": "0.6",
+      "emissionClass": "HBEFA3/HDV_D_EU6",
+      "jmCrossingGap": "18",
+      "jmIgnoreFoeProb": "0.0",
+      "impatience": "0.1",
       "guiShape": "bus",
       "color": "0,0,1"
     },
@@ -134,10 +551,58 @@
       "length": 5.5,
       "accel": 2.8,
       "decel": 5.0,
+      "emergencyDecel": 8.5,
       "sigma": 0.2,
+      "tau": 0.9,
+      "minGap": 2.0,
       "maxSpeed": 16.67,
+      "speedFactor": "normc(1.15,0.05,1.0,1.3)",
+      "carFollowModel": "EIDM",
+      "delta": "4.0",
+      "tpreview": "4.0",
+      "tPersDrive": "2.5",
+      "tPersEstimate": "9.0",
+      "ccoolness": "0.99",
+      "laneChangeModel": "LC2013",
+      "lcAssertive": "2.5",
+      "lcCooperative": "0.5",
+      "lcImpatience": "0.9",
+      "lcStrategic": "1.8",
+      "lcKeepRight": "0.0",
+      "emissionClass": "HBEFA3/PC_G_EU6",
+      "jmCrossingGap": "4",
+      "jmIgnoreFoeProb": "0.1",
+      "impatience": "1.0",
       "guiShape": "emergency",
       "color": "1,0,0"
+    }
+  ],
+  "vehicle_type_distributions": [
+    {
+      "id": "urban_mix",
+      "description": "Mistura realista de trafego urbano em Porto com heterogeneidade de condutor: ligeiros separados por perfil (normal/cauteloso/agressivo), motociclos, taxis/TVDE, distribuicao e residual pesados.",
+      "components": [
+        {"type": "car", "probability": 0.36},
+        {"type": "car_cautious", "probability": 0.18},
+        {"type": "car_aggressive", "probability": 0.18},
+        {"type": "motorcycle", "probability": 0.10},
+        {"type": "taxi", "probability": 0.06},
+        {"type": "lcv", "probability": 0.08},
+        {"type": "hgv", "probability": 0.04}
+      ]
+    },
+    {
+      "id": "cross_street_mix",
+      "description": "Mix tipico de via secundaria: menos pesados, mais ligeiros e motociclos. Inclui perfis de condutor cauteloso e agressivo.",
+      "components": [
+        {"type": "car", "probability": 0.39},
+        {"type": "car_cautious", "probability": 0.20},
+        {"type": "car_aggressive", "probability": 0.19},
+        {"type": "motorcycle", "probability": 0.12},
+        {"type": "taxi", "probability": 0.05},
+        {"type": "lcv", "probability": 0.04},
+        {"type": "hgv", "probability": 0.01}
+      ]
     }
   ],
   "public_transport": {
@@ -162,7 +627,8 @@
         "lane_index": 0,
         "center_m": 140,
         "length_m": 30,
-        "dwell_s": 22
+        "bay": true,
+        "dwell_s": {"mean": 22, "std": 5, "min": 12, "max": 45}
       },
       {
         "id": "bs_bessa_w",
@@ -171,7 +637,8 @@
         "lane_index": 0,
         "center_m": 150,
         "length_m": 30,
-        "dwell_s": 20
+        "bay": false,
+        "dwell_s": {"mean": 20, "std": 5, "min": 10, "max": 40}
       },
       {
         "id": "bs_antunes_guimaraes_w",
@@ -180,7 +647,8 @@
         "lane_index": 0,
         "center_m": 170,
         "length_m": 30,
-        "dwell_s": 18
+        "bay": false,
+        "dwell_s": {"mean": 18, "std": 4, "min": 10, "max": 35}
       },
       {
         "id": "bs_serralves_w",
@@ -189,7 +657,8 @@
         "lane_index": 0,
         "center_m": 190,
         "length_m": 30,
-        "dwell_s": 24
+        "bay": true,
+        "dwell_s": {"mean": 24, "std": 6, "min": 12, "max": 50}
       },
       {
         "id": "bs_marechal_w",
@@ -198,7 +667,8 @@
         "lane_index": 0,
         "center_m": 180,
         "length_m": 30,
-        "dwell_s": 20
+        "bay": false,
+        "dwell_s": {"mean": 20, "std": 5, "min": 10, "max": 40}
       },
       {
         "id": "bs_praca_imperio_w",
@@ -207,7 +677,8 @@
         "lane_index": 0,
         "center_m": 160,
         "length_m": 30,
-        "dwell_s": 26
+        "bay": true,
+        "dwell_s": {"mean": 26, "std": 6, "min": 14, "max": 55}
       },
       {
         "id": "bs_castelo_queijo_w",
@@ -216,7 +687,8 @@
         "lane_index": 0,
         "center_m": 170,
         "length_m": 30,
-        "dwell_s": 20
+        "bay": true,
+        "dwell_s": {"mean": 20, "std": 5, "min": 10, "max": 40}
       },
       {
         "id": "bs_castelo_queijo_e",
@@ -225,7 +697,8 @@
         "lane_index": 0,
         "center_m": 160,
         "length_m": 30,
-        "dwell_s": 20
+        "bay": true,
+        "dwell_s": {"mean": 20, "std": 5, "min": 10, "max": 40}
       },
       {
         "id": "bs_praca_imperio_e",
@@ -234,7 +707,8 @@
         "lane_index": 0,
         "center_m": 180,
         "length_m": 30,
-        "dwell_s": 26
+        "bay": true,
+        "dwell_s": {"mean": 26, "std": 6, "min": 14, "max": 55}
       },
       {
         "id": "bs_marechal_e",
@@ -243,7 +717,8 @@
         "lane_index": 0,
         "center_m": 190,
         "length_m": 30,
-        "dwell_s": 20
+        "bay": false,
+        "dwell_s": {"mean": 20, "std": 5, "min": 10, "max": 40}
       },
       {
         "id": "bs_serralves_e",
@@ -252,7 +727,8 @@
         "lane_index": 0,
         "center_m": 170,
         "length_m": 30,
-        "dwell_s": 24
+        "bay": true,
+        "dwell_s": {"mean": 24, "std": 6, "min": 12, "max": 50}
       },
       {
         "id": "bs_antunes_guimaraes_e",
@@ -261,7 +737,8 @@
         "lane_index": 0,
         "center_m": 150,
         "length_m": 30,
-        "dwell_s": 18
+        "bay": false,
+        "dwell_s": {"mean": 18, "std": 4, "min": 10, "max": 35}
       },
       {
         "id": "bs_bessa_e",
@@ -270,7 +747,8 @@
         "lane_index": 0,
         "center_m": 140,
         "length_m": 30,
-        "dwell_s": 20
+        "bay": false,
+        "dwell_s": {"mean": 20, "std": 5, "min": 10, "max": 40}
       },
       {
         "id": "bs_casa_musica_e",
@@ -279,7 +757,8 @@
         "lane_index": 0,
         "center_m": 135,
         "length_m": 30,
-        "dwell_s": 22
+        "bay": true,
+        "dwell_s": {"mean": 22, "std": 5, "min": 12, "max": 45}
       }
     ],
     "services": [
@@ -292,6 +771,12 @@
         "end_s": 7200,
         "headway_s": 600,
         "offset_s": 0,
+        "terminus_jitter_s": 30,
+        "headway_schedule": [
+          {"begin_s": 0, "end_s": 1800, "headway_s": 720},
+          {"begin_s": 1800, "end_s": 4800, "headway_s": 480},
+          {"begin_s": 4800, "end_s": 7200, "headway_s": 660}
+        ],
         "stops": [
           "bs_casa_musica_w",
           "bs_bessa_w",
@@ -311,6 +796,12 @@
         "end_s": 7200,
         "headway_s": 600,
         "offset_s": 300,
+        "terminus_jitter_s": 30,
+        "headway_schedule": [
+          {"begin_s": 0, "end_s": 1800, "headway_s": 720},
+          {"begin_s": 1800, "end_s": 4800, "headway_s": 480},
+          {"begin_s": 4800, "end_s": 7200, "headway_s": 660}
+        ],
         "stops": [
           "bs_castelo_queijo_e",
           "bs_praca_imperio_e",
@@ -330,6 +821,7 @@
         "end_s": 7200,
         "headway_s": 900,
         "offset_s": 180,
+        "terminus_jitter_s": 45,
         "stops": [
           "bs_casa_musica_w",
           "bs_bessa_w",
@@ -349,6 +841,7 @@
         "end_s": 7200,
         "headway_s": 900,
         "offset_s": 630,
+        "terminus_jitter_s": 45,
         "stops": [
           "bs_castelo_queijo_e",
           "bs_praca_imperio_e",
@@ -367,57 +860,75 @@
       "flows": [
         {
           "id": "flow_car_inbound_west_to_east_am_peak",
-          "type": "car",
+          "type": "urban_mix",
           "route": "route_boavista_west_to_east",
           "begin": 0,
           "end": 7200,
-          "period": 7.5,
+          "period": 5.0,
           "departLane": "best",
-          "departSpeed": "max"
+          "departSpeed": "max",
+          "time_profile": [
+            {"begin": 0,    "end": 1200, "scale": 0.65},
+            {"begin": 1200, "end": 2100, "scale": 0.95},
+            {"begin": 2100, "end": 2700, "scale": 1.20},
+            {"begin": 2700, "end": 3900, "scale": 1.35},
+            {"begin": 3900, "end": 4500, "scale": 1.20},
+            {"begin": 4500, "end": 5400, "scale": 0.95},
+            {"begin": 5400, "end": 7200, "scale": 0.80}
+          ]
         },
         {
           "id": "flow_car_outbound_east_to_west_am_peak",
-          "type": "car",
+          "type": "urban_mix",
           "route": "route_boavista_east_to_west",
           "begin": 0,
           "end": 7200,
-          "period": 11.0,
+          "period": 6.5,
           "departLane": "best",
-          "departSpeed": "max"
+          "departSpeed": "max",
+          "time_profile": [
+            {"begin": 0,    "end": 1200, "scale": 0.70},
+            {"begin": 1200, "end": 2100, "scale": 0.90},
+            {"begin": 2100, "end": 2700, "scale": 1.10},
+            {"begin": 2700, "end": 3900, "scale": 1.25},
+            {"begin": 3900, "end": 4500, "scale": 1.10},
+            {"begin": 4500, "end": 5400, "scale": 0.95},
+            {"begin": 5400, "end": 7200, "scale": 0.85}
+          ]
         },
         {
           "id": "flow_minor_NS_I1",
-          "type": "car",
+          "type": "cross_street_mix",
           "route": "route_cross_NS_I1",
           "begin": 10,
           "end": 7200,
-          "period": 31,
+          "period": 20,
           "departLane": "best",
           "departSpeed": "max"
         },
         {
           "id": "flow_minor_SN_I1",
-          "type": "car",
+          "type": "cross_street_mix",
           "route": "route_cross_SN_I1",
           "begin": 14,
           "end": 7200,
-          "period": 37,
+          "period": 24,
           "departLane": "best",
           "departSpeed": "max"
         },
         {
           "id": "flow_minor_NS_I2",
-          "type": "car",
+          "type": "cross_street_mix",
           "route": "route_cross_NS_I2",
           "begin": 20,
           "end": 7200,
-          "period": 34,
+          "period": 32,
           "departLane": "best",
           "departSpeed": "max"
         },
         {
           "id": "flow_minor_SN_I2",
-          "type": "car",
+          "type": "cross_street_mix",
           "route": "route_cross_SN_I2",
           "begin": 28,
           "end": 7200,
@@ -427,104 +938,160 @@
         },
         {
           "id": "flow_minor_NS_I3",
-          "type": "car",
+          "type": "cross_street_mix",
           "route": "route_cross_NS_I3",
           "begin": 30,
           "end": 7200,
-          "period": 36,
+          "period": 32,
           "departLane": "best",
           "departSpeed": "max"
         },
         {
           "id": "flow_minor_SN_I3",
-          "type": "car",
+          "type": "cross_street_mix",
           "route": "route_cross_SN_I3",
           "begin": 42,
           "end": 7200,
-          "period": 42,
+          "period": 40,
           "departLane": "best",
           "departSpeed": "max"
         },
         {
           "id": "flow_minor_NS_I4",
-          "type": "car",
+          "type": "cross_street_mix",
           "route": "route_cross_NS_I4",
           "begin": 40,
           "end": 7200,
-          "period": 37,
+          "period": 50,
           "departLane": "best",
           "departSpeed": "max"
         },
         {
           "id": "flow_minor_SN_I4",
-          "type": "car",
+          "type": "cross_street_mix",
           "route": "route_cross_SN_I4",
           "begin": 56,
           "end": 7200,
-          "period": 43,
+          "period": 60,
           "departLane": "best",
           "departSpeed": "max"
         },
         {
           "id": "flow_minor_NS_I5",
-          "type": "car",
+          "type": "cross_street_mix",
           "route": "route_cross_NS_I5",
           "begin": 50,
           "end": 7200,
-          "period": 36,
+          "period": 32,
           "departLane": "best",
           "departSpeed": "max"
         },
         {
           "id": "flow_minor_SN_I5",
-          "type": "car",
+          "type": "cross_street_mix",
           "route": "route_cross_SN_I5",
           "begin": 70,
           "end": 7200,
-          "period": 42,
+          "period": 40,
           "departLane": "best",
           "departSpeed": "max"
         },
         {
           "id": "flow_minor_NS_I6",
-          "type": "car",
+          "type": "cross_street_mix",
           "route": "route_cross_NS_I6",
           "begin": 60,
           "end": 7200,
-          "period": 33,
+          "period": 20,
           "departLane": "best",
           "departSpeed": "max"
         },
         {
           "id": "flow_minor_SN_I6",
-          "type": "car",
+          "type": "cross_street_mix",
           "route": "route_cross_SN_I6",
           "begin": 84,
           "end": 7200,
-          "period": 39,
+          "period": 24,
           "departLane": "best",
           "departSpeed": "max"
         },
         {
           "id": "flow_minor_NS_I7",
-          "type": "car",
+          "type": "cross_street_mix",
           "route": "route_cross_NS_I7",
           "begin": 70,
           "end": 7200,
-          "period": 35,
+          "period": 32,
           "departLane": "best",
           "departSpeed": "max"
         },
         {
           "id": "flow_minor_SN_I7",
-          "type": "car",
+          "type": "cross_street_mix",
           "route": "route_cross_SN_I7",
           "begin": 98,
           "end": 7200,
-          "period": 41,
+          "period": 40,
           "departLane": "best",
           "departSpeed": "max"
-        }
+        },
+        {"id": "flow_main_inbound_turn_N_at_I1", "type": "urban_mix", "route": "route_main_inbound_turn_to_N_I1", "begin": 30, "end": 7200, "period": 190, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_inbound_turn_S_at_I1", "type": "urban_mix", "route": "route_main_inbound_turn_to_S_I1", "begin": 40, "end": 7200, "period": 190, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_outbound_turn_N_at_I1", "type": "urban_mix", "route": "route_main_outbound_turn_to_N_I1", "begin": 22, "end": 7200, "period": 280, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_outbound_turn_S_at_I1", "type": "urban_mix", "route": "route_main_outbound_turn_to_S_I1", "begin": 34, "end": 7200, "period": 280, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_N_to_city_at_I1", "type": "cross_street_mix", "route": "route_minor_N_I1_to_city", "begin": 25, "end": 7200, "period": 80, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_N_to_atlantic_at_I1", "type": "cross_street_mix", "route": "route_minor_N_I1_to_atlantic", "begin": 45, "end": 7200, "period": 80, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_S_to_city_at_I1", "type": "cross_street_mix", "route": "route_minor_S_I1_to_city", "begin": 35, "end": 7200, "period": 96, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_S_to_atlantic_at_I1", "type": "cross_street_mix", "route": "route_minor_S_I1_to_atlantic", "begin": 55, "end": 7200, "period": 96, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_inbound_turn_N_at_I2", "type": "urban_mix", "route": "route_main_inbound_turn_to_N_I2", "begin": 60, "end": 7200, "period": 375, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_inbound_turn_S_at_I2", "type": "urban_mix", "route": "route_main_inbound_turn_to_S_I2", "begin": 75, "end": 7200, "period": 375, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_outbound_turn_N_at_I2", "type": "urban_mix", "route": "route_main_outbound_turn_to_N_I2", "begin": 50, "end": 7200, "period": 550, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_outbound_turn_S_at_I2", "type": "urban_mix", "route": "route_main_outbound_turn_to_S_I2", "begin": 85, "end": 7200, "period": 550, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_N_to_city_at_I2", "type": "cross_street_mix", "route": "route_minor_N_I2_to_city", "begin": 30, "end": 7200, "period": 128, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_N_to_atlantic_at_I2", "type": "cross_street_mix", "route": "route_minor_N_I2_to_atlantic", "begin": 55, "end": 7200, "period": 128, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_S_to_city_at_I2", "type": "cross_street_mix", "route": "route_minor_S_I2_to_city", "begin": 42, "end": 7200, "period": 160, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_S_to_atlantic_at_I2", "type": "cross_street_mix", "route": "route_minor_S_I2_to_atlantic", "begin": 68, "end": 7200, "period": 160, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_inbound_turn_N_at_I3", "type": "urban_mix", "route": "route_main_inbound_turn_to_N_I3", "begin": 90, "end": 7200, "period": 375, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_inbound_turn_S_at_I3", "type": "urban_mix", "route": "route_main_inbound_turn_to_S_I3", "begin": 110, "end": 7200, "period": 375, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_outbound_turn_N_at_I3", "type": "urban_mix", "route": "route_main_outbound_turn_to_N_I3", "begin": 70, "end": 7200, "period": 550, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_outbound_turn_S_at_I3", "type": "urban_mix", "route": "route_main_outbound_turn_to_S_I3", "begin": 120, "end": 7200, "period": 550, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_N_to_city_at_I3", "type": "cross_street_mix", "route": "route_minor_N_I3_to_city", "begin": 38, "end": 7200, "period": 128, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_N_to_atlantic_at_I3", "type": "cross_street_mix", "route": "route_minor_N_I3_to_atlantic", "begin": 62, "end": 7200, "period": 128, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_S_to_city_at_I3", "type": "cross_street_mix", "route": "route_minor_S_I3_to_city", "begin": 50, "end": 7200, "period": 160, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_S_to_atlantic_at_I3", "type": "cross_street_mix", "route": "route_minor_S_I3_to_atlantic", "begin": 78, "end": 7200, "period": 160, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_inbound_turn_N_at_I4", "type": "urban_mix", "route": "route_main_inbound_turn_to_N_I4", "begin": 130, "end": 7200, "period": 500, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_inbound_turn_S_at_I4", "type": "urban_mix", "route": "route_main_inbound_turn_to_S_I4", "begin": 150, "end": 7200, "period": 500, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_outbound_turn_N_at_I4", "type": "urban_mix", "route": "route_main_outbound_turn_to_N_I4", "begin": 100, "end": 7200, "period": 730, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_outbound_turn_S_at_I4", "type": "urban_mix", "route": "route_main_outbound_turn_to_S_I4", "begin": 170, "end": 7200, "period": 730, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_N_to_city_at_I4", "type": "cross_street_mix", "route": "route_minor_N_I4_to_city", "begin": 48, "end": 7200, "period": 200, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_N_to_atlantic_at_I4", "type": "cross_street_mix", "route": "route_minor_N_I4_to_atlantic", "begin": 88, "end": 7200, "period": 200, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_S_to_city_at_I4", "type": "cross_street_mix", "route": "route_minor_S_I4_to_city", "begin": 64, "end": 7200, "period": 240, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_S_to_atlantic_at_I4", "type": "cross_street_mix", "route": "route_minor_S_I4_to_atlantic", "begin": 96, "end": 7200, "period": 240, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_inbound_turn_N_at_I5", "type": "urban_mix", "route": "route_main_inbound_turn_to_N_I5", "begin": 105, "end": 7200, "period": 375, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_inbound_turn_S_at_I5", "type": "urban_mix", "route": "route_main_inbound_turn_to_S_I5", "begin": 145, "end": 7200, "period": 375, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_outbound_turn_N_at_I5", "type": "urban_mix", "route": "route_main_outbound_turn_to_N_I5", "begin": 80, "end": 7200, "period": 550, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_outbound_turn_S_at_I5", "type": "urban_mix", "route": "route_main_outbound_turn_to_S_I5", "begin": 160, "end": 7200, "period": 550, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_N_to_city_at_I5", "type": "cross_street_mix", "route": "route_minor_N_I5_to_city", "begin": 58, "end": 7200, "period": 128, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_N_to_atlantic_at_I5", "type": "cross_street_mix", "route": "route_minor_N_I5_to_atlantic", "begin": 82, "end": 7200, "period": 128, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_S_to_city_at_I5", "type": "cross_street_mix", "route": "route_minor_S_I5_to_city", "begin": 72, "end": 7200, "period": 160, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_S_to_atlantic_at_I5", "type": "cross_street_mix", "route": "route_minor_S_I5_to_atlantic", "begin": 102, "end": 7200, "period": 160, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_inbound_turn_N_at_I6", "type": "urban_mix", "route": "route_main_inbound_turn_to_N_I6", "begin": 65, "end": 7200, "period": 190, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_inbound_turn_S_at_I6", "type": "urban_mix", "route": "route_main_inbound_turn_to_S_I6", "begin": 95, "end": 7200, "period": 190, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_outbound_turn_N_at_I6", "type": "urban_mix", "route": "route_main_outbound_turn_to_N_I6", "begin": 60, "end": 7200, "period": 280, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_outbound_turn_S_at_I6", "type": "urban_mix", "route": "route_main_outbound_turn_to_S_I6", "begin": 125, "end": 7200, "period": 280, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_N_to_city_at_I6", "type": "cross_street_mix", "route": "route_minor_N_I6_to_city", "begin": 65, "end": 7200, "period": 80, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_N_to_atlantic_at_I6", "type": "cross_street_mix", "route": "route_minor_N_I6_to_atlantic", "begin": 92, "end": 7200, "period": 80, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_S_to_city_at_I6", "type": "cross_street_mix", "route": "route_minor_S_I6_to_city", "begin": 75, "end": 7200, "period": 96, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_S_to_atlantic_at_I6", "type": "cross_street_mix", "route": "route_minor_S_I6_to_atlantic", "begin": 110, "end": 7200, "period": 96, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_inbound_turn_N_at_I7", "type": "urban_mix", "route": "route_main_inbound_turn_to_N_I7", "begin": 115, "end": 7200, "period": 375, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_inbound_turn_S_at_I7", "type": "urban_mix", "route": "route_main_inbound_turn_to_S_I7", "begin": 140, "end": 7200, "period": 375, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_outbound_turn_N_at_I7", "type": "urban_mix", "route": "route_main_outbound_turn_to_N_I7", "begin": 90, "end": 7200, "period": 550, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_main_outbound_turn_S_at_I7", "type": "urban_mix", "route": "route_main_outbound_turn_to_S_I7", "begin": 175, "end": 7200, "period": 550, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_N_to_city_at_I7", "type": "cross_street_mix", "route": "route_minor_N_I7_to_city", "begin": 78, "end": 7200, "period": 128, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_N_to_atlantic_at_I7", "type": "cross_street_mix", "route": "route_minor_N_I7_to_atlantic", "begin": 105, "end": 7200, "period": 128, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_S_to_city_at_I7", "type": "cross_street_mix", "route": "route_minor_S_I7_to_city", "begin": 88, "end": 7200, "period": 160, "departLane": "best", "departSpeed": "max"},
+        {"id": "flow_minor_S_to_atlantic_at_I7", "type": "cross_street_mix", "route": "route_minor_S_I7_to_atlantic", "begin": 122, "end": 7200, "period": 160, "departLane": "best", "departSpeed": "max"}
       ]
     },
     "off_peak": {
@@ -600,6 +1167,74 @@
       "derived_from": "am_peak",
       "period_scale": 1.0,
       "id_suffix": "emergency_conflict"
+    },
+    "pm_peak": {
+      "description": "Ponta da tarde: sentido cidade->mar (oeste) torna-se dominante, espelhando o regresso a Matosinhos/Boavista. Periodos de pico ligeiramente mais longos para refletir cauda mais larga do PM peak.",
+      "derived_from": "am_peak",
+      "period_scale": 1.0,
+      "route_period_scale": {
+        "route_boavista_west_to_east": 1.35,
+        "route_boavista_east_to_west": 0.72
+      },
+      "id_suffix": "pm_peak"
+    },
+    "congested_am_peak": {
+      "description": "Pico saturado: procura agravada em ambos os sentidos do corredor para empurrar o grau de saturacao acima de 0.95 e testar comportamento em regime congestionado.",
+      "derived_from": "am_peak",
+      "period_scale": 1.0,
+      "route_period_scale": {
+        "route_boavista_west_to_east": 0.55,
+        "route_boavista_east_to_west": 0.70
+      },
+      "flow_period_override": {
+        "flow_minor_NS_I1": 16,
+        "flow_minor_SN_I1": 18,
+        "flow_minor_NS_I6": 16,
+        "flow_minor_SN_I6": 20
+      },
+      "id_suffix": "congested"
+    },
+    "rainy_am_peak": {
+      "description": "Pico da manha em condicoes adversas (chuva): procura proxima do baseline, mas reduzida ~5% por evitamento; comportamento dos condutores e ajustado por vehicle_overrides do cenario.",
+      "derived_from": "am_peak",
+      "period_scale": 1.05,
+      "id_suffix": "rainy"
+    },
+    "foggy_am_peak": {
+      "description": "Pico da manha com nevoeiro denso: visibilidade reduzida; procura ligeiramente inferior por evitamento (~7%).",
+      "derived_from": "am_peak",
+      "period_scale": 1.07,
+      "id_suffix": "foggy"
+    },
+    "winter_morning_am_peak": {
+      "description": "Pico da manha em manha de inverno frio: piso gelado em algumas transversais menores, atraso geral por aquecimento do veiculo.",
+      "derived_from": "am_peak",
+      "period_scale": 1.10,
+      "id_suffix": "winter"
+    },
+    "av_penetration_low": {
+      "description": "Penetracao baixa de veiculos automatizados (~10%).",
+      "derived_from": "am_peak",
+      "period_scale": 1.0,
+      "id_suffix": "av_low"
+    },
+    "av_penetration_medium": {
+      "description": "Penetracao media de veiculos automatizados (~30%).",
+      "derived_from": "am_peak",
+      "period_scale": 1.0,
+      "id_suffix": "av_medium"
+    },
+    "av_penetration_high": {
+      "description": "Penetracao alta de veiculos automatizados (~60%).",
+      "derived_from": "am_peak",
+      "period_scale": 1.0,
+      "id_suffix": "av_high"
+    },
+    "stochastic_incidents_am_peak": {
+      "description": "Pico da manha com possibilidade probabilistica de paragens de veiculo na via principal; cenario materializa eventos a partir do random_seed.",
+      "derived_from": "am_peak",
+      "period_scale": 1.0,
+      "id_suffix": "stoch_incidents"
     }
   },
   "events": [],
@@ -608,6 +1243,7 @@
       "description": "Referencia principal de ponta da manha no corredor Boavista.",
       "justification": "Janela de 2h, sentido oeste->este mais forte e headways TP de 10-15 min sao plausiveis para uma arterial urbana radial em periodo de entrada na cidade.",
       "demand_profile": "am_peak",
+      "random_seeds": [57, 58, 59, 60, 61],
       "events": [],
       "kpi_focus": ["travel_time", "bus_time_loss", "general_traffic_delay", "queue_baseline"],
       "expected_behaviour": "Sem eventos especiais; deve servir como baseline comparavel para TSP."
@@ -727,13 +1363,275 @@
       ],
       "kpi_focus": ["emergency_travel_time", "priority_hierarchy", "bus_priority_preemption"],
       "expected_behaviour": "Emergencia deve prevalecer sobre TP e trafego geral."
+    },
+    "baseline_pm_peak": {
+      "description": "Referencia de ponta da tarde com sentido cidade->mar dominante.",
+      "justification": "O sentido inverso ao AM peak valida simetria operacional do corredor e expoe o algoritmo a um padrao de procura espelhado, evitando calibracao enviesada.",
+      "demand_profile": "pm_peak",
+      "service_overrides": [
+        {"line_id": "STCP500", "direction": "W", "headway_s": 540},
+        {"line_id": "STCP500", "direction": "E", "headway_s": 480},
+        {"line_id": "STCP502", "direction": "W", "headway_s": 780},
+        {"line_id": "STCP502", "direction": "E", "headway_s": 720}
+      ],
+      "events": [],
+      "kpi_focus": ["pm_corridor_throughput", "westbound_bus_delay", "direction_symmetry", "queue_baseline"],
+      "expected_behaviour": "Baseline simetrico ao AM peak; o TSP deve mostrar ganhos comparaveis em ambos os sentidos."
+    },
+    "congested_am_peak": {
+      "description": "Pico da manha saturado: grau de saturacao acima de 0.95 em ambos os sentidos do corredor.",
+      "justification": "Testar TSP em condicoes de saturacao e essencial — algoritmos que funcionam bem em fluxo livre podem falhar quando a fila ja atinge o detector de jusante.",
+      "demand_profile": "congested_am_peak",
+      "events": [],
+      "kpi_focus": ["saturated_corridor_throughput", "tsp_under_saturation", "queue_spillback", "bus_time_loss"],
+      "expected_behaviour": "Forte aumento de timeLoss no baseline; TSP deve mitigar perdas dos autocarros sem agravar fila transversal."
+    },
+    "baseline_rainy_am_peak": {
+      "description": "Pico da manha em condicoes de chuva: friccao reduzida, condutores mais cautelosos, velocidade media inferior.",
+      "justification": "Porto regista ~150 dias chuvosos/ano. A chuva reduz friccao (decel max), aumenta o tempo de reacao (tau +0.2s) e reduz a velocidade desejada (speedFactor x0.88). Testar TSP em condicoes degradadas valida robustez.",
+      "demand_profile": "rainy_am_peak",
+      "vehicle_overrides": {
+        "all": {
+          "tau_delta": 0.20,
+          "speed_factor_multiplier": 0.88,
+          "decel_multiplier": 0.85,
+          "min_gap_multiplier": 1.15
+        },
+        "by_class": {
+          "motorcycle": {"speed_factor_multiplier": 0.80, "decel_multiplier": 0.75, "min_gap_multiplier": 1.30},
+          "truck": {"decel_multiplier": 0.80}
+        }
+      },
+      "events": [],
+      "kpi_focus": ["wet_road_travel_time", "tsp_robustness", "headway_reliability", "queue_growth_under_rain"],
+      "expected_behaviour": "Tempo medio de viagem maior; TSP deve manter ganhos relativos sem comprometer seguranca."
+    },
+    "baseline_foggy_am_peak": {
+      "description": "Pico da manha com nevoeiro: visibilidade reduzida, velocidade desejada baixa, condutores extra-cautelosos.",
+      "justification": "Nevoeiro denso no Porto reduz a velocidade percecionada como segura. SpeedFactor cai significativamente (~0.75) e o tempo de reacao sobe; o piso continua seco, decel mantem-se.",
+      "demand_profile": "foggy_am_peak",
+      "vehicle_overrides": {
+        "all": {
+          "tau_delta": 0.35,
+          "speed_factor_multiplier": 0.75,
+          "min_gap_multiplier": 1.25
+        },
+        "by_class": {
+          "motorcycle": {"speed_factor_multiplier": 0.65, "min_gap_multiplier": 1.40}
+        }
+      },
+      "events": [],
+      "kpi_focus": ["low_visibility_travel_time", "tsp_robustness_fog", "speed_dispersion"],
+      "expected_behaviour": "Tempo medio de viagem sobe; TSP deve continuar a operar mas com ganhos atenuados."
+    },
+    "baseline_winter_morning_am_peak": {
+      "description": "Pico da manha de inverno: piso frio e localizado escorregadio em transversais menores; aquecimento dos veiculos cria fase mais lenta no arranque.",
+      "justification": "Inverno em Porto traz piso frio e gelo pontual; nao tao severo como chuva intensa, mas o arranque demora mais (accel x0.9) e a friccao em vias secundarias cai (decel x0.85).",
+      "demand_profile": "winter_morning_am_peak",
+      "vehicle_overrides": {
+        "all": {
+          "tau_delta": 0.15,
+          "accel_multiplier": 0.90,
+          "speed_factor_multiplier": 0.92
+        },
+        "by_class": {
+          "truck": {"accel_multiplier": 0.80, "decel_multiplier": 0.85}
+        }
+      },
+      "events": [],
+      "kpi_focus": ["cold_start_delay", "tsp_robustness_winter", "truck_acceleration_penalty"],
+      "expected_behaviour": "Atraso ligeiro nos pesados; TSP deve manter ganhos com pequena reducao."
+    },
+    "av_penetration_low": {
+      "description": "Penetracao baixa de AVs (~10% car_acc, ~0% car_cacc): mistura representativa de transicao inicial.",
+      "justification": "Os AVs reduzem dispersao de tau e sigma, o que melhora capacidade do corredor. Validar TSP em fleet mix de transicao e essencial antes de qualquer despliegue real.",
+      "demand_profile": "av_penetration_low",
+      "vehicle_distribution_overrides": {
+        "urban_mix": [
+          {"type": "car", "probability": 0.30},
+          {"type": "car_cautious", "probability": 0.15},
+          {"type": "car_aggressive", "probability": 0.15},
+          {"type": "car_acc", "probability": 0.10},
+          {"type": "car_cacc", "probability": 0.02},
+          {"type": "motorcycle", "probability": 0.10},
+          {"type": "taxi", "probability": 0.06},
+          {"type": "lcv", "probability": 0.08},
+          {"type": "hgv", "probability": 0.04}
+        ]
+      },
+      "events": [],
+      "kpi_focus": ["av_low_penetration_throughput", "headway_smoothing", "tsp_with_av"],
+      "expected_behaviour": "Ganhos modestos vs. baseline; TSP deve continuar relevante."
+    },
+    "av_penetration_medium": {
+      "description": "Penetracao media de AVs (~30% combinado): transicao avancada.",
+      "justification": "30% de penetracao ja produz efeito observavel em capacidade e estabilidade da fila. Cenario realista para projecoes 2030-2035.",
+      "demand_profile": "av_penetration_medium",
+      "vehicle_distribution_overrides": {
+        "urban_mix": [
+          {"type": "car", "probability": 0.20},
+          {"type": "car_cautious", "probability": 0.10},
+          {"type": "car_aggressive", "probability": 0.10},
+          {"type": "car_acc", "probability": 0.22},
+          {"type": "car_cacc", "probability": 0.08},
+          {"type": "motorcycle", "probability": 0.10},
+          {"type": "taxi", "probability": 0.06},
+          {"type": "lcv", "probability": 0.08},
+          {"type": "hgv", "probability": 0.04},
+          {"type": "bus_12m", "probability": 0.02}
+        ]
+      },
+      "events": [],
+      "kpi_focus": ["av_mid_penetration_throughput", "tsp_smoothing", "queue_reduction"],
+      "expected_behaviour": "Capacidade do corredor sobe ~5-10%; TSP gain atenuado mas presente."
+    },
+    "av_penetration_high": {
+      "description": "Penetracao alta de AVs (~60% combinado): regime predominante de veiculos automatizados.",
+      "justification": "Cenario de longo prazo: AVs dominam o trafego. Necessario validar que TSP nao se torna contraproducente quando os AVs ja coordenam por si.",
+      "demand_profile": "av_penetration_high",
+      "vehicle_distribution_overrides": {
+        "urban_mix": [
+          {"type": "car", "probability": 0.10},
+          {"type": "car_cautious", "probability": 0.05},
+          {"type": "car_aggressive", "probability": 0.05},
+          {"type": "car_acc", "probability": 0.35},
+          {"type": "car_cacc", "probability": 0.25},
+          {"type": "motorcycle", "probability": 0.05},
+          {"type": "taxi", "probability": 0.04},
+          {"type": "lcv", "probability": 0.07},
+          {"type": "hgv", "probability": 0.04}
+        ]
+      },
+      "events": [],
+      "kpi_focus": ["av_high_penetration_throughput", "tsp_vs_av_coordination", "controller_relevance"],
+      "expected_behaviour": "TSP deve continuar a beneficiar autocarros mas com risco de interferencia em platooning de AVs."
+    },
+    "stochastic_incidents_am_peak": {
+      "description": "Pico da manha com incidentes probabilisticos: paragens de veiculo materializadas a partir do random_seed.",
+      "justification": "Incidentes reais sao estocasticos. Um cenario que sempre coloca evento em t=3600 inflate confianca. A materializacao via random_seed (cada seed produz padrao diferente) testa a robustez ao longo de replicacoes.",
+      "demand_profile": "stochastic_incidents_am_peak",
+      "stochastic_incidents": [
+        {
+          "id_prefix": "stop_lcv_corridor",
+          "type": "stopped_vehicle",
+          "vehicle_type": "lcv",
+          "route_candidates": ["route_boavista_west_to_east", "route_boavista_east_to_west"],
+          "edge_candidates": ["I2_I3", "I3_I4", "I4_I5", "I5_I6"],
+          "depart_window_s": [1500, 5400],
+          "duration_s_mean": 240,
+          "duration_s_std": 60,
+          "probability": 0.6
+        }
+      ],
+      "events": [],
+      "kpi_focus": ["incident_recovery_time", "tsp_under_random_disturbance", "headway_variability"],
+      "expected_behaviour": "Filas pontuais; TSP deve adaptar-se sem aumentar excessivamente fila transversal."
     }
   },
   "detectors": {
-    "frequency_s": 60,
+    "frequency_s": 30,
     "stopline_setback_m": 85,
     "queue_detector_length_m": 80,
     "e1_output": "../../outputs/e1_detectors.xml",
     "e2_output": "../../outputs/e2_queues.xml"
+  },
+  "parking_areas": [
+    {"id": "pa_bessa_delivery_w", "edge_id": "I2_I3", "lane_index": 1, "start_m": 60, "end_m": 92, "capacity": 4, "angle": 0},
+    {"id": "pa_serralves_delivery_w", "edge_id": "I3_I4", "lane_index": 1, "start_m": 70, "end_m": 108, "capacity": 5, "angle": 0},
+    {"id": "pa_marechal_delivery_w", "edge_id": "I5_I6", "lane_index": 1, "start_m": 60, "end_m": 92, "capacity": 4, "angle": 0},
+    {"id": "pa_praca_imperio_taxi_e", "edge_id": "I6_I5", "lane_index": 1, "start_m": 80, "end_m": 105, "capacity": 3, "angle": 0}
+  ],
+  "parking_events": [
+    {"id": "pkg_lcv_bessa_1", "vehicle_type": "lcv", "route": "route_boavista_east_to_west", "parking_area_id": "pa_bessa_delivery_w", "depart": 1200, "duration_s": 240},
+    {"id": "pkg_lcv_serralves_1", "vehicle_type": "lcv", "route": "route_boavista_east_to_west", "parking_area_id": "pa_serralves_delivery_w", "depart": 2400, "duration_s": 300},
+    {"id": "pkg_lcv_marechal_1", "vehicle_type": "lcv", "route": "route_boavista_east_to_west", "parking_area_id": "pa_marechal_delivery_w", "depart": 3300, "duration_s": 200},
+    {"id": "pkg_taxi_imperio_1", "vehicle_type": "taxi", "route": "route_boavista_west_to_east", "parking_area_id": "pa_praca_imperio_taxi_e", "depart": 4200, "duration_s": 90}
+  ],
+  "pedestrian_flows": [
+    {"id": "ped_I1_NS", "from_edge": "N_I1_I1", "to_edge": "I1_S_I1", "begin": 0, "end": 7200, "period": 25, "departPos": "random"},
+    {"id": "ped_I2_NS", "from_edge": "N_I2_I2", "to_edge": "I2_S_I2", "begin": 0, "end": 7200, "period": 45},
+    {"id": "ped_I3_NS", "from_edge": "N_I3_I3", "to_edge": "I3_S_I3", "begin": 0, "end": 7200, "period": 60},
+    {"id": "ped_I4_NS", "from_edge": "N_I4_I4", "to_edge": "I4_S_I4", "begin": 0, "end": 7200, "period": 80},
+    {"id": "ped_I5_NS", "from_edge": "N_I5_I5", "to_edge": "I5_S_I5", "begin": 0, "end": 7200, "period": 55},
+    {"id": "ped_I6_NS", "from_edge": "N_I6_I6", "to_edge": "I6_S_I6", "begin": 0, "end": 7200, "period": 22, "departPos": "random"},
+    {"id": "ped_I7_NS", "from_edge": "N_I7_I7", "to_edge": "I7_S_I7", "begin": 0, "end": 7200, "period": 50}
+  ],
+  "calibration_status": "scaffolding_pending_data",
+  "calibration_methodology": {
+    "status_note": "Os calibradores existem como infra-estrutura para futura ancoragem em dados reais (deteccoes CMP, GTFS-AVL STCP, contagens IMT). Nao estao actualmente carregados pelo sumocfg porque calibradores em SUMO sao enforcement: activa-los com targets sinteticos injeta veiculos fantasma e distorce o cenario.",
+    "reference": "HCM 6th Edition (Highway Capacity Manual, TRB 2016), Chapter 18 (Signalized Intersections) e Chapter 23 (Urban Street Segments). Em Portugal, na ausencia de manual oficial, a metodologia HCM e a referencia profissional adoptada por LNEC, gabinetes de mobilidade e IMT.",
+    "saturation_flow_formula": "s = s0 * N * fw * fHV * fg * fp * fbb * fa * fLU * fLT_RT",
+    "adjustment_factors_used": {
+      "s0_base_saturation_flow_veh_per_h_per_lane": 1900,
+      "N_lanes_mainline": 2,
+      "fw_lane_width": 1.00,
+      "fHV_heavy_vehicle_5pct": 0.95,
+      "fg_grade_slight": 0.99,
+      "fp_parking_adjacent": 0.95,
+      "fbb_bus_blockage": 0.94,
+      "fa_area_type_urban_CBD": 0.90,
+      "fLU_lane_utilisation_2_lanes": 0.95,
+      "fLT_RT_turning_10pct": 0.95
+    },
+    "saturation_flow_capacity_veh_per_h_per_direction": 2470,
+    "green_time_ratio_g_over_C": 0.55,
+    "effective_capacity_per_direction_veh_per_h": 1360,
+    "target_v_over_c_by_period": {
+      "shoulder_off_peak": 0.45,
+      "shoulder_pre_peak": 0.65,
+      "peak_am_inbound_heavy_direction": 0.90,
+      "peak_am_outbound_light_direction": 0.65
+    },
+    "derived_targets_veh_per_h": {
+      "outbound_shoulder": 612,
+      "outbound_peak": 884,
+      "inbound_peak": 1224
+    },
+    "speed_targets_mps_by_v_over_c": {
+      "0_45_free_flow_LOS_B": 12.5,
+      "0_65_LOS_C": 11.5,
+      "0_85_LOS_D": 10.0,
+      "0_90_plus_LOS_E": 8.5
+    },
+    "consistency_check_against_flow_definitions_veh_per_h": {
+      "I2_I3_outbound_peak_predicted": 870,
+      "I3_I2_inbound_peak_predicted": 1260,
+      "verdict": "Predicted demand from the <flow> definitions is now within the HCM-credible window for an urban arterial at AM peak. Calibrators are HCM-anchored as documentation but remain disabled in sumocfg."
+    }
+  },
+  "calibrators": [
+    {
+      "id": "cal_I2_I3_west",
+      "edge_id": "I2_I3",
+      "pos_m": 200,
+      "freq_s": 300,
+      "active_in_simulation": false,
+      "note": "Outbound mainline (CITY_EAST -> ATLANTIC_WEST direction). Targets HCM-anchored; ver calibration_methodology.",
+      "schedule": [
+        {"begin": 0, "end": 1800, "vehs_per_hour": 550, "speed_mps": 12.5},
+        {"begin": 1800, "end": 4800, "vehs_per_hour": 870, "speed_mps": 11.0},
+        {"begin": 4800, "end": 7200, "vehs_per_hour": 620, "speed_mps": 12.5}
+      ]
+    },
+    {
+      "id": "cal_I5_I6_west",
+      "edge_id": "I5_I6",
+      "pos_m": 220,
+      "freq_s": 300,
+      "active_in_simulation": false,
+      "note": "Outbound mainline downstream segment. Targets HCM-anchored; ver calibration_methodology.",
+      "schedule": [
+        {"begin": 0, "end": 1800, "vehs_per_hour": 580, "speed_mps": 12.5},
+        {"begin": 1800, "end": 4800, "vehs_per_hour": 920, "speed_mps": 11.0},
+        {"begin": 4800, "end": 7200, "vehs_per_hour": 660, "speed_mps": 12.5}
+      ]
+    }
+  ],
+  "gtfs_source": {
+    "status": "planned",
+    "agency": "STCP - Sociedade de Transportes Colectivos do Porto",
+    "lines": ["500", "502", "204"],
+    "feed_url": null,
+    "note": "Quando feed GTFS estiver disponivel, public_transport.services pode ser regenerado a partir de stop_times.txt e routes.txt. Por enquanto, headways e dwells sao proxy plausivel."
   }
 }

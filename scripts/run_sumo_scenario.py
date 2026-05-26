@@ -18,6 +18,9 @@ if str(SRC) not in sys.path:
 from pps57_sumo.generate_plain_corridor import generate  # noqa: E402
 from pps57_sumo.detector_kpis import parse_detector_kpis  # noqa: E402
 from pps57_sumo.parse_tripinfo import parse_tripinfo  # noqa: E402
+from pps57_sumo.parse_insertion import parse_insertion_kpis  # noqa: E402
+from pps57_sumo.parse_emissions import parse_emissions  # noqa: E402
+from pps57_sumo.apply_tls_offsets import apply_tls_offsets  # noqa: E402
 from pps57_sumo.scenarios import (  # noqa: E402
     apply_scenario_profile,
     load_catalog,
@@ -47,6 +50,13 @@ def parse_args() -> argparse.Namespace:
         help="Pipeline to run for each scenario.",
     )
     parser.add_argument("--steps", type=int, default=None, help="Optional max simulation steps for C-ITS/TSP runs.")
+    parser.add_argument(
+        "--seeds",
+        nargs="+",
+        type=int,
+        default=None,
+        help="One or more random seeds to run as replications. Overrides scenario_profile.random_seeds.",
+    )
     parser.add_argument("--sumo-binary", default="sumo")
     parser.add_argument("--gui", action="store_true", help="Use sumo-gui for visual scenario execution.")
     parser.add_argument("--skip-build", action="store_true", help="Skip netconvert after generating plain files.")
@@ -108,21 +118,40 @@ def run_scenario(args: argparse.Namespace, base_config: dict, catalog: dict, sce
         run_types = ["baseline", "tsp_no_actuation", "tsp_actuation"]
     else:
         run_types = list(RUN_TYPES) if args.run_type == "all" else [args.run_type]
+
+    seeds = _resolve_seeds(args, config)
     scenario_runs: dict[str, dict] = {}
     for run_type in run_types:
-        scenario_runs[run_type] = run_scenario_type(
-            args=args,
-            base_config=config,
-            catalog=catalog,
-            scenario_id=scenario_id,
-            run_type=run_type,
-        )
+        if len(seeds) == 1:
+            scenario_runs[run_type] = run_scenario_type(
+                args=args,
+                base_config=config,
+                catalog=catalog,
+                scenario_id=scenario_id,
+                run_type=run_type,
+                seed=seeds[0],
+            )
+        else:
+            per_seed_runs: list[dict] = []
+            for seed in seeds:
+                per_seed_runs.append(
+                    run_scenario_type(
+                        args=args,
+                        base_config=config,
+                        catalog=catalog,
+                        scenario_id=scenario_id,
+                        run_type=run_type,
+                        seed=seed,
+                    )
+                )
+            scenario_runs[run_type] = _aggregate_replications(per_seed_runs)
 
     summary = scenario_summary(config)
     summary["catalog"] = catalog["scenarios"][scenario_id]
     summary["outputs_dir"] = str(scenario_output_dir.relative_to(ROOT))
     summary["reports_dir"] = str(scenario_report_dir.relative_to(ROOT))
     summary["runs"] = scenario_runs
+    summary["seeds"] = seeds
     summary["comparisons"] = compare_scenario_runs(scenario_runs)
     summary["verdict"] = scenario_verdict(summary)
     (scenario_report_dir / "scenario_summary.json").write_text(
@@ -138,6 +167,81 @@ def run_scenario(args: argparse.Namespace, base_config: dict, catalog: dict, sce
     return summary
 
 
+def _resolve_seeds(args: argparse.Namespace, config: dict) -> list[int]:
+    """Pick the list of seeds for replications.
+
+    Priority: CLI `--seeds` > scenario_profile.random_seeds > config.random_seed.
+    """
+    if getattr(args, "seeds", None):
+        return [int(s) for s in args.seeds]
+    profile_seeds = config.get("scenario_profile", {}).get("random_seeds")
+    if isinstance(profile_seeds, list) and profile_seeds:
+        return [int(s) for s in profile_seeds]
+    base_seeds = config.get("random_seeds")
+    if isinstance(base_seeds, list) and base_seeds:
+        return [int(s) for s in base_seeds]
+    return [int(config.get("random_seed", 57))]
+
+
+def _aggregate_replications(runs: list[dict]) -> dict:
+    """Roll multiple seed replications of a single run_type into one summary."""
+    if not runs:
+        return {}
+    first = runs[0]
+    aggregate = dict(first)
+    aggregate["replication_count"] = len(runs)
+    aggregate["replication_summaries"] = [dict(run) for run in runs]
+    kpi_paths = [run.get("kpis") for run in runs if run.get("kpis")]
+    aggregate["kpi_paths"] = kpi_paths
+    summaries = [_load_kpis(p) for p in kpi_paths if p]
+    summaries = [s for s in summaries if s]
+    if summaries:
+        aggregate["kpi_aggregate"] = _compute_kpi_aggregate(summaries)
+    return aggregate
+
+
+def _compute_kpi_aggregate(kpis_list: list[dict]) -> dict:
+    """Mean and spread (p5/p95) of headline KPIs across replications."""
+    import statistics
+
+    def collect(path_keys: list[str]) -> list[float]:
+        values = []
+        for k in kpis_list:
+            current: Any = k
+            for key in path_keys:
+                if isinstance(current, dict):
+                    current = current.get(key)
+                else:
+                    current = None
+                    break
+            if isinstance(current, (int, float)):
+                values.append(float(current))
+        return values
+
+    def stat(values: list[float]) -> dict[str, float | None]:
+        if not values:
+            return {"mean": None, "p5": None, "p95": None, "n": 0}
+        sorted_v = sorted(values)
+        p5_idx = max(0, int(round((len(sorted_v) - 1) * 0.05)))
+        p95_idx = min(len(sorted_v) - 1, int(round((len(sorted_v) - 1) * 0.95)))
+        return {
+            "mean": round(statistics.fmean(values), 3),
+            "stdev": round(statistics.pstdev(values), 3) if len(values) > 1 else 0.0,
+            "p5": round(sorted_v[p5_idx], 3),
+            "p95": round(sorted_v[p95_idx], 3),
+            "n": len(values),
+        }
+
+    return {
+        "bus_mean_time_loss_s": stat(collect(["buses", "mean_time_loss_s"])),
+        "general_mean_time_loss_s": stat(collect(["general_traffic", "mean_time_loss_s"])),
+        "all_vehicles_mean_duration_s": stat(collect(["all_vehicles", "mean_duration_s"])),
+        "max_network_queue_vehicles": stat(collect(["detectors", "network_queue", "max_queue_vehicles"])),
+        "total_co2_mg": stat(collect(["emissions", "totals_mg", "CO2"])),
+        "total_fuel_mg": stat(collect(["emissions", "totals_mg", "fuel"])),
+    }
+
+
 def run_scenario_type(
     *,
     args: argparse.Namespace,
@@ -145,13 +249,18 @@ def run_scenario_type(
     catalog: dict,
     scenario_id: str,
     run_type: str,
+    seed: int | None = None,
 ) -> dict:
-    run_output_dir = ROOT / args.outputs_dir / scenario_id / run_type
-    run_report_dir = ROOT / args.reports_dir / scenario_id / run_type
+    if seed is None:
+        seed = int(base_config.get("random_seed", 57))
+    suffix = f"seed_{seed}"
+    run_output_dir = ROOT / args.outputs_dir / scenario_id / run_type / suffix
+    run_report_dir = ROOT / args.reports_dir / scenario_id / run_type / suffix
     run_output_dir.mkdir(parents=True, exist_ok=True)
     run_report_dir.mkdir(parents=True, exist_ok=True)
 
     config = deepcopy(base_config)
+    config["random_seed"] = int(seed)
     rel_run_output = run_output_dir.relative_to(ROOT)
     config.setdefault("detectors", {})
     config["detectors"]["e1_output"] = f"../../{rel_run_output}/e1_detectors.xml"
@@ -163,6 +272,9 @@ def run_scenario_type(
         routes_output=ROOT / "sumo/routes/routes.rou.xml",
         bus_stops_output=ROOT / "sumo/additional/bus_stops.add.xml",
         detectors_output=ROOT / "sumo/additional/detectors.add.xml",
+        parking_output=ROOT / "sumo/additional/parking.add.xml",
+        calibrators_output=ROOT / "sumo/additional/calibrators.add.xml",
+        tls_offsets_output=ROOT / "sumo/additional/tls_offsets.add.xml",
     )
     (run_output_dir / "resolved_config.json").write_text(
         json.dumps(config, indent=2, ensure_ascii=False),
@@ -170,7 +282,7 @@ def run_scenario_type(
     )
 
     if not args.skip_build:
-        build_network()
+        build_network(config)
 
     summary = scenario_summary(config)
     summary["run_type"] = run_type
@@ -205,17 +317,34 @@ def run_scenario_type(
     return summary
 
 
-def build_network() -> None:
-    _run([
+def build_network(config: dict | None = None) -> None:
+    network_cfg = (config or {}).get("network", {}) if config else {}
+    cycle_time = "90"
+    intersections = network_cfg.get("intersections", []) if network_cfg else []
+    if intersections:
+        cycles = {int(i.get("tls_cycle_s", 90)) for i in intersections if "tls_cycle_s" in i}
+        if cycles and len(cycles) == 1:
+            cycle_time = str(cycles.pop())
+    cmd = [
         "netconvert",
         "--node-files", "sumo/plain/corredor.nod.xml",
         "--edge-files", "sumo/plain/corredor.edg.xml",
         "--output-file", "sumo/network/corredor.net.xml",
         "--no-turnarounds", "true",
         "--tls.default-type", "static",
-        "--tls.cycle.time", "90",
+        "--tls.cycle.time", cycle_time,
         "--tls.yellow.time", "3",
-    ])
+    ]
+    if network_cfg.get("enable_sidewalks"):
+        cmd.extend(["--sidewalks.guess", "true"])
+    if network_cfg.get("enable_pedestrian_crossings"):
+        cmd.extend(["--crossings.guess", "true", "--walkingareas", "true"])
+    _run(cmd)
+    overrides_path = ROOT / "sumo/additional/tls_offsets.add.xml"
+    if overrides_path.exists():
+        modified = apply_tls_offsets(ROOT / "sumo/network/corredor.net.xml", overrides_path)
+        if modified:
+            print(f"applied {modified} tls offsets")
 
 
 def run_baseline_sumo(args: argparse.Namespace, config: dict, run_output_dir: Path) -> None:
@@ -227,9 +356,12 @@ def run_baseline_sumo(args: argparse.Namespace, config: dict, run_output_dir: Pa
         "--tripinfo-output", str(run_output_dir / "tripinfo.xml"),
         "--summary-output", str(run_output_dir / "summary.xml"),
         "--statistic-output", str(run_output_dir / "statistics.xml"),
+        "--emission-output", str(run_output_dir / "emissions.xml"),
         "--seed", str(config.get("random_seed", 57)),
         "--end", str(config.get("simulation_end_s", 7200)),
     ]
+    if config.get("pedestrian_flows"):
+        cmd.extend(["--pedestrian.model", "striping"])
     if args.gui:
         cmd.extend(["--start", "--quit-on-end"])
     _run(cmd)
@@ -269,6 +401,8 @@ def collect_run_kpis(run_output_dir: Path) -> dict:
     tripinfo = run_output_dir / "tripinfo.xml"
     kpis = parse_tripinfo(tripinfo) if tripinfo.exists() else {"source": str(tripinfo), "missing_tripinfo": True}
     kpis["detectors"] = parse_detector_kpis(run_output_dir / "e1_detectors.xml", run_output_dir / "e2_queues.xml")
+    kpis["insertion"] = parse_insertion_kpis(run_output_dir / "summary.xml", run_output_dir / "statistics.xml")
+    kpis["emissions"] = parse_emissions(run_output_dir / "emissions.xml")
     return kpis
 
 
@@ -304,14 +438,14 @@ def write_tsp_config(scenario_id: str, run_output_dir: Path, run_report_dir: Pat
 
 
 def clear_global_sumo_outputs() -> None:
-    for rel in ("outputs/tripinfo.xml", "outputs/summary.xml", "outputs/statistics.xml"):
+    for rel in ("outputs/tripinfo.xml", "outputs/summary.xml", "outputs/statistics.xml", "outputs/emissions.xml"):
         path = ROOT / rel
         if path.exists():
             path.unlink()
 
 
 def copy_global_sumo_outputs(run_output_dir: Path) -> None:
-    for name in ("tripinfo.xml", "summary.xml", "statistics.xml"):
+    for name in ("tripinfo.xml", "summary.xml", "statistics.xml", "emissions.xml"):
         source = ROOT / "outputs" / name
         target = run_output_dir / name
         if source.exists() and not target.exists():
@@ -415,13 +549,14 @@ def render_scenario_report(summary: dict) -> str:
         "",
         f"Verdict: **{summary.get('verdict', {}).get('status', 'unknown')}**",
         "",
-        "| Run | Status | Vehicles | Buses | Bus timeLoss | General timeLoss | Max queue |",
-        "|---|---:|---:|---:|---:|---:|---:|",
+        "| Run | Status | Vehicles | Buses | Bus timeLoss | General timeLoss | Max queue | Total CO2 (mg) | Total fuel (mg) |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for run_type, run in summary.get("runs", {}).items():
         kpis = _load_kpis(run.get("kpis")) or {}
+        emissions_totals = kpis.get("emissions", {}).get("totals_mg", {}) if isinstance(kpis.get("emissions"), dict) else {}
         lines.append(
-            "| {run} | {status} | {veh} | {bus} | {bus_loss} | {gen_loss} | {queue} |".format(
+            "| {run} | {status} | {veh} | {bus} | {bus_loss} | {gen_loss} | {queue} | {co2} | {fuel} |".format(
                 run=run_type,
                 status=run.get("run_verdict", {}).get("status", run.get("status")),
                 veh=kpis.get("all_vehicles", {}).get("vehicles", ""),
@@ -429,6 +564,8 @@ def render_scenario_report(summary: dict) -> str:
                 bus_loss=kpis.get("buses", {}).get("mean_time_loss_s", ""),
                 gen_loss=kpis.get("general_traffic", {}).get("mean_time_loss_s", ""),
                 queue=kpis.get("detectors", {}).get("network_queue", {}).get("max_queue_vehicles", ""),
+                co2=emissions_totals.get("CO2", ""),
+                fuel=emissions_totals.get("fuel", ""),
             )
         )
     return "\n".join(lines) + "\n"

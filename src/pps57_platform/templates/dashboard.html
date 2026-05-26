@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PPS57 Scenario Dashboard</title>
+  <link rel="stylesheet" href="/static/dashboard.css">
+</head>
+<body class="stage-setup">
+  <header>
+    <div>
+      <h1>PPS57 Scenario Dashboard</h1>
+      <div class="subhead">Execução de cenários SUMO e comparação KPI baseline / shadow / TSP ativo</div>
+    </div>
+    <div class="status-line" aria-live="polite"><span id="status-dot" class="dot"></span><span id="status-text">A ligar...</span></div>
+  </header>
+
+  <main id="app-main" class="dashboard-shell">
+    <aside id="setup-panel" class="dashboard-panel command-panel">
+      <div class="panel-title">
+        <div>
+          <h2>Comando de simulação</h2>
+          <p>Cenário, modo e parâmetros operacionais.</p>
+        </div>
+      </div>
+
+      <div class="control-body">
+        <label>
+          Cenário
+          <select id="scenario"></select>
+        </label>
+      </div>
+
+      <div class="scenario-note">
+        <h3 id="scenario-title">-</h3>
+        <p id="scenario-description">Seleciona um cenário.</p>
+        <div id="scenario-kpis" class="kpi-chips"></div>
+      </div>
+
+      <div class="control-body">
+        <label>Modo de execução</label>
+        <div class="mode-grid">
+          <button class="mode-button active" type="button" data-run-type="comparison">
+            <strong>Comparação KPI</strong>
+            <span>Baseline, shadow mode e TSP ativo.</span>
+          </button>
+          <button class="mode-button" type="button" data-run-type="baseline">
+            <strong>Baseline SUMO</strong>
+            <span>Tráfego sem C-ITS e sem algoritmo.</span>
+          </button>
+          <button class="mode-button" type="button" data-run-type="tsp_no_actuation">
+            <strong>Shadow mode</strong>
+            <span>Algoritmo decide, mas não atua.</span>
+          </button>
+          <button class="mode-button" type="button" data-run-type="tsp_actuation">
+            <strong>TSP ativo</strong>
+            <span>Algoritmo decide e controla os semáforos.</span>
+          </button>
+        </div>
+        <div id="mode-note" class="note" aria-live="polite"></div>
+
+        <label>
+          Duração da simulação
+          <input id="steps" type="number" min="1" step="1" inputmode="numeric" placeholder="7200 passos">
+        </label>
+        <div id="steps-help" class="field-help">1 passo = 1 segundo. 7200 passos = 2 h.</div>
+
+        <label class="check-row">
+          <input id="gui" type="checkbox">
+          <span>Abrir sumo-gui</span>
+        </label>
+
+        <div class="actions">
+          <button id="run" class="primary" type="button" data-action="run">Correr cenário</button>
+          <button id="stop" class="danger" type="button" data-action="stop">Parar</button>
+        </div>
+        <div id="message" class="message" role="status" aria-live="polite" data-kind="info">Sem execução ativa.</div>
+      </div>
+    </aside>
+
+    <section id="workspace-panel" class="panel dashboard-panel workspace-panel">
+      <div class="workspace-head">
+        <div>
+          <h2 id="stage-title">Execução em curso</h2>
+          <p id="stage-subtitle">A acompanhar a simulação e os artefactos gerados.</p>
+        </div>
+        <button id="new-run" class="secondary" type="button" data-action="new-run">Nova execução</button>
+      </div>
+      <div class="tabs" role="tablist" aria-label="Vistas da dashboard">
+        <button class="tab active" id="tab-overview" type="button" role="tab" aria-controls="overview" aria-selected="true" tabindex="0" data-tab="overview">Execução</button>
+        <button class="tab" id="tab-report" type="button" role="tab" aria-controls="report" aria-selected="false" tabindex="-1" data-tab="report">Reporte</button>
+        <button class="tab" id="tab-scenarios" type="button" role="tab" aria-controls="scenarios" aria-selected="false" tabindex="-1" data-tab="scenarios">Cenários</button>
+      </div>
+
+      <div id="overview" class="tab-view active" role="tabpanel" aria-labelledby="tab-overview">
+        <div class="summary-grid">
+          <div class="metric-box"><span>Estado</span><strong id="box-status">idle</strong></div>
+          <div class="metric-box"><span>Modo</span><strong id="box-run-type">-</strong></div>
+          <div class="metric-box"><span>Cenário</span><strong id="box-scenario">-</strong></div>
+          <div class="metric-box"><span>Return code</span><strong id="box-returncode">-</strong></div>
+        </div>
+        <div class="workspace-grid">
+          <div class="execution-visual wide-card">
+            <div>
+              <h3>Visualização SUMO</h3>
+              <p id="gui-status">A simulação corre em background. Ativa `Abrir sumo-gui` antes de correr para abrir a janela SUMO.</p>
+            </div>
+            <span id="gui-pill" class="pill not_run">background</span>
+          </div>
+          <div class="chart-card wide-card">
+            <h3>Estado operacional</h3>
+            <div id="overview-bars"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="report" class="tab-view" role="tabpanel" aria-labelledby="tab-report" hidden>
+        <div class="report-toolbar">
+          <label>
+            Relatório
+            <select id="report-scenario"></select>
+          </label>
+          <label>
+            Veredito
+            <input id="report-verdict" readonly>
+          </label>
+        </div>
+        <div id="report-kpi-cards" class="metric-card-grid"></div>
+        <div id="report-charts" class="chart-grid"></div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>KPI</th>
+                <th>Baseline SUMO</th>
+                <th>Shadow mode</th>
+                <th>TSP ativo</th>
+                <th>Delta TSP vs baseline</th>
+                <th>Delta TSP vs shadow</th>
+              </tr>
+            </thead>
+            <tbody id="report-rows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="scenarios" class="tab-view" role="tabpanel" aria-labelledby="tab-scenarios" hidden>
+        <div class="table-wrap">
+          <table aria-label="Detalhes do processo de simulação">
+            <thead>
+              <tr>
+                <th>Cenário</th>
+                <th>Base realista</th>
+                <th>Procura</th>
+                <th>KPIs</th>
+                <th>Reporte</th>
+              </tr>
+            </thead>
+            <tbody id="scenario-rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <aside id="runtime-panel" class="dashboard-panel runtime-panel">
+      <div class="runtime-log-shell">
+        <div>
+          <h3>Logs / output</h3>
+          <div class="log-tabs" role="tablist" aria-label="Streams de log">
+            <button id="log-tab-stdout" class="pill active" type="button" data-log="stdout" aria-pressed="true">stdout</button>
+            <button id="log-tab-stderr" class="pill" type="button" data-log="stderr" aria-pressed="false">stderr</button>
+          </div>
+        </div>
+        <pre id="log-output" class="log-output" aria-live="off" tabindex="0">Sem logs para mostrar.</pre>
+      </div>
+    </aside>
+  </main>
+
+  <script type="module" src="/static/dashboard/app.js"></script>
+</body>
+</html>

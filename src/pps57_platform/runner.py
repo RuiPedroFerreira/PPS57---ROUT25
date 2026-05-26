@@ -35,12 +35,9 @@ class RunnerUnsupportedError(RunnerError):
 @dataclass(frozen=True)
 class ScenarioRunOptions:
     scenario_id: Optional[str] = "baseline_am_peak"
-    all_scenarios: bool = False
     run_type: str = "comparison"
     steps: Optional[int] = None
-    sumo_binary: str = "sumo"
     gui: bool = False
-    traci_port: Optional[int] = None
     generate_only: bool = False
 
 
@@ -92,19 +89,12 @@ class ScenarioRunner:
             self.current_state = {
                 "run_id": run_id,
                 "status": "running",
-                "pid": process.pid,
-                "command": command,
                 "scenario_id": options.scenario_id,
-                "all_scenarios": options.all_scenarios,
                 "run_type": options.run_type,
                 "steps": options.steps,
-                "sumo_binary": options.sumo_binary,
                 "gui": options.gui,
-                "traci_port": options.traci_port,
                 "generate_only": options.generate_only,
                 "root": str(self.root),
-                "started_at": _now(),
-                "ended_at": None,
                 "returncode": None,
                 "stdout_log": str(stdout_log),
                 "stderr_log": str(stderr_log),
@@ -150,14 +140,10 @@ class ScenarioRunner:
             raise RunnerUnsupportedError(f"Unsupported scenario run type: {options.run_type}")
         if options.steps is not None and options.steps < 1:
             raise RunnerUnsupportedError("steps must be >= 1.")
-        if options.traci_port is not None and not 1024 <= options.traci_port <= 65535:
-            raise RunnerUnsupportedError("traci_port must be between 1024 and 65535.")
         catalog = load_catalog(self.root / "configs" / "scenario_catalog.yaml")
         known_scenarios = set(catalog.get("scenarios", {}))
-        if options.all_scenarios:
-            return
         if not options.scenario_id:
-            raise RunnerUnsupportedError("scenario_id is required unless all_scenarios is true.")
+            raise RunnerUnsupportedError("scenario_id is required.")
         if options.scenario_id not in known_scenarios:
             raise RunnerUnsupportedError(f"Unknown scenario_id: {options.scenario_id}")
 
@@ -168,13 +154,9 @@ class ScenarioRunner:
             "scripts/run_sumo_scenario.py",
             "--run-type",
             options.run_type,
-            "--sumo-binary",
-            options.sumo_binary,
+            "--scenario",
+            str(options.scenario_id),
         ]
-        if options.all_scenarios:
-            command.append("--all")
-        else:
-            command.extend(["--scenario", str(options.scenario_id)])
         if options.steps is not None:
             command.extend(["--steps", str(int(options.steps))])
         if options.gui:
@@ -184,10 +166,7 @@ class ScenarioRunner:
         return command
 
     def _environment_for(self, options: ScenarioRunOptions) -> dict[str, str]:
-        env = os.environ.copy()
-        if options.traci_port is not None:
-            env["TRACI_PORT"] = str(options.traci_port)
-        return env
+        return os.environ.copy()
 
     def _refresh_locked(self, force: bool = False) -> None:
         if self.process is None or self.current_state is None:
@@ -201,7 +180,6 @@ class ScenarioRunner:
             except subprocess.TimeoutExpired:
                 return
         self.current_state["returncode"] = returncode
-        self.current_state["ended_at"] = _now()
         self.current_state["status"] = "completed" if returncode == 0 else "failed"
         self.current_state["message"] = (
             "Scenario run completed successfully." if returncode == 0 else f"Scenario run exited with code {returncode}."
@@ -234,19 +212,12 @@ class ScenarioRunner:
         return {
             "run_id": None,
             "status": "idle",
-            "pid": None,
-            "command": [],
             "scenario_id": None,
-            "all_scenarios": False,
             "run_type": None,
             "steps": None,
-            "sumo_binary": None,
             "gui": False,
-            "traci_port": None,
             "generate_only": False,
             "root": str(self.root),
-            "started_at": None,
-            "ended_at": None,
             "returncode": None,
             "stdout_log": None,
             "stderr_log": None,

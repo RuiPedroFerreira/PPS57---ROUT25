@@ -3,7 +3,15 @@
   <input>
     <net-file value="network/corredor.net.xml"/>
     <route-files value="routes/routes.rou.xml"/>
-    <additional-files value="additional/bus_stops.add.xml,additional/detectors.add.xml"/>
+    <additional-files value="additional/bus_stops.add.xml,additional/detectors.add.xml,additional/parking.add.xml"/>
+    <!--
+      additional/calibrators.add.xml is GENERATED as scaffolding but NOT LOADED.
+      Calibradores em SUMO sao enforcement (inserem/removem veiculos para bater
+      no target). Activa-los com targets sinteticos distorce o cenario. So
+      devem ser activados quando os targets estiverem ancorados em dados reais
+      (deteccoes/contagens da CMP, GTFS-AVL STCP, etc.). Ate la, ver
+      calibration_status = "scaffolding_pending_data" em sumo_scenario_base.json.
+    -->
   </input>
   <time>
     <begin value="0"/>
@@ -14,6 +22,7 @@
     <tripinfo-output value="../outputs/tripinfo.xml"/>
     <summary-output value="../outputs/summary.xml"/>
     <statistic-output value="../outputs/statistics.xml"/>
+    <emission-output value="../outputs/emissions.xml"/>
   </output>
   <report>
     <duration-log.statistics value="true"/>

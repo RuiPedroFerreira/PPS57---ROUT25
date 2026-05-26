@@ -129,3 +129,115 @@ scenarios:
       - priority_hierarchy
       - bus_priority_preemption
     expected_use: Confirmar emergencia acima de TP e trafego geral.
+
+  baseline_pm_peak:
+    description: Referencia de ponta da tarde com sentido cidade para mar dominante.
+    realism_basis: >
+      O regresso a casa em direcao a Matosinhos/Boavista inverte o sentido de
+      maior procura face ao AM peak. Um cenario espelhado valida simetria do
+      algoritmo e evita calibracao enviesada para apenas um sentido.
+    kpi_focus:
+      - pm_corridor_throughput
+      - westbound_bus_delay
+      - direction_symmetry
+      - queue_baseline
+    expected_use: Validar paridade do TSP entre AM e PM peaks.
+
+  congested_am_peak:
+    description: Pico da manha em regime saturado (grau de saturacao acima de 0.95).
+    realism_basis: >
+      Picos reais de uma arterial urbana frequentemente excedem capacidade em
+      um ou ambos os sentidos. Algoritmos calibrados apenas em fluxo livre
+      podem falhar quando a fila atinge o detector de jusante; o cenario expoe
+      este risco antes de qualquer despliegue.
+    kpi_focus:
+      - saturated_corridor_throughput
+      - tsp_under_saturation
+      - queue_spillback
+      - bus_time_loss
+    expected_use: Stress-test do controlador sob saturacao realista.
+
+  baseline_rainy_am_peak:
+    description: Pico da manha sob chuva (friccao reduzida, condutores mais cautelosos).
+    realism_basis: >
+      Porto regista cerca de 150 dias chuvosos/ano. A chuva reduz friccao
+      (decel max ~-15%), aumenta tempo de reacao (tau +0.2s) e reduz a
+      velocidade desejada (speedFactor x0.88). Validar TSP em condicoes
+      degradadas garante robustez fora do dia ideal.
+    kpi_focus:
+      - wet_road_travel_time
+      - tsp_robustness
+      - headway_reliability
+      - queue_growth_under_rain
+    expected_use: Verificar que ganhos do TSP nao colapsam em condicoes adversas.
+
+  baseline_foggy_am_peak:
+    description: Pico da manha com nevoeiro denso.
+    realism_basis: >
+      Nevoeiro denso reduz a velocidade percecionada como segura e aumenta o
+      tempo de reacao. Sao condicoes ocasionais mas reais no Porto e expoem
+      o algoritmo a um envelope de velocidades muito comprimido.
+    kpi_focus:
+      - low_visibility_travel_time
+      - tsp_robustness_fog
+      - speed_dispersion
+    expected_use: Robustez do TSP em condicoes de visibilidade reduzida.
+
+  baseline_winter_morning_am_peak:
+    description: Pico da manha de inverno com piso frio.
+    realism_basis: >
+      Manhas frias trazem arranques mais lentos e gelo pontual em transversais
+      menores. Penaliza sobretudo veiculos pesados, sem chegar ao impacto da
+      chuva forte.
+    kpi_focus:
+      - cold_start_delay
+      - tsp_robustness_winter
+      - truck_acceleration_penalty
+    expected_use: Validar pequena perda de ganhos do TSP em inverno frio.
+
+  av_penetration_low:
+    description: Penetracao baixa de veiculos automatizados (~10%).
+    realism_basis: >
+      A transicao para veiculos automatizados nao sera abrupta. Testar TSP em
+      fleet mix de transicao identifica eventuais regressoes antes do
+      despliegue real.
+    kpi_focus:
+      - av_low_penetration_throughput
+      - headway_smoothing
+      - tsp_with_av
+    expected_use: Avaliar relevancia do TSP em fleet mix de transicao inicial.
+
+  av_penetration_medium:
+    description: Penetracao media de veiculos automatizados (~30%).
+    realism_basis: >
+      Cenario realista para projecoes 2030-2035 quando AVs ja representam uma
+      fraccao significativa do trafego urbano.
+    kpi_focus:
+      - av_mid_penetration_throughput
+      - tsp_smoothing
+      - queue_reduction
+    expected_use: Avaliar como TSP ganha (ou perde) quando AVs ja suavizam o trafego.
+
+  av_penetration_high:
+    description: Penetracao alta de veiculos automatizados (~60%).
+    realism_basis: >
+      Cenario de longo prazo onde AVs dominam o trafego. Necessario validar
+      que o TSP nao se torna contraproducente nem interfere com platooning
+      automatico.
+    kpi_focus:
+      - av_high_penetration_throughput
+      - tsp_vs_av_coordination
+      - controller_relevance
+    expected_use: Confirmar que TSP nao penaliza coordenacao automatica.
+
+  stochastic_incidents_am_peak:
+    description: Pico da manha com incidentes probabilisticos (paragens de veiculo).
+    realism_basis: >
+      Incidentes reais sao estocasticos. Cenarios deterministicos inflate
+      confianca. A materializacao via random_seed garante que cada replicacao
+      ve um padrao diferente, validando a robustez do algoritmo.
+    kpi_focus:
+      - incident_recovery_time
+      - tsp_under_random_disturbance
+      - headway_variability
+    expected_use: Stress-test do TSP a perturbacoes aleatorias.

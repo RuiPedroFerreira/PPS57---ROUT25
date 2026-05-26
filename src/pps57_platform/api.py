@@ -8,11 +8,12 @@ from typing import Any, Dict, Literal, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from pps57_sumo.scenarios import apply_scenario_profile, load_catalog, scenario_summary, validate_scenario_catalog
 
-from .dashboard import DASHBOARD_HTML
+from .dashboard import STATIC_DIR, dashboard_html
 from .runner import (
     RUN_TYPES,
     RunnerBusyError,
@@ -41,23 +42,17 @@ SCENARIO_DISPLAY_NAMES = {
 
 class ScenarioRunRequest(BaseModel):
     scenario_id: Optional[str] = "baseline_am_peak"
-    all_scenarios: bool = False
     run_type: Literal["baseline", "cits", "tsp_no_actuation", "tsp_actuation", "comparison", "all"] = "comparison"
     steps: Optional[int] = Field(default=None, ge=1)
-    sumo_binary: str = "sumo"
     gui: bool = False
-    traci_port: Optional[int] = Field(default=None, ge=1024, le=65535)
     generate_only: bool = False
 
     def to_options(self) -> ScenarioRunOptions:
         return ScenarioRunOptions(
             scenario_id=self.scenario_id,
-            all_scenarios=self.all_scenarios,
             run_type=self.run_type,
             steps=self.steps,
-            sumo_binary=self.sumo_binary,
             gui=self.gui,
-            traci_port=self.traci_port,
             generate_only=self.generate_only,
         )
 
@@ -70,14 +65,15 @@ def create_app(root: Path = ROOT) -> FastAPI:
         version="1.0.0",
         description="Local scenario execution and KPI comparison dashboard.",
     )
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> HTMLResponse:
-        return HTMLResponse(DASHBOARD_HTML)
+        return HTMLResponse(dashboard_html())
 
     @app.get("/dashboard", response_class=HTMLResponse)
     def dashboard() -> HTMLResponse:
-        return HTMLResponse(DASHBOARD_HTML)
+        return HTMLResponse(dashboard_html())
 
     @app.get("/api/health")
     def health() -> Dict[str, Any]:
@@ -91,6 +87,15 @@ def create_app(root: Path = ROOT) -> FastAPI:
     @app.get("/api/runs/current")
     def current_run() -> Dict[str, Any]:
         return runner.get_state()
+
+    @app.get("/api/runs/current/logs")
+    def current_run_logs() -> Dict[str, Any]:
+        state = runner.get_state()
+        return {
+            "run_id": state.get("run_id"),
+            "stdout": _tail_text(root, state.get("stdout_log")),
+            "stderr": _tail_text(root, state.get("stderr_log")),
+        }
 
     @app.post("/api/runs/start", status_code=202)
     def start_run(request: ScenarioRunRequest) -> Dict[str, Any]:
@@ -245,6 +250,29 @@ def _read_json(path: Path) -> Dict[str, Any]:
     except (OSError, json.JSONDecodeError):
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def _tail_text(root: Path, raw_path: Any, max_chars: int = 6000) -> Dict[str, Any]:
+    if not raw_path:
+        return {"path": None, "exists": False, "content": ""}
+    try:
+        path = Path(str(raw_path))
+        if not path.is_absolute():
+            path = root / path
+        path = path.resolve()
+        path.relative_to(root)
+    except (OSError, ValueError):
+        return {"path": str(raw_path), "exists": False, "content": "", "error": "invalid_path"}
+    if not path.exists() or not path.is_file():
+        return {"path": str(path), "exists": False, "content": ""}
+    content = path.read_text(encoding="utf-8", errors="replace")
+    truncated = len(content) > max_chars
+    return {
+        "path": str(path),
+        "exists": True,
+        "content": content[-max_chars:] if truncated else content,
+        "truncated": truncated,
+    }
 
 
 def _nested(payload: Dict[str, Any], dotted_path: str) -> Any:
