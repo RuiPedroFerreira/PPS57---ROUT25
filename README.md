@@ -7,7 +7,7 @@ The repository is designed for technical demonstration and validation. It is not
 ## What It Does
 
 - Builds and runs a SUMO corridor scenario for Porto/Boavista.
-- Emulates C-ITS/V2X messages in JSON form: `MAPEM_like`, `SPATEM_like`, `SREM_like`, and `SSEM_like`.
+- Emulates C-ITS/V2X messages in JSON form: `MAPEM`, `SPATEM`, `SREM`, and `SSEM`.
 - Generates bus priority requests from emulated OBUs and validates them through RSUs.
 - Converts accepted priority requests into TSP decisions.
 - Applies a Safety Layer before any signal actuation.
@@ -28,6 +28,7 @@ The repository is designed for technical demonstration and validation. It is not
 
 ```text
 configs/                 Runtime configuration for C-ITS, TSP, policy training and platform checks
+docs/                    Protocol ICD and design notes
 outputs/                 Generated JSONL/XML/log artifacts
 reports/                 Generated summaries, KPIs and policy reports
 scripts/                 User-facing command-line entry points
@@ -608,35 +609,64 @@ The platform check reads generated artifacts and writes `reports/platform_snapsh
 The emulated message flow is:
 
 ```text
-MAPEM_like: RSU publishes intersection topology
-SPATEM_like: RSU publishes signal state
-SREM_like: OBU requests priority
-SSEM_like: RSU acknowledges, rejects or forwards the request to the TSP engine
+MAPEM: RSU publishes intersection topology
+SPATEM: RSU publishes signal state
+SREM: OBU requests, updates or cancels priority
+SSEM: RSU responds with processing, rejected, granted or unknown/cancelled status
 ```
 
-Messages are JSON/Python-native for functional validation. They are not ASN.1/UPER ETSI encodings.
+Messages are JSON/Python-native for functional validation in SUMO. The v0.4
+shape follows ETSI MAPEM/SPATEM/SREM/SSEM concepts, but it is not ASN.1/OER/UPER
+encoding, does not use operational PKI, and remains a simulation profile.
+
+The simulation interface contract is documented in `docs/protocol_icd.md`. It
+separates standard-like fields, operator extensions, SUMO artifacts, synthetic
+geometry, trust assumptions and lifecycle audit expectations.
+
+Optional broker transport effects are configured in
+`configs/cits_v2x_config.json` under `message_transport`. They can inject
+seeded latency, jitter, loss, duplicate delivery and reordering while keeping
+the default run ideal and deterministic.
 
 ## Message Examples
 
-### MAPEM_like
+### MAPEM
 
 Describes the topology of one controlled intersection.
 
 ```json
 {
-  "message_type": "MAPEM_like",
-  "protocol_version": "0.3.0",
+  "message_type": "MAPEM",
+  "protocol_version": "0.4.0",
   "source_id": "RSU_BOAVISTA_02",
   "destination_id": "BROADCAST",
-  "timestamp_s": 0.0,
   "message_id": "mapem-demo-001",
-  "intersection_id": "I2",
+  "station_id": 2076096511,
+  "station_type": 15,
+  "moy": 0,
+  "timestamp_ms": 0,
+  "generation_delta_time_ms": 0,
+  "intersection_ref_id": 2,
+  "intersection_alias": "I2",
   "tls_id": "I2",
   "rsu_id": "RSU_BOAVISTA_02",
   "intersection_name": "Boavista I2",
+  "revision": 1,
+  "ref_point": {
+    "latitude_e7": 410000200,
+    "longitude_e7": -85992500,
+    "elevation_dm": 0
+  },
+  "security": {
+    "signer_id": "RSU_BOAVISTA_02",
+    "certificate_id": "simulated",
+    "signature_b64": null,
+    "generation_time_ms": 0,
+    "valid_until_ms": 60000
+  },
   "approaches": [
     {
-      "approach_id": "I1_I2",
+      "approach_id": "I2:I1_I2",
       "edge_id": "I1_I2",
       "direction": "westbound",
       "priority_movement_ids": ["I2_westbound_public_transport"],
@@ -646,92 +676,154 @@ Describes the topology of one controlled intersection.
 }
 ```
 
-### SPATEM_like
+### SPATEM
 
-Describes the current signal phase and remaining timing context.
+Describes movement states and remaining timing context.
 
 ```json
 {
-  "message_type": "SPATEM_like",
-  "protocol_version": "0.3.0",
+  "message_type": "SPATEM",
+  "protocol_version": "0.4.0",
   "source_id": "RSU_BOAVISTA_02",
   "destination_id": "BROADCAST",
-  "timestamp_s": 100.0,
   "message_id": "spatem-demo-001",
-  "intersection_id": "I2",
+  "station_id": 2076096511,
+  "station_type": 15,
+  "moy": 1,
+  "timestamp_ms": 40000,
+  "generation_delta_time_ms": 34464,
+  "security": {
+    "signer_id": "RSU_BOAVISTA_02",
+    "certificate_id": "simulated",
+    "signature_b64": null,
+    "generation_time_ms": 100000,
+    "valid_until_ms": 160000
+  },
+  "intersection_ref_id": 2,
+  "intersection_alias": "I2",
   "tls_id": "I2",
-  "current_phase_index": 0,
-  "current_program_id": "static",
-  "red_yellow_green_state": "GGrr",
-  "next_switch_s": 132.0,
-  "spent_duration_s": 18.0,
-  "controlled_lanes": ["I1_I2_0", "I3_I2_0"]
+  "revision": 1,
+  "movement_events": [
+    {
+      "signal_group_id": 1,
+      "event_state": "protected-Movement-Allowed",
+      "min_end_time_ms": 32000,
+      "max_end_time_ms": 32000,
+      "likely_time_ms": 32000,
+      "confidence": 15
+    }
+  ],
+  "intersection_status": {},
+  "debug_sumo_state": "GGrr"
 }
 ```
 
-### SREM_like
+### SREM
 
-Represents a priority request sent by an emulated OBU.
+Represents a priority request, update or cancellation sent by an emulated OBU.
 
 ```json
 {
-  "message_type": "SREM_like",
-  "protocol_version": "0.3.0",
+  "message_type": "SREM",
+  "protocol_version": "0.4.0",
   "source_id": "OBU_bus_I2",
   "destination_id": "RSU_BOAVISTA_02",
-  "timestamp_s": 100.0,
   "message_id": "srem-demo-001",
-  "request_id": "request-demo-001",
-  "vehicle_id": "bus_I2",
-  "vehicle_class": "bus",
-  "line_id": "STCP500_PROXY_W",
-  "route_id": "route_boavista_proxy",
-  "intersection_id": "I2",
-  "tls_id": "I2",
-  "rsu_id": "RSU_BOAVISTA_02",
-  "current_edge_id": "I1_I2",
-  "current_lane_id": "I1_I2_0",
-  "priority_movement_id": "I2_westbound_public_transport",
-  "target_signal_group_id": "I2_priority_westbound",
-  "speed_mps": 10.0,
-  "distance_to_stopline_m": 160.0,
-  "eta_to_stopline_s": 16.0,
-  "schedule_delay_s": 120.0,
-  "headway_deviation_s": 0.0,
-  "requested_maneuver": "green_extension",
-  "priority_level": "public_transport_high_delay",
-  "expires_at_s": 130.0,
-  "status": "requested"
+  "station_id": 123456,
+  "station_type": 6,
+  "moy": 1,
+  "timestamp_ms": 40000,
+  "generation_delta_time_ms": 34464,
+  "security": {
+    "signer_id": "OBU_bus_I2",
+    "certificate_id": "simulated",
+    "signature_b64": null,
+    "generation_time_ms": 100000,
+    "valid_until_ms": 112000
+  },
+  "sequence_number": 7,
+  "requests": [
+    {
+      "intersection_ref_id": 2,
+      "request_id": 3,
+      "request_type": "priorityRequest",
+      "in_bound_lane_id": "I1_I2_0",
+      "out_bound_lane_id": "I2_I3",
+      "eta_min_minute": 1,
+      "eta_min_second_ms": 56000,
+      "duration_ms": 12000
+    }
+  ],
+  "requestor": {
+    "station_id": 123456,
+    "station_type": 6,
+    "basic_vehicle_role": "publicTransport",
+    "position": {"latitude_e7": 0, "longitude_e7": 0, "elevation_dm": 0},
+    "heading_deg": 0.0,
+    "speed_mps": 10.0,
+    "route_name": "STCP500_PROXY_W",
+    "operational_vehicle_id": "bus_I2"
+  },
+  "operator_telemetry": {
+    "schedule_delay_s": 120.0,
+    "headway_deviation_s": 0.0,
+    "distance_to_stopline_m": 160.0,
+    "eta_to_stopline_s": 16.0,
+    "operator_priority_class": "high_delay",
+    "line_id": "STCP500_PROXY_W",
+    "route_id": "route_boavista_proxy",
+    "intersection_alias": "I2",
+    "tls_id": "I2",
+    "rsu_id": "RSU_BOAVISTA_02",
+    "priority_movement_id": "I2_westbound_public_transport",
+    "target_signal_group_id_hint": "I2_priority_westbound"
+  },
+  "expires_at_s": 112.0
 }
 ```
 
-### SSEM_like
+### SSEM
 
-Represents the RSU response to an `SREM_like` request.
+Represents the RSU response to an `SREM` request.
 
 ```json
 {
-  "message_type": "SSEM_like",
-  "protocol_version": "0.3.0",
+  "message_type": "SSEM",
+  "protocol_version": "0.4.0",
   "source_id": "RSU_BOAVISTA_02",
   "destination_id": "OBU_bus_I2",
-  "timestamp_s": 100.2,
   "message_id": "ssem-demo-001",
   "correlation_id": "srem-demo-001",
-  "request_id": "request-demo-001",
-  "vehicle_id": "bus_I2",
-  "intersection_id": "I2",
+  "station_id": 2076096511,
+  "station_type": 15,
+  "moy": 1,
+  "timestamp_ms": 40200,
+  "generation_delta_time_ms": 34664,
+  "security": {
+    "signer_id": "RSU_BOAVISTA_02",
+    "certificate_id": "simulated",
+    "signature_b64": null,
+    "generation_time_ms": 100200,
+    "valid_until_ms": 160200
+  },
+  "intersection_ref_id": 2,
+  "intersection_alias": "I2",
   "tls_id": "I2",
   "rsu_id": "RSU_BOAVISTA_02",
-  "status": "acknowledged",
-  "action": "forward_to_decision_engine",
-  "reason": "accepted_for_tsp_decision_engine",
-  "valid_until_s": 115.2,
-  "confidence": 1.0,
-  "safety_notes": [
-    "Request accepted by RSU for TSP evaluation.",
-    "Signal actuation must pass through the TSP Safety Layer."
-  ]
+  "response": {
+    "request_id": 3,
+    "sequence_number": 7,
+    "requestor_station_id": 123456,
+    "response_status": "processing",
+    "granted_signal_group": null,
+    "valid_until_ms": 115200
+  },
+  "audit": {
+    "granted_strategy": "none",
+    "rejection_reason": null,
+    "confidence": 0.95,
+    "notes": []
+  }
 }
 ```
 
@@ -795,6 +887,7 @@ Example SUMO/TraCI actuation result:
 | `outputs/scenarios/<scenario>/<run_type>/seed_<seed>/` | Scenario runner | Per-scenario SUMO, C-ITS and TSP run artifacts |
 | `reports/cits_emulation_summary.json` | C-ITS runs | Message counts and request summary |
 | `reports/tsp_emulation_summary.json` | TSP runs | Decision, safety and actuation summary |
+| `reports/protocol_lifecycle_audit.json` | `scripts/audit_protocol_lifecycle.py` | Replayed SREM/SSEM/TSP/actuation lifecycle audit |
 | `reports/baseline_kpis.json` | KPI parser | SUMO baseline KPI summary |
 | `reports/scenarios/<scenario>/<run_type>/seed_<seed>/kpis.json` | Scenario runner | Per-run KPI summary used by scenario reports |
 | `reports/policy_report.json` | Policy optimization | Exported safe runtime policy |

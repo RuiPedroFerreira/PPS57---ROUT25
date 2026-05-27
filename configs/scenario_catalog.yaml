@@ -1,4 +1,4 @@
-scenario_set: pps57_porto_boavista_base_v03
+scenario_set: pps57_porto_boavista_base_v04
 metadata:
   city: Porto
   corridor: Avenida da Boavista / Casa da Musica - Praca do Imperio - Castelo do Queijo
@@ -13,11 +13,13 @@ metadata:
 
 scenarios:
   baseline_am_peak:
-    description: Referencia principal de ponta da manha sem eventos especiais.
+    description: Referencia operacional de ponta da manha sem eventos especiais.
     realism_basis: >
       Janela de 2 horas, eixo principal dominante, procura inbound mais forte e
       headways TP de 10-15 minutos sao plausiveis para uma arterial urbana de
-      entrada na cidade.
+      entrada na cidade. A procura usa o envelope operacional calibrado para
+      evitar que a referencia central fique dominada por backlog de insercao
+      SUMO; cenarios high/congested preservam o stress de saturacao.
     kpi_focus:
       - bus_time_loss
       - general_traffic_delay

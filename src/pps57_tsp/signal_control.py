@@ -380,7 +380,7 @@ class SimulatedControllerAdapter:
 def build_controller_contracts(cits_config: CITSConfig, tsp_config: TSPConfig) -> List[ControllerContract]:
     return [
         build_controller_contract(cits_config, tsp_config, intersection.tls_id)
-        for intersection in cits_config.intersections
+        for intersection in cits_config.signal_controlled_intersections
     ]
 
 

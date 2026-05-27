@@ -27,6 +27,7 @@ class IntersectionConfig:
     name: str
     controlled_approach_edges: List[str]
     priority_movements: List[PriorityMovementConfig]
+    signal_controlled: bool = True
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,7 @@ class CITSConfig:
     movement_by_id: Dict[str, PriorityMovementConfig]
     rsu_to_intersection: Dict[str, IntersectionConfig]
     tls_to_intersection: Dict[str, IntersectionConfig]
+    intersection_by_alias: Dict[str, IntersectionConfig]
 
     @property
     def obu_policy(self) -> Dict[str, Any]:
@@ -59,6 +61,10 @@ class CITSConfig:
     @property
     def sumo(self) -> Dict[str, Any]:
         return self.raw.get("sumo", {})
+
+    @property
+    def signal_controlled_intersections(self) -> List[IntersectionConfig]:
+        return [intersection for intersection in self.intersections if intersection.signal_controlled]
 
     def path_from_root(self, relative: str | Path) -> Path:
         path = Path(relative)
@@ -137,6 +143,9 @@ def load_cits_config(path: str | Path, root: Optional[str | Path] = None) -> CIT
         # comprehension quando um bloco de intersection está malformado.
         section_name = f"intersections[{index}]"
         require_keys(item, ("intersection_id", "tls_id", "rsu_id"), section_name)
+        signal_controlled = item.get("signal_controlled", True)
+        if not isinstance(signal_controlled, bool):
+            raise ValueError(f"{section_name}.signal_controlled must be a boolean")
         intersections.append(
             IntersectionConfig(
                 intersection_id=item["intersection_id"],
@@ -145,6 +154,7 @@ def load_cits_config(path: str | Path, root: Optional[str | Path] = None) -> CIT
                 name=item.get("name", item["intersection_id"]),
                 controlled_approach_edges=list(item.get("controlled_approach_edges", [])),
                 priority_movements=parse_priority_movements(item, section_name),
+                signal_controlled=signal_controlled,
             )
         )
 
@@ -153,10 +163,12 @@ def load_cits_config(path: str | Path, root: Optional[str | Path] = None) -> CIT
     movement_by_id: Dict[str, PriorityMovementConfig] = {}
     rsu_to_intersection: Dict[str, IntersectionConfig] = {}
     tls_to_intersection: Dict[str, IntersectionConfig] = {}
+    intersection_by_alias: Dict[str, IntersectionConfig] = {}
 
     for intersection in intersections:
         rsu_to_intersection[intersection.rsu_id] = intersection
         tls_to_intersection[intersection.tls_id] = intersection
+        intersection_by_alias[intersection.intersection_id] = intersection
         for edge_id in intersection.controlled_approach_edges:
             edge_to_intersection[edge_id] = intersection
         for movement in intersection.priority_movements:
@@ -175,6 +187,7 @@ def load_cits_config(path: str | Path, root: Optional[str | Path] = None) -> CIT
         movement_by_id=movement_by_id,
         rsu_to_intersection=rsu_to_intersection,
         tls_to_intersection=tls_to_intersection,
+        intersection_by_alias=intersection_by_alias,
     )
 
 

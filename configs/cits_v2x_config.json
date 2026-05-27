@@ -1,18 +1,18 @@
 {
     "component_id": "cits_v2x_emulation",
-    "scenario_id": "porto_boavista_base_v03_cits_v2x",
+    "scenario_id": "porto_boavista_base_v04_cits_v2x",
     "description": "C-ITS/V2X emulation for public transport traffic-signal priority requests in the Porto/Boavista corridor.",
     "protocol_profile": {
         "profile_name": "C-ITS TLC emulado",
-        "version": "0.3.0",
+        "version": "0.4.0",
         "encoding": "json",
         "messages": [
-            "MAPEM_like",
-            "SPATEM_like",
-            "SREM_like",
-            "SSEM_like"
+            "MAPEM",
+            "SPATEM",
+            "SREM",
+            "SSEM"
         ],
-        "note": "Os modelos s\u00e3o SREM/SSEM/MAPEM/SPATEM-like para valida\u00e7\u00e3o funcional; n\u00e3o substituem codifica\u00e7\u00e3o ASN.1/UPER ETSI em opera\u00e7\u00e3o real."
+        "note": "Os modelos JSON seguem o shape ETSI MAPEM/SPATEM/SREM/SSEM para valida\u00e7\u00e3o funcional em SUMO; n\u00e3o substituem codifica\u00e7\u00e3o ASN.1/OER/UPER, PKI ou transporte operacional real."
     },
     "sumo": {
         "sumocfg": "sumo/corredor.sumocfg",
@@ -26,6 +26,35 @@
         "summary_report": "reports/cits_emulation_summary.json",
         "mapem_snapshot": "outputs/cits_mapem_snapshot.json",
         "spatem_snapshot": "outputs/cits_spatem_snapshot.json"
+    },
+    "synthetic_geometry": {
+        "enabled": true,
+        "origin_latitude_e7": 410000000,
+        "origin_longitude_e7": -86000000,
+        "intersection_spacing_e7": 7500,
+        "lateral_offset_e7": 200,
+        "elevation_dm": 0,
+        "assumption": "Synthetic WGS84-like anchor points for SUMO-only MAPEM geometry; not surveyed operational coordinates."
+    },
+    "message_transport": {
+        "enabled": false,
+        "latency_steps": 0,
+        "jitter_steps": 0,
+        "drop_rate": 0.0,
+        "duplicate_rate": 0.0,
+        "reorder_window_steps": 0,
+        "random_seed": 57
+    },
+    "trust_store": {
+        "mode": "prefix_allowlist",
+        "allowed_signer_prefixes": [
+            "OBU_bus_",
+            "OBU_ev_",
+            "OBU_emergency_",
+            "RSU_BOAVISTA_"
+        ],
+        "revoked_certificate_ids": [],
+        "assumption": "Simulated trust policy for SUMO. This is not ETSI PKI validation."
     },
     "obu_policy": {
         "request_distance_m": 250,
@@ -49,18 +78,14 @@
         "emergency_id_prefixes": [
             "ev_",
             "emergency_"
-        ],
-        "requested_maneuvers": [
-            "green_extension",
-            "early_green",
-            "priority_candidate"
         ]
     },
     "rsu_policy": {
         "response_ttl_s": 15,
+        "dedupe_cache_ttl_s": 30,
         "cooldown_after_grant_s": 90,
         "max_active_requests_per_rsu": 4,
-        "acceptance_mode": "acknowledge_for_decision_engine",
+        "acceptance_mode": "processing_for_decision_engine",
         "default_reject_reason": "not_eligible_for_priority"
     },
     "safety_constraints": {
@@ -77,11 +102,11 @@
         "recovery_debt_payback_rate_s_per_s": 1
     },
     "priority_hierarchy": {
-        "emergency_vehicle": 1,
-        "public_transport_high_delay": 2,
-        "public_transport_headway_recovery": 3,
-        "public_transport_nominal": 4,
-        "general_traffic": 5
+        "_comment": "Chaves alinhadas com OperatorPriorityClass (extensão operador, não-standard ETSI). Ranking é usado pelo TSP para ordenar pedidos simultâneos no mesmo tick.",
+        "emergency": 1,
+        "high_delay": 2,
+        "headway_recovery": 3,
+        "nominal": 4
     },
     "intersections": [
         {
@@ -349,52 +374,14 @@
             "tls_id": "I6",
             "rsu_id": "RSU_BOAVISTA_06",
             "name": "Pra\u00e7a do Imp\u00e9rio",
+            "signal_controlled": false,
             "controlled_approach_edges": [
                 "I5_I6",
                 "I7_I6",
                 "N_I6_I6",
                 "S_I6_I6"
             ],
-            "priority_movements": [
-                {
-                    "movement_id": "I6_westbound_public_transport",
-                    "direction": "westbound",
-                    "approach_edges": [
-                        "I5_I6"
-                    ],
-                    "vehicle_classes": [
-                        "public_transport"
-                    ],
-                    "target_signal_group_id": "I6_priority_westbound",
-                    "allowed_actions": [
-                        "green_extension",
-                        "early_green"
-                    ],
-                    "objectives": [
-                        "schedule_delay",
-                        "headway_recovery"
-                    ]
-                },
-                {
-                    "movement_id": "I6_eastbound_public_transport",
-                    "direction": "eastbound",
-                    "approach_edges": [
-                        "I7_I6"
-                    ],
-                    "vehicle_classes": [
-                        "public_transport"
-                    ],
-                    "target_signal_group_id": "I6_priority_eastbound",
-                    "allowed_actions": [
-                        "green_extension",
-                        "early_green"
-                    ],
-                    "objectives": [
-                        "schedule_delay",
-                        "headway_recovery"
-                    ]
-                }
-            ]
+            "priority_movements": []
         },
         {
             "intersection_id": "I7",

@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 
 from pps57_cits.messages import SREMLike
 from pps57_cits.models import NetworkStateSnapshot, SignalState

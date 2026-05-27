@@ -9,6 +9,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -48,7 +49,12 @@ def parse_args() -> argparse.Namespace:
         default="baseline",
         help="Pipeline to run for each scenario.",
     )
-    parser.add_argument("--steps", type=int, default=None, help="Optional max simulation steps for C-ITS/TSP runs.")
+    parser.add_argument(
+        "--steps",
+        type=int,
+        default=None,
+        help="Optional max simulation steps. Reported effective horizon is steps * simulation_step_length_s.",
+    )
     parser.add_argument(
         "--seeds",
         nargs="+",
@@ -64,9 +70,31 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+REQUIRED_BASE_CONFIG_KEYS = ("scenario_profiles", "demand_profiles", "active_demand_profile")
+
+
+def _load_base_config(path: Path) -> dict:
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise SystemExit(f"Base scenario config not found: {path}") from exc
+    try:
+        config = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"Base scenario config is not valid JSON ({path}): {exc}") from exc
+    if not isinstance(config, dict):
+        raise SystemExit(f"Base scenario config must be a JSON object: {path}")
+    missing = [key for key in REQUIRED_BASE_CONFIG_KEYS if key not in config]
+    if missing:
+        raise SystemExit(
+            f"Base scenario config {path} is missing required keys: {', '.join(missing)}"
+        )
+    return config
+
+
 def main() -> int:
     args = parse_args()
-    base_config = json.loads((ROOT / args.config).read_text(encoding="utf-8"))
+    base_config = _load_base_config(ROOT / args.config)
     catalog = load_catalog(ROOT / args.catalog)
     summaries = validate_scenario_catalog(base_config, catalog)
     if args.list:
@@ -282,6 +310,11 @@ def run_scenario_type(
     summary["outputs_dir"] = str(run_output_dir.relative_to(ROOT))
     summary["reports_dir"] = str(run_report_dir.relative_to(ROOT))
     summary["max_steps"] = args.steps
+    summary["requested_steps"] = args.steps
+    summary["step_length_s"] = float(config.get("simulation_step_length_s", 1.0))
+    summary["configured_end_s"] = float(config.get("simulation_end_s", 7200))
+    summary["sumo_quality_thresholds"] = dict(config.get("sumo_quality_thresholds", {}))
+    summary["effective_end_s"] = _effective_end_s(config, args.steps)
     summary["sumocfg"] = str(artifacts.sumocfg_file.relative_to(ROOT))
     summary["network"] = str(artifacts.network_file.relative_to(ROOT))
 
@@ -313,6 +346,7 @@ def run_scenario_type(
 
 def run_baseline_sumo(args: argparse.Namespace, config: dict, run_output_dir: Path, sumocfg: Path) -> None:
     binary = config.get("sumo", {}).get("default_gui_binary", "sumo-gui") if args.gui else args.sumo_binary
+    end_s = _effective_end_s(config, args.steps)
     cmd = [
         binary,
         "-c", str(sumocfg),
@@ -322,13 +356,29 @@ def run_baseline_sumo(args: argparse.Namespace, config: dict, run_output_dir: Pa
         "--statistic-output", str(run_output_dir / "statistics.xml"),
         "--emission-output", str(run_output_dir / "emissions.xml"),
         "--seed", str(config.get("random_seed", 57)),
-        "--end", str(config.get("simulation_end_s", 7200)),
+        "--end", _format_sumo_number(end_s),
     ]
     if config.get("pedestrian_flows"):
         cmd.extend(["--pedestrian.model", "striping"])
     if args.gui:
         cmd.extend(["--start", "--quit-on-end"])
     _run(cmd)
+
+
+def _effective_end_s(config: dict, requested_steps: int | None) -> float:
+    configured_begin = float(config.get("simulation_begin_s", 0))
+    configured_end = float(config.get("simulation_end_s", 7200))
+    if requested_steps is None:
+        return configured_end
+    step_length = float(config.get("simulation_step_length_s", 1.0))
+    if step_length <= 0:
+        raise SystemExit("simulation_step_length_s must be > 0.")
+    requested_end = configured_begin + max(0, int(requested_steps)) * step_length
+    return min(configured_end, requested_end)
+
+
+def _format_sumo_number(value: float) -> str:
+    return str(int(value)) if float(value).is_integer() else str(value)
 
 
 def run_cits(args: argparse.Namespace, scenario_id: str, run_output_dir: Path, run_report_dir: Path, artifacts) -> None:
@@ -408,15 +458,24 @@ def write_tsp_config(scenario_id: str, run_output_dir: Path, run_report_dir: Pat
     return config_path
 
 
+GLOBAL_SUMO_OUTPUTS = ("tripinfo.xml", "summary.xml", "statistics.xml", "emissions.xml")
+
+
 def clear_global_sumo_outputs() -> None:
-    for rel in ("outputs/tripinfo.xml", "outputs/summary.xml", "outputs/statistics.xml", "outputs/emissions.xml"):
-        path = ROOT / rel
+    # SUMO writes these files at fixed paths declared in corredor.sumocfg, so
+    # only one scenario at a time can own them. The CLI runs scenarios
+    # sequentially (--all is a serial loop) and the dashboard runner holds a
+    # process lock; do NOT parallelise scenario execution without first moving
+    # these outputs into per-run paths via SUMO's --tripinfo-output/--summary
+    # flags.
+    for name in GLOBAL_SUMO_OUTPUTS:
+        path = ROOT / "outputs" / name
         if path.exists():
             path.unlink()
 
 
 def copy_global_sumo_outputs(run_output_dir: Path) -> None:
-    for name in ("tripinfo.xml", "summary.xml", "statistics.xml", "emissions.xml"):
+    for name in GLOBAL_SUMO_OUTPUTS:
         source = ROOT / "outputs" / name
         target = run_output_dir / name
         if source.exists() and not target.exists():
@@ -475,6 +534,9 @@ def run_verdict(kpis: dict) -> dict:
         return {"status": "fail", "reasons": ["missing_tripinfo"]}
     reasons = []
     inconclusive = []
+    thresholds = _sumo_quality_thresholds(kpis)
+    insertion = kpis.get("insertion", {})
+
     if kpis.get("all_vehicles", {}).get("vehicles", 0) <= 0:
         reasons.append("no_completed_vehicles")
     if kpis.get("buses", {}).get("vehicles", 0) <= 0:
@@ -484,9 +546,62 @@ def run_verdict(kpis: dict) -> dict:
             inconclusive.append("no_completed_buses_in_short_smoke_run")
         else:
             reasons.append("no_completed_buses")
+    if int(insertion.get("collisions", 0) or 0) > int(thresholds["max_collisions"]):
+        reasons.append("sumo_collisions_gt_threshold")
+    if int(insertion.get("teleports_total", 0) or 0) > int(thresholds["max_teleports_total"]):
+        reasons.append("sumo_teleports_gt_threshold")
+    emergency_braking = int(insertion.get("emergency_braking", 0) or 0)
+    completed_vehicles = int(kpis.get("all_vehicles", {}).get("vehicles", 0) or 0)
+    emergency_braking_rate = (
+        emergency_braking / completed_vehicles * 1000.0
+        if completed_vehicles > 0
+        else float(emergency_braking)
+    )
+    min_completed_for_rate = int(thresholds["min_completed_vehicles_for_rate_gates"])
+    rate_gate_applies = completed_vehicles >= min_completed_for_rate
+    if emergency_braking > int(thresholds["max_emergency_braking"]) or (
+        rate_gate_applies
+        and emergency_braking_rate > float(thresholds["max_emergency_braking_per_1000_vehicles"])
+    ):
+        reasons.append("sumo_emergency_braking_gt_threshold")
+    if int(insertion.get("vehicles_waiting", 0) or 0) > int(thresholds["max_vehicles_waiting_at_end"]):
+        reasons.append("sumo_waiting_to_insert_at_end_gt_threshold")
+    if int(insertion.get("insertion_gap_at_end", 0) or 0) > int(thresholds["max_insertion_gap_at_end"]):
+        reasons.append("sumo_insertion_gap_at_end_gt_threshold")
+    if int(insertion.get("max_waiting_to_insert", 0) or 0) > int(thresholds["max_waiting_to_insert"]):
+        reasons.append("sumo_max_waiting_to_insert_gt_threshold")
+    steps = int(insertion.get("steps", 0) or 0)
+    if steps > 0:
+        backlog_ratio = float(insertion.get("backlog_step_count", 0) or 0) / float(steps)
+        if backlog_ratio > float(thresholds["max_backlog_step_ratio"]):
+            reasons.append("sumo_backlog_step_ratio_gt_threshold")
     if inconclusive and not reasons:
         return {"status": "inconclusive", "reasons": inconclusive}
     return {"status": "fail" if reasons else "pass", "reasons": reasons}
+
+
+def _sumo_quality_thresholds(kpis: dict) -> dict[str, float | int]:
+    scenario_thresholds = kpis.get("scenario", {}).get("sumo_quality_thresholds", {})
+    defaults: dict[str, float | int] = {
+        "max_collisions": 0,
+        "max_teleports_total": 1,
+        "max_emergency_braking": 150,
+        "max_emergency_braking_per_1000_vehicles": 30,
+        "min_completed_vehicles_for_rate_gates": 500,
+        "max_waiting_to_insert": 150,
+        "max_vehicles_waiting_at_end": 150,
+        "max_insertion_gap_at_end": 0,
+        "max_backlog_step_ratio": 0.75,
+    }
+    if isinstance(scenario_thresholds, dict):
+        defaults.update(
+            {
+                key: scenario_thresholds[key]
+                for key in defaults
+                if key in scenario_thresholds
+            }
+        )
+    return defaults
 
 
 def scenario_verdict(summary: dict) -> dict:

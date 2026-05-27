@@ -74,6 +74,11 @@ def parse_insertion_kpis(summary_path: Path | None, statistics_path: Path | None
                 out["teleports_jam"] = int(teleports.attrib.get("jam", "0"))
                 out["teleports_yield"] = int(teleports.attrib.get("yield", "0"))
                 out["teleports_wrongLane"] = int(teleports.attrib.get("wrongLane", "0"))
+            safety = root.find("safety")
+            if safety is not None:
+                out["collisions"] = int(safety.attrib.get("collisions", "0"))
+                out["emergency_stops"] = int(safety.attrib.get("emergencyStops", "0"))
+                out["emergency_braking"] = int(safety.attrib.get("emergencyBraking", "0"))
         except ET.ParseError:
             out["statistics_parse_error"] = True
 

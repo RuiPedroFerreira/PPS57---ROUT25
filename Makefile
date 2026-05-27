@@ -103,10 +103,11 @@ clean:
 	# L3: limpar APENAS artefactos conhecidos gerados pelos pipelines; o glob
 	# anterior (reports/*.json, outputs/*.json) varria snapshots do utilizador
 	# (platform_snapshot.json, baseline_kpis.json) sem distinguir.
-	rm -f outputs/tripinfo.xml outputs/summary.xml outputs/statistics.xml
+	rm -f outputs/tripinfo.xml outputs/summary.xml outputs/statistics.xml outputs/emissions.xml
 	rm -f outputs/cits_messages.jsonl outputs/cits_mapem_snapshot.json outputs/cits_spatem_snapshot.json
 	rm -f outputs/tsp_decisions.jsonl outputs/tsp_actuation.jsonl
 	rm -f outputs/offline_policy_samples.jsonl outputs/policy_candidates.jsonl
+	rm -f outputs/.dashboard/dashboard_runner_*.out.log outputs/.dashboard/dashboard_runner_*.err.log
 	rm -f reports/cits_emulation_summary.json reports/tsp_emulation_summary.json
 	rm -f reports/policy_report.json reports/policy_optimization_summary.json
 	rm -f reports/tabular_q_policy_report.json reports/rl_training_summary.json

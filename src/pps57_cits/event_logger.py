@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import IO, Dict, Iterable, List, Optional
 
-from .messages import CITSMessage, RequestStatus
+from .messages import CITSMessage, ResponseStatus
 
 
 class CITSJsonlLogger:
@@ -60,27 +60,40 @@ class IncrementalCITSSummary:
         self.request_ids: set[str] = set()
         self.vehicle_ids: set[str] = set()
         self.rsu_ids: set[str] = set()
-        self.acknowledged = 0
+        self.processing = 0      # SSEM com response_status=processing (era "acknowledged")
         self.rejected = 0
+        self.granted = 0
+        self.cancelled = 0
 
     def add(self, message: CITSMessage) -> None:
         self.total += 1
         self.by_type[message.message_type] = self.by_type.get(message.message_type, 0) + 1
-        payload = message.to_dict()
-        request_id = payload.get("request_id")
-        if request_id:
-            self.request_ids.add(str(request_id))
-        vehicle_id = payload.get("vehicle_id")
-        if vehicle_id:
-            self.vehicle_ids.add(str(vehicle_id))
-        rsu_id = payload.get("rsu_id")
+        # Identificadores nas mensagens novas: requestor.operational_vehicle_id
+        # (SREM), rsu_id (MAPEM/SPATEM/SSEM), response.request_id (SSEM).
+        requestor = getattr(message, "requestor", None)
+        if requestor is not None:
+            vehicle_id = getattr(requestor, "operational_vehicle_id", "")
+            if vehicle_id:
+                self.vehicle_ids.add(str(vehicle_id))
+        rsu_id = getattr(message, "rsu_id", "")
         if rsu_id:
             self.rsu_ids.add(str(rsu_id))
-        status = payload.get("status")
-        if status == RequestStatus.ACKNOWLEDGED.value:
-            self.acknowledged += 1
-        elif status == RequestStatus.REJECTED.value:
-            self.rejected += 1
+        response = getattr(message, "response", None)
+        if response is not None:
+            request_id = getattr(response, "request_id", None)
+            station_id = getattr(response, "requestor_station_id", None)
+            if request_id is not None and station_id is not None:
+                self.request_ids.add(f"{station_id}:{request_id}")
+            status = getattr(response, "response_status", None)
+            if status == ResponseStatus.PROCESSING.value:
+                self.processing += 1
+            elif status == ResponseStatus.REJECTED.value:
+                self.rejected += 1
+            elif status == ResponseStatus.GRANTED.value:
+                self.granted += 1
+            elif status == ResponseStatus.UNKNOWN.value:
+                # cancelamento devolvido pelo RSU como ack idempotente
+                self.cancelled += 1
 
     def to_dict(self) -> Dict[str, object]:
         return {
@@ -89,8 +102,13 @@ class IncrementalCITSSummary:
             "unique_request_ids": len(self.request_ids),
             "unique_vehicle_ids": len(self.vehicle_ids),
             "unique_rsu_ids": len(self.rsu_ids),
-            "acknowledged_messages": self.acknowledged,
+            "processing_messages": self.processing,
+            # Legacy alias for v0.3 reports and comparison tools. In v0.4 the
+            # standard-aligned SSEM status is `processing`, not `acknowledged`.
+            "acknowledged_messages": self.processing,
             "rejected_messages": self.rejected,
+            "granted_messages": self.granted,
+            "cancelled_acks": self.cancelled,
         }
 
 

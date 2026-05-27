@@ -29,6 +29,7 @@ ALGORITHM_RUNS = ("baseline", "tsp_no_actuation", "tsp_actuation")
 SCENARIO_DISPLAY_NAMES = {
     "baseline_am_peak": "Ponta da manha",
     "baseline_off_peak": "Fora de ponta",
+    "baseline_pm_peak": "Ponta da tarde",
     "high_demand_corridor": "Procura elevada no corredor",
     "cross_traffic_pressure": "Pressao nas transversais",
     "delayed_bus_westbound": "Autocarro atrasado para o mar",
@@ -37,6 +38,18 @@ SCENARIO_DISPLAY_NAMES = {
     "long_dwell_stop": "Paragem com dwell elevado",
     "incident_minor_road_queue": "Fila anomala em via secundaria",
     "emergency_vehicle_conflict": "Conflito com emergencia",
+    "baseline_am_peak_low": "Ponta da manha — envelope inferior",
+    "baseline_am_peak_high": "Ponta da manha — envelope superior",
+    "baseline_pm_peak_low": "Ponta da tarde — envelope inferior",
+    "baseline_pm_peak_high": "Ponta da tarde — envelope superior",
+    "congested_am_peak": "Ponta da manha em saturacao",
+    "baseline_rainy_am_peak": "Ponta da manha com chuva",
+    "baseline_foggy_am_peak": "Ponta da manha com nevoeiro",
+    "baseline_winter_morning_am_peak": "Manha de inverno com piso frio",
+    "av_penetration_low": "Penetracao baixa de AVs (~10%)",
+    "av_penetration_medium": "Penetracao media de AVs (~30%)",
+    "av_penetration_high": "Penetracao alta de AVs (~60%)",
+    "stochastic_incidents_am_peak": "Ponta da manha com incidentes estocasticos",
 }
 
 

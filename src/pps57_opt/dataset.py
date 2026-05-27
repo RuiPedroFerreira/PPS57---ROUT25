@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import List
 
 from pps57_cits.config import CITSConfig, IntersectionConfig
-from pps57_cits.messages import PriorityLevel, RequestedManeuver, SREMLike
+from pps57_cits.messages import OperatorPriorityClass, SREMLike, synth_srem
 from pps57_cits.models import SignalState
 
 from .models import OfflineScenario
@@ -46,7 +46,6 @@ def build_offline_scenarios(config: CITSConfig) -> List[OfflineScenario]:
                 lane_id="I7_I6_0",
                 eta=18.0,
                 distance=171.0,
-                maneuver=RequestedManeuver.EARLY_GREEN.value,
             ),
             signal_state=_state(intersections["I6"], phase=2, ryg="rrGG", next_switch=125.0, spent=20.0),
         ),
@@ -61,7 +60,6 @@ def build_offline_scenarios(config: CITSConfig) -> List[OfflineScenario]:
                 lane_id="I7_I6_0",
                 eta=9.0,
                 distance=85.5,
-                maneuver=RequestedManeuver.EARLY_GREEN.value,
             ),
             signal_state=_state(intersections["I6"], phase=2, ryg="rrGG", next_switch=125.0, spent=20.0),
         ),
@@ -77,7 +75,7 @@ def build_offline_scenarios(config: CITSConfig) -> List[OfflineScenario]:
                 eta=16.0,
                 distance=250.0,
                 delay=0.0,
-                priority=PriorityLevel.PUBLIC_TRANSPORT_NOMINAL.value,
+                priority=OperatorPriorityClass.NOMINAL.value,
             ),
             signal_state=_state(intersections["I2"], phase=0, ryg="GGrr", next_switch=102.0, spent=33.0),
         ),
@@ -149,35 +147,29 @@ def _request(
     distance: float,
     delay: float = 120.0,
     headway: float = 0.0,
-    maneuver: str = RequestedManeuver.GREEN_EXTENSION.value,
-    priority: str = PriorityLevel.PUBLIC_TRANSPORT_HIGH_DELAY.value,
+    priority: str = OperatorPriorityClass.HIGH_DELAY.value,
 ) -> SREMLike:
     movement = next(
         (item for item in intersection.priority_movements if edge_id in item.approach_edges),
         None,
     )
-    return SREMLike(
-        source_id=f"OBU_bus_{intersection.tls_id}",
-        destination_id=intersection.rsu_id,
-        timestamp_s=100.0,
+    return synth_srem(
+        sim_time_s=100.0,
         vehicle_id=f"bus_{intersection.tls_id}",
-        vehicle_class="bus",
-        line_id="STCP500_PROXY_W",
-        route_id="route_boavista_proxy",
-        intersection_id=intersection.intersection_id,
+        intersection_alias=intersection.intersection_id,
         tls_id=intersection.tls_id,
         rsu_id=intersection.rsu_id,
-        current_edge_id=edge_id,
-        current_lane_id=lane_id,
-        priority_movement_id=movement.movement_id if movement is not None else "",
-        target_signal_group_id=movement.target_signal_group_id if movement is not None else "",
-        speed_mps=max(distance / max(eta, 0.1), 0.1),
-        distance_to_stopline_m=distance,
+        lane_id=lane_id,
+        line_id="STCP500_PROXY_W",
+        route_id="route_boavista_proxy",
         eta_to_stopline_s=eta,
+        distance_to_stopline_m=distance,
+        speed_mps=max(distance / max(eta, 0.1), 0.1),
         schedule_delay_s=delay,
         headway_deviation_s=headway,
-        requested_maneuver=maneuver,
-        priority_level=priority,
+        operator_priority_class=priority,
+        priority_movement_id=movement.movement_id if movement is not None else "",
+        target_signal_group_id_hint=movement.target_signal_group_id if movement is not None else "",
         expires_at_s=130.0,
     )
 

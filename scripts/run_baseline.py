@@ -14,6 +14,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from pps57_sumo.build_network import build_sumo_artifacts  # noqa: E402
+from pps57_sumo.scenarios import apply_scenario_profile  # noqa: E402
 
 
 def require(binary: str) -> str:
@@ -37,7 +38,8 @@ def main() -> None:
     (ROOT / "reports").mkdir(exist_ok=True)
     (ROOT / "sumo/network").mkdir(parents=True, exist_ok=True)
 
-    config = json.loads((ROOT / "configs/sumo_scenario_base.json").read_text(encoding="utf-8"))
+    base_config = json.loads((ROOT / "configs/sumo_scenario_base.json").read_text(encoding="utf-8"))
+    config = apply_scenario_profile(base_config, "baseline_am_peak")
     artifacts = build_sumo_artifacts(config, root=ROOT, base_dir=Path("sumo"))
     run(["sumo", "-c", str(artifacts.sumocfg_file), "--duration-log.statistics"])
     run([sys.executable, "src/pps57_sumo/parse_tripinfo.py", "--tripinfo", "outputs/tripinfo.xml", "--out", "reports/baseline_kpis.json"])

@@ -1,7 +1,7 @@
 {
   "component_id": "tsp_safety_layer",
   "version": "0.4.0",
-  "scenario_id": "porto_boavista_base_v03_tsp_safety_layer",
+  "scenario_id": "porto_boavista_base_v04_tsp_safety_layer",
   "description": "Motor de decisão TSP e Safety Layer para prioridade semafórica contextual em movimentos prioritários configurados.",
   "logging": {
     "decision_log": "outputs/tsp_decisions.jsonl",
@@ -250,7 +250,7 @@
       },
       "I2": {
         "adapter_type": "sumo_traci",
-        "fixed_time_required": true,
+        "fixed_time_required": false,
         "allowed_actions": [
           "green_extension",
           "early_green"
@@ -261,17 +261,21 @@
           2,
           3,
           4,
-          5
+          5,
+          6,
+          7
         ],
         "service_green_phase_indices": [
           0,
-          3
-        ],
-        "intergreen_phase_indices": [
           1,
-          2,
           4,
           5
+        ],
+        "intergreen_phase_indices": [
+          2,
+          3,
+          6,
+          7
         ],
         "signal_groups": {
           "I2_priority_westbound": {
@@ -305,7 +309,7 @@
         "additional_signal_groups": [
           {
             "signal_group_id": "I2_secondary_northbound",
-            "phase_index": 3,
+            "phase_index": 4,
             "min_green_s": 8,
             "max_green_s": 55,
             "conflicts_with": [
@@ -317,7 +321,7 @@
           },
           {
             "signal_group_id": "I2_secondary_southbound",
-            "phase_index": 3,
+            "phase_index": 4,
             "min_green_s": 8,
             "max_green_s": 55,
             "conflicts_with": [
@@ -495,17 +499,21 @@
           2,
           3,
           4,
-          5
+          5,
+          6,
+          7
         ],
         "service_green_phase_indices": [
           0,
-          3
-        ],
-        "intergreen_phase_indices": [
           1,
-          2,
           4,
           5
+        ],
+        "intergreen_phase_indices": [
+          2,
+          3,
+          6,
+          7
         ],
         "signal_groups": {
           "I4_priority_westbound": {
@@ -539,7 +547,7 @@
         "additional_signal_groups": [
           {
             "signal_group_id": "I4_secondary_northbound",
-            "phase_index": 3,
+            "phase_index": 4,
             "min_green_s": 8,
             "max_green_s": 55,
             "conflicts_with": [
@@ -551,7 +559,7 @@
           },
           {
             "signal_group_id": "I4_secondary_southbound",
-            "phase_index": 3,
+            "phase_index": 4,
             "min_green_s": 8,
             "max_green_s": 55,
             "conflicts_with": [
@@ -601,7 +609,7 @@
       },
       "I5": {
         "adapter_type": "sumo_traci",
-        "fixed_time_required": true,
+        "fixed_time_required": false,
         "allowed_actions": [
           "green_extension",
           "early_green"
@@ -612,17 +620,21 @@
           2,
           3,
           4,
-          5
+          5,
+          6,
+          7
         ],
         "service_green_phase_indices": [
           0,
-          3
-        ],
-        "intergreen_phase_indices": [
           1,
-          2,
           4,
           5
+        ],
+        "intergreen_phase_indices": [
+          2,
+          3,
+          6,
+          7
         ],
         "signal_groups": {
           "I5_priority_westbound": {
@@ -656,7 +668,7 @@
         "additional_signal_groups": [
           {
             "signal_group_id": "I5_secondary_northbound",
-            "phase_index": 3,
+            "phase_index": 4,
             "min_green_s": 8,
             "max_green_s": 55,
             "conflicts_with": [
@@ -668,7 +680,7 @@
           },
           {
             "signal_group_id": "I5_secondary_southbound",
-            "phase_index": 3,
+            "phase_index": 4,
             "min_green_s": 8,
             "max_green_s": 55,
             "conflicts_with": [
@@ -712,123 +724,6 @@
               "I5_secondary_southbound",
               "I5_pedestrian_major_crossing",
               "I5_pedestrian_minor_crossing"
-            ]
-          }
-        ]
-      },
-      "I6": {
-        "adapter_type": "sumo_traci",
-        "fixed_time_required": true,
-        "allowed_actions": [
-          "green_extension",
-          "early_green"
-        ],
-        "phase_sequence": [
-          0,
-          1,
-          2,
-          3,
-          4,
-          5
-        ],
-        "service_green_phase_indices": [
-          0,
-          3
-        ],
-        "intergreen_phase_indices": [
-          1,
-          2,
-          4,
-          5
-        ],
-        "signal_groups": {
-          "I6_priority_westbound": {
-            "phase_index": 0,
-            "min_green_s": 8,
-            "max_green_s": 55,
-            "max_extension_s": 12,
-            "pedestrian_clearance_s": 4,
-            "conflicts_with": [
-              "I6_secondary_northbound",
-              "I6_secondary_southbound",
-              "I6_pedestrian_major_crossing",
-              "I6_protected_left_turn"
-            ]
-          },
-          "I6_priority_eastbound": {
-            "phase_index": 0,
-            "min_green_s": 8,
-            "max_green_s": 55,
-            "max_extension_s": 12,
-            "pedestrian_clearance_s": 4,
-            "conflicts_with": [
-              "I6_secondary_northbound",
-              "I6_secondary_southbound",
-              "I6_pedestrian_major_crossing",
-              "I6_pedestrian_minor_crossing",
-              "I6_protected_left_turn"
-            ]
-          }
-        },
-        "additional_signal_groups": [
-          {
-            "signal_group_id": "I6_secondary_northbound",
-            "phase_index": 3,
-            "min_green_s": 8,
-            "max_green_s": 55,
-            "conflicts_with": [
-              "I6_priority_westbound",
-              "I6_priority_eastbound",
-              "I6_pedestrian_minor_crossing",
-              "I6_protected_left_turn"
-            ]
-          },
-          {
-            "signal_group_id": "I6_secondary_southbound",
-            "phase_index": 3,
-            "min_green_s": 8,
-            "max_green_s": 55,
-            "conflicts_with": [
-              "I6_priority_westbound",
-              "I6_priority_eastbound",
-              "I6_pedestrian_minor_crossing",
-              "I6_protected_left_turn"
-            ]
-          },
-          {
-            "signal_group_id": "I6_pedestrian_major_crossing",
-            "phase_index": null,
-            "pedestrian_clearance_s": 4,
-            "conflicts_with": [
-              "I6_priority_westbound",
-              "I6_priority_eastbound",
-              "I6_protected_left_turn"
-            ]
-          },
-          {
-            "signal_group_id": "I6_pedestrian_minor_crossing",
-            "phase_index": null,
-            "pedestrian_clearance_s": 4,
-            "conflicts_with": [
-              "I6_secondary_northbound",
-              "I6_secondary_southbound",
-              "I6_protected_left_turn",
-              "I6_priority_westbound",
-              "I6_priority_eastbound"
-            ]
-          },
-          {
-            "signal_group_id": "I6_protected_left_turn",
-            "phase_index": null,
-            "min_green_s": 6,
-            "max_green_s": 25,
-            "conflicts_with": [
-              "I6_priority_westbound",
-              "I6_priority_eastbound",
-              "I6_secondary_northbound",
-              "I6_secondary_southbound",
-              "I6_pedestrian_major_crossing",
-              "I6_pedestrian_minor_crossing"
             ]
           }
         ]
@@ -1006,7 +901,9 @@
     "I2": {
       "service_green_phase_indices": [
         0,
-        3
+        1,
+        4,
+        5
       ],
       "phase_sequence": [
         0,
@@ -1014,7 +911,9 @@
         2,
         3,
         4,
-        5
+        5,
+        6,
+        7
       ]
     },
     "I3": {
@@ -1034,7 +933,9 @@
     "I4": {
       "service_green_phase_indices": [
         0,
-        3
+        1,
+        4,
+        5
       ],
       "phase_sequence": [
         0,
@@ -1042,13 +943,17 @@
         2,
         3,
         4,
-        5
+        5,
+        6,
+        7
       ]
     },
     "I5": {
       "service_green_phase_indices": [
         0,
-        3
+        1,
+        4,
+        5
       ],
       "phase_sequence": [
         0,
@@ -1056,21 +961,9 @@
         2,
         3,
         4,
-        5
-      ]
-    },
-    "I6": {
-      "service_green_phase_indices": [
-        0,
-        3
-      ],
-      "phase_sequence": [
-        0,
-        1,
-        2,
-        3,
-        4,
-        5
+        5,
+        6,
+        7
       ]
     },
     "I7": {
@@ -1116,12 +1009,6 @@
         "target_phase_index": 0
       },
       "I5_eastbound_public_transport": {
-        "target_phase_index": 0
-      },
-      "I6_westbound_public_transport": {
-        "target_phase_index": 0
-      },
-      "I6_eastbound_public_transport": {
         "target_phase_index": 0
       },
       "I7_westbound_public_transport": {

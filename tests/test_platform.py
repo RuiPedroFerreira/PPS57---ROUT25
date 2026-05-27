@@ -99,6 +99,54 @@ class PlatformDataLoaderTest(unittest.TestCase):
             self.assertEqual(experiments["decision_outcomes"]["verdict_counts"]["same"], 2)
             self.assertFalse(snapshot["missing_critical_artifacts"])
 
+    def test_collect_snapshot_aggregates_v04_cits_messages(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "configs").mkdir()
+            (root / "outputs").mkdir()
+            (root / "reports").mkdir()
+            (root / "configs" / "platform_config.json").write_text(
+                json.dumps(
+                    {
+                        "artifacts": {
+                            "cits_messages": "outputs/cits_messages.jsonl",
+                        },
+                        "critical_artifacts": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            write_jsonl(
+                root / "outputs" / "cits_messages.jsonl",
+                [
+                    {
+                        "message_type": "SREM",
+                        "requestor": {"operational_vehicle_id": "bus_1"},
+                        "operator_telemetry": {"rsu_id": "RSU_1"},
+                    },
+                    {
+                        "message_type": "SSEM",
+                        "response": {"response_status": "processing"},
+                        "audit": {"granted_strategy": "none"},
+                    },
+                    {
+                        "message_type": "SSEM",
+                        "response": {"response_status": "rejected"},
+                        "audit": {"rejection_reason": "request_expired"},
+                    },
+                ],
+            )
+
+            cits = collect_snapshot(root)["aggregates"]["cits"]
+
+            self.assertEqual(cits["by_status"], {"processing": 1, "rejected": 1})
+            self.assertEqual(
+                cits["by_action"],
+                {"forward_to_decision_engine": 1, "reject_with_reason": 1},
+            )
+            self.assertEqual(cits["requests_by_vehicle"], {"bus_1": 1})
+            self.assertEqual(cits["requests_by_rsu"], {"RSU_1": 1})
+
     def test_existing_logs_do_not_fallback_to_stale_nonzero_summaries(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

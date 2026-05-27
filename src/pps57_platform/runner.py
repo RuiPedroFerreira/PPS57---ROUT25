@@ -52,8 +52,11 @@ class ScenarioRunner:
 
     def __post_init__(self) -> None:
         self.root = Path(self.root).resolve()
-        self.state_path = self.root / "outputs" / "dashboard_runtime_state.json"
-        self.command_log_path = self.root / "outputs" / "dashboard_commands.jsonl"
+        # Kept under outputs/.dashboard/ so a future glob-based clean of
+        # outputs/*.json never wipes the runtime state alongside SUMO artifacts.
+        dashboard_dir = self.root / "outputs" / ".dashboard"
+        self.state_path = dashboard_dir / "dashboard_runtime_state.json"
+        self.command_log_path = dashboard_dir / "dashboard_commands.jsonl"
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
 
     def start_run(self, options: ScenarioRunOptions) -> Dict[str, Any]:
@@ -64,8 +67,8 @@ class ScenarioRunner:
             self._validate_options(options)
 
             run_id = str(uuid4())
-            stdout_log = self.root / "outputs" / f"dashboard_runner_{run_id}.out.log"
-            stderr_log = self.root / "outputs" / f"dashboard_runner_{run_id}.err.log"
+            stdout_log = self.state_path.parent / f"dashboard_runner_{run_id}.out.log"
+            stderr_log = self.state_path.parent / f"dashboard_runner_{run_id}.err.log"
             command = self._command_for(options)
 
             stdout_log.parent.mkdir(parents=True, exist_ok=True)

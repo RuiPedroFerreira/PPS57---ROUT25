@@ -53,7 +53,6 @@ class TSPSafetyLayer:
         self.signal_program_verified = bool(verified)
 
     def validate(self, decision: TSPDecision, signal_state: SignalState, sim_time_s: float) -> SafetyValidationResult:
-        safety = self.cits_config.safety_constraints
         notes = list(decision.notes)
 
         if decision.action in {TSPAction.NO_ACTION.value, TSPAction.REJECT.value, TSPAction.REEVALUATE_NEXT_CYCLE.value}:

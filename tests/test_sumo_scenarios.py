@@ -13,8 +13,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from pps57_sumo.generate_plain_corridor import (  # noqa: E402
-    build_calibrators,
-    build_parking_areas,
+    _service_departures,
     build_route_xml,
     build_tls_offsets,
     generate,
@@ -22,6 +21,7 @@ from pps57_sumo.generate_plain_corridor import (  # noqa: E402
 from pps57_sumo.build_network import build_sumo_artifacts  # noqa: E402
 from pps57_sumo.detector_kpis import parse_detector_kpis  # noqa: E402
 from pps57_sumo.parse_tripinfo import parse_tripinfo  # noqa: E402
+from pps57_sumo.parse_insertion import parse_insertion_kpis  # noqa: E402
 from pps57_sumo.parse_emissions import parse_emissions  # noqa: E402
 from pps57_sumo.apply_tls_offsets import apply_tls_offsets  # noqa: E402
 from pps57_sumo.scenarios import (  # noqa: E402
@@ -36,7 +36,7 @@ SCRIPTS = ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-from run_sumo_scenario import compare_kpis  # noqa: E402
+from run_sumo_scenario import _effective_end_s, compare_kpis, run_verdict  # noqa: E402
 
 
 class SumoScenarioProfilesTestCase(unittest.TestCase):
@@ -59,6 +59,24 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
         off_peak = scenario_summary(apply_scenario_profile(self.base, "baseline_off_peak"))
         self.assertLess(off_peak["estimated_car_departures"], peak["estimated_car_departures"])
         self.assertLess(off_peak["estimated_bus_departures"], peak["estimated_bus_departures"])
+
+    def test_baseline_am_peak_uses_operational_demand_profile(self) -> None:
+        raw_peak = scenario_summary(self.base)
+        operational_peak = scenario_summary(apply_scenario_profile(self.base, "baseline_am_peak"))
+        self.assertEqual(
+            apply_scenario_profile(self.base, "baseline_am_peak")["active_demand_profile"],
+            "am_peak_operational",
+        )
+        self.assertLess(operational_peak["estimated_car_departures"], raw_peak["estimated_car_departures"])
+
+    def test_scenario_summary_counts_scheduled_bus_departures(self) -> None:
+        for scenario_id in ("baseline_am_peak", "baseline_off_peak", "baseline_pm_peak"):
+            config = apply_scenario_profile(self.base, scenario_id)
+            actual = sum(
+                len(list(_service_departures(service, config)))
+                for service in config["public_transport"]["services"]
+            )
+            self.assertEqual(scenario_summary(config)["estimated_bus_departures"], actual)
 
     def test_cross_pressure_makes_selected_minor_flows_more_frequent(self) -> None:
         config = apply_scenario_profile(self.base, "cross_traffic_pressure")
@@ -181,9 +199,10 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
         self.assertNotIn("tlType=", static_line)
 
     def test_sumocfg_emits_actuated_flags_only_when_needed(self) -> None:
-        # tls.actuated.* are sumo-runtime options, not netconvert flags — they
-        # belong in the sumocfg <processing> block. netconvert 1.26 rejects
-        # them outright on the command line.
+        # tls.actuated.jam-threshold is a sumo-runtime option (lives in the
+        # sumocfg <processing> block, not in netconvert). detector-gap is NOT
+        # a CLI option in SUMO 1.26 and must never be emitted here — it would
+        # cause sumo to abort with "No option with the name ... exists".
         from pps57_sumo.build_network import artifact_paths, netconvert_command, write_sumocfg
 
         artifacts = artifact_paths(ROOT / "sumo")
@@ -197,10 +216,10 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
             tmp_artifacts.sumocfg_file.parent.mkdir(parents=True, exist_ok=True)
             write_sumocfg(self.base, tmp_artifacts, output_dir=tmp_path / "outputs")
             sumocfg = tmp_artifacts.sumocfg_file.read_text(encoding="utf-8")
-            self.assertIn('<tls.actuated.detector-gap value="2.5"/>', sumocfg)
+            self.assertNotIn("tls.actuated.detector-gap", sumocfg)
             self.assertIn('<tls.actuated.jam-threshold value="30"/>', sumocfg)
 
-            # Strip all tls_type=actuated and confirm the lines disappear.
+            # Strip all tls_type=actuated and confirm the jam-threshold line disappears.
             static_only = json.loads(json.dumps(self.base))
             for inter in static_only["network"]["intersections"]:
                 inter.pop("tls_type", None)
@@ -259,6 +278,20 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
         }
         with self.assertRaises(ScenarioConfigError):
             apply_scenario_profile(broken, "broken_av")
+
+    def test_vehicle_distribution_probabilities_must_sum_to_one(self) -> None:
+        broken = json.loads(json.dumps(self.base))
+        broken["scenario_profiles"]["broken_distribution_sum"] = {
+            "demand_profile": "am_peak",
+            "vehicle_distribution_overrides": {
+                "urban_mix": [
+                    {"type": "car", "probability": 0.8},
+                    {"type": "lcv", "probability": 0.1},
+                ]
+            },
+        }
+        with self.assertRaises(ScenarioConfigError):
+            apply_scenario_profile(broken, "broken_distribution_sum")
 
     def test_stochastic_incidents_materialise_deterministic_events(self) -> None:
         cfg_a = apply_scenario_profile(self.base, "stochastic_incidents_am_peak")
@@ -1120,6 +1153,112 @@ class SumoKpiParsingTestCase(unittest.TestCase):
         comparison = compare_kpis(baseline, candidate)
         self.assertEqual(comparison["verdict"], "fail")
         self.assertIn("general_traffic_time_loss_penalty_gt_90s", comparison["fail_reasons"])
+
+    def test_run_verdict_fails_sumo_health_gates(self) -> None:
+        kpis = {
+            "all_vehicles": {"vehicles": 100},
+            "buses": {"vehicles": 5},
+            "scenario": {
+                "sumo_quality_thresholds": {
+                    "max_teleports_total": 0,
+                    "max_emergency_braking": 2,
+                    "max_vehicles_waiting_at_end": 0,
+                    "max_backlog_step_ratio": 0.10,
+                }
+            },
+            "insertion": {
+                "steps": 100,
+                "backlog_step_count": 20,
+                "max_waiting_to_insert": 151,
+                "vehicles_waiting": 1,
+                "insertion_gap_at_end": 1,
+                "teleports_total": 1,
+                "emergency_braking": 3,
+                "collisions": 0,
+            },
+        }
+        verdict = run_verdict(kpis)
+        self.assertEqual(verdict["status"], "fail")
+        self.assertIn("sumo_teleports_gt_threshold", verdict["reasons"])
+        self.assertIn("sumo_emergency_braking_gt_threshold", verdict["reasons"])
+        self.assertIn("sumo_waiting_to_insert_at_end_gt_threshold", verdict["reasons"])
+        self.assertIn("sumo_insertion_gap_at_end_gt_threshold", verdict["reasons"])
+        self.assertIn("sumo_max_waiting_to_insert_gt_threshold", verdict["reasons"])
+        self.assertIn("sumo_backlog_step_ratio_gt_threshold", verdict["reasons"])
+
+    def test_run_verdict_keeps_short_smoke_inconclusive_when_buses_do_not_finish(self) -> None:
+        kpis = {
+            "all_vehicles": {"vehicles": 50},
+            "buses": {"vehicles": 0},
+            "scenario": {"max_steps": 600},
+            "insertion": {
+                "steps": 600,
+                "backlog_step_count": 0,
+                "vehicles_waiting": 0,
+                "insertion_gap_at_end": 0,
+                "teleports_total": 0,
+                "emergency_braking": 0,
+                "collisions": 0,
+            },
+        }
+        verdict = run_verdict(kpis)
+        self.assertEqual(verdict["status"], "inconclusive")
+        self.assertEqual(verdict["reasons"], ["no_completed_buses_in_short_smoke_run"])
+
+    def test_run_verdict_skips_rate_gates_until_minimum_completed_vehicle_sample(self) -> None:
+        kpis = {
+            "all_vehicles": {"vehicles": 52},
+            "buses": {"vehicles": 1},
+            "scenario": {
+                "max_steps": 600,
+                "sumo_quality_thresholds": {
+                    "max_emergency_braking": 150,
+                    "max_emergency_braking_per_1000_vehicles": 30,
+                    "min_completed_vehicles_for_rate_gates": 500,
+                },
+            },
+            "insertion": {
+                "steps": 600,
+                "backlog_step_count": 0,
+                "vehicles_waiting": 0,
+                "insertion_gap_at_end": 0,
+                "teleports_total": 0,
+                "emergency_braking": 2,
+                "collisions": 0,
+            },
+        }
+        self.assertEqual(run_verdict(kpis), {"status": "pass", "reasons": []})
+
+    def test_steps_convert_to_effective_end_seconds(self) -> None:
+        base = json.loads((ROOT / "configs/sumo_scenario_base.json").read_text(encoding="utf-8"))
+        cfg = apply_scenario_profile(base, "baseline_am_peak")
+        self.assertEqual(_effective_end_s(cfg, 600), 300.0)
+        self.assertEqual(_effective_end_s(cfg, None), 7200.0)
+
+    def test_parse_insertion_reads_sumo_safety_stats(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            summary = tmp_path / "summary.xml"
+            statistics = tmp_path / "statistics.xml"
+            summary.write_text(
+                '<summary><step time="0.0" loaded="2" inserted="1" running="1" waiting="1"/></summary>',
+                encoding="utf-8",
+            )
+            statistics.write_text(
+                (
+                    "<statistics>"
+                    '<vehicles loaded="2" inserted="1" running="1" waiting="1"/>'
+                    '<teleports total="1" jam="1" yield="0" wrongLane="0"/>'
+                    '<safety collisions="0" emergencyStops="0" emergencyBraking="3"/>'
+                    "</statistics>"
+                ),
+                encoding="utf-8",
+            )
+            parsed = parse_insertion_kpis(summary, statistics)
+        self.assertEqual(parsed["vehicles_waiting"], 1)
+        self.assertEqual(parsed["teleports_total"], 1)
+        self.assertEqual(parsed["collisions"], 0)
+        self.assertEqual(parsed["emergency_braking"], 3)
 
     def test_shared_build_command_uses_realism_flags(self) -> None:
         base = json.loads((ROOT / "configs/sumo_scenario_base.json").read_text(encoding="utf-8"))

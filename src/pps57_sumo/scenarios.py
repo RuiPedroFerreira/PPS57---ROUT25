@@ -197,6 +197,8 @@ def validate_scenario_config(config: dict[str, Any], *, scenario_id: str | None 
             if float(entry.get("headway_s", 0)) <= 0:
                 raise ScenarioConfigError(f"{entry_context}: headway_s must be > 0.")
 
+    _validate_vehicle_type_distributions(config, context=context)
+
     for event in config.get("events", []):
         if event.get("route") not in route_ids:
             raise ScenarioConfigError(f"{context}: event {event.get('id')} references unknown route {event.get('route')}.")
@@ -380,6 +382,47 @@ def _apply_vehicle_distribution_overrides(config: dict[str, Any], profile: dict[
         dist["components"] = deepcopy(new_components)
 
 
+def _validate_vehicle_type_distributions(config: dict[str, Any], *, context: str) -> None:
+    known_vtype_ids = {
+        str(vtype["id"])
+        for vtype in config.get("vehicle_types", [])
+        if isinstance(vtype, dict) and "id" in vtype
+    }
+    seen_ids: set[str] = set()
+    for dist_index, distribution in enumerate(config.get("vehicle_type_distributions", []) or []):
+        dist_context = f"{context}: vehicle_type_distributions[{dist_index}]"
+        if not isinstance(distribution, dict):
+            raise ScenarioConfigError(f"{dist_context} must be a mapping.")
+        dist_id = str(distribution.get("id", ""))
+        if not dist_id:
+            raise ScenarioConfigError(f"{dist_context}.id is required.")
+        if dist_id in seen_ids:
+            raise ScenarioConfigError(f"{context}: duplicate vehicle_type_distribution id '{dist_id}'.")
+        seen_ids.add(dist_id)
+        components = distribution.get("components")
+        if not isinstance(components, list) or not components:
+            raise ScenarioConfigError(f"{dist_context}.components must be a non-empty list.")
+        probability_sum = 0.0
+        for component_index, component in enumerate(components):
+            component_context = f"{dist_context}.components[{component_index}]"
+            if not isinstance(component, dict):
+                raise ScenarioConfigError(f"{component_context} must be a mapping.")
+            type_id = str(component.get("type", ""))
+            if type_id not in known_vtype_ids:
+                raise ScenarioConfigError(f"{component_context} references unknown vType '{type_id}'.")
+            try:
+                probability = float(component.get("probability"))
+            except (TypeError, ValueError) as exc:
+                raise ScenarioConfigError(f"{component_context}.probability must be numeric.") from exc
+            if not 0.0 <= probability <= 1.0:
+                raise ScenarioConfigError(f"{component_context}.probability must be within [0, 1].")
+            probability_sum += probability
+        if not math.isclose(probability_sum, 1.0, rel_tol=0.0, abs_tol=1e-6):
+            raise ScenarioConfigError(
+                f"{dist_context}.components probabilities must sum to 1.0 (got {probability_sum:.6f})."
+            )
+
+
 def _materialize_stochastic_incidents(
     config: dict[str, Any], profile: dict[str, Any], *, scenario_id: str | None
 ) -> None:
@@ -548,4 +591,23 @@ def _estimated_service_departures(service: dict[str, Any], config: dict[str, Any
     first = begin + offset
     if end <= first or headway <= 0:
         return 0
+    schedule = service.get("headway_schedule")
+    if isinstance(schedule, list) and schedule:
+        intervals = [
+            (float(item["begin_s"]), float(item["end_s"]), float(item["headway_s"]))
+            for item in schedule
+        ]
+        current = first
+        total = 0
+        while current < end:
+            total += 1
+            current += _headway_at_departure(intervals, current, headway)
+        return total
     return max(0, math.ceil((end - first) / headway))
+
+
+def _headway_at_departure(intervals: list[tuple[float, float, float]], depart_s: float, default: float) -> float:
+    for begin, end, headway in intervals:
+        if begin <= depart_s < end:
+            return headway
+    return default

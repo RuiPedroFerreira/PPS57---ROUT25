@@ -200,8 +200,8 @@ def build_aggregates(
     policy_candidates = valid_jsonl_records(jsonl_records.get("policy_candidates", []))
     offline_samples = valid_jsonl_records(jsonl_records.get("offline_samples", []))
 
-    ssem_messages = [item for item in cits_messages if item.get("message_type") == "SSEM_like"]
-    srem_messages = [item for item in cits_messages if item.get("message_type") == "SREM_like"]
+    ssem_messages = [item for item in cits_messages if _cits_message_type(item) == "SSEM"]
+    srem_messages = [item for item in cits_messages if _cits_message_type(item) == "SREM"]
     applied_actuations = [item for item in tsp_actuation if _safe_bool(item.get("applied"))]
     blocked_decisions = [item for item in tsp_decisions if item.get("status") == "blocked_by_safety"]
     selected_candidates = [item for item in policy_candidates if _safe_bool(item.get("selected"))]
@@ -262,10 +262,10 @@ def build_aggregates(
         },
         "cits": {
             "by_message_type": count_by(cits_messages, "message_type", fallback=cits_summary.get("by_type")),
-            "by_status": count_by(ssem_messages, "status"),
-            "by_action": count_by(ssem_messages, "action"),
-            "requests_by_vehicle": count_by(srem_messages, "vehicle_id"),
-            "requests_by_rsu": count_by(srem_messages, "rsu_id"),
+            "by_status": count_by_value(ssem_messages, _cits_ssem_status),
+            "by_action": count_by_value(ssem_messages, _cits_ssem_action),
+            "requests_by_vehicle": count_by_value(srem_messages, _cits_srem_vehicle_id),
+            "requests_by_rsu": count_by_value(srem_messages, _cits_srem_rsu_id),
         },
         "tsp": {
             "by_action": count_by(tsp_decisions, "action", fallback=tsp_summary.get("by_action")),
@@ -344,6 +344,7 @@ def read_jsonl_with_status(
 
     records: List[Dict[str, Any]] = []
     record_count = 0
+    parse_errors = 0
     error: Optional[str] = None
     truncated = False
     try:
@@ -360,7 +361,9 @@ def read_jsonl_with_status(
                         continue
                     records.append(payload if isinstance(payload, dict) else {"value": payload})
                 except json.JSONDecodeError as exc:
-                    record_count += 1
+                    # Parse errors are tracked separately from record_count so the
+                    # dashboard never reports corrupt lines as if they were data.
+                    parse_errors += 1
                     if max_records is None or len(records) < max_records:
                         records.append({"__parse_error__": str(exc), "__line_number__": line_number, "raw": raw})
                     else:
@@ -368,6 +371,8 @@ def read_jsonl_with_status(
                     error = f"JSONL parse error at line {line_number}: {exc}"
     except Exception as exc:  # pragma: no cover - defensive I/O path
         error = str(exc)
+    if parse_errors and error is not None:
+        error = f"{parse_errors} parse error(s); last: {error}"
 
     return records, ArtifactStatus(
         key=key,
@@ -421,7 +426,9 @@ def parse_tripinfo(path: Path) -> Dict[str, Any]:
     waiting_max = 0.0
 
     # `iterparse` aceita `Path` e devolve eventos incrementais.
-    for event, elem in ET.iterparse(str(path), events=("end",)):
+    # `forbid_dtd=True` recusa qualquer DOCTYPE — tripinfo do SUMO não usa DTD
+    # e bloqueia variantes de billion-laughs/quadratic-blowup via DOCTYPE.
+    for event, elem in ET.iterparse(str(path), events=("end",), forbid_dtd=True):
         if elem.tag != "tripinfo":
             continue
         duration = _safe_float(elem.attrib.get("duration"), default=0.0)
@@ -472,6 +479,16 @@ def count_by(records: Iterable[Mapping[str, Any]], key: str, fallback: Any = Non
     return {}
 
 
+def count_by_value(records: Iterable[Mapping[str, Any]], extractor) -> Dict[str, int]:  # type: ignore[no-untyped-def]
+    counter: Counter[str] = Counter()
+    for item in records:
+        value = extractor(item)
+        if value is None or value == "":
+            continue
+        counter[str(value)] += 1
+    return dict(sorted(counter.items()))
+
+
 def count_by_bool(records: Iterable[Mapping[str, Any]], key: str) -> Dict[str, int]:
     counter: Counter[str] = Counter()
     for item in records:
@@ -485,6 +502,62 @@ def count_by_bool(records: Iterable[Mapping[str, Any]], key: str) -> Dict[str, i
 def valid_jsonl_records(records: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Filter JSONL parse-error marker rows before computing operational KPIs."""
     return [item for item in records if "__parse_error__" not in item]
+
+
+def _cits_message_type(item: Mapping[str, Any]) -> str:
+    raw = str(item.get("message_type") or "")
+    if raw.endswith("_like"):
+        raw = raw[:-5]
+    return raw
+
+
+def _nested_mapping(item: Mapping[str, Any], key: str) -> Mapping[str, Any]:
+    value = item.get(key)
+    return value if isinstance(value, Mapping) else {}
+
+
+def _cits_ssem_status(item: Mapping[str, Any]) -> str:
+    status = item.get("status")
+    if status is not None:
+        return str(status)
+    response = _nested_mapping(item, "response")
+    return str(response.get("response_status") or "")
+
+
+def _cits_ssem_action(item: Mapping[str, Any]) -> str:
+    action = item.get("action")
+    if action is not None:
+        return str(action)
+    status = _cits_ssem_status(item)
+    audit = _nested_mapping(item, "audit")
+    if status == "processing":
+        return "forward_to_decision_engine"
+    if status == "rejected":
+        return "reject_with_reason"
+    if status == "granted":
+        return str(audit.get("granted_strategy") or "granted")
+    if status == "unknown" and audit.get("rejection_reason") == "priority_request_cancelled":
+        return "priority_request_cancelled"
+    return status
+
+
+def _cits_srem_vehicle_id(item: Mapping[str, Any]) -> str:
+    vehicle_id = item.get("vehicle_id")
+    if vehicle_id is not None:
+        return str(vehicle_id)
+    requestor = _nested_mapping(item, "requestor")
+    return str(requestor.get("operational_vehicle_id") or "")
+
+
+def _cits_srem_rsu_id(item: Mapping[str, Any]) -> str:
+    rsu_id = item.get("rsu_id")
+    if rsu_id is not None:
+        return str(rsu_id)
+    telemetry = _nested_mapping(item, "operator_telemetry")
+    if telemetry.get("rsu_id"):
+        return str(telemetry.get("rsu_id"))
+    destination = str(item.get("destination_id") or "")
+    return destination if destination.startswith("RSU_") else ""
 
 
 def build_artifact_warnings(

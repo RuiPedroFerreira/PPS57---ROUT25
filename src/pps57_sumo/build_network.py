@@ -162,22 +162,20 @@ def write_sumocfg(config: dict, artifacts: SumoArtifacts, *, output_dir: Path) -
     step_length = float(config.get("simulation_step_length_s", 1.0))
     seed = int(config.get("random_seed", 57))
     # Tune actuated TLS defaults when any intersection requests actuated control.
-    # These are sumo-runtime options (not netconvert flags): they live in the
-    # <processing> section of the sumocfg so sumo applies them at simulation
-    # time. SUMO defaults (detector-gap=3.0, no jam-threshold) are too
-    # permissive for an urban arterial: cross-street green extends on every
-    # straggler and there is no protection against saturated mainline
-    # detectors. Lower gap + jam threshold approximates SCATS-style "max-out on
-    # saturation" behaviour.
+    # `tls.actuated.jam-threshold` is a sumo-runtime CLI option and lives in the
+    # <processing> block. The per-TLS `detector-gap` is NOT a CLI option in
+    # SUMO 1.26 (only jam-threshold and detector-length are global flags); it
+    # must be set via `<param key="detector-gap" value="..."/>` inside each
+    # actuated `<tlLogic>` if a non-default value is required. We accept the
+    # SUMO default (3.0s) here; tighten via additional-files override if a
+    # SCATS-style sub-3s gap becomes necessary.
     network_cfg = config.get("network", {}) if isinstance(config.get("network"), dict) else {}
     intersections = network_cfg.get("intersections", []) if isinstance(network_cfg.get("intersections"), list) else []
     actuated_lines = ""
     if any(str(i.get("tls_type", "")) == "actuated" for i in intersections):
         actuated_cfg = network_cfg.get("actuated_tls", {}) if isinstance(network_cfg.get("actuated_tls"), dict) else {}
-        detector_gap = float(actuated_cfg.get("detector_gap_s", 2.5))
         jam_threshold = float(actuated_cfg.get("jam_threshold_s", 30.0))
         actuated_lines = (
-            f'    <tls.actuated.detector-gap value="{detector_gap:g}"/>\n'
             f'    <tls.actuated.jam-threshold value="{jam_threshold:g}"/>\n'
         )
     text = f"""<?xml version="1.0" ?>

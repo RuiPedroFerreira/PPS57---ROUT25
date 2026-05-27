@@ -24,7 +24,6 @@
   </report>
   <processing>
     <time-to-teleport value="300"/>
-    <tls.actuated.detector-gap value="2.5"/>
     <tls.actuated.jam-threshold value="30"/>
     <!-- Do not enable ignore-route-errors here: sorted route validation should
          fail loudly instead of silently dropping out-of-order vehicles. -->

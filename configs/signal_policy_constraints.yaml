@@ -1,6 +1,6 @@
 # PPS57 - Restrições semafóricas para uso pelo C-ITS/V2X emulation/4
 
-scenario_id: porto_boavista_base_v03_signal_policy_constraints
+scenario_id: porto_boavista_base_v04_signal_policy_constraints
 
 safety_constraints:
   min_green_s: 8

@@ -10,7 +10,22 @@ from pps57_cits.broker import InMemoryMessageBroker
 from pps57_cits.config import CITSConfig
 from pps57_cits.event_logger import CITSJsonlLogger, IncrementalCITSSummary
 from pps57_cits.map_spat import build_mapem_messages, build_spatem_message_from_state
-from pps57_cits.messages import CITSMessage, PriorityLevel, RequestStatus, SREMLike, SSEMLike
+from pps57_cits.messages import (
+    CITSMessage,
+    GrantedStrategy,
+    MessageType,
+    OperatorPriorityClass,
+    PrioritizationResponse,
+    ResponseStatus,
+    SSEMAudit,
+    SREMLike,
+    SSEMLike,
+    StationType,
+    build_security_envelope,
+    derive_station_id,
+    parse_intersection_ref_id,
+    sim_time_to_cdd,
+)
 from pps57_cits.models import NetworkStateSnapshot, SignalState
 from pps57_cits.obu import OBUEmulator
 from pps57_cits.rsu import build_rsu_agents
@@ -21,10 +36,11 @@ from .actuator import TraciTSPActuator
 from .config import TSPConfig
 from .engine import TSPDecisionEngine
 from .logger import TSPJsonlLogger, write_tsp_summary
-from .models import ActuationResult, DecisionStatus, TSPDecision
+from .models import ActuationResult, DecisionStatus, TSPAction, TSPDecision
 from .request_store import PriorityRequestStore
 from .safety import TSPSafetyLayer
 from .signal_control import (
+    ControllerContract,
     SignalControlAdapter,
     SimulatedControllerAdapter,
     TraciSignalControlAdapter,
@@ -40,7 +56,9 @@ class TSPControlController:
     policy_report_path: Optional[str] = None
 
     def __post_init__(self) -> None:
-        self.broker = InMemoryMessageBroker()
+        self.broker = InMemoryMessageBroker(
+            transport_config=dict(self.cits_config.raw.get("message_transport", {}))
+        )
         self.obu = OBUEmulator(self.cits_config)
         self.rsu_agents = build_rsu_agents(self.cits_config)
         self.engine = TSPDecisionEngine(self.cits_config, self.tsp_config)
@@ -81,7 +99,7 @@ class TSPControlController:
         # semafórico realmente carregado e detetar TLS atuados (o motor assume
         # controlo de tempo fixo). Em qualquer divergência, fail-closed:
         # desativa a atuação mas mantém a observação/decisão.
-        contracts = build_controller_contracts(self.cits_config, self.tsp_config)
+        contracts = self._signal_controlled_contracts()
         signal_control: SignalControlAdapter = TraciSignalControlAdapter(adapter)
         controller_simulation_cfg = self.tsp_config.raw.get("controller_simulation", {})
         if bool(controller_simulation_cfg.get("enabled", False)):
@@ -118,10 +136,11 @@ class TSPControlController:
                     # esvaziando o loop OBU->RSU->OBU. Memória continua
                     # limitada: cada tick só acumula as suas próprias filas.
                     self.broker.drain_all_except([])
+                    self.broker.advance_time(step_count)
 
                     signal_states = {
                         intersection.tls_id: adapter.read_signal_state(intersection, sim_time_s)
-                        for intersection in self.cits_config.intersections
+                        for intersection in self.cits_config.signal_controlled_intersections
                     }
                     spatem = [build_spatem_message_from_state(state) for state in signal_states.values()]
                     self._publish_log_collect(spatem, cits_logger, cits_summary)
@@ -144,7 +163,7 @@ class TSPControlController:
                         sim_time_s,
                     )
 
-                    self._process_acknowledged_requests(
+                    final_responses = self._process_acknowledged_requests(
                         responses=responses,
                         requests_by_id=requests_by_id,
                         signal_states=signal_states,
@@ -156,6 +175,7 @@ class TSPControlController:
                         decisions=decisions,
                         actuations=actuations,
                     )
+                    self._publish_log_collect(final_responses, cits_logger, cits_summary)
             finally:
                 adapter.close()
 
@@ -178,9 +198,14 @@ class TSPControlController:
                     "problems": verification_problems,
                     "actuation_downgraded": bool(verification_problems and apply_actuation),
                 },
+                "message_transport": self.broker.transport_stats(),
                 "cits_total_messages": cits_summary_dict["total_messages"],
                 "cits_by_type": cits_summary_dict["by_type"],
-                "cits_acknowledged_messages": cits_summary_dict["acknowledged_messages"],
+                "cits_processing_messages": cits_summary_dict.get("processing_messages", 0),
+                "cits_acknowledged_messages": cits_summary_dict.get(
+                    "acknowledged_messages",
+                    cits_summary_dict.get("processing_messages", 0),
+                ),
                 "cits_rejected_messages": cits_summary_dict["rejected_messages"],
                 "priority_request_lifecycle": self.request_store.to_summary(),
                 "recovery_debt_by_tls_s": {
@@ -204,7 +229,7 @@ class TSPControlController:
         actuation_logger: TSPJsonlLogger,
         decisions: List[TSPDecision],
         actuations: List[ActuationResult],
-    ) -> None:
+    ) -> List[SSEMLike]:
         # M6: invariante explícita "no máximo 1 intervenção por TLS por passo".
         # Até aqui isto dependia implicitamente do efeito colateral do cooldown
         # (frágil e silenciosamente quebrado em modo no-actuation/downgraded, onde
@@ -216,16 +241,17 @@ class TSPControlController:
             response_list,
             key=lambda response: _response_priority_sort_key(response, requests_by_id, self.cits_config),
         )
+        final_responses: List[SSEMLike] = []
 
         for response in response_list:
-            if response.status != RequestStatus.ACKNOWLEDGED.value:
+            if response.status != ResponseStatus.PROCESSING.value:
                 continue
             request = requests_by_id.get(response.request_id)
             if request is not None:
                 active_requests_by_tls[request.tls_id] = active_requests_by_tls.get(request.tls_id, 0) + 1
 
         for response in response_list:
-            if response.status != RequestStatus.ACKNOWLEDGED.value:
+            if response.status != ResponseStatus.PROCESSING.value:
                 continue
             request = requests_by_id.get(response.request_id)
             if request is None:
@@ -314,6 +340,62 @@ class TSPControlController:
             actuation_logger.write(result)
             decisions.append(safe_decision)
             actuations.append(result)
+            final_responses.append(
+                self._build_final_ssem(request, response, safe_decision, result, sim_time_s)
+            )
+        return final_responses
+
+    def _build_final_ssem(
+        self,
+        request: SREMLike,
+        gateway_response: SSEMLike,
+        decision: TSPDecision,
+        actuation: ActuationResult,
+        sim_time_s: float,
+    ) -> SSEMLike:
+        response_ttl_ms = int(round(float(self.cits_config.rsu_policy.get("response_ttl_s", 15)) * 1000))
+        moy, timestamp_ms, generation_delta = sim_time_to_cdd(sim_time_s)
+        status = _final_response_status(decision, actuation)
+        rejection_reason = None if status == ResponseStatus.GRANTED.value else _final_rejection_reason(decision, actuation)
+        primary = request.requests[0] if request.requests else None
+        response = PrioritizationResponse(
+            request_id=primary.request_id if primary is not None else 0,
+            sequence_number=request.sequence_number,
+            requestor_station_id=request.station_id,
+            response_status=status,
+            granted_signal_group=None,
+            valid_until_ms=int(round(sim_time_s * 1000)) + response_ttl_ms,
+        )
+        audit = SSEMAudit(
+            granted_strategy=_granted_strategy_for_decision(decision, status),
+            rejection_reason=rejection_reason,
+            confidence=0.95 if status == ResponseStatus.GRANTED.value else 1.0,
+            notes=[
+                f"gateway_ssem_id={gateway_response.message_id}",
+                f"tsp_decision_id={decision.decision_id}",
+                f"tsp_action={decision.action}",
+                f"tsp_status={decision.status}",
+                f"actuation_reason={actuation.reason}",
+            ],
+        )
+        return SSEMLike(
+            message_type=MessageType.SSEM.value,
+            station_id=derive_station_id(request.rsu_id),
+            station_type=StationType.ROAD_SIDE_UNIT.value,
+            source_id=request.rsu_id,
+            destination_id=request.source_id,
+            generation_delta_time_ms=generation_delta,
+            moy=moy,
+            timestamp_ms=timestamp_ms,
+            security=build_security_envelope(request.rsu_id, sim_time_s),
+            intersection_ref_id=parse_intersection_ref_id(request.intersection_id),
+            intersection_alias=request.intersection_id,
+            tls_id=request.tls_id,
+            rsu_id=request.rsu_id,
+            response=response,
+            audit=audit,
+            correlation_id=request.message_id,
+        )
 
     def _publish_log_collect(
         self,
@@ -334,10 +416,21 @@ class TSPControlController:
         ou se o TLS for atuado quando o contrato exige tempo fixo, devolve
         problemas que desativam a atuação.
         """
-        contracts = build_controller_contracts(self.cits_config, self.tsp_config)
+        contracts = self._signal_controlled_contracts()
         if hasattr(adapter, "verify_controller_contracts"):
             return adapter.verify_controller_contracts(contracts)
         return TraciSignalControlAdapter(adapter).verify_controller_contracts(contracts)  # type: ignore[arg-type]
+
+    def _signal_controlled_contracts(self) -> List[ControllerContract]:
+        signal_controlled_tls = {
+            intersection.tls_id
+            for intersection in self.cits_config.signal_controlled_intersections
+        }
+        return [
+            contract
+            for contract in build_controller_contracts(self.cits_config, self.tsp_config)
+            if contract.tls_id in signal_controlled_tls
+        ]
 
     def _read_network_states(
         self,
@@ -349,14 +442,14 @@ class TSPControlController:
     ) -> Dict[str, NetworkStateSnapshot]:
         active_requests_by_tls: Dict[str, int] = {}
         for response in responses:
-            if response.status != RequestStatus.ACKNOWLEDGED.value:
+            if response.status != ResponseStatus.PROCESSING.value:
                 continue
             request = requests_by_id.get(response.request_id)
             if request is not None:
                 active_requests_by_tls[request.tls_id] = active_requests_by_tls.get(request.tls_id, 0) + 1
 
         snapshots: Dict[str, NetworkStateSnapshot] = {}
-        for intersection in self.cits_config.intersections:
+        for intersection in self.cits_config.signal_controlled_intersections:
             signal_state = signal_states.get(intersection.tls_id)
             if signal_state is None:
                 continue
@@ -414,17 +507,45 @@ def _network_state_note(state: NetworkStateSnapshot) -> str:
     )
 
 
+def _final_response_status(decision: TSPDecision, actuation: ActuationResult) -> str:
+    if decision.action == TSPAction.NO_ACTION.value:
+        return ResponseStatus.GRANTED.value
+    if decision.action in {TSPAction.REJECT.value, TSPAction.REEVALUATE_NEXT_CYCLE.value}:
+        return ResponseStatus.REJECTED.value
+    if decision.status != DecisionStatus.APPROVED.value:
+        return ResponseStatus.REJECTED.value
+    if actuation.applied or actuation.no_actuation:
+        return ResponseStatus.GRANTED.value
+    return ResponseStatus.REJECTED.value
+
+
+def _final_rejection_reason(decision: TSPDecision, actuation: ActuationResult) -> str:
+    if actuation.reason and actuation.reason != "decision_not_actuable_or_not_approved":
+        return actuation.reason
+    return decision.reason
+
+
+def _granted_strategy_for_decision(decision: TSPDecision, status: str) -> str:
+    if status != ResponseStatus.GRANTED.value:
+        return GrantedStrategy.NONE.value
+    if decision.action == TSPAction.GREEN_EXTENSION.value:
+        return GrantedStrategy.GREEN_EXTENSION.value
+    if decision.action == TSPAction.EARLY_GREEN.value:
+        return GrantedStrategy.EARLY_GREEN.value
+    return GrantedStrategy.NONE.value
+
+
 def _response_priority_sort_key(
     response: SSEMLike,
     requests_by_id: Dict[str, SREMLike],
     cits_config: CITSConfig,
 ) -> tuple[int, float, float, str]:
     request = requests_by_id.get(response.request_id)
-    if response.status != RequestStatus.ACKNOWLEDGED.value or request is None:
+    if response.status != ResponseStatus.PROCESSING.value or request is None:
         return (999, float("inf"), 0.0, response.request_id)
     hierarchy = cits_config.raw.get("priority_hierarchy", {})
     priority_rank = int(hierarchy.get(request.priority_level, 999))
-    if request.priority_level == PriorityLevel.EMERGENCY_VEHICLE.value:
+    if request.priority_level == OperatorPriorityClass.EMERGENCY.value:
         priority_rank = min(priority_rank, 0)
     return (
         priority_rank,

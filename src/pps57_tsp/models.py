@@ -39,7 +39,6 @@ class TSPDecision:
     status: str
     reason: str
     priority_score: float
-    requested_maneuver: str
     eta_to_stopline_s: float
     schedule_delay_s: float
     headway_deviation_s: float

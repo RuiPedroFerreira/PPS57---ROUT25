@@ -104,6 +104,85 @@ def validate_safety_configs(root: Path) -> None:
     """
     cits = json.loads((root / "configs/cits_v2x_config.json").read_text(encoding="utf-8"))
     tsp = json.loads((root / "configs/tsp_safety_config.json").read_text(encoding="utf-8"))
+    sumo_base = json.loads((root / "configs/sumo_scenario_base.json").read_text(encoding="utf-8"))
+
+    protocol_profile = cits.get("protocol_profile", {})
+    if protocol_profile.get("version") != "0.4.0":
+        raise SystemExit("Config inválida: protocol_profile.version deve ser 0.4.0.")
+    expected_messages = {"MAPEM", "SPATEM", "SREM", "SSEM"}
+    declared_messages = set(protocol_profile.get("messages", []))
+    if declared_messages != expected_messages:
+        raise SystemExit(
+            "Config inválida: protocol_profile.messages deve conter exatamente MAPEM, SPATEM, SREM e SSEM."
+        )
+    scenario_id = str(cits.get("scenario_id", ""))
+    if "v03" in scenario_id or "v0.3" in scenario_id:
+        raise SystemExit("Config inválida: scenario_id ainda referencia v03/v0.3.")
+    tsp_scenario_id = str(tsp.get("scenario_id", ""))
+    if "v03" in tsp_scenario_id or "v0.3" in tsp_scenario_id:
+        raise SystemExit("Config inválida: tsp.scenario_id ainda referencia v03/v0.3.")
+
+    geometry = cits.get("synthetic_geometry", {})
+    if not isinstance(geometry, dict):
+        raise SystemExit("Config inválida: synthetic_geometry deve ser objeto.")
+    if bool(geometry.get("enabled", False)):
+        lat = _require_number(geometry, "origin_latitude_e7", "cits.synthetic_geometry")
+        lon = _require_number(geometry, "origin_longitude_e7", "cits.synthetic_geometry")
+        spacing = _require_number(geometry, "intersection_spacing_e7", "cits.synthetic_geometry")
+        lateral = _require_number(geometry, "lateral_offset_e7", "cits.synthetic_geometry")
+        _require_number(geometry, "elevation_dm", "cits.synthetic_geometry")
+        if not -900000000 <= lat <= 900000000:
+            raise SystemExit("Config inválida: synthetic_geometry.origin_latitude_e7 fora de range CDD.")
+        if not -1800000000 <= lon <= 1800000000:
+            raise SystemExit("Config inválida: synthetic_geometry.origin_longitude_e7 fora de range CDD.")
+        if spacing < 0 or lateral < 0:
+            raise SystemExit("Config inválida: synthetic_geometry spacing/lateral devem ser >= 0.")
+
+    transport = cits.get("message_transport", {})
+    if not isinstance(transport, dict):
+        raise SystemExit("Config inválida: message_transport deve ser objeto.")
+    for key in ("latency_steps", "jitter_steps", "reorder_window_steps", "random_seed"):
+        value = transport.get(key, 0)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise SystemExit(f"Config inválida: message_transport.{key} deve ser inteiro >= 0.")
+    for key in ("drop_rate", "duplicate_rate"):
+        value = transport.get(key, 0.0)
+        if not isinstance(value, (int, float)) or isinstance(value, bool) or not 0.0 <= float(value) <= 1.0:
+            raise SystemExit(f"Config inválida: message_transport.{key} deve estar em [0,1].")
+
+    trust_store = cits.get("trust_store", {})
+    if not isinstance(trust_store, dict):
+        raise SystemExit("Config inválida: trust_store deve ser objeto.")
+    if trust_store.get("mode", "tofu") not in {"tofu", "prefix_allowlist"}:
+        raise SystemExit("Config inválida: trust_store.mode deve ser tofu ou prefix_allowlist.")
+    if trust_store.get("mode") == "prefix_allowlist" and not trust_store.get("allowed_signer_prefixes"):
+        raise SystemExit("Config inválida: prefix_allowlist requer allowed_signer_prefixes.")
+
+    sumo_intersection_types = {
+        str(item.get("id")): str(item.get("type", "traffic_light"))
+        for item in sumo_base.get("network", {}).get("intersections", [])
+        if isinstance(item, dict) and item.get("id")
+    }
+    for index, intersection in enumerate(cits.get("intersections", [])):
+        intersection_id = str(intersection.get("intersection_id", ""))
+        signal_controlled = intersection.get("signal_controlled", True)
+        if not isinstance(signal_controlled, bool):
+            raise SystemExit(
+                f"Config inválida: cits.intersections[{index}].signal_controlled deve ser boolean."
+            )
+        sumo_type = sumo_intersection_types.get(intersection_id)
+        if sumo_type == "traffic_light" and not signal_controlled:
+            raise SystemExit(
+                f"Config inválida: {intersection_id} é traffic_light no SUMO mas signal_controlled=false no C-ITS."
+            )
+        if sumo_type and sumo_type != "traffic_light" and signal_controlled:
+            raise SystemExit(
+                f"Config inválida: {intersection_id} é '{sumo_type}' no SUMO mas signal_controlled=true no C-ITS."
+            )
+        if not signal_controlled and intersection.get("priority_movements"):
+            raise SystemExit(
+                f"Config inválida: {intersection_id} não é semaforizada mas declara priority_movements C-ITS."
+            )
 
     safety = cits.get("safety_constraints", {})
     min_green = _require_number(safety, "min_green_s", "cits.safety_constraints")
@@ -244,6 +323,8 @@ def validate_safety_configs(root: Path) -> None:
     if not isinstance(controllers, dict) or not controllers:
         raise SystemExit("Config inválida: controller_contracts.controllers em falta.")
     for intersection in cits.get("intersections", []):
+        if not intersection.get("signal_controlled", True):
+            continue
         tls_id = intersection.get("tls_id")
         controller = controllers.get(tls_id)
         if not isinstance(controller, dict):

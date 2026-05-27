@@ -21,7 +21,9 @@ class CITSEmulationController:
     config: CITSConfig
 
     def __post_init__(self) -> None:
-        self.broker = InMemoryMessageBroker()
+        self.broker = InMemoryMessageBroker(
+            transport_config=dict(self.config.raw.get("message_transport", {}))
+        )
         self.obu = OBUEmulator(self.config)
         self.rsu_agents = build_rsu_agents(self.config)
 
@@ -60,8 +62,12 @@ class CITSEmulationController:
                     # OBU->RSU->OBU. Memória continua limitada: no fim do tick
                     # apenas as filas deste tick estão preenchidas.
                     self.broker.drain_all_except([])
+                    self.broker.advance_time(step_count)
 
-                    signal_states = [adapter.read_signal_state(intersection, sim_time_s) for intersection in self.config.intersections]
+                    signal_states = [
+                        adapter.read_signal_state(intersection, sim_time_s)
+                        for intersection in self.config.signal_controlled_intersections
+                    ]
                     spatem = [build_spatem_message_from_state(state) for state in signal_states]
                     latest_spatem = list(spatem)
                     self._publish_log_collect(spatem, logger, summary)
@@ -84,6 +90,7 @@ class CITSEmulationController:
                 "mode": "sumo-traci",
                 "steps": step_count,
                 "scenario_id": self.config.raw.get("scenario_id"),
+                "message_transport": self.broker.transport_stats(),
             },
         )
 

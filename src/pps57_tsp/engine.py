@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from pps57_cits.config import CITSConfig
-from pps57_cits.messages import PriorityLevel, RequestedManeuver, SREMLike
+from pps57_cits.messages import OperatorPriorityClass, SREMLike
 from pps57_cits.models import SignalState
 from pps57_cits.util import optional_int as _optional_int
 
@@ -169,13 +169,13 @@ class TSPDecisionEngine:
         return max(0.0, float(signal_state.next_switch_s) - sim_time_s)
 
     def _priority_level_weight(self, priority_level: str) -> float:
-        if priority_level == PriorityLevel.EMERGENCY_VEHICLE.value:
+        if priority_level == OperatorPriorityClass.EMERGENCY.value:
             return 1.0
-        if priority_level == PriorityLevel.PUBLIC_TRANSPORT_HIGH_DELAY.value:
+        if priority_level == OperatorPriorityClass.HIGH_DELAY.value:
             return 0.85
-        if priority_level == PriorityLevel.PUBLIC_TRANSPORT_HEADWAY_RECOVERY.value:
+        if priority_level == OperatorPriorityClass.HEADWAY_RECOVERY.value:
             return 0.70
-        if priority_level == PriorityLevel.PUBLIC_TRANSPORT_NOMINAL.value:
+        if priority_level == OperatorPriorityClass.NOMINAL.value:
             return 0.45
         return 0.0
 
@@ -204,7 +204,6 @@ class TSPDecisionEngine:
             status=DecisionStatus.PROPOSED.value,
             reason=reason,
             priority_score=score,
-            requested_maneuver=request.requested_maneuver or RequestedManeuver.PRIORITY_CANDIDATE.value,
             eta_to_stopline_s=request.eta_to_stopline_s,
             schedule_delay_s=request.schedule_delay_s,
             headway_deviation_s=request.headway_deviation_s,

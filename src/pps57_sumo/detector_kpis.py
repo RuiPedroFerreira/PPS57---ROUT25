@@ -66,7 +66,11 @@ def _network_queue_summary(e2_payload: dict) -> dict:
 
 
 def _queue_summary(items: list[dict]) -> dict:
-    mean_queues = [_num(item.get("meanJamLengthInVehicles")) for item in items]
+    # SUMO E2 detector emits `meanMaxJamLengthInVehicles` (per-interval mean of
+    # the max jam length observed during that interval); there is no plain
+    # `meanJamLengthInVehicles` attribute. Using the wrong name silently
+    # produced `mean_queue_vehicles: null` for every detector.
+    mean_queues = [_num(item.get("meanMaxJamLengthInVehicles")) for item in items]
     max_queues = [_num(item.get("maxJamLengthInVehicles")) for item in items]
     occupancies = [_num(item.get("meanOccupancy")) for item in items]
     speeds = [_num(item.get("meanSpeed")) for item in items]

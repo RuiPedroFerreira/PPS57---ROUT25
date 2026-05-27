@@ -2,4 +2,4 @@
 
 | Scenario | Verdict | Runs | Comparisons |
 |---|---:|---:|---:|
-| baseline_am_peak | pass | 1 | 0 |
+| baseline_am_peak | fail | 3 | 2 |

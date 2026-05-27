@@ -5,7 +5,6 @@ from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 import sys
-import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,7 +13,21 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from pps57_cits.config import load_cits_config
-from pps57_cits.messages import PriorityLevel, RequestStatus, RequestedManeuver, SREMLike, SSEMLike
+from pps57_cits.messages import (
+    GrantedStrategy,
+    MessageType,
+    OperatorPriorityClass,
+    PrioritizationResponse,
+    ResponseStatus,
+    SSEMAudit,
+    SSEMLike,
+    StationType,
+    build_security_envelope,
+    derive_station_id,
+    parse_intersection_ref_id,
+    sim_time_to_cdd,
+    synth_srem,
+)
 from pps57_cits.models import SignalState
 from pps57_tsp.actuator import TraciTSPActuator
 from pps57_tsp.config import TSPConfig, load_tsp_config
@@ -26,6 +39,21 @@ from pps57_tsp.signal_control import SimulatedControllerAdapter, build_controlle
 
 
 class Package4TSPTestCase(unittest.TestCase):
+    _STATIC_PHASE_STATES = ["GGgrrrr", "yyyrrrr", "rrrrrrr", "rrrGGgr", "rrryyyy", "rrrrrrr"]
+    _STATIC_PHASE_DURATIONS = [42, 3, 1, 42, 3, 1]
+    _FDW_PHASE_STATES = [
+        "rrrrGgGgrrrrGgGgGrGr",
+        "rrrrGgGgrrrrGgGgrrrr",
+        "rrrryyyyrrrryyyyrrrr",
+        "rrrrrrrrrrrrrrrrrrrr",
+        "ggGgrrrrggGgrrrrrGrG",
+        "ggGgrrrrggGgrrrrrrrr",
+        "yyyyrrrryyyyrrrrrrrr",
+        "rrrrrrrrrrrrrrrrrrrr",
+    ]
+    _FDW_PHASE_DURATIONS = [51, 5, 3, 1, 31, 5, 3, 1]
+    _FDW_TLS = {"I2", "I4", "I5"}
+
     @classmethod
     def setUpClass(cls) -> None:
         cls.cits = load_cits_config(ROOT / "configs/cits_v2x_config.json", root=ROOT)
@@ -33,32 +61,47 @@ class Package4TSPTestCase(unittest.TestCase):
         cls.engine = TSPDecisionEngine(cls.cits, cls.tsp)
 
     def _request(self, **overrides):
-        payload = dict(
-            source_id="OBU_bus_1",
-            destination_id="RSU_BOAVISTA_02",
-            timestamp_s=100.0,
+        """Constrói um SREM ETSI-aligned para fixtures de teste.
+
+        Aceita nomes de override do v0.3 (intersection_id, current_lane_id,
+        target_signal_group_id, priority_level, requested_maneuver, ...) e
+        traduz para os parâmetros de `synth_srem`. `requested_maneuver` é
+        silenciosamente descartado — a OBU não decide manobra no v0.4.
+        """
+        defaults = dict(
+            sim_time_s=100.0,
             vehicle_id="bus_1",
-            vehicle_class="bus",
-            line_id="STCP500_PROXY_W",
-            route_id="route_boavista_east_to_west",
-            intersection_id="I2",
+            intersection_alias="I2",
             tls_id="I2",
             rsu_id="RSU_BOAVISTA_02",
-            current_edge_id="I1_I2",
-            current_lane_id="I1_I2_0",
-            priority_movement_id="I2_westbound_public_transport",
-            target_signal_group_id="I2_priority_westbound",
+            lane_id="I1_I2_0",
+            line_id="STCP500_PROXY_W",
+            route_id="route_boavista_east_to_west",
             speed_mps=10.0,
             distance_to_stopline_m=160.0,
             eta_to_stopline_s=16.0,
             schedule_delay_s=120.0,
             headway_deviation_s=0.0,
-            requested_maneuver=RequestedManeuver.GREEN_EXTENSION.value,
-            priority_level=PriorityLevel.PUBLIC_TRANSPORT_HIGH_DELAY.value,
+            operator_priority_class=OperatorPriorityClass.HIGH_DELAY.value,
+            priority_movement_id="I2_westbound_public_transport",
+            target_signal_group_id_hint="I2_priority_westbound",
             expires_at_s=130.0,
+            ttl_s=30.0,
         )
-        payload.update(overrides)
-        return SREMLike(**payload)
+        # Tradução de aliases v0.3 -> v0.4.
+        alias_map = {
+            "intersection_id": "intersection_alias",
+            "current_lane_id": "lane_id",
+            "target_signal_group_id": "target_signal_group_id_hint",
+            "priority_level": "operator_priority_class",
+        }
+        # Drops silenciosos: campos que deixaram de fazer sentido.
+        ignored = {"requested_maneuver", "current_edge_id", "destination_id", "source_id", "timestamp_s"}
+        for key, value in overrides.items():
+            if key in ignored:
+                continue
+            defaults[alias_map.get(key, key)] = value
+        return synth_srem(**defaults)
 
     def _state(self, **overrides):
         payload = dict(
@@ -92,7 +135,7 @@ class Package4TSPTestCase(unittest.TestCase):
             schedule_delay_s=0.0,
             headway_deviation_s=0.0,
             distance_to_stopline_m=250.0,
-            priority_level=PriorityLevel.PUBLIC_TRANSPORT_NOMINAL.value,
+            priority_level=OperatorPriorityClass.NOMINAL.value,
         )
         decision = self.engine.decide(request, self._state(), sim_time_s=100.0)
         self.assertEqual(decision.action, TSPAction.REJECT.value)
@@ -112,27 +155,26 @@ class Package4TSPTestCase(unittest.TestCase):
 
     def test_engine_proposes_early_green_when_priority_movement_is_red(self) -> None:
         request = self._request(
-            destination_id="RSU_BOAVISTA_06",
-            intersection_id="I6",
-            tls_id="I6",
-            rsu_id="RSU_BOAVISTA_06",
-            current_edge_id="I7_I6",
-            current_lane_id="I7_I6_0",
-            priority_movement_id="I6_eastbound_public_transport",
-            target_signal_group_id="I6_priority_eastbound",
-            requested_maneuver=RequestedManeuver.EARLY_GREEN.value,
+            destination_id="RSU_BOAVISTA_07",
+            intersection_id="I7",
+            tls_id="I7",
+            rsu_id="RSU_BOAVISTA_07",
+            current_edge_id="ATLANTIC_WEST_I7",
+            current_lane_id="ATLANTIC_WEST_I7_0",
+            priority_movement_id="I7_eastbound_public_transport",
+            target_signal_group_id="I7_priority_eastbound",
         )
         state = SignalState(
-            intersection_id="I6",
-            tls_id="I6",
-            rsu_id="RSU_BOAVISTA_06",
+            intersection_id="I7",
+            tls_id="I7",
+            rsu_id="RSU_BOAVISTA_07",
             timestamp_s=100.0,
             current_phase_index=2,
             current_program_id="test",
             red_yellow_green_state="rrGG",
             next_switch_s=125.0,
             spent_duration_s=20.0,
-            controlled_lanes=["I5_I6_0", "I7_I6_0", "N_I6_I6_0", "S_I6_I6_0"],
+            controlled_lanes=["I6_I7_0", "ATLANTIC_WEST_I7_0", "N_I7_I7_0", "S_I7_I7_0"],
         )
         decision = self.engine.decide(request, state, sim_time_s=100.0)
         self.assertEqual(decision.action, TSPAction.EARLY_GREEN.value)
@@ -145,7 +187,6 @@ class Package4TSPTestCase(unittest.TestCase):
             priority_movement_id="I2_eastbound_public_transport",
             target_signal_group_id="I2_priority_eastbound",
             eta_to_stopline_s=9.0,
-            requested_maneuver=RequestedManeuver.EARLY_GREEN.value,
         )
         state = self._state(
             current_phase_index=2,
@@ -166,26 +207,25 @@ class Package4TSPTestCase(unittest.TestCase):
     def test_safety_blocks_early_green_before_min_green(self) -> None:
         safety = TSPSafetyLayer(self.cits, self.tsp)
         request = self._request(
-            intersection_id="I6",
-            tls_id="I6",
-            rsu_id="RSU_BOAVISTA_06",
-            current_edge_id="I7_I6",
-            current_lane_id="I7_I6_0",
-            priority_movement_id="I6_eastbound_public_transport",
-            target_signal_group_id="I6_priority_eastbound",
-            requested_maneuver=RequestedManeuver.EARLY_GREEN.value,
+            intersection_id="I7",
+            tls_id="I7",
+            rsu_id="RSU_BOAVISTA_07",
+            current_edge_id="ATLANTIC_WEST_I7",
+            current_lane_id="ATLANTIC_WEST_I7_0",
+            priority_movement_id="I7_eastbound_public_transport",
+            target_signal_group_id="I7_priority_eastbound",
         )
         state = SignalState(
-            intersection_id="I6",
-            tls_id="I6",
-            rsu_id="RSU_BOAVISTA_06",
+            intersection_id="I7",
+            tls_id="I7",
+            rsu_id="RSU_BOAVISTA_07",
             timestamp_s=100.0,
             current_phase_index=2,
             current_program_id="test",
             red_yellow_green_state="rrGG",
             next_switch_s=125.0,
             spent_duration_s=3.0,
-            controlled_lanes=["I5_I6_0", "I7_I6_0", "N_I6_I6_0", "S_I6_I6_0"],
+            controlled_lanes=["I6_I7_0", "ATLANTIC_WEST_I7_0", "N_I7_I7_0", "S_I7_I7_0"],
         )
         decision = self.engine.decide(request, state, sim_time_s=100.0)
         result = safety.validate(decision, state, sim_time_s=100.0)
@@ -219,33 +259,32 @@ class Package4TSPTestCase(unittest.TestCase):
     def test_safety_blocks_early_green_when_phase_sequence_does_not_reach_target(self) -> None:
         raw = deepcopy(self.tsp.raw)
         raw["controller_contracts"]["controllers"] = {
-            "I6": {"phase_sequence": [2, 3, 1]}
+            "I7": {"phase_sequence": [2, 3, 1]}
         }
         tsp = TSPConfig(root=self.tsp.root, raw=raw)
         engine = TSPDecisionEngine(self.cits, tsp)
         safety = TSPSafetyLayer(self.cits, tsp)
         request = self._request(
-            destination_id="RSU_BOAVISTA_06",
-            intersection_id="I6",
-            tls_id="I6",
-            rsu_id="RSU_BOAVISTA_06",
-            current_edge_id="I7_I6",
-            current_lane_id="I7_I6_0",
-            priority_movement_id="I6_eastbound_public_transport",
-            target_signal_group_id="I6_priority_eastbound",
-            requested_maneuver=RequestedManeuver.EARLY_GREEN.value,
+            destination_id="RSU_BOAVISTA_07",
+            intersection_id="I7",
+            tls_id="I7",
+            rsu_id="RSU_BOAVISTA_07",
+            current_edge_id="ATLANTIC_WEST_I7",
+            current_lane_id="ATLANTIC_WEST_I7_0",
+            priority_movement_id="I7_eastbound_public_transport",
+            target_signal_group_id="I7_priority_eastbound",
         )
         state = SignalState(
-            intersection_id="I6",
-            tls_id="I6",
-            rsu_id="RSU_BOAVISTA_06",
+            intersection_id="I7",
+            tls_id="I7",
+            rsu_id="RSU_BOAVISTA_07",
             timestamp_s=100.0,
             current_phase_index=2,
             current_program_id="test",
             red_yellow_green_state="rrGG",
             next_switch_s=125.0,
             spent_duration_s=20.0,
-            controlled_lanes=["I5_I6_0", "I7_I6_0", "N_I6_I6_0", "S_I6_I6_0"],
+            controlled_lanes=["I6_I7_0", "ATLANTIC_WEST_I7_0", "N_I7_I7_0", "S_I7_I7_0"],
         )
         decision = engine.decide(request, state, sim_time_s=100.0)
         result = safety.validate(decision, state, sim_time_s=100.0)
@@ -275,33 +314,32 @@ class Package4TSPTestCase(unittest.TestCase):
         # C1: never_skip_yellow_or_all_red é agora efetivamente verificado.
         raw = deepcopy(self.tsp.raw)
         raw["controller_contracts"]["controllers"] = {
-            "I6": {"phase_sequence": [2, 0, 1, 3]}
+            "I7": {"phase_sequence": [2, 0, 1, 3]}
         }
         tsp = TSPConfig(root=self.tsp.root, raw=raw)
         engine = TSPDecisionEngine(self.cits, tsp)
         safety = TSPSafetyLayer(self.cits, tsp)
         request = self._request(
-            destination_id="RSU_BOAVISTA_06",
-            intersection_id="I6",
-            tls_id="I6",
-            rsu_id="RSU_BOAVISTA_06",
-            current_edge_id="I7_I6",
-            current_lane_id="I7_I6_0",
-            priority_movement_id="I6_eastbound_public_transport",
-            target_signal_group_id="I6_priority_eastbound",
-            requested_maneuver=RequestedManeuver.EARLY_GREEN.value,
+            destination_id="RSU_BOAVISTA_07",
+            intersection_id="I7",
+            tls_id="I7",
+            rsu_id="RSU_BOAVISTA_07",
+            current_edge_id="ATLANTIC_WEST_I7",
+            current_lane_id="ATLANTIC_WEST_I7_0",
+            priority_movement_id="I7_eastbound_public_transport",
+            target_signal_group_id="I7_priority_eastbound",
         )
         state = SignalState(
-            intersection_id="I6",
-            tls_id="I6",
-            rsu_id="RSU_BOAVISTA_06",
+            intersection_id="I7",
+            tls_id="I7",
+            rsu_id="RSU_BOAVISTA_07",
             timestamp_s=100.0,
             current_phase_index=2,
             current_program_id="test",
             red_yellow_green_state="rrGG",
             next_switch_s=125.0,
             spent_duration_s=20.0,
-            controlled_lanes=["I5_I6_0", "I7_I6_0", "N_I6_I6_0", "S_I6_I6_0"],
+            controlled_lanes=["I6_I7_0", "ATLANTIC_WEST_I7_0", "N_I7_I7_0", "S_I7_I7_0"],
         )
         decision = engine.decide(request, state, sim_time_s=100.0)
         result = safety.validate(decision, state, sim_time_s=100.0)
@@ -333,21 +371,98 @@ class Package4TSPTestCase(unittest.TestCase):
         )
         self.assertTrue(self.engine.is_priority_movement_green(request, state))
 
-    def _ack(self, request) -> SSEMLike:
+    def _ack(self, request, sim_time_s: float = 100.0) -> SSEMLike:
+        """Constrói um SSEM com `responseStatus=processing` (v0.3: ACKNOWLEDGED)."""
+        primary = request.requests[0]
+        moy, timestamp_ms, generation_delta = sim_time_to_cdd(sim_time_s)
         return SSEMLike(
+            message_type=MessageType.SSEM.value,
+            station_id=derive_station_id(request.rsu_id),
+            station_type=StationType.ROAD_SIDE_UNIT.value,
             source_id=request.rsu_id,
             destination_id=request.source_id,
-            timestamp_s=100.0,
-            request_id=request.request_id,
-            vehicle_id=request.vehicle_id,
-            intersection_id=request.intersection_id,
+            generation_delta_time_ms=generation_delta,
+            moy=moy,
+            timestamp_ms=timestamp_ms,
+            security=build_security_envelope(request.rsu_id, sim_time_s),
+            intersection_ref_id=parse_intersection_ref_id(request.intersection_id),
+            intersection_alias=request.intersection_id,
             tls_id=request.tls_id,
             rsu_id=request.rsu_id,
-            status=RequestStatus.ACKNOWLEDGED.value,
-            action="forward_to_decision_engine",
-            reason="ok",
-            valid_until_s=120.0,
+            response=PrioritizationResponse(
+                request_id=primary.request_id,
+                sequence_number=request.sequence_number,
+                requestor_station_id=request.station_id,
+                response_status=ResponseStatus.PROCESSING.value,
+                granted_signal_group=None,
+                valid_until_ms=int(round(sim_time_s * 1000)) + 15_000,
+            ),
+            audit=SSEMAudit(
+                granted_strategy=GrantedStrategy.NONE.value,
+                rejection_reason=None,
+                confidence=0.95,
+                notes=[],
+            ),
+            correlation_id=request.message_id,
         )
+
+    def test_controller_emits_final_ssem_after_tsp_decision(self) -> None:
+        controller = TSPControlController(self.cits, self.tsp)
+
+        class _NullLogger:
+            def write(self, item) -> None:  # noqa: ANN001
+                pass
+
+        req = self._request()
+        decisions: list = []
+        actuations: list = []
+        final_responses = controller._process_acknowledged_requests(
+            responses=[self._ack(req)],
+            requests_by_id={req.request_id: req},
+            signal_states={"I2": self._state()},
+            actuator=TraciTSPActuator(adapter=None, apply_actuation=False),  # type: ignore[arg-type]
+            sim_time_s=100.0,
+            decision_logger=_NullLogger(),
+            actuation_logger=_NullLogger(),
+            decisions=decisions,
+            actuations=actuations,
+        )
+        self.assertEqual(len(final_responses), 1)
+        final = final_responses[0]
+        self.assertEqual(final.status, ResponseStatus.GRANTED.value)
+        self.assertEqual(final.audit.granted_strategy, GrantedStrategy.GREEN_EXTENSION.value)
+        self.assertEqual(final.correlation_id, req.message_id)
+        self.assertIn("tsp_decision_id=", final.audit.notes[1])
+
+    def test_controller_final_ssem_rejects_low_score_decision(self) -> None:
+        controller = TSPControlController(self.cits, self.tsp)
+
+        class _NullLogger:
+            def write(self, item) -> None:  # noqa: ANN001
+                pass
+
+        req = self._request(
+            schedule_delay_s=0.0,
+            headway_deviation_s=0.0,
+            distance_to_stopline_m=250.0,
+            priority_level=OperatorPriorityClass.NOMINAL.value,
+        )
+        decisions: list = []
+        actuations: list = []
+        final_responses = controller._process_acknowledged_requests(
+            responses=[self._ack(req)],
+            requests_by_id={req.request_id: req},
+            signal_states={"I2": self._state()},
+            actuator=TraciTSPActuator(adapter=None, apply_actuation=False),  # type: ignore[arg-type]
+            sim_time_s=100.0,
+            decision_logger=_NullLogger(),
+            actuation_logger=_NullLogger(),
+            decisions=decisions,
+            actuations=actuations,
+        )
+        self.assertEqual(len(final_responses), 1)
+        self.assertEqual(final_responses[0].status, ResponseStatus.REJECTED.value)
+        self.assertIn("priority_score_below_threshold", final_responses[0].reason)
 
     def test_safety_counters_advance_in_no_actuation_across_steps(self) -> None:
         # H5: contadores de safety devem avançar com base no "would-apply" para
@@ -433,7 +548,7 @@ class Package4TSPTestCase(unittest.TestCase):
 
         class _CleanAdapter:
             def read_program_phase_count(self, tls_id: str) -> int:
-                return 6
+                return 8 if tls_id in Package4TSPTestCase._FDW_TLS else 6
 
             def read_program_type(self, tls_id: str) -> str:
                 return "0"
@@ -442,11 +557,18 @@ class Package4TSPTestCase(unittest.TestCase):
                 return True
 
             def read_program_phase_states(self, tls_id: str):
-                # 0=priority movement green, 1=yellow clearance, 2=secondary green, 3=yellow clearance
-                return ["GGgrrrr", "yyyrrrr", "rrrrrrr", "rrrGGgr", "rrryyyy", "rrrrrrr"]
+                return (
+                    Package4TSPTestCase._FDW_PHASE_STATES
+                    if tls_id in Package4TSPTestCase._FDW_TLS
+                    else Package4TSPTestCase._STATIC_PHASE_STATES
+                )
 
             def read_program_phase_durations(self, tls_id: str):
-                return [42, 3, 1, 42, 3, 1]
+                return (
+                    Package4TSPTestCase._FDW_PHASE_DURATIONS
+                    if tls_id in Package4TSPTestCase._FDW_TLS
+                    else Package4TSPTestCase._STATIC_PHASE_DURATIONS
+                )
 
         class _BadAdapter:
             def read_program_phase_count(self, tls_id: str):
@@ -471,6 +593,7 @@ class Package4TSPTestCase(unittest.TestCase):
         self.assertIn("fora do programa", joined)  # phase_sequence 2,3 > 2 phases
         self.assertIn("atuado/adaptativo", joined)  # actuated detected by behaviour
         self.assertIn("ilegível", joined)           # unreadable program (fail-closed)
+        self.assertNotIn("I6:", joined)             # I6 is a SUMO priority roundabout, not a TLS
 
     def test_signal_program_verification_flags_intermediate_phase_without_clearance(self) -> None:
         # Item 2 (closes C1 residual): fase intermédia da sequência tem de ser
@@ -506,7 +629,7 @@ class Package4TSPTestCase(unittest.TestCase):
 
         class _CleanAdapter:
             def read_program_phase_count(self, tls_id: str) -> int:
-                return 6
+                return 8 if tls_id in Package4TSPTestCase._FDW_TLS else 6
 
             def read_program_type(self, tls_id: str) -> str:
                 return "0"
@@ -515,10 +638,18 @@ class Package4TSPTestCase(unittest.TestCase):
                 return True
 
             def read_program_phase_states(self, tls_id: str):
-                return ["GGgrrrr", "yyyrrrr", "rrrrrrr", "rrrGGgr", "rrryyyy", "rrrrrrr"]
+                return (
+                    Package4TSPTestCase._FDW_PHASE_STATES
+                    if tls_id in Package4TSPTestCase._FDW_TLS
+                    else Package4TSPTestCase._STATIC_PHASE_STATES
+                )
 
             def read_program_phase_durations(self, tls_id: str):
-                return [42, 3, 1, 42, 3, 1]
+                return (
+                    Package4TSPTestCase._FDW_PHASE_DURATIONS
+                    if tls_id in Package4TSPTestCase._FDW_TLS
+                    else Package4TSPTestCase._STATIC_PHASE_DURATIONS
+                )
 
         problems = controller._verify_signal_programs(_CleanAdapter())
         self.assertTrue(any("sem matriz de conflitos" in item for item in problems))
@@ -570,27 +701,26 @@ class Package4TSPTestCase(unittest.TestCase):
         safety = TSPSafetyLayer(self.cits, self.tsp)
         # signal_program_verified defaults to False
         request = self._request(
-            destination_id="RSU_BOAVISTA_06",
-            intersection_id="I6",
-            tls_id="I6",
-            rsu_id="RSU_BOAVISTA_06",
-            current_edge_id="I7_I6",
-            current_lane_id="I7_I6_0",
-            priority_movement_id="I6_eastbound_public_transport",
-            target_signal_group_id="I6_priority_eastbound",
-            requested_maneuver=RequestedManeuver.EARLY_GREEN.value,
+            destination_id="RSU_BOAVISTA_07",
+            intersection_id="I7",
+            tls_id="I7",
+            rsu_id="RSU_BOAVISTA_07",
+            current_edge_id="ATLANTIC_WEST_I7",
+            current_lane_id="ATLANTIC_WEST_I7_0",
+            priority_movement_id="I7_eastbound_public_transport",
+            target_signal_group_id="I7_priority_eastbound",
         )
         state = SignalState(
-            intersection_id="I6",
-            tls_id="I6",
-            rsu_id="RSU_BOAVISTA_06",
+            intersection_id="I7",
+            tls_id="I7",
+            rsu_id="RSU_BOAVISTA_07",
             timestamp_s=100.0,
             current_phase_index=2,
             current_program_id="test",
             red_yellow_green_state="rrGG",
             next_switch_s=125.0,
             spent_duration_s=20.0,  # > min_green_s=8
-            controlled_lanes=["I5_I6_0", "I7_I6_0", "N_I6_I6_0", "S_I6_I6_0"],
+            controlled_lanes=["I6_I7_0", "ATLANTIC_WEST_I7_0", "N_I7_I7_0", "S_I7_I7_0"],
         )
         decision = self.engine.decide(request, state, sim_time_s=100.0)
         result = safety.validate(decision, state, sim_time_s=100.0)
@@ -604,27 +734,26 @@ class Package4TSPTestCase(unittest.TestCase):
         safety = TSPSafetyLayer(self.cits, self.tsp)
         safety.set_signal_program_verified(True)
         request = self._request(
-            destination_id="RSU_BOAVISTA_06",
-            intersection_id="I6",
-            tls_id="I6",
-            rsu_id="RSU_BOAVISTA_06",
-            current_edge_id="I7_I6",
-            current_lane_id="I7_I6_0",
-            priority_movement_id="I6_eastbound_public_transport",
-            target_signal_group_id="I6_priority_eastbound",
-            requested_maneuver=RequestedManeuver.EARLY_GREEN.value,
+            destination_id="RSU_BOAVISTA_07",
+            intersection_id="I7",
+            tls_id="I7",
+            rsu_id="RSU_BOAVISTA_07",
+            current_edge_id="ATLANTIC_WEST_I7",
+            current_lane_id="ATLANTIC_WEST_I7_0",
+            priority_movement_id="I7_eastbound_public_transport",
+            target_signal_group_id="I7_priority_eastbound",
         )
         state = SignalState(
-            intersection_id="I6",
-            tls_id="I6",
-            rsu_id="RSU_BOAVISTA_06",
+            intersection_id="I7",
+            tls_id="I7",
+            rsu_id="RSU_BOAVISTA_07",
             timestamp_s=100.0,
             current_phase_index=2,
             current_program_id="test",
             red_yellow_green_state="rrGG",
             next_switch_s=125.0,
             spent_duration_s=20.0,
-            controlled_lanes=["I5_I6_0", "I7_I6_0", "N_I6_I6_0", "S_I6_I6_0"],
+            controlled_lanes=["I6_I7_0", "ATLANTIC_WEST_I7_0", "N_I7_I7_0", "S_I7_I7_0"],
         )
         decision = self.engine.decide(request, state, sim_time_s=100.0)
         result = safety.validate(decision, state, sim_time_s=100.0)
@@ -699,33 +828,32 @@ class Package4TSPTestCase(unittest.TestCase):
                 raise AssertionError("TraCI must not be called when controller rejects")
 
         request = self._request(
-            destination_id="RSU_BOAVISTA_06",
-            intersection_id="I6",
-            tls_id="I6",
-            rsu_id="RSU_BOAVISTA_06",
-            current_edge_id="I7_I6",
-            current_lane_id="I7_I6_0",
-            priority_movement_id="I6_eastbound_public_transport",
-            target_signal_group_id="I6_priority_eastbound",
-            requested_maneuver=RequestedManeuver.EARLY_GREEN.value,
+            destination_id="RSU_BOAVISTA_07",
+            intersection_id="I7",
+            tls_id="I7",
+            rsu_id="RSU_BOAVISTA_07",
+            current_edge_id="ATLANTIC_WEST_I7",
+            current_lane_id="ATLANTIC_WEST_I7_0",
+            priority_movement_id="I7_eastbound_public_transport",
+            target_signal_group_id="I7_priority_eastbound",
         )
         state = SignalState(
-            intersection_id="I6",
-            tls_id="I6",
-            rsu_id="RSU_BOAVISTA_06",
+            intersection_id="I7",
+            tls_id="I7",
+            rsu_id="RSU_BOAVISTA_07",
             timestamp_s=100.0,
             current_phase_index=2,
             current_program_id="test",
             red_yellow_green_state="rrGG",
             next_switch_s=125.0,
             spent_duration_s=20.0,
-            controlled_lanes=["I5_I6_0", "I7_I6_0", "N_I6_I6_0", "S_I6_I6_0"],
+            controlled_lanes=["I6_I7_0", "ATLANTIC_WEST_I7_0", "N_I7_I7_0", "S_I7_I7_0"],
         )
         decision = self.engine.decide(request, state, sim_time_s=100.0).copy_with(status=DecisionStatus.APPROVED.value)
         simulated = SimulatedControllerAdapter(
             base=_BaseAdapter(),  # type: ignore[arg-type]
             contracts=build_controller_contracts(self.cits, self.tsp),
-            config={"default_mode": "automatic", "active_pedestrian_calls_by_tls": ["I6"]},
+            config={"default_mode": "automatic", "active_pedestrian_calls_by_tls": ["I7"]},
         )
         result = TraciTSPActuator(adapter=simulated, apply_actuation=True).apply(decision, state, sim_time_s=100.0)
         self.assertFalse(result.applied)

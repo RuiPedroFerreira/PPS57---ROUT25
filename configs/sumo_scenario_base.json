@@ -1,5 +1,5 @@
 {
-  "scenario_id": "porto_boavista_base_v03",
+  "scenario_id": "porto_boavista_base_v04",
   "description": "Cenario-base SUMO controlado para a Avenida da Boavista, ancorado em geometria e operacao plausiveis e preparado para calibracao com GTFS/contagens/planos reais.",
   "city": "Porto",
   "corridor_name": "Avenida da Boavista / Casa da Musica - Bessa - Serralves - Praca do Imperio - Castelo do Queijo",
@@ -9,11 +9,23 @@
   "simulation_end_s": 7200,
   "simulation_step_length_s": 0.5,
   "random_seed": 57,
+  "sumo_quality_thresholds": {
+    "max_collisions": 0,
+    "max_teleports_total": 1,
+    "max_emergency_braking": 150,
+    "max_emergency_braking_per_1000_vehicles": 30,
+    "min_completed_vehicles_for_rate_gates": 500,
+    "max_waiting_to_insert": 150,
+    "max_vehicles_waiting_at_end": 150,
+    "max_insertion_gap_at_end": 0,
+    "max_backlog_step_ratio": 0.75,
+    "note": "Safety/viability gates for scenario verdicts. The unconstrained SUMO run must not pass if it hides material insertion backlog, teleports or excessive emergency braking."
+  },
   "active_demand_profile": "am_peak",
   "network": {
     "default_major_speed_mps": 13.89,
     "default_minor_speed_mps": 8.33,
-    "default_major_lanes": 2,
+    "default_major_lanes": 3,
     "default_minor_lanes": 1,
     "major_priority": 4,
     "minor_priority": 2,
@@ -42,7 +54,7 @@
         "y": 0,
         "z": 95,
         "type": "traffic_light",
-        "major_lanes": 2,
+        "major_lanes": 3,
         "minor_lanes": 2,
         "rsu_id": "RSU_BOAVISTA_01",
         "cross_street_intensity": "major",
@@ -67,7 +79,7 @@
         "z": 88,
         "type": "traffic_light",
         "tls_type": "actuated",
-        "major_lanes": 2,
+        "major_lanes": 3,
         "minor_lanes": 1,
         "rsu_id": "RSU_BOAVISTA_02",
         "cross_street_intensity": "medium",
@@ -90,7 +102,7 @@
         "y": -85,
         "z": 72,
         "type": "traffic_light",
-        "major_lanes": 2,
+        "major_lanes": 3,
         "minor_lanes": 1,
         "rsu_id": "RSU_BOAVISTA_03",
         "cross_street_intensity": "medium",
@@ -114,7 +126,7 @@
         "y": -130,
         "z": 55,
         "type": "traffic_light",
-        "major_lanes": 2,
+        "major_lanes": 3,
         "minor_lanes": 1,
         "rsu_id": "RSU_BOAVISTA_04",
         "cross_street_intensity": "minor",
@@ -138,7 +150,7 @@
         "z": 42,
         "type": "traffic_light",
         "tls_type": "actuated",
-        "major_lanes": 2,
+        "major_lanes": 3,
         "minor_lanes": 1,
         "rsu_id": "RSU_BOAVISTA_05",
         "cross_street_intensity": "medium",
@@ -161,7 +173,7 @@
         "y": 45,
         "z": 28,
         "type": "priority",
-        "major_lanes": 2,
+        "major_lanes": 3,
         "minor_lanes": 2,
         "rsu_id": "RSU_BOAVISTA_06",
         "cross_street_intensity": "major",
@@ -180,7 +192,7 @@
         "y": 125,
         "z": 12,
         "type": "traffic_light",
-        "major_lanes": 2,
+        "major_lanes": 3,
         "minor_lanes": 1,
         "rsu_id": "RSU_BOAVISTA_07",
         "cross_street_intensity": "medium",
@@ -1159,6 +1171,12 @@
         {"id": "flow_minor_S_to_atlantic_at_I7", "type": "cross_street_mix", "route": "route_minor_S_I7_to_atlantic", "begin": 122, "end": 7200, "period": 160, "departLane": "best", "departSpeed": "max"}
       ]
     },
+    "am_peak_operational": {
+      "description": "Ponta da manha operacional para baseline SUMO: mesmo padrao do am_peak HCM, mas com procura ~40% menor para evitar que a referencia sem eventos especiais fique dominada por falhas de insercao.",
+      "derived_from": "am_peak",
+      "period_scale": 1.65,
+      "id_suffix": "am_operational"
+    },
     "off_peak": {
       "description": "Periodo fora de ponta: mesma geometria e movimentos, com procura geral cerca de metade do pico e headways TP mais espacados no perfil de cenario.",
       "derived_from": "am_peak",
@@ -1189,7 +1207,7 @@
     },
     "delayed_bus_westbound": {
       "description": "Pico com sentido cidade->mar carregado e condicoes para gerar atraso operacional no TP westbound.",
-      "derived_from": "am_peak",
+      "derived_from": "am_peak_operational",
       "period_scale": 1.0,
       "route_period_scale": {
         "route_boavista_east_to_west": 0.78
@@ -1198,7 +1216,7 @@
     },
     "delayed_bus_eastbound": {
       "description": "Pico com sentido mar->cidade carregado e condicoes para gerar atraso operacional no TP eastbound.",
-      "derived_from": "am_peak",
+      "derived_from": "am_peak_operational",
       "period_scale": 1.0,
       "route_period_scale": {
         "route_boavista_west_to_east": 0.70
@@ -1207,13 +1225,13 @@
     },
     "bunched_buses": {
       "description": "Procura de pico com dois servicos TP aproximados para provocar headway curto e testar recuperacao de regularidade.",
-      "derived_from": "am_peak",
+      "derived_from": "am_peak_operational",
       "period_scale": 1.0,
       "id_suffix": "bunched_buses"
     },
     "long_dwell_stop": {
       "description": "Paragem critica com dwell elevado em Serralves, representando maior carga/descarga de passageiros.",
-      "derived_from": "am_peak",
+      "derived_from": "am_peak_operational",
       "period_scale": 1.0,
       "id_suffix": "long_dwell"
     },
@@ -1229,7 +1247,7 @@
     },
     "emergency_vehicle_conflict": {
       "description": "Pico com evento pontual de emergencia concorrente com TP no corredor principal.",
-      "derived_from": "am_peak",
+      "derived_from": "am_peak_operational",
       "period_scale": 1.0,
       "id_suffix": "emergency_conflict"
     },
@@ -1245,13 +1263,13 @@
     },
     "am_peak_low": {
       "description": "Envelope inferior da ponta da manha: procura 15% abaixo do baseline proxy para representar incerteza sem contagens reais.",
-      "derived_from": "am_peak",
+      "derived_from": "am_peak_operational",
       "period_scale": 1.15,
       "id_suffix": "am_low"
     },
     "am_peak_high": {
       "description": "Envelope superior da ponta da manha: procura 15% acima do baseline proxy para testar sensibilidade sem calibradores reais.",
-      "derived_from": "am_peak",
+      "derived_from": "am_peak_operational",
       "period_scale": 0.85,
       "id_suffix": "am_high"
     },
@@ -1285,43 +1303,43 @@
     },
     "rainy_am_peak": {
       "description": "Pico da manha em condicoes adversas (chuva): procura proxima do baseline, mas reduzida ~5% por evitamento; comportamento dos condutores e ajustado por vehicle_overrides do cenario.",
-      "derived_from": "am_peak",
+      "derived_from": "am_peak_operational",
       "period_scale": 1.05,
       "id_suffix": "rainy"
     },
     "foggy_am_peak": {
       "description": "Pico da manha com nevoeiro denso: visibilidade reduzida; procura ligeiramente inferior por evitamento (~7%).",
-      "derived_from": "am_peak",
+      "derived_from": "am_peak_operational",
       "period_scale": 1.07,
       "id_suffix": "foggy"
     },
     "winter_morning_am_peak": {
       "description": "Pico da manha em manha de inverno frio: piso gelado em algumas transversais menores, atraso geral por aquecimento do veiculo.",
-      "derived_from": "am_peak",
+      "derived_from": "am_peak_operational",
       "period_scale": 1.10,
       "id_suffix": "winter"
     },
     "av_penetration_low": {
       "description": "Penetracao baixa de veiculos automatizados (~10%).",
-      "derived_from": "am_peak",
+      "derived_from": "am_peak_operational",
       "period_scale": 1.0,
       "id_suffix": "av_low"
     },
     "av_penetration_medium": {
       "description": "Penetracao media de veiculos automatizados (~30%).",
-      "derived_from": "am_peak",
+      "derived_from": "am_peak_operational",
       "period_scale": 1.0,
       "id_suffix": "av_medium"
     },
     "av_penetration_high": {
       "description": "Penetracao alta de veiculos automatizados (~60%).",
-      "derived_from": "am_peak",
+      "derived_from": "am_peak_operational",
       "period_scale": 1.0,
       "id_suffix": "av_high"
     },
     "stochastic_incidents_am_peak": {
       "description": "Pico da manha com possibilidade probabilistica de paragens de veiculo na via principal; cenario materializa eventos a partir do random_seed.",
-      "derived_from": "am_peak",
+      "derived_from": "am_peak_operational",
       "period_scale": 1.0,
       "id_suffix": "stoch_incidents"
     }
@@ -1330,8 +1348,8 @@
   "scenario_profiles": {
     "baseline_am_peak": {
       "description": "Referencia principal de ponta da manha no corredor Boavista.",
-      "justification": "Janela de 2h, sentido oeste->este mais forte e headways TP de 10-15 min sao plausiveis para uma arterial urbana radial em periodo de entrada na cidade.",
-      "demand_profile": "am_peak",
+      "justification": "Janela de 2h, sentido oeste->este mais forte e headways TP de 10-15 min sao plausiveis para uma arterial urbana radial. Usa o perfil am_peak_operational para que a referencia sem eventos especiais nao fique dominada por backlog de insercao SUMO.",
+      "demand_profile": "am_peak_operational",
       "random_seeds": [57, 58, 59, 60, 61],
       "events": [],
       "kpi_focus": ["travel_time", "bus_time_loss", "general_traffic_delay", "queue_baseline"],
