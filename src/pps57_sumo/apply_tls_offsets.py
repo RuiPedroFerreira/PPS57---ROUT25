@@ -185,6 +185,19 @@ def _apply_phase_program(
                 f"in the generated tlLogic (available: {sorted(role_to_phase)})."
             )
         phase.attrib["duration"] = f"{duration:.1f}"
+        # Keep actuated minDur/maxDur consistent with the configured plan so a
+        # `dur=51 > maxDur=50` mismatch never silently caps the nominal green.
+        # Coordinated-actuated policy: phase can shorten down to minDur (5s by
+        # default) under light traffic, but never extends beyond the static
+        # plan duration — which is what preserves corridor coordination.
+        if "maxDur" in phase.attrib or "minDur" in phase.attrib:
+            phase.attrib["maxDur"] = f"{duration:.1f}"
+            current_min = phase.attrib.get("minDur")
+            try:
+                current_min_v = float(current_min) if current_min is not None else 5.0
+            except ValueError:
+                current_min_v = 5.0
+            phase.attrib["minDur"] = f"{min(current_min_v, duration):.1f}"
 
     if not (will_insert_all_red or will_insert_ped):
         return

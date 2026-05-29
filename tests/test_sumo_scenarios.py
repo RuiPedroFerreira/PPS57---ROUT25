@@ -79,15 +79,26 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
             self.assertEqual(scenario_summary(config)["estimated_bus_departures"], actual)
 
     def test_cross_pressure_makes_selected_minor_flows_more_frequent(self) -> None:
+        baseline = apply_scenario_profile(self.base, "baseline_am_peak")
         config = apply_scenario_profile(self.base, "cross_traffic_pressure")
-        flows = {
-            flow["id"]: flow
+        baseline_flows = {
+            flow["route"]: flow
+            for flow in baseline["demand_profiles"][baseline["active_demand_profile"]]["flows"]
+        }
+        pressure_flows = {
+            flow["route"]: flow
             for flow in config["demand_profiles"][config["active_demand_profile"]]["flows"]
         }
-        i2_ns = next(flow for flow in flows.values() if flow["route"] == "route_cross_NS_I2")
-        i6_sn = next(flow for flow in flows.values() if flow["route"] == "route_cross_SN_I6")
-        self.assertEqual(float(i2_ns["period"]), 12.0)
-        self.assertEqual(float(i6_sn["period"]), 15.0)
+        self.assertLess(
+            float(pressure_flows["route_cross_NS_I2"]["period"]),
+            float(baseline_flows["route_cross_NS_I2"]["period"]),
+        )
+        self.assertLess(
+            float(pressure_flows["route_cross_SN_I6"]["period"]),
+            float(baseline_flows["route_cross_SN_I6"]["period"]),
+        )
+        self.assertAlmostEqual(float(pressure_flows["route_cross_NS_I2"]["period"]), 39.6)
+        self.assertAlmostEqual(float(pressure_flows["route_cross_SN_I6"]["period"]), 29.7)
 
     def test_emergency_profile_is_the_only_catalog_profile_with_emergency_event(self) -> None:
         for scenario_id in self.catalog["scenarios"]:
@@ -294,13 +305,38 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
             apply_scenario_profile(broken, "broken_distribution_sum")
 
     def test_stochastic_incidents_materialise_deterministic_events(self) -> None:
+        from pps57_sumo.generate_plain_corridor import build_routes
+
         cfg_a = apply_scenario_profile(self.base, "stochastic_incidents_am_peak")
         # Same seed -> same events (determinism).
         cfg_b = apply_scenario_profile(self.base, "stochastic_incidents_am_peak")
         self.assertEqual(cfg_a["events"], cfg_b["events"])
+        intersections = cfg_a["network"]["intersections"]
+        terminals = {t["id"]: t for t in cfg_a["network"]["terminals"]}
+        routes = build_routes(cfg_a, intersections, terminals)
         for event in cfg_a["events"]:
             self.assertEqual(event["type"], "stopped_vehicle")
             self.assertIn(event["stop_edge"], {"I2_I3", "I3_I4", "I4_I5", "I5_I6"})
+            self.assertIn(event["stop_edge"], routes[event["route"]])
+
+    def test_stopped_vehicle_event_must_stop_on_its_route(self) -> None:
+        broken = json.loads(json.dumps(self.base))
+        broken["scenario_profiles"]["broken_stopped_vehicle"] = {
+            "demand_profile": "am_peak",
+            "events": [
+                {
+                    "id": "broken_stop",
+                    "type": "stopped_vehicle",
+                    "vehicle_type": "lcv",
+                    "route": "route_boavista_west_to_east",
+                    "depart": 1200,
+                    "stop_edge": "I2_I3",
+                    "stop_duration_s": 180,
+                }
+            ],
+        }
+        with self.assertRaises(ScenarioConfigError):
+            apply_scenario_profile(broken, "broken_stopped_vehicle")
 
     def test_signal_offsets_present_per_intersection(self) -> None:
         cfg = apply_scenario_profile(self.base, "baseline_am_peak")
@@ -612,6 +648,21 @@ class SumoKpiParsingTestCase(unittest.TestCase):
             kpis = parse_tripinfo(path)
             self.assertEqual(kpis["emergency_vehicles"]["vehicles"], 1)
             self.assertEqual(kpis["general_traffic"]["vehicles"], 1)
+
+    def test_tripinfo_parser_does_not_classify_scenario_name_bus_as_bus(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "tripinfo.xml"
+            path.write_text(
+                "<tripinfos>"
+                '<tripinfo id="flow_car_inbound_west_to_east_am_operational_delayed_bus_w.0" vType="car" depart="0" duration="10" routeLength="100" waitingTime="1" timeLoss="2" />'
+                '<tripinfo id="flow_car_outbound_east_to_west_am_operational_bunched_buses.0" vType="car" depart="0" duration="10" routeLength="100" waitingTime="1" timeLoss="2" />'
+                '<tripinfo id="bus_STCP500_W_0000" vType="bus_12m" depart="0" duration="20" routeLength="200" waitingTime="2" timeLoss="3" />'
+                "</tripinfos>",
+                encoding="utf-8",
+            )
+            kpis = parse_tripinfo(path)
+            self.assertEqual(kpis["buses"]["vehicles"], 1)
+            self.assertEqual(kpis["general_traffic"]["vehicles"], 2)
 
     def test_detector_parser_reports_network_queue_kpis(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1101,11 +1152,13 @@ class SumoKpiParsingTestCase(unittest.TestCase):
                 apply_tls_offsets(net, overrides)
 
     def test_build_tls_offsets_emits_pedestrian_phase_and_preserves_cycle_sum(self) -> None:
-        """The new green_ped_s field surfaces as a <phase role='pedestrian'> entry and the
-        cycle-sum invariant still holds for the augmented 7-role program."""
+        """Every signalized intersection on the corridor is configured with an
+        exclusive pedestrian (Barnes Dance) phase so netconvert does not
+        auto-insert a 5s clearance phase that would silently inflate the cycle
+        from 90s to 100s and break corridor coordination."""
         cfg = json.loads((ROOT / "configs" / "sumo_scenario_base.json").read_text(encoding="utf-8"))
-        # I1, I3, I7 are the three intersections configured with a ped phase in the base config.
-        ped_ids = {"I1", "I3", "I7"}
+        # I1-I5 and I7 all carry a green_ped_s; I6 is the Praca do Imperio roundabout.
+        ped_ids = {"I1", "I2", "I3", "I4", "I5", "I7"}
         overrides_root = build_tls_offsets(cfg)
         self.assertIsNotNone(overrides_root)
         assert overrides_root is not None

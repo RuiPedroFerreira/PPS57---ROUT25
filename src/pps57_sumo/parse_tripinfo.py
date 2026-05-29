@@ -41,11 +41,15 @@ def parse_tripinfo(path: Path) -> dict:
     for node in tree.getroot().iter("tripinfo"):
         vehicle_id = node.attrib.get("id", "")
         vehicle_type = node.attrib.get("vType", "")
-        lowered = " ".join([vehicle_id, vehicle_type]).lower()
-        is_bus = vehicle_id.startswith("bus_") or "bus" in lowered or "stcp" in lowered
+        vehicle_type_lc = vehicle_type.lower()
+        is_bus = (
+            vehicle_id.startswith("bus_")
+            or vehicle_type_lc.startswith("bus")
+            or vehicle_type_lc in {"stcp_bus", "transit_bus"}
+        )
         is_emergency = (
             vehicle_id.startswith(("ev_", "emergency_"))
-            or vehicle_type.lower() in {"emergency_vehicle", "emergency"}
+            or vehicle_type_lc in {"emergency_vehicle", "emergency"}
         )
         is_priority = is_bus or is_emergency
         rows.append({

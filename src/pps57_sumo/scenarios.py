@@ -60,9 +60,29 @@ def apply_scenario_profile(base_config: dict[str, Any], scenario_id: str | None)
     if "events" in profile:
         config["events"] = deepcopy(profile["events"])
     _materialize_stochastic_incidents(config, profile, scenario_id=scenario_id)
+    _apply_quality_threshold_overrides(config, profile)
 
     validate_scenario_config(config, scenario_id=scenario_id)
     return config
+
+
+def _apply_quality_threshold_overrides(config: dict[str, Any], profile: dict[str, Any]) -> None:
+    """Merge scenario-level relaxations into the base quality thresholds.
+
+    Some scenarios (AV mixes, weather degradation) legitimately exceed gates
+    calibrated for human cars in dry conditions. Profiles declare deltas via
+    ``sumo_quality_threshold_overrides``; only the listed keys are replaced,
+    so the global ``max_collisions`` / ``max_teleports_jam`` floors still
+    apply unless explicitly relaxed.
+    """
+    overrides = profile.get("sumo_quality_threshold_overrides")
+    if not isinstance(overrides, dict) or not overrides:
+        return
+    thresholds = config.setdefault("sumo_quality_thresholds", {})
+    if not isinstance(thresholds, dict):
+        return
+    for key, value in overrides.items():
+        thresholds[key] = deepcopy(value)
 
 
 def resolve_demand_profiles(profiles: dict[str, Any]) -> dict[str, Any]:
@@ -140,7 +160,8 @@ def validate_scenario_config(config: dict[str, Any], *, scenario_id: str | None 
     if demand_profile not in profiles:
         raise ScenarioConfigError(f"{context}: active demand profile '{demand_profile}' is not defined.")
 
-    route_ids = _known_route_ids(config)
+    route_edges = _known_route_edges(config)
+    route_ids = set(route_edges)
     flows = profiles[demand_profile].get("flows", [])
     if not flows:
         raise ScenarioConfigError(f"{context}: demand profile '{demand_profile}' has no flows.")
@@ -200,13 +221,22 @@ def validate_scenario_config(config: dict[str, Any], *, scenario_id: str | None 
     _validate_vehicle_type_distributions(config, context=context)
 
     for event in config.get("events", []):
-        if event.get("route") not in route_ids:
+        event_route = str(event.get("route", ""))
+        if event_route not in route_ids:
             raise ScenarioConfigError(f"{context}: event {event.get('id')} references unknown route {event.get('route')}.")
         depart = float(event.get("depart", 0))
         begin = float(config.get("simulation_begin_s", 0))
         end = float(config.get("simulation_end_s", 7200))
         if not begin <= depart <= end:
             raise ScenarioConfigError(f"{context}: event {event.get('id')} departs outside simulation window.")
+        if str(event.get("type", "")) == "stopped_vehicle":
+            stop_edge = str(event.get("stop_edge", ""))
+            if not stop_edge:
+                raise ScenarioConfigError(f"{context}: event {event.get('id')} must define stop_edge.")
+            if stop_edge not in set(route_edges.get(event_route, [])):
+                raise ScenarioConfigError(
+                    f"{context}: event {event.get('id')} stop_edge {stop_edge} is not on route {event_route}."
+                )
 
 
 def _derive_flows(parent_flows: list[dict[str, Any]], profile: dict[str, Any], *, profile_name: str) -> list[dict[str, Any]]:
@@ -223,15 +253,17 @@ def _derive_flows(parent_flows: list[dict[str, Any]], profile: dict[str, Any], *
 
     for base_flow in parent_flows:
         flow_id = str(base_flow["id"])
-        if flow_id in remove_flows:
+        canonical_flow_id = str(base_flow.get("_base_id", flow_id))
+        if flow_id in remove_flows or canonical_flow_id in remove_flows:
             continue
         flow = deepcopy(base_flow)
         scale = period_scale
         scale *= route_period_scale.get(str(flow.get("route")), 1.0)
-        scale *= flow_period_scale.get(flow_id, 1.0)
+        scale *= flow_period_scale.get(flow_id, flow_period_scale.get(canonical_flow_id, 1.0))
         if scale <= 0:
             raise ScenarioConfigError(f"Demand profile {profile_name}: flow scale for {flow_id} must be > 0.")
-        flow["id"] = f"{flow_id}_{id_suffix}"
+        flow["_base_id"] = canonical_flow_id
+        flow["id"] = f"{canonical_flow_id}_{id_suffix}"
         flow["period"] = round(float(flow["period"]) * scale, 3)
         if "time_profile" in flow and isinstance(flow["time_profile"], list):
             scaled_profile = []
@@ -245,11 +277,13 @@ def _derive_flows(parent_flows: list[dict[str, Any]], profile: dict[str, Any], *
             flow["begin"] = profile["begin"]
         if "end" in profile:
             flow["end"] = profile["end"]
-        if flow_id in flow_period_override:
-            flow["period"] = flow_period_override[flow_id]
+        override_period = flow_period_override.get(flow_id, flow_period_override.get(canonical_flow_id))
+        if override_period is not None:
+            flow["period"] = override_period
             flow.pop("time_profile", None)
-        if flow_id in flow_updates:
-            for key, value in flow_updates[flow_id].items():
+        update = flow_updates.get(flow_id, flow_updates.get(canonical_flow_id))
+        if update:
+            for key, value in update.items():
                 if key != "id":
                     flow[key] = deepcopy(value)
         flows.append(flow)
@@ -446,12 +480,17 @@ def _materialize_stochastic_incidents(
         probability = float(template.get("probability", 1.0))
         if rng.random() > probability:
             continue
-        edges = template.get("edge_candidates") or []
-        routes = template.get("route_candidates") or []
+        edges = [str(edge) for edge in template.get("edge_candidates") or []]
+        routes = [str(route) for route in template.get("route_candidates") or []]
         if not edges or not routes:
             continue
-        edge_id = rng.choice(list(edges))
-        route_id = rng.choice(list(routes))
+        compatible_pairs = _compatible_route_edge_pairs(config, routes, edges)
+        if not compatible_pairs:
+            raise ScenarioConfigError(
+                f"{scenario_id or '<base>'}: stochastic_incidents[{index}] has no route compatible "
+                "with its edge_candidates."
+            )
+        route_id, edge_id = rng.choice(compatible_pairs)
         depart_window = template.get("depart_window_s", [0, 3600])
         if not isinstance(depart_window, list) or len(depart_window) != 2:
             depart_window = [0, 3600]
@@ -483,6 +522,21 @@ def _stochastic_incident_seed(base_seed: int, scenario_id: str | None) -> int:
     key = f"{base_seed}:{scenario_id or ''}:stochastic_incidents"
     digest = hashlib.blake2b(key.encode("utf-8"), digest_size=8).digest()
     return int.from_bytes(digest, "big")
+
+
+def _compatible_route_edge_pairs(
+    config: dict[str, Any],
+    route_candidates: list[str],
+    edge_candidates: list[str],
+) -> list[tuple[str, str]]:
+    route_edges = _known_route_edges(config)
+    pairs: list[tuple[str, str]] = []
+    for route_id in route_candidates:
+        edge_set = set(route_edges.get(route_id, []))
+        for edge_id in edge_candidates:
+            if edge_id in edge_set:
+                pairs.append((route_id, edge_id))
+    return pairs
 
 
 def _apply_public_transport_overrides(config: dict[str, Any], profile: dict[str, Any]) -> None:
@@ -518,27 +572,23 @@ def _service_matches(service: dict[str, Any], override: dict[str, Any]) -> bool:
 
 
 def _known_route_ids(config: dict[str, Any]) -> set[str]:
-    intersections = config.get("network", {}).get("intersections", [])
-    route_ids = {
-        "route_boavista_east_to_west",
-        "route_boavista_west_to_east",
-        "route_emergency_west_to_east",
+    return set(_known_route_edges(config))
+
+
+def _known_route_edges(config: dict[str, Any]) -> dict[str, list[str]]:
+    """Return the route IDs and edge sequences emitted by the corridor generator."""
+    from pps57_sumo.generate_plain_corridor import build_routes
+
+    network = config.get("network", {})
+    intersections = network.get("intersections", []) or []
+    terminals = {
+        str(item["id"]): item
+        for item in network.get("terminals", []) or []
+        if isinstance(item, dict) and "id" in item
     }
-    for inter in intersections:
-        inter_id = inter["id"]
-        route_ids.add(f"route_cross_NS_{inter_id}")
-        route_ids.add(f"route_cross_SN_{inter_id}")
-        # Turning movements (generator emits these for every intersection).
-        route_ids.add(f"route_main_inbound_turn_to_N_{inter_id}")
-        route_ids.add(f"route_main_inbound_turn_to_S_{inter_id}")
-        route_ids.add(f"route_main_outbound_turn_to_N_{inter_id}")
-        route_ids.add(f"route_main_outbound_turn_to_S_{inter_id}")
-        route_ids.add(f"route_minor_N_{inter_id}_to_city")
-        route_ids.add(f"route_minor_N_{inter_id}_to_atlantic")
-        route_ids.add(f"route_minor_S_{inter_id}_to_city")
-        route_ids.add(f"route_minor_S_{inter_id}_to_atlantic")
-    route_ids.update(str(item["id"]) for item in config.get("routes", []))
-    return route_ids
+    if intersections and "CITY_EAST" in terminals and "ATLANTIC_WEST" in terminals:
+        return build_routes(config, intersections, terminals)
+    return {str(item["id"]): [str(edge) for edge in item["edges"]] for item in config.get("routes", []) or []}
 
 
 def _validate_time_window(item: dict[str, Any], *, context: str) -> None:

@@ -22,13 +22,27 @@ SRC = Path(__file__).resolve().parents[1]
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from pps57_sumo.scenarios import apply_scenario_profile
-
-
 def _pretty_xml(element: ET.Element) -> str:
     rough = ET.tostring(element, encoding="utf-8")
     parsed = minidom.parseString(rough)
     return parsed.toprettyxml(indent="  ")
+
+
+def _additional_root() -> ET.Element:
+    """Create an ``<additional>`` element that declares the SUMO additional XSD.
+
+    SUMO accepts an undecorated ``<additional>`` root, but strict XML
+    validation (`--xml-validation always`) rejects it. Declaring the no-
+    namespace schema location keeps the bundle compatible with strict mode
+    and with downstream tooling that schema-validates against the SUMO XSDs.
+    """
+    return ET.Element(
+        "additional",
+        {
+            "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
+            "xsi:noNamespaceSchemaLocation": "http://sumo.dlr.de/xsd/additional_file.xsd",
+        },
+    )
 
 
 def generate(
@@ -483,8 +497,9 @@ def _sidewalk_lane_offset(config: dict) -> int:
 
 
 def build_bus_stops(config: dict, edge_defs: Dict[str, Dict[str, Any]], node_xy: Dict[str, tuple[float, float]]) -> ET.Element:
-    root = ET.Element("additional")
+    root = _additional_root()
     lane_offset = _sidewalk_lane_offset(config)
+    sidewalks_enabled = lane_offset > 0
     for stop in config.get("public_transport", {}).get("stops", []):
         edge_id = str(stop["edge_id"])
         if edge_id not in edge_defs:
@@ -498,7 +513,7 @@ def build_bus_stops(config: dict, edge_defs: Dict[str, Dict[str, Any]], node_xy:
         center = min(max(float(stop.get("center_m", 120.0)), stop_len / 2.0 + 1.0), length - stop_len / 2.0 - 1.0)
         start = max(0.1, center - stop_len / 2.0)
         end = min(length - 0.1, center + stop_len / 2.0)
-        ET.SubElement(
+        bus_stop = ET.SubElement(
             root,
             "busStop",
             {
@@ -509,11 +524,26 @@ def build_bus_stops(config: dict, edge_defs: Dict[str, Dict[str, Any]], node_xy:
                 "friendlyPos": "true",
             },
         )
+        # Attach a pedestrian access link from the sidewalk to the bus stop.
+        # Without it the intermodal router treats the stop as unreachable
+        # from any sidewalk and emits "less than two usable stops" for the
+        # whole PT line, leaving the PT layer effectively unexercised.
+        if sidewalks_enabled:
+            ET.SubElement(
+                bus_stop,
+                "access",
+                {
+                    "lane": f"{edge_id}_0",
+                    "pos": f"{center:.1f}",
+                    "length": "1.5",
+                    "friendlyPos": "true",
+                },
+            )
     return root
 
 
 def build_detectors(config: dict, edge_defs: Dict[str, Dict[str, Any]], node_xy: Dict[str, tuple[float, float]]) -> ET.Element:
-    root = ET.Element("additional")
+    root = _additional_root()
     detector_cfg = config.get("detectors", {})
     frequency_s = str(int(detector_cfg.get("frequency_s", 60)))
     stopline_setback_m = float(detector_cfg.get("stopline_setback_m", 85.0))
@@ -611,7 +641,7 @@ def build_route_xml(
     order = 0
     demand = config.get("demand_profiles", {}).get(config.get("active_demand_profile", "am_peak"), {})
     stochastic_arrivals = bool(config.get("stochastic_arrivals", True))
-    skip_keys = {"description", "time_profile"}
+    skip_keys = {"description", "time_profile", "_base_id"}
     for flow in demand.get("flows", []):
         sub_flows = _expand_time_profile(flow)
         for sub_flow in sub_flows:
@@ -672,6 +702,11 @@ def build_route_xml(
 
     for ped_flow in config.get("pedestrian_flows", []) or []:
         person_flow, begin_t = _pedestrian_flow_to_xml(ped_flow)
+        timed_elements.append((begin_t, order, person_flow))
+        order += 1
+
+    for pax_flow in config.get("bus_passenger_flows", []) or []:
+        person_flow, begin_t = _bus_passenger_flow_to_xml(pax_flow)
         timed_elements.append((begin_t, order, person_flow))
         order += 1
 
@@ -766,12 +801,47 @@ def _pedestrian_flow_to_xml(ped_flow: dict) -> tuple[ET.Element, float]:
     return flow_elem, begin_t
 
 
+def _bus_passenger_flow_to_xml(pax_flow: dict) -> tuple[ET.Element, float]:
+    """Emit a PT passenger personFlow: walk to stop, ride a line, arrive.
+
+    Two legs are written so the SUMO intermodal router can register the
+    boarding/alighting stops as 'usable' for the PT line. ``from_edge`` is a
+    pedestrian-accessible origin edge (e.g., a minor approach with sidewalk),
+    ``board_stop`` is the busStop id served by ``lines``, and ``alight_stop``
+    is a downstream busStop on the same line. The person arrives at the
+    alighting stop; a post-ride walk leg would require an additional
+    pedestrian path from the bus-stop edge to ``to_edge`` that the corridor
+    sidewalk graph does not always provide.
+    """
+    begin_t = float(pax_flow.get("begin", 0))
+    end_t = float(pax_flow.get("end", 7200))
+    period = float(pax_flow.get("period", 120))
+    flow_attrs = {
+        "id": str(pax_flow.get("id", "bus_pax_flow")),
+        "begin": _format_time(begin_t),
+        "end": _format_time(end_t),
+        "period": f"exp({1.0 / period:.6f})" if period > 0 else "120",
+    }
+    flow_elem = ET.Element("personFlow", flow_attrs)
+    ET.SubElement(
+        flow_elem,
+        "walk",
+        {"from": str(pax_flow.get("from_edge", "")), "busStop": str(pax_flow.get("board_stop", ""))},
+    )
+    ET.SubElement(
+        flow_elem,
+        "ride",
+        {"busStop": str(pax_flow.get("alight_stop", "")), "lines": str(pax_flow.get("lines", ""))},
+    )
+    return flow_elem, begin_t
+
+
 def build_parking_areas(
     config: dict,
     edge_defs: Dict[str, Dict[str, Any]],
     node_xy: Dict[str, tuple[float, float]],
 ) -> ET.Element:
-    root = ET.Element("additional")
+    root = _additional_root()
     lane_offset = _sidewalk_lane_offset(config)
     for area in config.get("parking_areas", []) or []:
         edge_id = str(area["edge_id"])
@@ -802,7 +872,7 @@ def build_calibrators(
     edge_defs: Dict[str, Dict[str, Any]],
     node_xy: Dict[str, tuple[float, float]],
 ) -> ET.Element:
-    root = ET.Element("additional")
+    root = _additional_root()
     for cal in config.get("calibrators", []) or []:
         edge_id = str(cal["edge_id"])
         if edge_id not in edge_defs:
@@ -998,6 +1068,8 @@ def _format_time(value: Any) -> str:
 
 
 def main() -> None:
+    from pps57_sumo.scenarios import apply_scenario_profile
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True, type=Path)
     parser.add_argument("--scenario", help="Scenario profile id from the config's scenario_profiles mapping.")

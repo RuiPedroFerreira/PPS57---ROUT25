@@ -16,7 +16,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from pps57_sumo.build_network import build_sumo_artifacts  # noqa: E402
+from pps57_sumo.build_network import build_sumo_artifacts, sumo_environment  # noqa: E402
 from pps57_sumo.detector_kpis import parse_detector_kpis  # noqa: E402
 from pps57_sumo.parse_tripinfo import parse_tripinfo  # noqa: E402
 from pps57_sumo.parse_insertion import parse_insertion_kpis  # noqa: E402
@@ -550,6 +550,11 @@ def run_verdict(kpis: dict) -> dict:
         reasons.append("sumo_collisions_gt_threshold")
     if int(insertion.get("teleports_total", 0) or 0) > int(thresholds["max_teleports_total"]):
         reasons.append("sumo_teleports_gt_threshold")
+    # Jam-type teleports indicate gridlock and are always a hard fail, even
+    # when the total-teleports gate is relaxed to absorb yield-type teleports
+    # at give-way junctions (I6 roundabout, I7 lane 3 turn).
+    if int(insertion.get("teleports_jam", 0) or 0) > int(thresholds["max_teleports_jam"]):
+        reasons.append("sumo_jam_teleports_gt_threshold")
     emergency_braking = int(insertion.get("emergency_braking", 0) or 0)
     completed_vehicles = int(kpis.get("all_vehicles", {}).get("vehicles", 0) or 0)
     emergency_braking_rate = (
@@ -584,7 +589,8 @@ def _sumo_quality_thresholds(kpis: dict) -> dict[str, float | int]:
     scenario_thresholds = kpis.get("scenario", {}).get("sumo_quality_thresholds", {})
     defaults: dict[str, float | int] = {
         "max_collisions": 0,
-        "max_teleports_total": 1,
+        "max_teleports_total": 3,
+        "max_teleports_jam": 0,
         "max_emergency_braking": 150,
         "max_emergency_braking_per_1000_vehicles": 30,
         "min_completed_vehicles_for_rate_gates": 500,
@@ -679,7 +685,11 @@ def _require(binary: str) -> None:
 
 def _run(cmd: list[str]) -> None:
     print("$ " + " ".join(cmd))
-    subprocess.run(cmd, cwd=ROOT, check=True)
+    # Forward SUMO_HOME so the binary can find data/xsd/ and enable XML
+    # validation. Without it, sumo logs "Environment variable SUMO_HOME is not
+    # set properly, disabling XML validation" and silently accepts malformed
+    # additional files.
+    subprocess.run(cmd, cwd=ROOT, check=True, env=sumo_environment())
 
 
 if __name__ == "__main__":

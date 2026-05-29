@@ -83,6 +83,7 @@ def build_sumo_artifacts(
         calibrators_output=artifacts.calibrators_file,
         tls_offsets_output=artifacts.tls_offsets_file,
     )
+    _ensure_detector_output_dirs(config, artifacts)
     resolved_output_dir = root / "outputs" if output_dir is None else (root / output_dir if not output_dir.is_absolute() else output_dir)
     write_sumocfg(config, artifacts, output_dir=resolved_output_dir)
     if build_net:
@@ -140,6 +141,24 @@ def netconvert_command(
             str(int(ped_cfg.get("crossing_clearance_s", 5))),
         ])
     return cmd
+
+
+def _ensure_detector_output_dirs(config: dict, artifacts: SumoArtifacts) -> None:
+    """Create parent dirs for E1/E2 detector output files.
+
+    Detector ``file=`` attributes in additional/detectors.add.xml are resolved
+    by SUMO relative to that additional file. If the parent directory does not
+    exist, SUMO aborts with 'Could not build output file'. Materialise it here
+    so the bundle is self-contained regardless of where it was generated.
+    """
+    detector_cfg = config.get("detectors", {}) if isinstance(config.get("detectors"), dict) else {}
+    additional_dir = artifacts.detectors_file.parent
+    for key in ("e1_output", "e2_output"):
+        rel_value = detector_cfg.get(key)
+        if not rel_value:
+            continue
+        target = (additional_dir / str(rel_value)).resolve()
+        target.parent.mkdir(parents=True, exist_ok=True)
 
 
 def write_sumocfg(config: dict, artifacts: SumoArtifacts, *, output_dir: Path) -> None:

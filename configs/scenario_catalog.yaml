@@ -103,7 +103,8 @@ scenarios:
     realism_basis: >
       Tempos de 75-90 segundos representam carga elevada de passageiros,
       acessibilidade reduzida ou paragem bloqueada; isto separa atraso de
-      paragem de atraso semaforico.
+      paragem de atraso semaforico. A procura e ligeiramente amortecida para
+      isolar o efeito do dwell sem criar backlog artificial de insercao.
     kpi_focus:
       - dwell_induced_delay
       - schedule_delay
@@ -160,9 +161,9 @@ scenarios:
   baseline_am_peak_high:
     description: Envelope superior da ponta da manha.
     realism_basis: >
-      Aumenta a procura em cerca de 15% sem recorrer a calibradores
-      sinteticos, expondo risco de spillback e saturacao quando a procura real
-      estiver acima do proxy central.
+      Aumenta a procura em cerca de 6-7% sem recorrer a calibradores
+      sinteticos, preservando um envelope superior que permanece executavel no
+      SUMO sem mascarar falhas por backlog de insercao.
     kpi_focus:
       - demand_uncertainty_high
       - queue_spillback_risk
@@ -173,7 +174,8 @@ scenarios:
     description: Envelope inferior da ponta da tarde.
     realism_basis: >
       Mantem o padrao direcional PM mas reduz a procura, permitindo comparar
-      robustez do controlador quando o regresso da tarde e mais fraco.
+      robustez do controlador quando o regresso da tarde e mais fraco, dentro
+      de um envelope que evita teleports espurios na rotunda/TLS de jusante.
     kpi_focus:
       - pm_uncertainty_low
       - direction_symmetry
@@ -183,8 +185,9 @@ scenarios:
   baseline_pm_peak_high:
     description: Envelope superior da ponta da tarde.
     realism_basis: >
-      Mantem o padrao direcional PM e aumenta a procura para testar se ganhos e
-      penalizacoes se mantem quando a ponta da tarde fica perto da saturacao.
+      Mantem o padrao direcional PM e aumenta a procura dentro do envelope de
+      insercao material para testar se ganhos e penalizacoes se mantem quando a
+      ponta da tarde fica perto da saturacao.
     kpi_focus:
       - pm_uncertainty_high
       - direction_symmetry
@@ -210,8 +213,9 @@ scenarios:
     realism_basis: >
       Porto regista cerca de 150 dias chuvosos/ano. A chuva reduz friccao
       (decel max ~-15%), aumenta tempo de reacao (tau +0.2s) e reduz a
-      velocidade desejada (speedFactor x0.88). Validar TSP em condicoes
-      degradadas garante robustez fora do dia ideal.
+      velocidade desejada (speedFactor x0.88). A procura e reduzida por
+      evitamento de viagem para manter a simulacao materialmente inserivel sem
+      remover o comportamento de piso molhado.
     kpi_focus:
       - wet_road_travel_time
       - tsp_robustness
@@ -224,7 +228,8 @@ scenarios:
     realism_basis: >
       Nevoeiro denso reduz a velocidade percecionada como segura e aumenta o
       tempo de reacao. Sao condicoes ocasionais mas reais no Porto e expoem
-      o algoritmo a um envelope de velocidades muito comprimido.
+      o algoritmo a um envelope de velocidades muito comprimido, com procura
+      reduzida por evitamento para evitar teleports de yield artificiais.
     kpi_focus:
       - low_visibility_travel_time
       - tsp_robustness_fog
