@@ -133,6 +133,24 @@ class RuntimePolicy:
                 f"occupancy:{occupancy:.3f},"
                 f"spillback_risk:{spillback_risk}"
             )
+        if (
+            baseline.requires_actuation
+            and rule.action not in self.tsp_config.actuating_actions()
+            and not bool(
+                self.tsp_config.raw.get("policy_runtime", {}).get(
+                    "allow_policy_suppress_baseline_actuation",
+                    False,
+                )
+            )
+        ):
+            return baseline.copy_with(
+                notes=list(baseline.notes)
+                + notes
+                + [
+                    "Runtime policy guard: non-actuating RL/optimized rule did not suppress "
+                    "baseline actuation because allow_policy_suppress_baseline_actuation=false."
+                ]
+            )
         return decision_for_action(
             self.tsp_config,
             action=rule.action,

@@ -582,6 +582,68 @@ class Package3CITSTestCase(unittest.TestCase):
                 validate_safety_configs(tmp_root)
             self.assertIn("signal_controlled=true", str(ctx.exception))
 
+    def _write_tmp_configs_with_tsp(self, tmp_root: Path, tsp: dict) -> None:
+        import shutil
+
+        (tmp_root / "configs").mkdir()
+        shutil.copy(ROOT / "configs/sumo_scenario_base.json", tmp_root / "configs/sumo_scenario_base.json")
+        shutil.copy(ROOT / "configs/cits_v2x_config.json", tmp_root / "configs/cits_v2x_config.json")
+        (tmp_root / "configs/tsp_safety_config.json").write_text(json.dumps(tsp), encoding="utf-8")
+
+    def test_safety_config_validation_rejects_priority_level_weights_wrong_class(self) -> None:
+        from pps57_sumo.validate_project import validate_safety_configs
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_root = Path(tmp)
+            tsp = json.loads((ROOT / "configs/tsp_safety_config.json").read_text(encoding="utf-8"))
+            # Renomeia uma classe válida para uma inexistente: cairia silenciosamente
+            # no peso 0.0 sem a validação keys==enum.
+            tsp["decision_policy"]["priority_level_weights"]["vip"] = tsp["decision_policy"][
+                "priority_level_weights"
+            ].pop("nominal")
+            self._write_tmp_configs_with_tsp(tmp_root, tsp)
+            with self.assertRaises(SystemExit) as ctx:
+                validate_safety_configs(tmp_root)
+            self.assertIn("priority_level_weights", str(ctx.exception))
+
+    def test_safety_config_validation_rejects_priority_level_weights_out_of_range(self) -> None:
+        from pps57_sumo.validate_project import validate_safety_configs
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_root = Path(tmp)
+            tsp = json.loads((ROOT / "configs/tsp_safety_config.json").read_text(encoding="utf-8"))
+            tsp["decision_policy"]["priority_level_weights"]["emergency"] = 1.5
+            self._write_tmp_configs_with_tsp(tmp_root, tsp)
+            with self.assertRaises(SystemExit) as ctx:
+                validate_safety_configs(tmp_root)
+            self.assertIn("priority_level_weights", str(ctx.exception))
+
+    def test_safety_config_validation_rejects_invalid_actuating_action(self) -> None:
+        from pps57_sumo.validate_project import validate_safety_configs
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_root = Path(tmp)
+            tsp = json.loads((ROOT / "configs/tsp_safety_config.json").read_text(encoding="utf-8"))
+            tsp["decision_policy"]["actuating_actions"] = ["green_extension", "teleport"]
+            self._write_tmp_configs_with_tsp(tmp_root, tsp)
+            with self.assertRaises(SystemExit) as ctx:
+                validate_safety_configs(tmp_root)
+            self.assertIn("actuating_actions", str(ctx.exception))
+
+    def test_tsp_config_actuating_actions_reads_config_with_fallback(self) -> None:
+        from pps57_tsp.config import TSPConfig, load_tsp_config
+        from pps57_tsp.models import DEFAULT_ACTUATING_ACTIONS
+
+        configured = load_tsp_config(ROOT / "configs/tsp_safety_config.json", root=ROOT)
+        self.assertEqual(configured.actuating_actions(), frozenset({"green_extension", "early_green"}))
+
+        # Ausência da chave recai no default em código (comportamento idêntico ao literal antigo).
+        empty = TSPConfig(root=ROOT, raw={"decision_policy": {}})
+        self.assertEqual(empty.actuating_actions(), DEFAULT_ACTUATING_ACTIONS)
+
     def test_traci_gui_command_includes_start_flag(self) -> None:
         from pps57_cits.traci_adapter import TraciSimulationAdapter
 

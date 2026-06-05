@@ -69,15 +69,6 @@ class SignalState:
 
 
 @dataclass(frozen=True)
-class QueueState:
-    detector_id: str
-    lane_id: str
-    vehicle_count: int = 0
-    jam_length_m: float = 0.0
-    occupancy: float = 0.0
-
-
-@dataclass(frozen=True)
 class NetworkStateSnapshot:
     tls_id: str
     timestamp_s: float
@@ -90,14 +81,6 @@ class NetworkStateSnapshot:
     waiting_time_s: float = 0.0
     occupancy: float = 0.0
     spillback_risk: bool = False
-
-
-@dataclass(frozen=True)
-class EmulationSummary:
-    steps: int
-    mapem_messages: int
-    spatem_messages: int
-    srem_messages: int
-    ssem_messages: int
-    acknowledged_requests: int
-    rejected_requests: int
+    degraded: bool = False
+    detector_read_failures: int = 0
+    failed_lanes: List[str] = field(default_factory=list)

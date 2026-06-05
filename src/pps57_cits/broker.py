@@ -8,12 +8,17 @@ import random
 from typing import DefaultDict, Dict, Iterable, List, Optional
 
 from .messages import CITSMessage
+from .protocol_codec import JsonSimulationCodec, ProtocolCodec
+
+
+WirePayload = CITSMessage | str
 
 
 @dataclass(frozen=True)
 class PendingDelivery:
     due_step: int
-    message: CITSMessage
+    destination_id: str
+    payload: WirePayload
 
 
 @dataclass
@@ -28,7 +33,8 @@ class InMemoryMessageBroker:
     """
 
     transport_config: Dict[str, object] = field(default_factory=dict)
-    queues: DefaultDict[str, List[CITSMessage]] = field(default_factory=lambda: defaultdict(list))
+    codec: ProtocolCodec | None = None
+    queues: DefaultDict[str, List[WirePayload]] = field(default_factory=lambda: defaultdict(list))
     _counts: Dict[str, int] = field(default_factory=dict)
     _pending: List[PendingDelivery] = field(default_factory=list)
     _current_step: int = 0
@@ -45,6 +51,8 @@ class InMemoryMessageBroker:
         }
         seed = int(self.transport_config.get("random_seed", 57))
         self._rng = random.Random(seed)
+        if self.codec is None:
+            self.codec = JsonSimulationCodec()
 
     def publish(self, message: CITSMessage) -> None:
         self._counts[message.message_type] = self._counts.get(message.message_type, 0) + 1
@@ -63,12 +71,9 @@ class InMemoryMessageBroker:
             self._schedule(message)
         self._flush_due()
 
-    def publish_many(self, messages: Iterable[CITSMessage]) -> None:
-        for message in messages:
-            self.publish(message)
-
     def consume(self, destination_id: str) -> List[CITSMessage]:
-        messages = self.queues.get(destination_id, [])
+        payloads = list(self.queues.get(destination_id, []))
+        messages = [self._decode_payload(payload) for payload in payloads]
         self.queues[destination_id] = []
         return messages
 
@@ -100,7 +105,7 @@ class InMemoryMessageBroker:
         self._flush_due()
 
     def peek(self, destination_id: str) -> List[CITSMessage]:
-        return list(self.queues.get(destination_id, []))
+        return [self._decode_payload(payload) for payload in self.queues.get(destination_id, [])]
 
     def count_by_type(self) -> Dict[str, int]:
         return dict(self._counts)
@@ -111,7 +116,10 @@ class InMemoryMessageBroker:
         return stats
 
     def _enqueue(self, message: CITSMessage) -> None:
-        self.queues[message.destination_id].append(message)
+        self._enqueue_payload(message.destination_id, self._payload_for_transport(message))
+
+    def _enqueue_payload(self, destination_id: str, payload: WirePayload) -> None:
+        self.queues[destination_id].append(payload)
         self._transport_stats["delivered"] += 1
 
     def _schedule(self, message: CITSMessage) -> None:
@@ -121,10 +129,17 @@ class InMemoryMessageBroker:
         jitter = self._rng.randint(0, jitter_steps) if self._rng and jitter_steps else 0
         reorder = self._rng.randint(0, reorder_window_steps) if self._rng and reorder_window_steps else 0
         due_step = self._current_step + latency_steps + jitter + reorder
+        payload = self._payload_for_transport(message)
         if due_step <= self._current_step:
-            self._enqueue(message)
+            self._enqueue_payload(message.destination_id, payload)
             return
-        self._pending.append(PendingDelivery(due_step=due_step, message=message))
+        self._pending.append(
+            PendingDelivery(
+                due_step=due_step,
+                destination_id=message.destination_id,
+                payload=payload,
+            )
+        )
 
     def _flush_due(self) -> None:
         if not self._pending:
@@ -132,7 +147,7 @@ class InMemoryMessageBroker:
         due = [item for item in self._pending if item.due_step <= self._current_step]
         self._pending = [item for item in self._pending if item.due_step > self._current_step]
         for item in sorted(due, key=lambda pending: pending.due_step):
-            self._enqueue(item.message)
+            self._enqueue_payload(item.destination_id, item.payload)
 
     def _sample_probability(self, key: str) -> bool:
         value = float(self.transport_config.get(key, 0.0))
@@ -141,3 +156,18 @@ class InMemoryMessageBroker:
         if value >= 1.0:
             return True
         return bool(self._rng and self._rng.random() < value)
+
+    def _payload_for_transport(self, message: CITSMessage) -> WirePayload:
+        if bool(self.transport_config.get("encode_payloads", False)):
+            return self._codec().encode(message)
+        return message
+
+    def _decode_payload(self, payload: WirePayload) -> CITSMessage:
+        if isinstance(payload, CITSMessage):
+            return payload
+        return self._codec().decode(payload)
+
+    def _codec(self) -> ProtocolCodec:
+        if self.codec is None:
+            self.codec = JsonSimulationCodec()
+        return self.codec

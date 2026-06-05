@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import IO, Dict, Iterable, List, Optional
+from typing import IO, Dict, List, Optional
 
 from .messages import CITSMessage, ResponseStatus
+from .protocol_codec import JsonSimulationCodec, ProtocolCodec
 
 
 class CITSJsonlLogger:
@@ -19,18 +20,15 @@ class CITSJsonlLogger:
       linhas até à última `write()` ficam em disco.
     """
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, codec: ProtocolCodec | None = None) -> None:
         self.path = Path(path)
+        self.codec = codec or JsonSimulationCodec()
         self._handle: Optional[IO[str]] = None
 
     def write(self, message: CITSMessage) -> None:
         if self._handle is None:
             raise RuntimeError("CITSJsonlLogger usado fora do context manager")
-        self._handle.write(message.to_json() + "\n")
-
-    def write_many(self, messages: Iterable[CITSMessage]) -> None:
-        for message in messages:
-            self.write(message)
+        self._handle.write(self.codec.encode(message) + "\n")
 
     def close(self) -> None:
         if self._handle is not None:
@@ -125,12 +123,8 @@ def summarise_messages(messages: List[CITSMessage]) -> Dict[str, object]:
     return summary.to_dict()
 
 
-def write_summary(path: str | Path, messages: List[CITSMessage], extra: Dict[str, object] | None = None) -> Dict[str, object]:
-    return write_summary_dict(path, summarise_messages(messages), extra)
-
-
 def write_summary_dict(path: str | Path, summary: Dict[str, object], extra: Dict[str, object] | None = None) -> Dict[str, object]:
-    """Como write_summary, mas a partir de um resumo já calculado (incremental).
+    """Escreve um resumo já calculado, normalmente agregado incrementalmente.
 
     Escreve atomicamente via `.tmp` + `os.replace`: um crash a meio da
     serialização deixa o ficheiro anterior intacto, em vez de um JSON parcial

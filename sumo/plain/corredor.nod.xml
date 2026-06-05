@@ -5,7 +5,7 @@
   <node id="I1" x="0.00" y="0.00" type="traffic_light" z="95.00"/>
   <node id="N_I1" x="0.00" y="420.00" type="priority" z="93.50"/>
   <node id="S_I1" x="0.00" y="-420.00" type="priority" z="93.50"/>
-  <node id="I2" x="650.00" y="-25.00" type="traffic_light" z="88.00" tlType="actuated"/>
+  <node id="I2" x="650.00" y="-25.00" type="traffic_light" z="88.00"/>
   <node id="N_I2" x="650.00" y="395.00" type="priority" z="86.50"/>
   <node id="S_I2" x="650.00" y="-445.00" type="priority" z="86.50"/>
   <node id="I3" x="1350.00" y="-85.00" type="traffic_light" z="72.00"/>
@@ -14,7 +14,7 @@
   <node id="I4" x="2150.00" y="-130.00" type="traffic_light" z="55.00"/>
   <node id="N_I4" x="2150.00" y="290.00" type="priority" z="53.50"/>
   <node id="S_I4" x="2150.00" y="-550.00" type="priority" z="53.50"/>
-  <node id="I5" x="2950.00" y="-80.00" type="traffic_light" z="42.00" tlType="actuated"/>
+  <node id="I5" x="2950.00" y="-80.00" type="traffic_light" z="42.00"/>
   <node id="N_I5" x="2950.00" y="340.00" type="priority" z="40.50"/>
   <node id="S_I5" x="2950.00" y="-500.00" type="priority" z="40.50"/>
   <node id="RB_I6_CITY" x="3785.00" y="45.00" type="priority" z="28.00"/>

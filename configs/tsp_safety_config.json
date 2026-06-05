@@ -20,6 +20,13 @@
     "early_green_min_eta_s": 10,
     "red_truncation_to_s": 2,
     "recovery_note": "After a TSP intervention, the controller returns to the base SUMO signal program; coordinated offsets remain a calibration task.",
+    "priority_level_weights": {
+      "emergency": 1.0,
+      "high_delay": 0.85,
+      "headway_recovery": 0.7,
+      "nominal": 0.45
+    },
+    "actuating_actions": ["green_extension", "early_green"],
     "weights": {
       "schedule_delay": 0.45,
       "headway_deviation": 0.2,
@@ -32,6 +39,11 @@
     "allow_red_truncation": true,
     "allow_direct_phase_jump": false,
     "note": "No MVP, early_green é implementado como redução segura da duração da fase corrente via setPhaseDuration, não como salto direto de fase. Isto evita saltar amarelo/all-red."
+  },
+  "network_profile": {
+    "enabled": true,
+    "prefer_generated_contracts_for_unknown_tls": true,
+    "description": "Quando um novo net.xml e importado sem contrato especifico, gera phase_sequence, grupos e conflitos a partir do programa SUMO."
   },
   "controller_contracts": {
     "default": {
@@ -58,6 +70,9 @@
         2,
         4,
         5
+      ],
+      "pedestrian_phase_indices": [
+        6
       ],
       "priority_signal_group_defaults": {
         "phase_index": 0,
@@ -250,7 +265,7 @@
       },
       "I2": {
         "adapter_type": "sumo_traci",
-        "fixed_time_required": false,
+        "fixed_time_required": true,
         "allowed_actions": [
           "green_extension",
           "early_green"
@@ -261,21 +276,17 @@
           2,
           3,
           4,
-          5,
-          6,
-          7
+          5
         ],
         "service_green_phase_indices": [
           0,
-          1,
-          4,
-          5
+          3
         ],
         "intergreen_phase_indices": [
+          1,
           2,
-          3,
-          6,
-          7
+          4,
+          5
         ],
         "signal_groups": {
           "I2_priority_westbound": {
@@ -309,7 +320,7 @@
         "additional_signal_groups": [
           {
             "signal_group_id": "I2_secondary_northbound",
-            "phase_index": 4,
+            "phase_index": 3,
             "min_green_s": 8,
             "max_green_s": 55,
             "conflicts_with": [
@@ -321,7 +332,7 @@
           },
           {
             "signal_group_id": "I2_secondary_southbound",
-            "phase_index": 4,
+            "phase_index": 3,
             "min_green_s": 8,
             "max_green_s": 55,
             "conflicts_with": [
@@ -499,21 +510,17 @@
           2,
           3,
           4,
-          5,
-          6,
-          7
+          5
         ],
         "service_green_phase_indices": [
           0,
-          1,
-          4,
-          5
+          3
         ],
         "intergreen_phase_indices": [
+          1,
           2,
-          3,
-          6,
-          7
+          4,
+          5
         ],
         "signal_groups": {
           "I4_priority_westbound": {
@@ -547,7 +554,7 @@
         "additional_signal_groups": [
           {
             "signal_group_id": "I4_secondary_northbound",
-            "phase_index": 4,
+            "phase_index": 3,
             "min_green_s": 8,
             "max_green_s": 55,
             "conflicts_with": [
@@ -559,7 +566,7 @@
           },
           {
             "signal_group_id": "I4_secondary_southbound",
-            "phase_index": 4,
+            "phase_index": 3,
             "min_green_s": 8,
             "max_green_s": 55,
             "conflicts_with": [
@@ -609,7 +616,7 @@
       },
       "I5": {
         "adapter_type": "sumo_traci",
-        "fixed_time_required": false,
+        "fixed_time_required": true,
         "allowed_actions": [
           "green_extension",
           "early_green"
@@ -620,21 +627,17 @@
           2,
           3,
           4,
-          5,
-          6,
-          7
+          5
         ],
         "service_green_phase_indices": [
           0,
-          1,
-          4,
-          5
+          3
         ],
         "intergreen_phase_indices": [
+          1,
           2,
-          3,
-          6,
-          7
+          4,
+          5
         ],
         "signal_groups": {
           "I5_priority_westbound": {
@@ -668,7 +671,7 @@
         "additional_signal_groups": [
           {
             "signal_group_id": "I5_secondary_northbound",
-            "phase_index": 4,
+            "phase_index": 3,
             "min_green_s": 8,
             "max_green_s": 55,
             "conflicts_with": [
@@ -680,7 +683,7 @@
           },
           {
             "signal_group_id": "I5_secondary_southbound",
-            "phase_index": 4,
+            "phase_index": 3,
             "min_green_s": 8,
             "max_green_s": 55,
             "conflicts_with": [
@@ -865,6 +868,7 @@
       "cooldown_recent_s": 90
     },
     "fallback_policy": "baseline_tsp_decision_engine",
+    "allow_policy_suppress_baseline_actuation": false,
     "safety_filter_required": true
   },
   "phase_mapping": {
@@ -901,9 +905,7 @@
     "I2": {
       "service_green_phase_indices": [
         0,
-        1,
-        4,
-        5
+        3
       ],
       "phase_sequence": [
         0,
@@ -911,9 +913,7 @@
         2,
         3,
         4,
-        5,
-        6,
-        7
+        5
       ]
     },
     "I3": {
@@ -933,9 +933,7 @@
     "I4": {
       "service_green_phase_indices": [
         0,
-        1,
-        4,
-        5
+        3
       ],
       "phase_sequence": [
         0,
@@ -943,17 +941,13 @@
         2,
         3,
         4,
-        5,
-        6,
-        7
+        5
       ]
     },
     "I5": {
       "service_green_phase_indices": [
         0,
-        1,
-        4,
-        5
+        3
       ],
       "phase_sequence": [
         0,
@@ -961,9 +955,7 @@
         2,
         3,
         4,
-        5,
-        6,
-        7
+        5
       ]
     },
     "I7": {
@@ -1023,7 +1015,7 @@
     "enabled": true,
     "default_mode": "automatic",
     "controller_modes": {},
-    "command_latency_s": 0.5,
+    "command_latency_s": 0.0,
     "pending_lock_s": 0.5,
     "min_command_interval_s": 1.0,
     "active_pedestrian_calls_by_tls": []

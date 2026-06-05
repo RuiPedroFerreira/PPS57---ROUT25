@@ -21,6 +21,7 @@ SRC = Path(__file__).resolve().parents[1]
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from pps57_sumo.network_profile import load_network_profile  # noqa: E402
 from pps57_sumo.scenarios import load_catalog, validate_scenario_catalog  # noqa: E402
 
 REQUIRED_FILES = [
@@ -141,6 +142,10 @@ def validate_safety_configs(root: Path) -> None:
     transport = cits.get("message_transport", {})
     if not isinstance(transport, dict):
         raise SystemExit("Config inválida: message_transport deve ser objeto.")
+    for key in ("enabled", "encode_payloads"):
+        value = transport.get(key, False)
+        if not isinstance(value, bool):
+            raise SystemExit(f"Config inválida: message_transport.{key} deve ser booleano.")
     for key in ("latency_steps", "jitter_steps", "reorder_window_steps", "random_seed"):
         value = transport.get(key, 0)
         if not isinstance(value, int) or isinstance(value, bool) or value < 0:
@@ -243,6 +248,64 @@ def validate_safety_configs(root: Path) -> None:
         raise SystemExit(
             f"Config inválida: a soma de decision_policy.weights deve ser 1.0 (é {weight_sum:.6f})."
         )
+
+    # priority_level_weights e actuating_actions: chaves extraídas para config
+    # em P0. São opcionais (código recai em defaults), mas quando presentes têm
+    # de ser coerentes com os enums — um typo numa classe cairia silenciosamente
+    # no peso 0.0, e uma ação inválida nunca atuaria.
+    from pps57_cits.messages import OperatorPriorityClass
+    from pps57_tsp.models import TSPAction
+
+    priority_level_weights = policy.get("priority_level_weights")
+    if priority_level_weights is not None:
+        expected_classes = {member.value for member in OperatorPriorityClass}
+        if not isinstance(priority_level_weights, dict) or not priority_level_weights:
+            raise SystemExit(
+                "Config inválida: decision_policy.priority_level_weights deve ser objeto não vazio."
+            )
+        actual_classes = set(priority_level_weights.keys())
+        if actual_classes != expected_classes:
+            raise SystemExit(
+                "Config inválida: decision_policy.priority_level_weights deve ter exatamente as classes "
+                f"{sorted(expected_classes)} (tem {sorted(actual_classes)})."
+            )
+        for class_name, weight in priority_level_weights.items():
+            if (
+                not isinstance(weight, (int, float))
+                or isinstance(weight, bool)
+                or not 0.0 <= float(weight) <= 1.0
+            ):
+                raise SystemExit(
+                    f"Config inválida: decision_policy.priority_level_weights['{class_name}'] deve estar em [0,1]."
+                )
+
+    actuating_actions = policy.get("actuating_actions")
+    if actuating_actions is not None:
+        valid_actions = {member.value for member in TSPAction}
+        if not isinstance(actuating_actions, list) or not actuating_actions:
+            raise SystemExit(
+                "Config inválida: decision_policy.actuating_actions deve ser lista não vazia."
+            )
+        unknown_actions = [action for action in actuating_actions if action not in valid_actions]
+        if unknown_actions:
+            raise SystemExit(
+                f"Config inválida: decision_policy.actuating_actions contém ações inválidas: {unknown_actions}."
+            )
+
+    # Reward keys (policy_training_config.json) são tuning, não safety-critical:
+    # validar só que são numéricas. Guardado por existência do ficheiro porque os
+    # testes do validador constroem roots temporários só com os 3 configs base.
+    policy_training_path = root / "configs/policy_training_config.json"
+    if policy_training_path.exists():
+        policy_training = json.loads(policy_training_path.read_text(encoding="utf-8"))
+        reward_cfg = policy_training.get("reward", {})
+        if not isinstance(reward_cfg, dict):
+            raise SystemExit("Config inválida: policy_training_config.reward deve ser objeto.")
+        for key, value in reward_cfg.items():
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                raise SystemExit(
+                    f"Config inválida: policy_training_config.reward['{key}'] deve ser numérico (é {value!r})."
+                )
 
     phase_mapping = tsp.get("phase_mapping", {})
     for tls_id, mapping in phase_mapping.items():
@@ -371,7 +434,50 @@ def validate_safety_configs(root: Path) -> None:
         if not isinstance(value, (int, float)) or value < 0:
             raise SystemExit(f"Config inválida: controller_simulation.{key} deve ser >= 0.")
 
+    validate_network_profile_config(root, cits, tsp)
     print("OK config: invariantes safety-critical de cits/tsp config verificadas.")
+
+
+def validate_network_profile_config(root: Path, cits: Dict[str, Any], tsp: Dict[str, Any]) -> None:
+    cits_discovery = cits.get("network_discovery", {})
+    tsp_profile = tsp.get("network_profile", {})
+    enabled = (
+        isinstance(cits_discovery, dict)
+        and bool(cits_discovery.get("enabled", False))
+    ) or (
+        isinstance(tsp_profile, dict)
+        and bool(tsp_profile.get("enabled", False))
+    )
+    if not enabled:
+        return
+    sumo_cfg = cits.get("sumo", {})
+    if not isinstance(sumo_cfg, dict) or not sumo_cfg.get("network"):
+        raise SystemExit("Config invalida: network_discovery/network_profile requer cits.sumo.network.")
+    network_path = Path(str(sumo_cfg["network"]))
+    if not network_path.is_absolute():
+        network_path = root / network_path
+    if not network_path.exists() and network_path.parent == root / "sumo" / "network":
+        print(f"SKIP network profile: generated net.xml not found at {network_path}; run make build to generate it.")
+        return
+    if not network_path.exists():
+        raise SystemExit(f"Config invalida: network profile net.xml nao existe: {network_path}")
+    try:
+        profile = load_network_profile(network_path)
+    except Exception as exc:
+        raise SystemExit(f"Config invalida: nao foi possivel ler network profile de {network_path}: {exc}") from exc
+    if not profile.tls_profiles:
+        raise SystemExit(f"Config invalida: network profile sem tlLogic/controladores em {network_path}.")
+
+    profile_tls = set(profile.tls_profiles)
+    for index, intersection in enumerate(cits.get("intersections", [])):
+        if not isinstance(intersection, dict) or not bool(intersection.get("signal_controlled", True)):
+            continue
+        tls_id = str(intersection.get("tls_id", ""))
+        if tls_id and tls_id not in profile_tls:
+            raise SystemExit(
+                f"Config invalida: cits.intersections[{index}].tls_id={tls_id!r} "
+                f"nao existe no net.xml perfilado."
+            )
 
 
 def validate_scenario_profiles(root: Path) -> None:

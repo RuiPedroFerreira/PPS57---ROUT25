@@ -12,23 +12,18 @@ from typing import Any, Dict, Iterable, List, Optional
 import json
 
 from pps57_cits.messages import (
-    BasicVehicleRole,
     MessageType,
-    OperatorPriorityClass,
-    OperatorTelemetry,
-    Position3D,
-    Requestor,
-    RequestType,
     SREMLike,
-    SecurityEnvelope,
-    SignalRequest,
-    StationType,
-    build_security_envelope,
-    derive_station_id,
+    SPATEMLike,
 )
 from pps57_cits.models import SignalState
+from pps57_cits.protocol_codec import JsonSimulationCodec, ProtocolCodecError
+from pps57_tsp.models import DEFAULT_ACTUATING_ACTIONS
 
 from .models import OfflineScenario
+
+
+_CITS_CODEC = JsonSimulationCodec()
 
 
 def build_event_training_rows(
@@ -80,6 +75,9 @@ def build_event_training_rows(
                 "headway_deviation_s": decision.get("headway_deviation_s"),
                 "current_phase_index": decision.get("current_phase_index"),
                 "current_signal_state": decision.get("current_signal_state"),
+                "next_switch_s": decision.get("current_next_switch_s"),
+                "spent_duration_s": decision.get("current_spent_duration_s"),
+                "controlled_lanes": decision.get("controlled_lanes", []),
                 "applied": bool(actuation.get("applied", False)),
                 "actuation_reason": actuation.get("reason", ""),
                 "source_message_type": request.get("message_type", ""),
@@ -116,18 +114,29 @@ def write_event_training_dataset(
     }
 
 
-def load_event_training_scenarios(path: str | Path) -> List[OfflineScenario]:
+def load_event_training_scenarios(
+    path: str | Path,
+    intervention_actions: Optional[Iterable[str]] = None,
+) -> List[OfflineScenario]:
     """Load optimization/RL scenarios from SUMO/TraCI event-derived rows.
 
     Strict loader: rows sem o SREM original ou sem o estado SPATEM-derivado
     são saltadas; dataset vazio é rejeitado pelos controllers. Isto previne
     fallback silencioso para dados sintéticos.
+
+    `intervention_actions` é a fonte de verdade única do conjunto de ações que
+    atuam o semáforo (ver TSPConfig.actuating_actions); quando None recai em
+    DEFAULT_ACTUATING_ACTIONS, mantendo o comportamento anterior.
     """
 
     raw_rows = list(_read_jsonl(Path(path)))
     raw_rows.sort(key=lambda row: _float(row.get("timestamp_s") or 0.0))
     last_applied_intervention_by_tls: Dict[str, float] = {}
-    intervention_actions = {"green_extension", "early_green"}
+    intervention_actions = (
+        set(intervention_actions)
+        if intervention_actions is not None
+        else set(DEFAULT_ACTUATING_ACTIONS)
+    )
 
     scenarios: List[OfflineScenario] = []
     for index, row in enumerate(raw_rows):
@@ -138,6 +147,7 @@ def load_event_training_scenarios(path: str | Path) -> List[OfflineScenario]:
             _maybe_record_intervention(row, last_applied_intervention_by_tls, intervention_actions)
             continue
         request = _srem_from_payload(request_payload)
+        signal_payload = _merge_signal_context(signal_payload, row)
         signal_state = _signal_state_from_payload(signal_payload, request)
         scenario_id = str(row.get("decision_id") or row.get("request_id") or f"event_{index}")
         timestamp_s = _float(row.get("timestamp_s"))
@@ -198,11 +208,11 @@ def _latest_spatem(spatem_rows: List[Dict[str, Any]], tls_id: str, timestamp_s: 
     candidates = [
         item
         for item in spatem_rows
-        if str(item.get("tls_id")) == tls_id and _float(item.get("timestamp_s")) <= timestamp_s
+        if str(item.get("tls_id")) == tls_id and _message_time_s(item) <= timestamp_s
     ]
     if not candidates:
         return {}
-    return max(candidates, key=lambda item: _float(item.get("timestamp_s")))
+    return max(candidates, key=_message_time_s)
 
 
 def _correlation_token_from_payload(payload: Dict[str, Any]) -> str:
@@ -216,120 +226,60 @@ def _correlation_token_from_payload(payload: Dict[str, Any]) -> str:
 
 
 def _srem_from_payload(payload: Dict[str, Any]) -> SREMLike:
-    """Reconstrói um SREMLike a partir do JSONL serializado.
-
-    Espera o shape ETSI-aligned actual (`requestor.*`, `requests[].*`,
-    `operator_telemetry.*`, `security.*`). JSONLs pré-v0.4 não são suportados.
-    """
-    requestor_payload = payload.get("requestor") or {}
-    telemetry_payload = payload.get("operator_telemetry") or {}
-    requests_payload = payload.get("requests") or []
-    security_payload = payload.get("security") or {}
-
-    if not requests_payload:
-        raise ValueError("SREM payload missing 'requests' — log pré-v0.4 não é suportado")
-
-    primary = requests_payload[0]
-    position_payload = requestor_payload.get("position") or {}
-
-    requestor = Requestor(
-        station_id=int(requestor_payload.get("station_id", 0)),
-        station_type=int(requestor_payload.get("station_type", StationType.BUS.value)),
-        basic_vehicle_role=str(requestor_payload.get("basic_vehicle_role", BasicVehicleRole.PUBLIC_TRANSPORT.value)),
-        position=Position3D(
-            latitude_e7=int(position_payload.get("latitude_e7", 0)),
-            longitude_e7=int(position_payload.get("longitude_e7", 0)),
-            elevation_dm=int(position_payload.get("elevation_dm", 0)),
-        ),
-        heading_deg=_float(requestor_payload.get("heading_deg", 0.0)),
-        speed_mps=_float(requestor_payload.get("speed_mps", 0.0)),
-        route_name=requestor_payload.get("route_name"),
-        operational_vehicle_id=str(requestor_payload.get("operational_vehicle_id", "")),
-    )
-
-    telemetry = OperatorTelemetry(
-        schedule_delay_s=_float(telemetry_payload.get("schedule_delay_s", 0.0)),
-        headway_deviation_s=_float(telemetry_payload.get("headway_deviation_s", 0.0)),
-        distance_to_stopline_m=_float(telemetry_payload.get("distance_to_stopline_m", 0.0)),
-        eta_to_stopline_s=_float(telemetry_payload.get("eta_to_stopline_s", 0.0)),
-        operator_priority_class=str(telemetry_payload.get("operator_priority_class", OperatorPriorityClass.NOMINAL.value)),
-        line_id=str(telemetry_payload.get("line_id", "")),
-        route_id=str(telemetry_payload.get("route_id", "")),
-        intersection_alias=str(telemetry_payload.get("intersection_alias", "")),
-        tls_id=str(telemetry_payload.get("tls_id", "")),
-        rsu_id=str(telemetry_payload.get("rsu_id", "")),
-        priority_movement_id=str(telemetry_payload.get("priority_movement_id", "")),
-        target_signal_group_id_hint=str(telemetry_payload.get("target_signal_group_id_hint", "")),
-    )
-
-    signal_request = SignalRequest(
-        intersection_ref_id=int(primary.get("intersection_ref_id", 0)),
-        request_id=int(primary.get("request_id", 0)),
-        request_type=str(primary.get("request_type", RequestType.PRIORITY_REQUEST.value)),
-        in_bound_lane_id=str(primary.get("in_bound_lane_id", "")),
-        out_bound_lane_id=str(primary.get("out_bound_lane_id", "")),
-        eta_min_minute=int(primary.get("eta_min_minute", 0)),
-        eta_min_second_ms=int(primary.get("eta_min_second_ms", 0)),
-        duration_ms=int(primary.get("duration_ms", 0)),
-    )
-
-    if security_payload:
-        security = SecurityEnvelope(
-            signer_id=str(security_payload.get("signer_id", "")),
-            certificate_id=str(security_payload.get("certificate_id", "")),
-            signature_b64=security_payload.get("signature_b64"),
-            generation_time_ms=int(security_payload.get("generation_time_ms", 0)),
-            valid_until_ms=int(security_payload.get("valid_until_ms", 0)),
-        )
-    else:
-        # Reconstrução de logs sem security (não deveria acontecer no shape v0.4):
-        security = build_security_envelope("", _float(payload.get("timestamp_ms", 0)) / 1000.0)
-
-    return SREMLike(
-        message_type=str(payload.get("message_type", MessageType.SREM.value)),
-        station_id=int(payload.get("station_id", derive_station_id(requestor.operational_vehicle_id))),
-        station_type=int(payload.get("station_type", requestor.station_type)),
-        source_id=str(payload.get("source_id", "")),
-        destination_id=str(payload.get("destination_id", "")),
-        generation_delta_time_ms=int(payload.get("generation_delta_time_ms", 0)),
-        moy=int(payload.get("moy", 0)),
-        timestamp_ms=int(payload.get("timestamp_ms", 0)),
-        security=security,
-        message_id=str(payload.get("message_id", "")) or "",
-        protocol_version=str(payload.get("protocol_version", "0.4.0")),
-        correlation_id=payload.get("correlation_id"),
-        sequence_number=int(payload.get("sequence_number", 0)),
-        requests=[signal_request],
-        requestor=requestor,
-        operator_telemetry=telemetry,
-        expires_at_s=_optional_float(payload.get("expires_at_s")),
-    )
+    """Reconstrói um SREMLike validado a partir do JSONL serializado."""
+    message = _CITS_CODEC.decode(payload)
+    if not isinstance(message, SREMLike):
+        raise ProtocolCodecError(f"Expected SREM payload, got {message.message_type!r}")
+    return message
 
 
 def _signal_state_from_payload(payload: Dict[str, Any], request: SREMLike) -> SignalState:
+    spatem = _spatem_from_payload(payload)
     controlled_lanes = payload.get("controlled_lanes")
     # O SPATEM novo tem `intersection_alias` em vez de `intersection_id`.
     intersection_alias = (
-        payload.get("intersection_alias")
+        spatem.intersection_alias
         or payload.get("intersection_id")
         or request.intersection_id
     )
     return SignalState(
         intersection_id=str(intersection_alias),
-        tls_id=str(payload.get("tls_id") or request.tls_id),
+        tls_id=str(spatem.tls_id or request.tls_id),
         rsu_id=request.rsu_id,
-        timestamp_s=_float(payload.get("timestamp_ms", 0)) / 1000.0
-        if "timestamp_ms" in payload
-        else _float(payload.get("timestamp_s", 0)),
+        timestamp_s=_message_time_s(payload),
         current_phase_index=int(payload.get("current_phase_index", 0))
         if payload.get("current_phase_index") is not None
         else None,
-        current_program_id=str(payload.get("current_program_id", "")),
-        red_yellow_green_state=str(payload.get("debug_sumo_state") or payload.get("red_yellow_green_state", "")),
+        current_program_id=_optional_text(payload.get("current_program_id")),
+        red_yellow_green_state=_optional_text(spatem.debug_sumo_state or payload.get("red_yellow_green_state")),
         next_switch_s=_optional_float(payload.get("next_switch_s")),
         spent_duration_s=_optional_float(payload.get("spent_duration_s")),
         controlled_lanes=list(controlled_lanes) if isinstance(controlled_lanes, list) else [],
     )
+
+
+def _spatem_from_payload(payload: Dict[str, Any]) -> SPATEMLike:
+    message = _CITS_CODEC.decode(payload)
+    if not isinstance(message, SPATEMLike):
+        raise ProtocolCodecError(f"Expected SPATEM payload, got {message.message_type!r}")
+    return message
+
+
+def _merge_signal_context(signal_payload: Dict[str, Any], row: Dict[str, Any]) -> Dict[str, Any]:
+    merged = dict(signal_payload)
+    for key in (
+        "current_phase_index",
+        "current_program_id",
+        "red_yellow_green_state",
+        "next_switch_s",
+        "spent_duration_s",
+        "controlled_lanes",
+    ):
+        if key not in merged and key in row:
+            merged[key] = row.get(key)
+    if "red_yellow_green_state" not in merged and "current_signal_state" in row:
+        merged["red_yellow_green_state"] = row.get("current_signal_state")
+    return merged
 
 
 def _network_state_from_notes(notes: Any) -> Dict[str, Any]:
@@ -377,7 +327,21 @@ def _float(value: Any) -> float:
     return float(value)
 
 
+def _message_time_s(payload: Dict[str, Any]) -> float:
+    if payload.get("timestamp_s") is not None:
+        return _float(payload.get("timestamp_s"))
+    if payload.get("moy") is not None and payload.get("timestamp_ms") is not None:
+        return int(payload.get("moy", 0)) * 60.0 + _float(payload.get("timestamp_ms", 0)) / 1000.0
+    return 0.0
+
+
 def _optional_float(value: Any) -> Optional[float]:
     if value is None:
         return None
     return float(value)
+
+
+def _optional_text(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    return str(value)

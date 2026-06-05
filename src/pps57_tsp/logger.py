@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import IO, Dict, Iterable, List, Optional
+from typing import IO, Dict, List, Optional
 
 from .models import ActuationResult, DecisionStatus, TSPAction, TSPDecision
 
@@ -22,10 +22,6 @@ class TSPJsonlLogger:
         if self._handle is None:
             raise RuntimeError("TSPJsonlLogger usado fora do context manager")
         self._handle.write(item.to_json() + "\n")
-
-    def write_many(self, items: Iterable[TSPDecision | ActuationResult]) -> None:
-        for item in items:
-            self.write(item)
 
     def close(self) -> None:
         if self._handle is not None:

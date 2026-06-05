@@ -18,10 +18,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+from pps57_sumo.environment import ensure_sumo_environment, resolve_sumo_home
+
 
 def find_sumo_sort_routes() -> Path:
     """Localiza o `sort_routes.py` do SUMO via $SUMO_HOME ou fallback no PATH."""
-    sumo_home = os.environ.get("SUMO_HOME")
+    resolved_home = resolve_sumo_home()
+    sumo_home = str(resolved_home) if resolved_home is not None else os.environ.get("SUMO_HOME")
     if sumo_home:
         candidate = Path(sumo_home) / "tools" / "route" / "sort_routes.py"
         if candidate.exists():
@@ -41,7 +44,10 @@ def sort_in_place(routes_path: Path) -> None:
     # O sort_routes.py do SUMO escreve para outfile; usamos um temp + move atómico.
     tmp_out = routes_path.with_suffix(routes_path.suffix + ".sorted")
     try:
-        subprocess.check_call([sys.executable, str(tool), str(routes_path), "-o", str(tmp_out)])
+        subprocess.check_call(
+            [sys.executable, str(tool), str(routes_path), "-o", str(tmp_out)],
+            env=ensure_sumo_environment(),
+        )
         tmp_out.replace(routes_path)
     finally:
         if tmp_out.exists():

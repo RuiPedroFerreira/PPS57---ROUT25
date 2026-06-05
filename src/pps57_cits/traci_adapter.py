@@ -10,6 +10,8 @@ import socket
 import sys
 from typing import Any, List, Optional
 
+from pps57_sumo.environment import apply_sumo_environment
+
 from .config import CITSConfig, IntersectionConfig
 from .models import NetworkStateSnapshot, SignalState, VehicleObservation
 
@@ -31,6 +33,7 @@ class TraciSimulationAdapter:
         self._subscription_var_ids_by_name: dict[str, object] = {}
 
     def start(self, extra_args: Optional[List[str]] = None) -> None:
+        apply_sumo_environment()
         try:
             traci = _load_traci()
         except ImportError as exc:
@@ -153,11 +156,6 @@ class TraciSimulationAdapter:
         """
         traci = self._require_traci()
         traci.trafficlight.setPhaseDuration(tls_id, float(duration_s))
-
-    def set_phase(self, tls_id: str, phase_index: int) -> None:
-        """Muda explicitamente a fase. Deve ser usado apenas em testes controlados."""
-        traci = self._require_traci()
-        traci.trafficlight.setPhase(tls_id, int(phase_index))
 
     def _program_logic(self, tls_id: str):  # type: ignore[no-untyped-def]
         traci = self._require_traci()
@@ -302,17 +300,47 @@ class TraciSimulationAdapter:
         occupancy_values: list[float] = []
         weighted_speed_sum = 0.0
         speed_weight = 0
+        detector_read_failures = 0
+        failed_lanes: list[str] = []
 
         for lane_id in lanes:
             self._subscribe_lane_if_possible(lane_id)
             lane_values = self._lane_subscription_results(lane_id)
-            lane_vehicle_count = int(self._subscription_value(lane_values, "LAST_STEP_VEHICLE_NUMBER") or _safe_call(lambda lane_id=lane_id: traci.lane.getLastStepVehicleNumber(lane_id)) or 0)
-            lane_halted = int(self._subscription_value(lane_values, "LAST_STEP_VEHICLE_HALTING_NUMBER") or _safe_call(lambda lane_id=lane_id: traci.lane.getLastStepHaltingNumber(lane_id)) or 0)
-            lane_speed = float(self._subscription_value(lane_values, "LAST_STEP_MEAN_SPEED") or _safe_call(lambda lane_id=lane_id: traci.lane.getLastStepMeanSpeed(lane_id)) or 0.0)
-            lane_waiting = float(self._subscription_value(lane_values, "VAR_WAITING_TIME") or _safe_call(lambda lane_id=lane_id: traci.lane.getWaitingTime(lane_id)) or 0.0)
+            lane_failed = False
+            lane_vehicle_count_raw = self._subscription_value(lane_values, "LAST_STEP_VEHICLE_NUMBER")
+            if lane_vehicle_count_raw is None:
+                lane_vehicle_count_raw = _safe_call(lambda lane_id=lane_id: traci.lane.getLastStepVehicleNumber(lane_id))
+                if lane_vehicle_count_raw is None:
+                    lane_failed = True
+            lane_halted_raw = self._subscription_value(lane_values, "LAST_STEP_VEHICLE_HALTING_NUMBER")
+            if lane_halted_raw is None:
+                lane_halted_raw = _safe_call(lambda lane_id=lane_id: traci.lane.getLastStepHaltingNumber(lane_id))
+                if lane_halted_raw is None:
+                    lane_failed = True
+            lane_speed_raw = self._subscription_value(lane_values, "LAST_STEP_MEAN_SPEED")
+            if lane_speed_raw is None:
+                lane_speed_raw = _safe_call(lambda lane_id=lane_id: traci.lane.getLastStepMeanSpeed(lane_id))
+                if lane_speed_raw is None:
+                    lane_failed = True
+            lane_waiting_raw = self._subscription_value(lane_values, "VAR_WAITING_TIME")
+            if lane_waiting_raw is None:
+                lane_waiting_raw = _safe_call(lambda lane_id=lane_id: traci.lane.getWaitingTime(lane_id))
+                if lane_waiting_raw is None:
+                    lane_failed = True
             lane_occupancy = self._subscription_value(lane_values, "LAST_STEP_OCCUPANCY")
             if lane_occupancy is None:
                 lane_occupancy = _safe_call(lambda lane_id=lane_id: traci.lane.getLastStepOccupancy(lane_id))
+                if lane_occupancy is None:
+                    lane_failed = True
+
+            if lane_failed:
+                detector_read_failures += 1
+                failed_lanes.append(lane_id)
+
+            lane_vehicle_count = int(lane_vehicle_count_raw or 0)
+            lane_halted = int(lane_halted_raw or 0)
+            lane_speed = float(lane_speed_raw or 0.0)
+            lane_waiting = float(lane_waiting_raw or 0.0)
 
             vehicle_count += lane_vehicle_count
             halted_vehicle_count += lane_halted
@@ -326,7 +354,8 @@ class TraciSimulationAdapter:
         mean_speed_mps = weighted_speed_sum / speed_weight if speed_weight else 0.0
         occupancy = sum(occupancy_values) / len(occupancy_values) if occupancy_values else 0.0
         queue_vehicle_count = halted_vehicle_count
-        spillback_risk = occupancy >= 0.75 or (len(lanes) > 0 and halted_vehicle_count >= len(lanes) * 4)
+        degraded = detector_read_failures > 0
+        spillback_risk = degraded or occupancy >= 0.75 or (len(lanes) > 0 and halted_vehicle_count >= len(lanes) * 4)
         return NetworkStateSnapshot(
             tls_id=intersection.tls_id,
             timestamp_s=sim_time_s,
@@ -339,6 +368,9 @@ class TraciSimulationAdapter:
             waiting_time_s=round(waiting_time_s, 3),
             occupancy=round(occupancy, 4),
             spillback_risk=spillback_risk,
+            degraded=degraded,
+            detector_read_failures=detector_read_failures,
+            failed_lanes=failed_lanes,
         )
 
     def _subscribe_lane_if_possible(self, lane_id: str) -> None:
@@ -437,6 +469,7 @@ def _load_traci():  # type: ignore[no-untyped-def]
 
 
 def _bootstrap_traci_paths() -> None:
+    apply_sumo_environment()
     root = Path(__file__).resolve().parents[2]
     candidates = [
         root / ".venv" / "lib",

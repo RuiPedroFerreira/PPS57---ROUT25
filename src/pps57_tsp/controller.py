@@ -236,26 +236,34 @@ class TSPControlController:
         # mark_applied não corre e a telemetria contava intervenções duplicadas).
         intervened_tls: set[str] = set()
         response_list = list(responses)
+        resolved_requests_by_id = dict(requests_by_id)
+        for response in response_list:
+            if response.request_id not in resolved_requests_by_id:
+                request = self.request_store.get_by_request_id(response.request_id)
+                if request is not None:
+                    resolved_requests_by_id[response.request_id] = request
         active_requests_by_tls: Dict[str, int] = {}
         response_list = sorted(
             response_list,
-            key=lambda response: _response_priority_sort_key(response, requests_by_id, self.cits_config),
+            key=lambda response: _response_priority_sort_key(response, resolved_requests_by_id, self.cits_config),
         )
         final_responses: List[SSEMLike] = []
 
         for response in response_list:
             if response.status != ResponseStatus.PROCESSING.value:
                 continue
-            request = requests_by_id.get(response.request_id)
+            request = resolved_requests_by_id.get(response.request_id)
             if request is not None:
                 active_requests_by_tls[request.tls_id] = active_requests_by_tls.get(request.tls_id, 0) + 1
 
         for response in response_list:
             if response.status != ResponseStatus.PROCESSING.value:
                 continue
-            request = requests_by_id.get(response.request_id)
+            request = resolved_requests_by_id.get(response.request_id)
             if request is None:
                 continue
+            if request.is_cancellation:
+                self.request_store.mark_cancelled(request, sim_time_s)
             signal_state = signal_states.get(request.tls_id)
             if signal_state is None:
                 continue
@@ -284,14 +292,16 @@ class TSPControlController:
                 proposed = proposed.copy_with(
                     notes=list(proposed.notes) + [_network_state_note(network_states[request.tls_id])]
                 )
-            validation = self.safety.validate(proposed, signal_state, sim_time_s)
-            safe_decision = validation.safe_decision
-
-            if safe_decision.requires_actuation and safe_decision.tls_id in intervened_tls:
-                safe_decision = safe_decision.copy_with(
+            # Supressão de mesmo-passo ANTES da Safety Layer: se este TLS já
+            # interveio neste passo, o pedido é superseded (não atuável) — e não
+            # bloqueado por cooldown, que a intervenção anterior deste mesmo passo
+            # acabou de marcar (mesmo timestamp). A ordem importa: validar
+            # primeiro faria o cooldown disparar e mascararia a deduplicação.
+            if proposed.requires_actuation and request.tls_id in intervened_tls:
+                safe_decision = proposed.copy_with(
                     status=DecisionStatus.NOT_ACTUABLE.value,
                     reason="superseded_by_earlier_intervention_same_step",
-                    notes=list(safe_decision.notes)
+                    notes=list(proposed.notes)
                     + ["TLS já interveio neste passo; pedido suprimido para evitar atuação dupla."],
                 )
                 result = ActuationResult(
@@ -305,6 +315,21 @@ class TSPControlController:
                     reason="superseded_by_earlier_intervention_same_step",
                 )
             else:
+                validation = self.safety.validate(proposed, signal_state, sim_time_s)
+                safe_decision = validation.safe_decision
+                network_state = network_states.get(request.tls_id) if network_states else None
+                if validation.approved and network_state is not None and network_state.degraded:
+                    safe_decision = safe_decision.copy_with(
+                        status=DecisionStatus.BLOCKED_BY_SAFETY.value,
+                        reason="network_state_degraded_detector_read_failure",
+                        notes=list(safe_decision.notes)
+                        + [
+                            "Safety Layer bloqueou atuação: leitura detector/lane degradada "
+                            f"({network_state.detector_read_failures} falhas)."
+                        ],
+                    )
+
+                approved_for_actuation = safe_decision.status == DecisionStatus.APPROVED.value
                 result = actuator.apply(safe_decision, signal_state, sim_time_s)
                 # H5: avança contadores da Safety Layer (cooldown,
                 # consecutive_interventions) mesmo em modo no-actuation /
@@ -315,19 +340,25 @@ class TSPControlController:
                 # intermédio. Força cooldown (mark_applied) para não martelar
                 # o TLS com retries que poderiam agravar a inconsistência, e
                 # emite stderr proeminente para a operação detetar.
-                if validation.approved and safe_decision.requires_actuation:
+                if approved_for_actuation and safe_decision.requires_actuation:
                     actuation_error = (
                         not result.applied
                         and not result.no_actuation
                         and getattr(result, "severity", "info") == "error"
                     )
                     if result.applied or result.no_actuation or actuation_error:
+                        # H5: em modo no-actuation a intervenção "aconteceria",
+                        # por isso o cooldown/consecutive têm de avançar — caso
+                        # contrário pedidos subsequentes no mesmo TLS não seriam
+                        # bloqueados e a telemetria não refletiria a atuação real.
                         self.safety.mark_applied(safe_decision, sim_time_s)
+                    if result.applied:
                         self.request_store.mark_granted(request, sim_time_s)
                         rsu = self.rsu_agents.get(request.rsu_id)
                         if rsu is not None:
                             rsu.mark_priority_granted(request.vehicle_id, sim_time_s)
-                    intervened_tls.add(safe_decision.tls_id)
+                    if result.applied or result.no_actuation or actuation_error:
+                        intervened_tls.add(safe_decision.tls_id)
                     if actuation_error:
                         print(
                             f"[ACTUATION_ERROR] tls={safe_decision.tls_id} "
@@ -376,7 +407,8 @@ class TSPControlController:
                 f"tsp_action={decision.action}",
                 f"tsp_status={decision.status}",
                 f"actuation_reason={actuation.reason}",
-            ],
+            ]
+            + (["tsp_would_grant_not_applied=true"] if actuation.no_actuation else []),
         )
         return SSEMLike(
             message_type=MessageType.SSEM.value,
@@ -444,7 +476,7 @@ class TSPControlController:
         for response in responses:
             if response.status != ResponseStatus.PROCESSING.value:
                 continue
-            request = requests_by_id.get(response.request_id)
+            request = requests_by_id.get(response.request_id) or self.request_store.get_by_request_id(response.request_id)
             if request is not None:
                 active_requests_by_tls[request.tls_id] = active_requests_by_tls.get(request.tls_id, 0) + 1
 
@@ -503,7 +535,9 @@ def _network_state_note(state: NetworkStateSnapshot) -> str:
         f"mean_speed_mps:{state.mean_speed_mps:.3f},"
         f"waiting_time_s:{state.waiting_time_s:.3f},"
         f"occupancy:{state.occupancy:.3f},"
-        f"spillback_risk:{state.spillback_risk}"
+        f"spillback_risk:{state.spillback_risk},"
+        f"degraded:{state.degraded},"
+        f"detector_read_failures:{state.detector_read_failures}"
     )
 
 
@@ -514,7 +548,7 @@ def _final_response_status(decision: TSPDecision, actuation: ActuationResult) ->
         return ResponseStatus.REJECTED.value
     if decision.status != DecisionStatus.APPROVED.value:
         return ResponseStatus.REJECTED.value
-    if actuation.applied or actuation.no_actuation:
+    if actuation.applied:
         return ResponseStatus.GRANTED.value
     return ResponseStatus.REJECTED.value
 

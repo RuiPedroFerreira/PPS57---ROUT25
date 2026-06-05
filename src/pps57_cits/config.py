@@ -7,12 +7,15 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
+from pps57_sumo.network_profile import NetworkProfile, TLSProfile, load_network_profile
+
 
 @dataclass(frozen=True)
 class PriorityMovementConfig:
     movement_id: str
     direction: str
     approach_edges: List[str]
+    egress_edges: List[str]
     vehicle_classes: List[str]
     target_signal_group_id: str
     allowed_actions: List[str]
@@ -78,16 +81,23 @@ class CITSConfig:
         *,
         movement_id: str = "",
         edge_id: str = "",
+        next_edge_id: str = "",
         vehicle_class: str = "",
     ) -> Optional[PriorityMovementConfig]:
         if movement_id:
             return self.movement_by_id.get(movement_id)
         vehicle_class_norm = normalise_vehicle_class(vehicle_class)
-        for movement in self.priority_movements_for_edge(edge_id):
+        movements = self.priority_movements_for_edge(edge_id)
+        if next_edge_id:
+            egress_matches = [movement for movement in movements if next_edge_id in movement.egress_edges]
+            if egress_matches:
+                movements = egress_matches
+            else:
+                movements = [movement for movement in movements if not movement.egress_edges]
+        for movement in movements:
             allowed = {normalise_vehicle_class(item) for item in movement.vehicle_classes}
             if not allowed or vehicle_class_norm in allowed or "*" in allowed:
                 return movement
-        movements = self.priority_movements_for_edge(edge_id)
         return movements[0] if movements else None
 
 
@@ -112,6 +122,7 @@ def load_cits_config(path: str | Path, root: Optional[str | Path] = None) -> CIT
                     "movement_id": f"{item['intersection_id']}_{direction}_public_transport",
                     "direction": direction,
                     "approach_edges": [edge_id],
+                    "egress_edges": [],
                     "vehicle_classes": ["public_transport"],
                     "target_signal_group_id": f"{item['tls_id']}_{direction}",
                     "allowed_actions": ["green_extension", "early_green"],
@@ -129,6 +140,7 @@ def load_cits_config(path: str | Path, root: Optional[str | Path] = None) -> CIT
                     movement_id=str(movement["movement_id"]),
                     direction=str(movement.get("direction", "")),
                     approach_edges=list(movement.get("approach_edges", [])),
+                    egress_edges=list(movement.get("egress_edges", [])),
                     vehicle_classes=list(movement.get("vehicle_classes", ["public_transport"])),
                     target_signal_group_id=str(movement["target_signal_group_id"]),
                     allowed_actions=list(movement.get("allowed_actions", ["green_extension", "early_green"])),
@@ -157,6 +169,15 @@ def load_cits_config(path: str | Path, root: Optional[str | Path] = None) -> CIT
                 signal_controlled=signal_controlled,
             )
         )
+
+    intersections.extend(
+        _auto_intersections_from_network(
+            raw,
+            root_path,
+            configured_tls_ids={intersection.tls_id for intersection in intersections},
+            configured_aliases={intersection.intersection_id for intersection in intersections},
+        )
+    )
 
     edge_to_intersection: Dict[str, IntersectionConfig] = {}
     edge_to_priority_movements: Dict[str, List[PriorityMovementConfig]] = {}
@@ -202,3 +223,94 @@ def normalise_vehicle_class(vehicle_class: str) -> str:
     if value in {"bus", "coach", "public_transport_bus"}:
         return "public_transport"
     return value
+
+
+def _auto_intersections_from_network(
+    raw: Dict[str, Any],
+    root_path: Path,
+    *,
+    configured_tls_ids: set[str],
+    configured_aliases: set[str],
+) -> List[IntersectionConfig]:
+    discovery = raw.get("network_discovery", {})
+    if not isinstance(discovery, dict) or not bool(discovery.get("enabled", False)):
+        return []
+    augment = bool(discovery.get("augment_missing_intersections", True))
+    if configured_tls_ids and not augment:
+        return []
+
+    profile = _load_network_profile_for_config(raw, root_path)
+    if profile is None:
+        return []
+
+    classes = [str(item) for item in discovery.get("priority_vehicle_classes", ["public_transport"])]
+    rsu_prefix = str(discovery.get("rsu_id_prefix", "RSU_AUTO_"))
+    auto_movements = bool(discovery.get("auto_generate_priority_movements", True))
+    generated: List[IntersectionConfig] = []
+    for tls_id in profile.tls_ids():
+        if tls_id in configured_tls_ids or tls_id in configured_aliases:
+            continue
+        tls = profile.tls_profile(tls_id)
+        if tls is None:
+            continue
+        generated.append(
+            _intersection_from_tls_profile(
+                tls,
+                classes=classes,
+                rsu_prefix=rsu_prefix,
+                auto_generate_priority_movements=auto_movements,
+            )
+        )
+    return generated
+
+
+def _load_network_profile_for_config(raw: Dict[str, Any], root_path: Path) -> Optional[NetworkProfile]:
+    sumo_cfg = raw.get("sumo", {})
+    if not isinstance(sumo_cfg, dict):
+        return None
+    network = sumo_cfg.get("network")
+    if not network:
+        return None
+    network_path = Path(str(network))
+    if not network_path.is_absolute():
+        network_path = root_path / network_path
+    try:
+        return load_network_profile(network_path)
+    except (FileNotFoundError, OSError, ValueError):
+        return None
+
+
+def _intersection_from_tls_profile(
+    tls: TLSProfile,
+    *,
+    classes: List[str],
+    rsu_prefix: str,
+    auto_generate_priority_movements: bool,
+) -> IntersectionConfig:
+    movements = [
+        PriorityMovementConfig(
+            movement_id=movement.movement_id,
+            direction=movement.direction,
+            approach_edges=list(movement.approach_edges),
+            egress_edges=list(movement.egress_edges),
+            vehicle_classes=list(classes),
+            target_signal_group_id=movement.signal_group_id,
+            allowed_actions=["green_extension", "early_green"],
+            objectives=["schedule_delay", "headway_recovery"],
+        )
+        for movement in tls.movements
+        if auto_generate_priority_movements and movement.target_phase_index is not None
+    ]
+    return IntersectionConfig(
+        intersection_id=tls.tls_id,
+        tls_id=tls.tls_id,
+        rsu_id=f"{rsu_prefix}{_safe_id(tls.tls_id).upper()}",
+        name=f"Auto-discovered TLS {tls.tls_id}",
+        controlled_approach_edges=list(tls.incoming_edges),
+        priority_movements=movements,
+        signal_controlled=True,
+    )
+
+
+def _safe_id(value: str) -> str:
+    return "".join(ch if ch.isalnum() else "_" for ch in value).strip("_") or "TLS"

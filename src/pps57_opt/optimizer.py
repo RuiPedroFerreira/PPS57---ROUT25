@@ -60,7 +60,7 @@ class OfflineOptimizationController:
         path = self.optimization_config.path_from_root(
             self.optimization_config.logging.get("event_training_dataset", "outputs/event_training_dataset.jsonl")
         )
-        scenarios = load_event_training_scenarios(path)
+        scenarios = load_event_training_scenarios(path, self.tsp_config.actuating_actions())
         if not scenarios:
             raise ValueError(
                 "No SUMO/TraCI event training scenarios found. Run a TSP SUMO execution and "
@@ -112,6 +112,8 @@ class OfflineOptimizationController:
 
     def _evaluate_candidate(self, scenario: OfflineScenario, *, policy_id: str, decision: TSPDecision) -> CandidateEvaluation:
         safety = TSPSafetyLayer(self.cits_config, self.tsp_config)
+        if bool(self.optimization_config.offline_training.get("signal_program_verified", False)):
+            safety.set_signal_program_verified(True)
         # M7: aplicar estado inicial opcional do cenário (cooldown ativo,
         # intervenções consecutivas) para exercitar caminhos com estado da
         # Safety Layer. Sem isto a optimização offline nunca testa cooldown.
@@ -160,9 +162,19 @@ class OfflineOptimizationController:
         remaining = TSPDecisionEngine.remaining_phase_time_s(scenario.signal_state, scenario.sim_time_s)
         remaining_s = float(remaining or 0.0)
         required_green_s = request.eta_to_stopline_s + float(self.tsp_config.decision_policy.get("eta_arrival_buffer_s", 4))
-        delay_component = float(reward_cfg.get("bus_delay_weight", 1.0)) * request.schedule_delay_s / 10.0
-        headway_component = float(reward_cfg.get("headway_weight", 0.25)) * abs(request.headway_deviation_s) / 10.0
-        proximity_component = float(reward_cfg.get("proximity_weight", 0.3)) * max(0.0, 45.0 - request.eta_to_stopline_s)
+        delay_component = (
+            float(reward_cfg.get("bus_delay_weight", 1.0))
+            * request.schedule_delay_s
+            / float(reward_cfg.get("schedule_delay_divisor", 10.0))
+        )
+        headway_component = (
+            float(reward_cfg.get("headway_weight", 0.25))
+            * abs(request.headway_deviation_s)
+            / float(reward_cfg.get("headway_divisor", 10.0))
+        )
+        proximity_component = float(reward_cfg.get("proximity_weight", 0.3)) * max(
+            0.0, float(reward_cfg.get("proximity_eta_baseline_s", 45.0)) - request.eta_to_stopline_s
+        )
         benefit = delay_component + headway_component + proximity_component
         traffic_penalty = float(reward_cfg.get("general_traffic_penalty_per_second", 0.35))
         traffic_penalty *= self._traffic_pressure_multiplier(scenario)
@@ -179,7 +191,11 @@ class OfflineOptimizationController:
             if request.eta_to_stopline_s < min_eta:
                 return -float(reward_cfg.get("reevaluate_penalty", 8.0)) * 2
             truncation = float(decision.phase_duration_s or 0.0)
-            return benefit - truncation * traffic_penalty - 2.0
+            return (
+                benefit
+                - truncation * traffic_penalty
+                - float(reward_cfg.get("early_green_truncation_penalty", 2.0))
+            )
 
         if decision.action == TSPAction.NO_ACTION.value:
             target_phase = self._target_phase(decision)
@@ -188,22 +204,30 @@ class OfflineOptimizationController:
                 and scenario.signal_state.current_phase_index == target_phase
                 and remaining_s >= required_green_s
             )
-            return benefit + 5.0 if enough_green else -benefit * 0.8
+            return (
+                benefit + float(reward_cfg.get("no_action_sufficient_green_bonus", 5.0))
+                if enough_green
+                else -benefit * float(reward_cfg.get("no_action_insufficient_green_factor", 0.8))
+            )
 
         if decision.action == TSPAction.REEVALUATE_NEXT_CYCLE.value:
             min_eta = float(self.tsp_config.decision_policy.get("early_green_min_eta_s", 10))
             if request.eta_to_stopline_s < min_eta:
-                return 6.0
+                return float(reward_cfg.get("reevaluate_below_min_eta_bonus", 6.0))
             return -float(reward_cfg.get("reevaluate_penalty", 8.0))
 
         if decision.action == TSPAction.REJECT.value:
             if decision.priority_score < min_score:
-                return 6.0
-            return -float(reward_cfg.get("reject_penalty", 20.0)) - request.schedule_delay_s / 20.0
+                return float(reward_cfg.get("reject_below_min_score_bonus", 6.0))
+            return -float(reward_cfg.get("reject_penalty", 20.0)) - request.schedule_delay_s / float(
+                reward_cfg.get("reject_schedule_delay_divisor", 20.0)
+            )
 
-        return -50.0
+        return float(reward_cfg.get("unsupported_action_fallback", -50.0))
 
     def _target_phase(self, decision: TSPDecision) -> int | None:
+        if decision.target_phase_index is not None:
+            return decision.target_phase_index
         mapping = self.tsp_config.phase_mapping_for_movement(decision.priority_movement_id, decision.tls_id)
         raw = mapping.get("target_phase_index")
         try:

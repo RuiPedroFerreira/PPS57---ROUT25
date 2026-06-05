@@ -5,7 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, FrozenSet, Optional
+
+from .models import DEFAULT_ACTUATING_ACTIONS
 
 
 @dataclass(frozen=True)
@@ -24,6 +26,21 @@ class TSPConfig:
     @property
     def actuation(self) -> Dict[str, Any]:
         return self.raw.get("actuation", {})
+
+    def actuating_actions(self) -> FrozenSet[str]:
+        """Conjunto de ações que atuam o semáforo (fonte de verdade única).
+
+        Lido de decision_policy.actuating_actions; recai em
+        DEFAULT_ACTUATING_ACTIONS quando ausente/inválido, mantendo
+        comportamento idêntico ao literal que estava duplicado nos
+        consumidores (optimizer/rl_trainer/event_dataset/policy_runtime).
+        """
+        raw = self.decision_policy.get("actuating_actions")
+        if isinstance(raw, (list, tuple, set, frozenset)):
+            values = {str(item) for item in raw if str(item)}
+            if values:
+                return frozenset(values)
+        return DEFAULT_ACTUATING_ACTIONS
 
     @property
     def phase_mapping(self) -> Dict[str, Any]:

@@ -120,6 +120,7 @@ class OBUEmulator:
             return None
         priority_movement = self.config.priority_movement_for_request(
             edge_id=observation.edge_id,
+            next_edge_id=observation.next_edge_id,
             vehicle_class=observation.vehicle_class or observation.type_id or "bus",
         )
         if priority_movement is None:

@@ -308,7 +308,18 @@ reports/scenarios/scenario_suite_report.md
 When a scenario defines multiple seeds, or when `--seeds` is passed to
 `scripts/run_sumo_scenario.py`, each replication is stored under its own
 `seed_<seed>` directory and the scenario report includes aggregate KPI
-statistics.
+statistics. Each aggregated KPI carries the mean, sample standard deviation,
+standard error and a 95% confidence interval (Student's t), plus p5/p95 spread.
+
+For scenarios run with multiple seeds in both the baseline and a TSP arm, the
+baseline-vs-TSP comparison adds a **paired significance test** on bus
+`mean_time_loss_s`: per-seed improvements are paired by seed and reported as a
+mean improvement with a 95% confidence interval, with a verdict of
+`significant_improvement`, `significant_regression` or
+`inconclusive_ci_includes_zero` (significant only when the interval excludes
+zero). A single-seed run cannot support a significance claim and omits this
+block. Enable multi-seed for a scenario by adding `random_seeds` to its profile
+in `configs/sumo_scenario_base.json`.
 
 When running C-ITS/TSP modes in restricted environments, set a fixed TraCI port:
 
@@ -946,7 +957,6 @@ SUMO/TraCI event logs -> event training dataset -> RL training -> exported polic
 | `configs/policy_training_config.json` | Candidate actions, reward and RL training settings |
 | `configs/platform_config.json` | Platform artifact paths, labels and load limits |
 | `configs/scenario_catalog.yaml` | Scenario descriptors |
-| `configs/signal_policy_constraints.yaml` | Signal policy constraints |
 
 ## Development Checks
 

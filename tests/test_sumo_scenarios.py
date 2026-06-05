@@ -182,30 +182,34 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
         )
 
     def test_actuated_tls_type_propagates_to_generated_nodes(self) -> None:
+        # O base config é atualmente todo em tempo fixo (sem tls_type=actuated)
+        # para o atuador TSP via TraCI não competir com a lógica atuada interna
+        # do SUMO. Para validar a *plumbing* do flag actuated, injetamos um
+        # tls_type=actuated numa cópia do config e confirmamos a propagação.
+        cfg = json.loads(json.dumps(self.base))
+        traffic_lights = [
+            inter for inter in cfg["network"]["intersections"]
+            if inter.get("type") == "traffic_light"
+        ]
+        self.assertGreaterEqual(len(traffic_lights), 2)
+        actuated_inter = traffic_lights[0]
+        actuated_inter["tls_type"] = "actuated"
+        static_inter = next(
+            inter for inter in traffic_lights if "tls_type" not in inter
+        )
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             generate(
-                self.base,
+                cfg,
                 tmp_path,
                 routes_output=tmp_path / "routes.rou.xml",
                 bus_stops_output=tmp_path / "bus_stops.add.xml",
                 detectors_output=tmp_path / "detectors.add.xml",
             )
             nod_text = (tmp_path / "corredor.nod.xml").read_text(encoding="utf-8")
-        actuated_ids = {
-            inter["id"]
-            for inter in self.base["network"]["intersections"]
-            if inter.get("tls_type") == "actuated"
-        }
-        self.assertTrue(actuated_ids, msg="expected at least one actuated intersection in base config")
-        for inter_id in actuated_ids:
-            self.assertIn(f'id="{inter_id}"', nod_text)
-            self.assertIn('tlType="actuated"', nod_text)
+        actuated_line = next(line for line in nod_text.splitlines() if f'id="{actuated_inter["id"]}"' in line)
+        self.assertIn('tlType="actuated"', actuated_line)
         # Static intersections must NOT carry a tlType attribute on the node.
-        static_inter = next(
-            inter for inter in self.base["network"]["intersections"]
-            if inter.get("type") == "traffic_light" and "tls_type" not in inter
-        )
         static_line = next(line for line in nod_text.splitlines() if f'id="{static_inter["id"]}"' in line)
         self.assertNotIn("tlType=", static_line)
 
@@ -221,11 +225,20 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
         self.assertNotIn("--tls.actuated.detector-gap", cmd)
         self.assertNotIn("--tls.actuated.jam-threshold", cmd)
 
+        # O base config é todo estático; injeta um tls_type=actuated numa cópia
+        # para exercitar a emissão do flag runtime jam-threshold.
+        with_actuated = json.loads(json.dumps(self.base))
+        first_tl = next(
+            inter for inter in with_actuated["network"]["intersections"]
+            if inter.get("type") == "traffic_light"
+        )
+        first_tl["tls_type"] = "actuated"
+
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             tmp_artifacts = artifact_paths(tmp_path)
             tmp_artifacts.sumocfg_file.parent.mkdir(parents=True, exist_ok=True)
-            write_sumocfg(self.base, tmp_artifacts, output_dir=tmp_path / "outputs")
+            write_sumocfg(with_actuated, tmp_artifacts, output_dir=tmp_path / "outputs")
             sumocfg = tmp_artifacts.sumocfg_file.read_text(encoding="utf-8")
             self.assertNotIn("tls.actuated.detector-gap", sumocfg)
             self.assertIn('<tls.actuated.jam-threshold value="30"/>', sumocfg)
