@@ -375,6 +375,18 @@ make build
 .venv/bin/python scripts/run_tsp_control.py --mode sumo --gui --steps 7200
 ```
 
+#### Actuation Seam (field-readiness boundary)
+
+The decision, Safety Layer and actuation code talk to controllers through the
+`SignalControlAdapter` Protocol (`src/pps57_tsp/signal_control.py`), not to TraCI
+directly. SUMO/TraCI is one implementation (`TraciSignalControlAdapter`, with a
+`SimulatedControllerAdapter` controller shim on top); the real `traci`/`libsumo`
+runtime is reached **only** inside `src/pps57_cits`. `tests/test_actuation_seam.py`
+enforces this isolation (it fails if any other library module imports or calls
+the TraCI/libsumo modules), so a future real-controller adapter (e.g. NTCIP
+1202/1211) is a clean drop-in. **NTCIP is a planned adapter, not a built
+component** — this platform is SUMO-only and not an operational deployment.
+
 Runtime inference from an exported policy:
 
 ```bash
