@@ -11,7 +11,7 @@ from pps57_cits.models import SignalState
 from pps57_cits.util import optional_int as _optional_int
 
 from .config import TSPConfig
-from .models import DecisionStatus, TSPAction, TSPDecision
+from .models import DecisionStatus, ReasonCode, TSPAction, TSPDecision
 from .signal_control import SignalGroupContract, build_controller_contract
 
 
@@ -32,7 +32,7 @@ class TSPDecisionEngine:
                 signal_state,
                 sim_time_s,
                 action=TSPAction.REJECT.value,
-                reason="priority_request_cancellation_no_tsp_actuation",
+                reason=ReasonCode.PRIORITY_REQUEST_CANCELLATION.value,
                 score=score,
             )
         if request.expires_at_s is not None and sim_time_s > request.expires_at_s:
@@ -41,7 +41,7 @@ class TSPDecisionEngine:
                 signal_state,
                 sim_time_s,
                 action=TSPAction.REJECT.value,
-                reason="request_expired_before_tsp_decision",
+                reason=ReasonCode.REQUEST_EXPIRED.value,
                 score=score,
             )
 
@@ -51,7 +51,7 @@ class TSPDecisionEngine:
                 signal_state,
                 sim_time_s,
                 action=TSPAction.REJECT.value,
-                reason=f"priority_score_below_threshold:{score:.3f}<{min_score:.3f}",
+                reason=f"{ReasonCode.PRIORITY_SCORE_BELOW_THRESHOLD.value}:{score:.3f}<{min_score:.3f}",
                 score=score,
                 notes=["Pedido aceite pela RSU, mas insuficiente para intervenção semafórica."],
             )
@@ -68,7 +68,7 @@ class TSPDecisionEngine:
                     signal_state,
                     sim_time_s,
                     action=TSPAction.NO_ACTION.value,
-                    reason="green_window_already_sufficient",
+                    reason=ReasonCode.GREEN_WINDOW_ALREADY_SUFFICIENT.value,
                     score=score,
                     notes=[
                         f"remaining_green_s={remaining_s:.1f}",
@@ -92,7 +92,7 @@ class TSPDecisionEngine:
                 signal_state,
                 sim_time_s,
                 action=TSPAction.GREEN_EXTENSION.value,
-                reason="extend_current_green_to_cover_bus_eta",
+                reason=ReasonCode.EXTEND_CURRENT_GREEN.value,
                 score=score,
                 extension_s=round(extension_s, 3),
                 notes=[
@@ -114,7 +114,7 @@ class TSPDecisionEngine:
                 signal_state,
                 sim_time_s,
                 action=TSPAction.REEVALUATE_NEXT_CYCLE.value,
-                reason="bus_too_close_for_safe_red_truncation",
+                reason=ReasonCode.BUS_TOO_CLOSE_FOR_SAFE_RED_TRUNCATION.value,
                 score=score,
                 notes=["Pedido será reavaliado no ciclo seguinte para evitar transição insegura."],
             )
@@ -125,7 +125,7 @@ class TSPDecisionEngine:
             signal_state,
             sim_time_s,
             action=TSPAction.EARLY_GREEN.value,
-            reason="truncate_conflicting_phase_to_anticipate_priority_movement_green",
+            reason=ReasonCode.TRUNCATE_CONFLICTING_PHASE.value,
             score=score,
             phase_duration_s=_positive_float(policy, "red_truncation_to_s", 2.0),
             target_phase_index=target_phase,
@@ -141,6 +141,17 @@ class TSPDecisionEngine:
         )
 
     def priority_score(self, request: SREMLike) -> float:
+        return self._score_breakdown(request)[0]
+
+    def _score_breakdown(self, request: SREMLike) -> tuple[float, dict]:
+        """Score escalar + decomposição por-termo (P3 explainability).
+
+        A soma das `contribution` é igual ao score antes do clip01/round. Com os
+        pesos default (somam 1.0) não há clip, logo sum(contribution) == score;
+        só se a config inflacionar os pesos acima de 1.0 é que o escalar é
+        clipado a 1.0 enquanto a soma das contribuições não — divergindo na
+        região saturada por construção.
+        """
         policy = self.tsp_config.decision_policy
         weights = policy.get("weights", {})
         if not isinstance(weights, dict):
@@ -153,13 +164,26 @@ class TSPDecisionEngine:
             1 - request.distance_to_stopline_m / _positive_float(policy, "distance_normalisation_m", 250.0)
         )
         priority_norm = self._priority_level_weight(request.priority_level)
-        score = (
-            _non_negative_float(weights, "schedule_delay", 0.45) * delay_norm
-            + _non_negative_float(weights, "headway_deviation", 0.20) * headway_norm
-            + _non_negative_float(weights, "proximity", 0.20) * proximity_norm
-            + _non_negative_float(weights, "priority_level", 0.15) * priority_norm
+        w_delay = _non_negative_float(weights, "schedule_delay", 0.45)
+        w_headway = _non_negative_float(weights, "headway_deviation", 0.20)
+        w_proximity = _non_negative_float(weights, "proximity", 0.20)
+        w_priority = _non_negative_float(weights, "priority_level", 0.15)
+        score = round(
+            _clip01(
+                w_delay * delay_norm
+                + w_headway * headway_norm
+                + w_proximity * proximity_norm
+                + w_priority * priority_norm
+            ),
+            4,
         )
-        return round(_clip01(score), 4)
+        components = {
+            "schedule_delay": _component(request.schedule_delay_s, delay_norm, w_delay),
+            "headway_deviation": _component(request.headway_deviation_s, headway_norm, w_headway),
+            "proximity": _component(request.distance_to_stopline_m, proximity_norm, w_proximity),
+            "priority_level": _component(request.priority_level, priority_norm, w_priority),
+        }
+        return score, components
 
     def is_priority_movement_green(self, request: SREMLike, signal_state: SignalState) -> bool:
         ryg = signal_state.red_yellow_green_state or ""
@@ -293,6 +317,7 @@ class TSPDecisionEngine:
         target_phase_index: Optional[int] = None,
         notes: Optional[list[str]] = None,
     ) -> TSPDecision:
+        _, score_components = self._score_breakdown(request)
         return TSPDecision(
             timestamp_s=sim_time_s,
             request_id=request.request_id,
@@ -324,11 +349,21 @@ class TSPDecisionEngine:
             controlled_lanes=list(signal_state.controlled_lanes or []),
             notes=list(notes or []),
             correlation_id=request.message_id,
+            score_components=score_components,
         )
 
 
 def _clip01(value: float) -> float:
     return max(0.0, min(1.0, value))
+
+
+def _component(raw: object, normalised: float, weight: float) -> dict:
+    return {
+        "raw": round(float(raw), 3) if isinstance(raw, (int, float)) else raw,
+        "normalised": round(float(normalised), 4),
+        "weight": round(float(weight), 4),
+        "contribution": round(float(weight) * float(normalised), 4),
+    }
 
 
 def _positive_float(mapping: dict, key: str, default: float) -> float:
