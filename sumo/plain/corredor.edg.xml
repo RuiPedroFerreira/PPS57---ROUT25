@@ -1,45 +1,45 @@
 <?xml version="1.0" ?>
 <edges>
-  <edge id="CITY_EAST_I1" from="CITY_EAST" to="I1" numLanes="2" speed="13.89" priority="4" width="3.50"/>
-  <edge id="I1_CITY_EAST" from="I1" to="CITY_EAST" numLanes="2" speed="13.89" priority="4" width="3.25"/>
-  <edge id="I1_I2" from="I1" to="I2" numLanes="2" speed="13.89" priority="4" width="3.25">
+  <edge id="CITY_EAST_I1" from="CITY_EAST" to="I1" numLanes="3" speed="13.89" priority="4" width="3.50"/>
+  <edge id="I1_CITY_EAST" from="I1" to="CITY_EAST" numLanes="3" speed="13.89" priority="4" width="3.25"/>
+  <edge id="I1_I2" from="I1" to="I2" numLanes="3" speed="13.89" priority="4" width="3.25">
     <lane index="0" allow="bus emergency taxi"/>
   </edge>
-  <edge id="I2_I1" from="I2" to="I1" numLanes="2" speed="13.89" priority="4" width="3.25">
+  <edge id="I2_I1" from="I2" to="I1" numLanes="3" speed="13.89" priority="4" width="3.25">
     <lane index="0" allow="bus emergency taxi"/>
   </edge>
-  <edge id="I2_I3" from="I2" to="I3" numLanes="2" speed="13.89" priority="4" width="3.25">
+  <edge id="I2_I3" from="I2" to="I3" numLanes="3" speed="13.89" priority="4" width="3.25">
     <lane index="0" allow="bus emergency taxi"/>
   </edge>
-  <edge id="I3_I2" from="I3" to="I2" numLanes="2" speed="13.89" priority="4" width="3.25">
+  <edge id="I3_I2" from="I3" to="I2" numLanes="3" speed="13.89" priority="4" width="3.25">
     <lane index="0" allow="bus emergency taxi"/>
   </edge>
-  <edge id="I3_I4" from="I3" to="I4" numLanes="2" speed="13.89" priority="4" width="3.25">
+  <edge id="I3_I4" from="I3" to="I4" numLanes="3" speed="13.89" priority="4" width="3.25">
     <lane index="0" allow="bus emergency taxi"/>
   </edge>
-  <edge id="I4_I3" from="I4" to="I3" numLanes="2" speed="13.89" priority="4" width="3.25">
+  <edge id="I4_I3" from="I4" to="I3" numLanes="3" speed="13.89" priority="4" width="3.25">
     <lane index="0" allow="bus emergency taxi"/>
   </edge>
-  <edge id="I4_I5" from="I4" to="I5" numLanes="2" speed="13.89" priority="4" width="3.25">
+  <edge id="I4_I5" from="I4" to="I5" numLanes="3" speed="13.89" priority="4" width="3.25">
     <lane index="0" allow="bus emergency taxi"/>
   </edge>
-  <edge id="I5_I4" from="I5" to="I4" numLanes="2" speed="13.89" priority="4" width="3.25">
+  <edge id="I5_I4" from="I5" to="I4" numLanes="3" speed="13.89" priority="4" width="3.25">
     <lane index="0" allow="bus emergency taxi"/>
   </edge>
-  <edge id="I5_I6" from="I5" to="RB_I6_CITY" numLanes="2" speed="13.89" priority="2" width="3.25">
+  <edge id="I5_I6" from="I5" to="RB_I6_CITY" numLanes="3" speed="13.89" priority="2" width="3.25">
     <lane index="0" allow="bus emergency taxi"/>
   </edge>
-  <edge id="I6_I5" from="RB_I6_CITY" to="I5" numLanes="2" speed="13.89" priority="4" width="3.25">
+  <edge id="I6_I5" from="RB_I6_CITY" to="I5" numLanes="3" speed="13.89" priority="4" width="3.25">
     <lane index="0" allow="bus emergency taxi"/>
   </edge>
-  <edge id="I6_I7" from="RB_I6_ATLANTIC" to="I7" numLanes="2" speed="13.89" priority="4" width="3.25">
+  <edge id="I6_I7" from="RB_I6_ATLANTIC" to="I7" numLanes="3" speed="13.89" priority="4" width="3.25">
     <lane index="0" allow="bus emergency taxi"/>
   </edge>
-  <edge id="I7_I6" from="I7" to="RB_I6_ATLANTIC" numLanes="2" speed="13.89" priority="2" width="3.25">
+  <edge id="I7_I6" from="I7" to="RB_I6_ATLANTIC" numLanes="3" speed="13.89" priority="2" width="3.25">
     <lane index="0" allow="bus emergency taxi"/>
   </edge>
-  <edge id="I7_ATLANTIC_WEST" from="I7" to="ATLANTIC_WEST" numLanes="2" speed="13.89" priority="4" width="3.25"/>
-  <edge id="ATLANTIC_WEST_I7" from="ATLANTIC_WEST" to="I7" numLanes="2" speed="13.89" priority="4" width="3.50"/>
+  <edge id="I7_ATLANTIC_WEST" from="I7" to="ATLANTIC_WEST" numLanes="3" speed="13.89" priority="4" width="3.25"/>
+  <edge id="ATLANTIC_WEST_I7" from="ATLANTIC_WEST" to="I7" numLanes="3" speed="13.89" priority="4" width="3.50"/>
   <edge id="N_I1_I1" from="N_I1" to="I1" numLanes="2" speed="8.33" priority="2" width="3.00"/>
   <edge id="I1_N_I1" from="I1" to="N_I1" numLanes="2" speed="8.33" priority="2" width="3.25"/>
   <edge id="S_I1_I1" from="S_I1" to="I1" numLanes="2" speed="8.33" priority="2" width="3.00"/>

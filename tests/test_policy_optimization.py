@@ -290,7 +290,21 @@ class PolicyOptimizationTestCase(unittest.TestCase):
                 self._isolated_opt(tmp_root),
                 scenarios=self._unit_scenarios(),
             ).run()
-            runtime_policy = RuntimePolicy.load(self.tsp, tmp_root / "reports/tabular_q_policy_report.json")
+            # O guard `allow_policy_suppress_baseline_actuation` (default false)
+            # impede que uma regra não-atuante (reevaluate) suprima a atuação
+            # baseline. Para validar que o snapshot de rede de facto seleciona o
+            # bucket traffic_pressure_high -> reevaluate, habilitamos a supressão.
+            tsp_suppress = replace(
+                self.tsp,
+                raw={
+                    **json.loads(json.dumps(self.tsp.raw)),
+                    "policy_runtime": {
+                        **self.tsp.raw.get("policy_runtime", {}),
+                        "allow_policy_suppress_baseline_actuation": True,
+                    },
+                },
+            )
+            runtime_policy = RuntimePolicy.load(tsp_suppress, tmp_root / "reports/tabular_q_policy_report.json")
             scenario = next(
                 item for item in build_offline_scenarios(self.cits)
                 if item.scenario_id == "OPT_HIGH_TRAFFIC_PRESSURE_REEVALUATE"

@@ -19,6 +19,7 @@ neste regime sem transições.
 """
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 import json
 import random
@@ -107,14 +108,14 @@ class TabularQLearningController:
         learned_rules = self._rules_from_q_values(
             q_values, visits, candidate_cache, scenario_by_id, source_scenario_by_state_action
         )
-        self._write_outputs(q_values, visits, learned_rules, episodes, epsilon)
-        return self._summary(q_values, visits, learned_rules, episodes, epsilon)
+        self._write_outputs(q_values, visits, learned_rules, episodes, epsilon, scenarios, candidate_cache)
+        return self._summary(q_values, visits, learned_rules, episodes, epsilon, scenarios, candidate_cache)
 
     def _load_event_scenarios(self) -> List[OfflineScenario]:
         path = self.optimization_config.path_from_root(
             self.optimization_config.logging.get("event_training_dataset", "outputs/event_training_dataset.jsonl")
         )
-        scenarios = load_event_training_scenarios(path)
+        scenarios = load_event_training_scenarios(path, self.tsp_config.actuating_actions())
         if not scenarios:
             raise ValueError(
                 "No SUMO/TraCI event training scenarios found. Run a TSP SUMO execution and "
@@ -170,6 +171,8 @@ class TabularQLearningController:
         rules: List[LearnedPolicyRule],
         episodes: int,
         final_epsilon: float,
+        scenarios: List[OfflineScenario],
+        candidate_cache: Dict[str, List[CandidateEvaluation]],
     ) -> None:
         q_table_report = self.optimization_config.path_from_root(
             self.optimization_config.logging.get("q_table_report", "reports/tabular_q_policy_report.json")
@@ -179,6 +182,15 @@ class TabularQLearningController:
         )
         for path in [q_table_report, summary_report]:
             path.parent.mkdir(parents=True, exist_ok=True)
+        # `effective_algorithm` declara honestamente o método que de facto correu
+        # face aos hiperparâmetros (gamma=0 + sem transições => bandit contextual),
+        # sem renomear `policy_id`/`algorithm` (lidos por consumidores a jusante).
+        gamma = float(self.optimization_config.reinforcement_learning.get("gamma", 0.0))
+        effective_algorithm = (
+            "tabular_contextual_bandit_epsilon_greedy"
+            if gamma == 0.0
+            else "tabular_q_learning_self_bootstrapping_no_transitions"
+        )
         rows = [
             {
                 "state_bucket": state,
@@ -193,6 +205,7 @@ class TabularQLearningController:
                 {
                     "policy_id": "tabular_q_learning_policy",
                     "algorithm": "tabular_q_learning",
+                    "effective_algorithm": effective_algorithm,
                     "is_reinforcement_learning": True,
                     "training_environment": "event_derived_sumo_traci_scenarios",
                     "safety_filter_required": True,
@@ -206,7 +219,12 @@ class TabularQLearningController:
             encoding="utf-8",
         )
         summary_report.write_text(
-            json.dumps(self._summary(q_values, visits, rules, episodes, final_epsilon), indent=2, ensure_ascii=False, sort_keys=True),
+            json.dumps(
+                self._summary(q_values, visits, rules, episodes, final_epsilon, scenarios, candidate_cache),
+                indent=2,
+                ensure_ascii=False,
+                sort_keys=True,
+            ),
             encoding="utf-8",
         )
 
@@ -217,6 +235,8 @@ class TabularQLearningController:
         rules: List[LearnedPolicyRule],
         episodes: int,
         final_epsilon: float,
+        scenarios: Optional[List[OfflineScenario]] = None,
+        candidate_cache: Optional[Dict[str, List[CandidateEvaluation]]] = None,
     ) -> Dict[str, object]:
         cfg = self.optimization_config.reinforcement_learning
         gamma = float(cfg.get("gamma", 0.0))
@@ -228,6 +248,27 @@ class TabularQLearningController:
             if gamma == 0.0
             else "tabular_q_learning_self_bootstrapping_no_transitions"
         )
+        rule_action_counts = Counter(rule.action for rule in rules)
+        intervention_actions = self.tsp_config.actuating_actions()
+        intervention_rule_count = sum(rule_action_counts.get(action, 0) for action in intervention_actions)
+        safe_candidate_action_counts: Counter[str] = Counter()
+        if candidate_cache is not None:
+            for candidates in candidate_cache.values():
+                for candidate in candidates:
+                    if not candidate.is_safety_blocked:
+                        safe_candidate_action_counts[candidate.action] += 1
+        warnings: list[str] = []
+        if intervention_rule_count == 0:
+            warnings.append(
+                "no_intervention_rules_learned: exported policy will not actively select green_extension/early_green "
+                "for any learned state bucket."
+            )
+        if safe_candidate_action_counts and not any(
+            safe_candidate_action_counts.get(action, 0) for action in intervention_actions
+        ):
+            warnings.append(
+                "no_safe_intervention_candidates: training data/safety context did not permit intervention actions."
+            )
         return {
             "component_id": self.optimization_config.raw.get("component_id"),
             "mode": "tabular-q-learning",
@@ -236,11 +277,16 @@ class TabularQLearningController:
             "is_reinforcement_learning": True,
             "training_environment": "event_derived_sumo_traci_scenarios",
             "online_learning_in_production": False,
+            "scenario_count": len(scenarios or []),
             "episodes": episodes,
             "epsilon_start": float(cfg.get("epsilon_start", 0.35)),
             "state_action_count": len(q_values),
             "visited_state_action_count": sum(1 for value in visits.values() if value > 0),
             "learned_rule_count": len(rules),
+            "rule_action_counts": dict(sorted(rule_action_counts.items())),
+            "intervention_rule_count": intervention_rule_count,
+            "safe_candidate_action_counts": dict(sorted(safe_candidate_action_counts.items())),
+            "warnings": warnings,
             "final_epsilon": round(final_epsilon, 4),
             "safety_filter_required": bool(self.optimization_config.safety.get("mandatory_filter", True)),
             "policy_report": str(

@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 from copy import deepcopy
 import json
+import math
 from pathlib import Path
 import shutil
+import statistics
 import subprocess
 import sys
 from typing import Any
@@ -227,9 +229,57 @@ def _aggregate_replications(runs: list[dict]) -> dict:
     return aggregate
 
 
+# Valores críticos t de Student (bicaudal, 95%) por graus de liberdade (n-1).
+# Sem scipy: tabela para n pequeno; df>30 aproxima-se do z normal (1.96). Isto
+# permite reportar um intervalo de confiança honesto sobre a média de KPIs ao
+# longo de réplicas (seeds), em vez de apenas um ponto de uma única corrida.
+_T_CRITICAL_95 = {
+    1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365,
+    8: 2.306, 9: 2.262, 10: 2.228, 11: 2.201, 12: 2.179, 13: 2.160, 14: 2.145,
+    15: 2.131, 16: 2.120, 17: 2.110, 18: 2.101, 19: 2.093, 20: 2.086, 21: 2.080,
+    22: 2.074, 23: 2.069, 24: 2.064, 25: 2.060, 26: 2.056, 27: 2.052, 28: 2.048,
+    29: 2.045, 30: 2.042,
+}
+
+
+def _t_critical_95(df: int) -> float:
+    if df <= 0:
+        return 0.0
+    if df in _T_CRITICAL_95:
+        return _T_CRITICAL_95[df]
+    return 1.96  # df > 30: aproximação normal
+
+
+def _mean_ci95(values: list[float]) -> dict[str, float | int | None]:
+    """Média e intervalo de confiança 95% (t de Student, stdev amostral)."""
+    n = len(values)
+    if n == 0:
+        return {
+            "mean": None, "n": 0, "stdev_sample": None, "sem": None,
+            "ci95_half_width": None, "ci95_low": None, "ci95_high": None,
+        }
+    mean = statistics.fmean(values)
+    if n == 1:
+        return {
+            "mean": round(mean, 3), "n": 1, "stdev_sample": 0.0, "sem": 0.0,
+            "ci95_half_width": 0.0, "ci95_low": round(mean, 3), "ci95_high": round(mean, 3),
+        }
+    stdev = statistics.stdev(values)  # amostral (n-1), apropriado para inferência
+    sem = stdev / math.sqrt(n)
+    half = _t_critical_95(n - 1) * sem
+    return {
+        "mean": round(mean, 3),
+        "n": n,
+        "stdev_sample": round(stdev, 3),
+        "sem": round(sem, 3),
+        "ci95_half_width": round(half, 3),
+        "ci95_low": round(mean - half, 3),
+        "ci95_high": round(mean + half, 3),
+    }
+
+
 def _compute_kpi_aggregate(kpis_list: list[dict]) -> dict:
-    """Mean and spread (p5/p95) of headline KPIs across replications."""
-    import statistics
+    """Mean, spread (p5/p95) and 95% CI of headline KPIs across replications."""
 
     def collect(path_keys: list[str]) -> list[float]:
         values = []
@@ -246,18 +296,21 @@ def _compute_kpi_aggregate(kpis_list: list[dict]) -> dict:
         return values
 
     def stat(values: list[float]) -> dict[str, float | None]:
+        out = _mean_ci95(values)
         if not values:
-            return {"mean": None, "p5": None, "p95": None, "n": 0}
+            out.update({"stdev": None, "p5": None, "p95": None})
+            return out
         sorted_v = sorted(values)
         p5_idx = max(0, int(round((len(sorted_v) - 1) * 0.05)))
         p95_idx = min(len(sorted_v) - 1, int(round((len(sorted_v) - 1) * 0.95)))
-        return {
-            "mean": round(statistics.fmean(values), 3),
+        # `stdev` (populacional) mantido para retrocompatibilidade; `stdev_sample`
+        # e `ci95_*` são as estatísticas de inferência.
+        out.update({
             "stdev": round(statistics.pstdev(values), 3) if len(values) > 1 else 0.0,
             "p5": round(sorted_v[p5_idx], 3),
             "p95": round(sorted_v[p95_idx], 3),
-            "n": len(values),
-        }
+        })
+        return out
 
     return {
         "bus_mean_time_loss_s": stat(collect(["buses", "mean_time_loss_s"])),
@@ -482,14 +535,84 @@ def copy_global_sumo_outputs(run_output_dir: Path) -> None:
             shutil.copy2(source, target)
 
 
+def _replication_kpis_by_seed(run: dict) -> dict[int, dict]:
+    """Mapeia seed -> KPIs carregados, para as réplicas de um run_type."""
+    out: dict[int, dict] = {}
+    for rep in run.get("replication_summaries", []) or []:
+        seed = rep.get("seed")
+        kpis = _load_kpis(rep.get("kpis"))
+        if seed is not None and kpis:
+            out[int(seed)] = kpis
+    return out
+
+
+def _paired_significance(
+    baseline_run: dict,
+    candidate_run: dict,
+    group: str,
+    metric: str,
+    *,
+    lower_is_better: bool,
+) -> dict | None:
+    """Teste de significância emparelhado por seed sobre um KPI.
+
+    Para cada seed comum a baseline e candidato, calcula a melhoria
+    (redução do KPI quando ``lower_is_better``) e devolve a média com IC95
+    t-Student. Sem >=2 seeds emparelhados não há base estatística -> None.
+    """
+    base_by_seed = _replication_kpis_by_seed(baseline_run)
+    cand_by_seed = _replication_kpis_by_seed(candidate_run)
+    common = sorted(set(base_by_seed) & set(cand_by_seed))
+    deltas: list[float] = []
+    for seed in common:
+        base_value = base_by_seed[seed].get(group, {}).get(metric)
+        cand_value = cand_by_seed[seed].get(group, {}).get(metric)
+        if isinstance(base_value, (int, float)) and isinstance(cand_value, (int, float)):
+            improvement = (base_value - cand_value) if lower_is_better else (cand_value - base_value)
+            deltas.append(float(improvement))
+    if len(deltas) < 2:
+        return None
+    ci = _mean_ci95(deltas)
+    ci_low, ci_high = ci["ci95_low"], ci["ci95_high"]
+    if ci_low is not None and ci_low > 0:
+        verdict = "significant_improvement"
+    elif ci_high is not None and ci_high < 0:
+        verdict = "significant_regression"
+    else:
+        verdict = "inconclusive_ci_includes_zero"
+    return {
+        "metric": f"{group}.{metric}",
+        "paired_seeds": common,
+        "n": ci["n"],
+        "mean_improvement": ci["mean"],
+        "ci95_low": ci_low,
+        "ci95_high": ci_high,
+        "verdict": verdict,
+        "note": (
+            "Melhoria = redução do KPI (lower_is_better=True); IC95 t-Student "
+            "emparelhado por seed. Significativo só quando o IC95 exclui zero."
+        ),
+    }
+
+
 def compare_scenario_runs(runs: dict[str, dict]) -> dict:
     baseline = _load_kpis(runs.get("baseline", {}).get("kpis"))
+    baseline_run = runs.get("baseline", {})
     comparisons: dict[str, dict] = {}
     for run_type in ("tsp_no_actuation", "tsp_actuation"):
         candidate = _load_kpis(runs.get(run_type, {}).get("kpis"))
         if not baseline or not candidate:
             continue
-        comparisons[f"baseline_vs_{run_type}"] = compare_kpis(baseline, candidate)
+        comparison = compare_kpis(baseline, candidate)
+        # Quando há réplicas multi-seed em ambos os braços, acrescenta o teste
+        # de significância emparelhado — a comparação ponto-a-ponto sozinha não
+        # suporta qualquer alegação de efeito TSP estatisticamente significativo.
+        significance = _paired_significance(
+            baseline_run, runs.get(run_type, {}), "buses", "mean_time_loss_s", lower_is_better=True
+        )
+        if significance is not None:
+            comparison["bus_time_loss_replication_significance"] = significance
+        comparisons[f"baseline_vs_{run_type}"] = comparison
     return comparisons
 
 
@@ -660,6 +783,27 @@ def render_scenario_report(summary: dict) -> str:
                 fuel=emissions_totals.get("fuel", ""),
             )
         )
+
+    significance_rows = [
+        (key, comparison["bus_time_loss_replication_significance"])
+        for key, comparison in summary.get("comparisons", {}).items()
+        if isinstance(comparison, dict) and "bus_time_loss_replication_significance" in comparison
+    ]
+    if significance_rows:
+        lines += [
+            "",
+            f"Seeds (réplicas): {summary.get('seeds', [])}",
+            "",
+            "## Bus timeLoss — significância emparelhada por seed (IC95 t-Student)",
+            "",
+            "| Comparação | n | Melhoria média (s) | IC95 baixo | IC95 alto | Veredito |",
+            "|---|---:|---:|---:|---:|---|",
+        ]
+        for key, sig in significance_rows:
+            lines.append(
+                f"| {key} | {sig.get('n', '')} | {sig.get('mean_improvement', '')} | "
+                f"{sig.get('ci95_low', '')} | {sig.get('ci95_high', '')} | {sig.get('verdict', '')} |"
+            )
     return "\n".join(lines) + "\n"
 
 

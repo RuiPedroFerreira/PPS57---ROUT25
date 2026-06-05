@@ -18,10 +18,12 @@ def decision_for_action(
 ) -> TSPDecision:
     policy = tsp_config.decision_policy
     mapping = tsp_config.phase_mapping_for_movement(baseline.priority_movement_id, baseline.tls_id)
-    target_phase = _optional_int(mapping.get("target_phase_index"))
+    target_phase = baseline.target_phase_index
+    if target_phase is None:
+        target_phase = _optional_int(mapping.get("target_phase_index"))
 
     if action == TSPAction.GREEN_EXTENSION.value:
-        extension_s = baseline.extension_s if baseline.extension_s > 0 else float(policy.get("green_extension_default_s", 8))
+        extension_s = baseline.extension_s if baseline.extension_s > 0 else _positive_float(policy, "green_extension_default_s", 8.0)
         return baseline.copy_with(
             action=action,
             status=DecisionStatus.PROPOSED.value,
@@ -38,7 +40,7 @@ def decision_for_action(
             status=DecisionStatus.PROPOSED.value,
             reason=reason,
             extension_s=0.0,
-            phase_duration_s=float(policy.get("red_truncation_to_s", 2)),
+            phase_duration_s=_positive_float(policy, "red_truncation_to_s", 2.0),
             target_phase_index=target_phase,
             notes=notes,
         )
@@ -52,3 +54,11 @@ def decision_for_action(
         target_phase_index=None,
         notes=notes,
     )
+
+
+def _positive_float(mapping: dict, key: str, default: float) -> float:
+    try:
+        value = float(mapping.get(key, default))
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default

@@ -14,6 +14,7 @@
   },
   "offline_training": {
     "episodes": 1,
+    "signal_program_verified": true,
     "candidate_actions": [
       "no_action",
       "green_extension",
@@ -44,7 +45,17 @@
     "traffic_pressure_penalty_multiplier": 8.0,
     "reevaluate_penalty": 8.0,
     "reject_penalty": 20.0,
-    "unsafe_candidate_penalty": 1000.0
+    "unsafe_candidate_penalty": 1000.0,
+    "schedule_delay_divisor": 10.0,
+    "headway_divisor": 10.0,
+    "proximity_eta_baseline_s": 45.0,
+    "no_action_sufficient_green_bonus": 5.0,
+    "no_action_insufficient_green_factor": 0.8,
+    "early_green_truncation_penalty": 2.0,
+    "reevaluate_below_min_eta_bonus": 6.0,
+    "reject_below_min_score_bonus": 6.0,
+    "reject_schedule_delay_divisor": 20.0,
+    "unsupported_action_fallback": -50.0
   },
   "reinforcement_learning": {
     "algorithm": "tabular_q_learning",

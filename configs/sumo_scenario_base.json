@@ -79,7 +79,6 @@
         "y": -25,
         "z": 88,
         "type": "traffic_light",
-        "tls_type": "actuated",
         "major_lanes": 3,
         "minor_lanes": 1,
         "rsu_id": "RSU_BOAVISTA_02",
@@ -94,7 +93,7 @@
           "yellow_minor_s": 3,
           "all_red_cross_to_main_s": 1,
           "green_ped_s": 12,
-          "note": "Transversal media (rua da Bessa, residencial-comercial); split HCM-tipico (g/C_main = 0.43) com all-red 1s/1s e fase peao exclusiva Barnes Dance de 12s. green_main reduzido 51->39s para preservar cycle=90s quando netconvert nao adiciona clearance de crossings concorrentes. Splits mais agressivos (43/27 ou 47/23) foram testados para reduzir backlog em I1, mas introduzem jam-teleports em scenarios de PM peak/bunched_buses e teleports excessivos em high_demand_corridor. tlType=actuated: o programa serve de base mas SUMO estende verdes mediante deteccao (max_gap=3s default) — mais realista para uma transversal com procura variavel intra-ciclo."
+          "note": "Transversal media (rua da Bessa, residencial-comercial); split HCM-tipico (g/C_main = 0.43) com all-red 1s/1s e fase peao exclusiva Barnes Dance de 12s. green_main reduzido 51->39s para preservar cycle=90s quando netconvert nao adiciona clearance de crossings concorrentes. Splits mais agressivos (43/27 ou 47/23) foram testados para reduzir backlog em I1, mas introduzem jam-teleports em scenarios de PM peak/bunched_buses e teleports excessivos em high_demand_corridor. Programa mantido em tempo fixo para o atuador TSP via TraCI nao competir com logica atuada interna do SUMO."
         }
       },
       {
@@ -152,7 +151,6 @@
         "y": -80,
         "z": 42,
         "type": "traffic_light",
-        "tls_type": "actuated",
         "major_lanes": 3,
         "minor_lanes": 1,
         "rsu_id": "RSU_BOAVISTA_05",
@@ -167,7 +165,7 @@
           "yellow_minor_s": 3,
           "all_red_cross_to_main_s": 1,
           "green_ped_s": 12,
-          "note": "Transversal media; split harmonizado com I2 (g/C_main = 0.43) com fase peao exclusiva Barnes Dance de 12s. green_main reduzido 51->39s para preservar cycle=90s e evitar a insercao automatica de clearance de crossings concorrentes pelo netconvert. Splits mais agressivos foram testados (47/23 e 43/27); ambos introduzem jam-teleports em PM peak ou em bunched_buses devido a queda da capacidade transversal abaixo da procura medium da Marechal. tlType=actuated: SUMO usa o programa como base mas estende/encurta verdes com base em ocupacao dos detectores E1 (max_gap=3s default), aproximando-se de controlo SCATS/SCOOT real."
+          "note": "Transversal media; split harmonizado com I2 (g/C_main = 0.43) com fase peao exclusiva Barnes Dance de 12s. green_main reduzido 51->39s para preservar cycle=90s e evitar a insercao automatica de clearance de crossings concorrentes pelo netconvert. Splits mais agressivos foram testados (47/23 e 43/27); ambos introduzem jam-teleports em PM peak ou em bunched_buses devido a queda da capacidade transversal abaixo da procura medium da Marechal. Programa mantido em tempo fixo para o atuador TSP via TraCI nao competir com logica atuada interna do SUMO."
         }
       },
       {

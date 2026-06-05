@@ -30,7 +30,7 @@ from pps57_opt.demonstrator import (  # noqa: E402
     write_demonstrator_report,
 )
 from pps57_sumo.parse_tripinfo import parse_tripinfo  # noqa: E402
-from pps57_sumo.build_network import build_sumo_artifacts  # noqa: E402
+from pps57_sumo.build_network import build_sumo_artifacts, sumo_environment  # noqa: E402
 from pps57_tsp.config import TSPConfig, load_tsp_config  # noqa: E402
 from pps57_tsp.controller import TSPControlController  # noqa: E402
 
@@ -150,7 +150,7 @@ def _run_baseline(steps: int | None) -> None:
     cmd = ["sumo", "-c", "sumo/corredor.sumocfg", "--duration-log.statistics"]
     if steps is not None:
         cmd.extend(["--end", str(int(steps))])
-    subprocess.run(cmd, cwd=ROOT, check=True)
+    subprocess.run(cmd, cwd=ROOT, check=True, env=sumo_environment())
 
 
 def _run_tsp(cits_config, tsp_config: TSPConfig, args: argparse.Namespace) -> None:  # type: ignore[no-untyped-def]

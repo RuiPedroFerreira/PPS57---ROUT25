@@ -8,12 +8,14 @@ SUMO/TraCI is one implementation of the adapter boundary, not the contract.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Protocol
 
-from pps57_cits.config import CITSConfig
+from pps57_cits.config import CITSConfig, PriorityMovementConfig
 from pps57_cits.models import SignalState
 from pps57_cits.traci_adapter import TraciSimulationAdapter
 from pps57_cits.util import optional_int as _optional_int
+from pps57_sumo.network_profile import MovementProfile, TLSProfile, load_network_profile
 
 from .config import TSPConfig
 from .models import TSPAction, TSPDecision
@@ -30,6 +32,8 @@ class SignalGroupContract:
     max_extension_s: Optional[float] = None
     pedestrian_clearance_s: Optional[float] = None
     conflicts_with: List[str] = field(default_factory=list)
+    requires_protected_green: bool = True
+    allow_edge_state_fallback: bool = False
 
 
 @dataclass(frozen=True)
@@ -43,6 +47,9 @@ class ControllerContract:
     intergreen_phase_indices: List[int]
     min_yellow_s: Optional[float]
     min_all_red_s: Optional[float]
+    expected_cycle_s: Optional[float]
+    pedestrian_phase_required: bool
+    pedestrian_phase_indices: List[int]
     signal_groups: Dict[str, SignalGroupContract]
 
     def signal_group_for_id(self, signal_group_id: str) -> Optional[SignalGroupContract]:
@@ -192,10 +199,16 @@ class TraciSignalControlAdapter:
                 for group in contract.signal_groups.values():
                     if group.phase_index is None or group.phase_index >= len(states):
                         continue
-                    if "g" not in states[group.phase_index].lower():
+                    green_ok = (
+                        "G" in states[group.phase_index]
+                        if group.requires_protected_green
+                        else "g" in states[group.phase_index].lower()
+                    )
+                    if not green_ok:
                         problems.append(
                             f"{tls_id}: signal_group {group.signal_group_id} aponta para fase "
-                            f"{group.phase_index} ('{states[group.phase_index]}') sem verde"
+                            f"{group.phase_index} ('{states[group.phase_index]}') sem "
+                            f"{'verde protegido' if group.requires_protected_green else 'verde'}"
                         )
                 for idx in contract.intergreen_phase_indices:
                     if idx < len(states) and "g" in states[idx].lower():
@@ -211,18 +224,34 @@ class TraciSignalControlAdapter:
                                 f"{contract.min_yellow_s:.1f}s"
                             )
                 if durations is not None and contract.min_all_red_s is not None and contract.min_all_red_s > 0:
-                    has_all_red = any(
-                        idx < len(states)
-                        and idx < len(durations)
-                        and _is_all_red_state(states[idx])
-                        and float(durations[idx]) >= contract.min_all_red_s
-                        for idx in contract.intergreen_phase_indices
+                    missing_all_red = _missing_all_red_transitions(
+                        states,
+                        durations,
+                        contract.phase_sequence,
+                        contract.service_green_phase_indices,
+                        contract.min_all_red_s,
                     )
-                    if not has_all_red:
+                    for from_phase, to_phase in missing_all_red:
                         problems.append(
                             f"{tls_id}: all-red explícito >= {contract.min_all_red_s:.1f}s não encontrado "
-                            "nas fases intergreen do programa SUMO"
+                            f"na transição {from_phase}->{to_phase}"
                         )
+                if durations is not None and contract.expected_cycle_s is not None:
+                    cycle_s = sum(float(duration) for duration in durations)
+                    if abs(cycle_s - contract.expected_cycle_s) > 0.51:
+                        problems.append(
+                            f"{tls_id}: ciclo SUMO {cycle_s:.1f}s difere do controller contract "
+                            f"{contract.expected_cycle_s:.1f}s"
+                        )
+                if contract.pedestrian_phase_required and not _has_configured_pedestrian_phase(
+                    states,
+                    contract.service_green_phase_indices,
+                    contract.intergreen_phase_indices,
+                    contract.pedestrian_phase_indices,
+                ):
+                    problems.append(
+                        f"{tls_id}: fase pedonal exclusiva configurada não encontrada; clearance pedonal não garantida"
+                    )
 
             for group in contract.signal_groups.values():
                 for conflict in group.conflicts_with:
@@ -349,6 +378,13 @@ class SimulatedControllerAdapter:
             return ControllerCommandValidation(False, "controller_conflict_matrix_missing", severity="warning")
 
         latency = float(self.config.get("command_latency_s", 0.0))
+        if latency > 0:
+            return ControllerCommandValidation(
+                False,
+                "controller_latency_requires_command_scheduler",
+                effective_at_s=sim_time_s + latency,
+                severity="warning",
+            )
         effective_at = sim_time_s + max(0.0, latency)
         pending_s = float(self.config.get("pending_lock_s", latency))
         self.last_command_time_by_tls[decision.tls_id] = sim_time_s
@@ -389,20 +425,43 @@ def build_controller_contract(cits_config: CITSConfig, tsp_config: TSPConfig, tl
     raw = tsp_config.controller_contract_for_tls(tls_id)
     safety = cits_config.safety_constraints
     mapping = tsp_config.phase_mapping_for_tls(tls_id)
+    tls_profile = _network_tls_profile(cits_config, tsp_config, tls_id)
+    prefer_generated = _prefer_generated_contract(tsp_config, tls_id, tls_profile)
 
     allowed_actions = list(raw.get("allowed_actions", ["green_extension", "early_green"]))
     phase_sequence = _int_list(raw.get("phase_sequence", mapping.get("phase_sequence", [])))
+    if tls_profile is not None and (prefer_generated or not phase_sequence):
+        phase_sequence = list(tls_profile.phase_sequence)
     service_green_phase_indices = _int_list(
         raw.get("service_green_phase_indices", mapping.get("service_green_phase_indices", []))
     )
+    if tls_profile is not None and (prefer_generated or not service_green_phase_indices):
+        service_green_phase_indices = list(tls_profile.service_green_phase_indices)
     intergreen_phase_indices = _int_list(raw.get("intergreen_phase_indices", []))
+    if tls_profile is not None and (prefer_generated or not intergreen_phase_indices):
+        intergreen_phase_indices = list(tls_profile.intergreen_phase_indices)
     signal_groups: Dict[str, SignalGroupContract] = {}
 
     priority_defaults = raw.get("priority_signal_group_defaults", {})
+    profile_by_target_group = _profile_movements_by_target_group(intersection.priority_movements, tls_profile)
+    profile_aliases = {
+        profile.signal_group_id: group_id
+        for group_id, profile in profile_by_target_group.items()
+        if profile is not None
+    }
     for movement in intersection.priority_movements:
         movement_mapping = tsp_config.phase_mapping_for_movement(movement.movement_id, tls_id)
-        group_raw = dict(priority_defaults)
-        group_raw.update(raw.get("signal_groups", {}).get(movement.target_signal_group_id, {}))
+        profile_movement = profile_by_target_group.get(movement.target_signal_group_id)
+        auto_group_raw = _group_raw_from_profile(profile_movement, profile_aliases)
+        specific_group_raw = raw.get("signal_groups", {}).get(movement.target_signal_group_id, {})
+        if prefer_generated:
+            group_raw = dict(priority_defaults)
+            group_raw.update(auto_group_raw)
+            group_raw.update(specific_group_raw)
+        else:
+            group_raw = dict(auto_group_raw)
+            group_raw.update(priority_defaults)
+            group_raw.update(specific_group_raw)
         phase_index = _optional_int(group_raw.get("phase_index", movement_mapping.get("target_phase_index")))
         signal_groups[movement.target_signal_group_id] = _group_from_raw(
             movement.target_signal_group_id,
@@ -416,7 +475,25 @@ def build_controller_contract(cits_config: CITSConfig, tsp_config: TSPConfig, tl
             default_max_extension=_float_or_none(safety.get("max_green_extension_s")),
         )
 
-    for item in raw.get("additional_signal_groups", []):
+    if tls_profile is not None:
+        for profile_movement in tls_profile.movements:
+            group_id = profile_aliases.get(profile_movement.signal_group_id, profile_movement.signal_group_id)
+            if group_id in signal_groups:
+                continue
+            auto_group_raw = _group_raw_from_profile(profile_movement, profile_aliases)
+            signal_groups[group_id] = _group_from_raw(
+                group_id,
+                auto_group_raw,
+                tls_id=tls_id,
+                default_allowed_actions=allowed_actions,
+                default_phase_index=profile_movement.target_phase_index,
+                default_movement_ids=[],
+                default_min_green=_float_or_none(safety.get("min_green_s")),
+                default_max_green=_float_or_none(safety.get("max_total_green_s")),
+                default_max_extension=_float_or_none(safety.get("max_green_extension_s")),
+            )
+
+    for item in _additional_signal_group_items(tsp_config, tls_id, raw, prefer_generated):
         group_id = str(item.get("signal_group_id", "")).format(tls_id=tls_id)
         if not group_id:
             continue
@@ -432,6 +509,19 @@ def build_controller_contract(cits_config: CITSConfig, tsp_config: TSPConfig, tl
             default_max_extension=_float_or_none(safety.get("max_green_extension_s")),
         )
 
+    pedestrian_phase_indices = _int_list(raw.get("pedestrian_phase_indices", []))
+    if tls_profile is not None and (prefer_generated or not pedestrian_phase_indices):
+        pedestrian_phase_indices = _pedestrian_phase_indices(tls_profile)
+    expected_cycle_default = tls_profile.expected_cycle_s if tls_profile is not None else 90
+    pedestrian_required = bool(
+        raw.get(
+            "pedestrian_phase_required",
+            bool(safety.get("pedestrian_clearance_must_not_be_shortened", True)),
+        )
+    )
+    if prefer_generated and not pedestrian_phase_indices:
+        pedestrian_required = False
+
     return ControllerContract(
         tls_id=tls_id,
         adapter_type=str(raw.get("adapter_type", "sumo_traci")),
@@ -442,8 +532,145 @@ def build_controller_contract(cits_config: CITSConfig, tsp_config: TSPConfig, tl
         intergreen_phase_indices=intergreen_phase_indices,
         min_yellow_s=_float_or_none(safety.get("yellow_s")),
         min_all_red_s=_float_or_none(safety.get("all_red_s")),
+        expected_cycle_s=_float_or_none(raw.get("expected_cycle_s", raw.get("cycle_s", expected_cycle_default))),
+        pedestrian_phase_required=pedestrian_required,
+        pedestrian_phase_indices=pedestrian_phase_indices,
         signal_groups=signal_groups,
     )
+
+
+def _network_tls_profile(cits_config: CITSConfig, tsp_config: TSPConfig, tls_id: str) -> Optional[TLSProfile]:
+    if not _network_profile_enabled(cits_config, tsp_config):
+        return None
+    network = cits_config.sumo.get("network")
+    if not network:
+        return None
+    network_path = Path(str(network))
+    if not network_path.is_absolute():
+        network_path = cits_config.root / network_path
+    try:
+        profile = load_network_profile(network_path)
+    except (FileNotFoundError, OSError, ValueError):
+        return None
+    return profile.tls_profile(tls_id)
+
+
+def _network_profile_enabled(cits_config: CITSConfig, tsp_config: TSPConfig) -> bool:
+    tsp_profile = tsp_config.raw.get("network_profile", {})
+    cits_discovery = cits_config.raw.get("network_discovery", {})
+    return (
+        isinstance(tsp_profile, dict)
+        and bool(tsp_profile.get("enabled", False))
+    ) or (
+        isinstance(cits_discovery, dict)
+        and bool(cits_discovery.get("enabled", False))
+    )
+
+
+def _prefer_generated_contract(tsp_config: TSPConfig, tls_id: str, tls_profile: Optional[TLSProfile]) -> bool:
+    if tls_profile is None:
+        return False
+    profile_cfg = tsp_config.raw.get("network_profile", {})
+    if not isinstance(profile_cfg, dict):
+        return False
+    controllers = tsp_config.controller_contracts.get("controllers", {})
+    has_specific = isinstance(controllers, dict) and isinstance(controllers.get(tls_id), dict)
+    return bool(profile_cfg.get("prefer_generated_contracts_for_unknown_tls", True)) and not has_specific
+
+
+def _profile_movements_by_target_group(
+    movements: List[PriorityMovementConfig],
+    tls_profile: Optional[TLSProfile],
+) -> Dict[str, Optional[MovementProfile]]:
+    if tls_profile is None:
+        return {movement.target_signal_group_id: None for movement in movements}
+    return {
+        movement.target_signal_group_id: _profile_movement_for_priority(tls_profile, movement)
+        for movement in movements
+    }
+
+
+def _profile_movement_for_priority(
+    tls_profile: TLSProfile,
+    movement: PriorityMovementConfig,
+) -> Optional[MovementProfile]:
+    for profile_movement in tls_profile.movements:
+        if (
+            profile_movement.movement_id == movement.movement_id
+            or profile_movement.signal_group_id == movement.target_signal_group_id
+        ):
+            return profile_movement
+    for approach_edge in movement.approach_edges:
+        egress_edges = list(getattr(movement, "egress_edges", []))
+        if egress_edges:
+            for egress_edge in egress_edges:
+                profile_movement = tls_profile.movement_for_edges(approach_edge, egress_edge)
+                if profile_movement is not None:
+                    return profile_movement
+        profile_movement = tls_profile.movement_for_edges(approach_edge)
+        if profile_movement is not None:
+            return profile_movement
+    return None
+
+
+def _group_raw_from_profile(
+    movement: Optional[MovementProfile],
+    aliases: Dict[str, str],
+) -> Dict[str, object]:
+    if movement is None:
+        return {}
+    conflicts = [aliases.get(group_id, group_id) for group_id in movement.conflicts_with]
+    return {
+        "phase_index": movement.target_phase_index,
+        "conflicts_with": conflicts,
+        "requires_protected_green": bool(movement.protected_green_phase_indices),
+        "allow_edge_state_fallback": False,
+    }
+
+
+def _additional_signal_group_items(
+    tsp_config: TSPConfig,
+    tls_id: str,
+    raw: Dict[str, object],
+    prefer_generated: bool,
+) -> List[Dict[str, object]]:
+    if not prefer_generated:
+        items = raw.get("additional_signal_groups", [])
+        return [item for item in items if isinstance(item, dict)] if isinstance(items, list) else []
+    controllers = tsp_config.controller_contracts.get("controllers", {})
+    if not isinstance(controllers, dict):
+        return []
+    specific = controllers.get(tls_id, {})
+    if not isinstance(specific, dict):
+        return []
+    items = specific.get("additional_signal_groups", [])
+    return [item for item in items if isinstance(item, dict)] if isinstance(items, list) else []
+
+
+def _pedestrian_phase_indices(tls_profile: TLSProfile) -> List[int]:
+    pedestrian_indices = {
+        connection.link_index
+        for connection in tls_profile.connections
+        if connection.from_edge.startswith(":") or connection.to_edge.startswith(":")
+    }
+    vehicle_indices = {
+        connection.link_index
+        for connection in tls_profile.connections
+        if not connection.from_edge.startswith(":") and not connection.to_edge.startswith(":")
+    }
+    result: List[int] = []
+    for phase in tls_profile.phases:
+        pedestrian_green = any(
+            index < len(phase.state) and phase.state[index].lower() == "g"
+            for index in pedestrian_indices
+        )
+        vehicle_green = any(
+            index < len(phase.state) and phase.state[index].lower() == "g"
+            for index in vehicle_indices
+        )
+        if pedestrian_green and not vehicle_green:
+            result.append(phase.index)
+    return result
 
 
 def _group_from_raw(
@@ -468,6 +695,8 @@ def _group_from_raw(
         max_extension_s=_float_or_none(raw.get("max_extension_s"), default_max_extension),
         pedestrian_clearance_s=_float_or_none(raw.get("pedestrian_clearance_s")),
         conflicts_with=[str(item).format(tls_id=tls_id) for item in raw.get("conflicts_with", [])],  # type: ignore[arg-type]
+        requires_protected_green=bool(raw.get("requires_protected_green", True)),
+        allow_edge_state_fallback=bool(raw.get("allow_edge_state_fallback", False)),
     )
 
 
@@ -493,3 +722,62 @@ def _float_or_none(value: object, default: Optional[float] = None) -> Optional[f
 
 def _is_all_red_state(state: str) -> bool:
     return bool(state) and all(ch.lower() == "r" for ch in state)
+
+
+def _has_configured_pedestrian_phase(
+    states: List[str],
+    service_green_phase_indices: List[int],
+    intergreen_phase_indices: List[int],
+    pedestrian_phase_indices: List[int],
+) -> bool:
+    if not pedestrian_phase_indices:
+        return False
+    vehicular_phase_indices = set(service_green_phase_indices) | set(intergreen_phase_indices)
+    for index in pedestrian_phase_indices:
+        if index in vehicular_phase_indices:
+            return False
+        if not (0 <= index < len(states)):
+            return False
+        state = states[index]
+        if any(ch in {"G", "g"} for ch in state):
+            return True
+    return False
+
+
+def _missing_all_red_transitions(
+    states: List[str],
+    durations: List[float],
+    phase_sequence: List[int],
+    service_green_phase_indices: List[int],
+    min_all_red_s: float,
+) -> List[tuple[int, int]]:
+    service_in_sequence = [idx for idx in phase_sequence if idx in set(service_green_phase_indices)]
+    if len(service_in_sequence) < 2:
+        return []
+
+    missing: List[tuple[int, int]] = []
+    sequence_len = len(phase_sequence)
+    for from_phase in service_in_sequence:
+        from_pos = phase_sequence.index(from_phase)
+        between: List[int] = []
+        pos = from_pos
+        to_phase: Optional[int] = None
+        for _ in range(1, sequence_len + 1):
+            pos = (pos + 1) % sequence_len
+            phase = phase_sequence[pos]
+            if phase in service_green_phase_indices:
+                to_phase = phase
+                break
+            between.append(phase)
+        if to_phase is None:
+            continue
+        has_required_all_red = any(
+            idx < len(states)
+            and idx < len(durations)
+            and _is_all_red_state(states[idx])
+            and float(durations[idx]) >= min_all_red_s
+            for idx in between
+        )
+        if not has_required_all_red:
+            missing.append((from_phase, to_phase))
+    return missing

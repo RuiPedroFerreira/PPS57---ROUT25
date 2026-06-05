@@ -21,6 +21,15 @@
         "default_sumo_binary": "sumo",
         "default_gui_binary": "sumo-gui"
     },
+    "network_discovery": {
+        "enabled": true,
+        "augment_missing_intersections": true,
+        "auto_generate_priority_movements": true,
+        "priority_vehicle_classes": [
+            "public_transport"
+        ],
+        "rsu_id_prefix": "RSU_AUTO_"
+    },
     "logging": {
         "message_log": "outputs/cits_messages.jsonl",
         "summary_report": "reports/cits_emulation_summary.json",
@@ -38,6 +47,7 @@
     },
     "message_transport": {
         "enabled": false,
+        "encode_payloads": false,
         "latency_steps": 0,
         "jitter_steps": 0,
         "drop_rate": 0.0,

@@ -39,19 +39,31 @@ from pps57_tsp.signal_control import SimulatedControllerAdapter, build_controlle
 
 
 class Package4TSPTestCase(unittest.TestCase):
-    _STATIC_PHASE_STATES = ["GGgrrrr", "yyyrrrr", "rrrrrrr", "rrrGGgr", "rrryyyy", "rrrrrrr"]
-    _STATIC_PHASE_DURATIONS = [42, 3, 1, 42, 3, 1]
-    _FDW_PHASE_STATES = [
-        "rrrrGgGgrrrrGgGgGrGr",
-        "rrrrGgGgrrrrGgGgrrrr",
-        "rrrryyyyrrrryyyyrrrr",
-        "rrrrrrrrrrrrrrrrrrrr",
-        "ggGgrrrrggGgrrrrrGrG",
-        "ggGgrrrrggGgrrrrrrrr",
-        "yyyyrrrryyyyrrrrrrrr",
-        "rrrrrrrrrrrrrrrrrrrr",
+    # Fixtures alinhadas com o programa SUMO realmente gerado (build_network):
+    # 7 fases, ciclo 90s, com fase pedonal exclusiva (Barnes Dance, 12s) anexada
+    # no índice 6. Verdes de serviço em [0, 3], intergreens em [1, 2, 4, 5]; a
+    # fase pedonal (6) fica fora do contrato (service_green/intergreen). I1 e I2
+    # têm a mesma topologia de 7 fases, diferindo no split e nas máscaras RYG.
+    _STATIC_PHASE_STATES = [
+        "rrrrgGggGGgrrrrrgGGGgrrrr",
+        "rrrryyyyyyyrrrrryyyyyrrrr",
+        "rrrrrrrrrrrrrrrrrrrrrrrrr",
+        "gGGgrrrrrrrggGGgrrrrrrrrr",
+        "yyyyrrrrrrryyyyyrrrrrrrrr",
+        "rrrrrrrrrrrrrrrrrrrrrrrrr",
+        "rrrrrrrrrrrrrrrrrrrrrGGGG",
     ]
-    _FDW_PHASE_DURATIONS = [51, 5, 3, 1, 31, 5, 3, 1]
+    _STATIC_PHASE_DURATIONS = [31, 3, 1, 39, 3, 1, 12]
+    _FDW_PHASE_STATES = [
+        "rrrrGgGGgrrrrGgGGgrrrr",
+        "rrrryyyyyrrrryyyyyrrrr",
+        "rrrrrrrrrrrrrrrrrrrrrr",
+        "ggGgrrrrrggGgrrrrrrrrr",
+        "yyyyrrrrryyyyrrrrrrrrr",
+        "rrrrrrrrrrrrrrrrrrrrrr",
+        "rrrrrrrrrrrrrrrrrrGGGG",
+    ]
+    _FDW_PHASE_DURATIONS = [39, 3, 1, 31, 3, 1, 12]
     _FDW_TLS = {"I2", "I4", "I5"}
 
     @classmethod
@@ -429,8 +441,13 @@ class Package4TSPTestCase(unittest.TestCase):
         )
         self.assertEqual(len(final_responses), 1)
         final = final_responses[0]
-        self.assertEqual(final.status, ResponseStatus.GRANTED.value)
-        self.assertEqual(final.audit.granted_strategy, GrantedStrategy.GREEN_EXTENSION.value)
+        # Em modo no-actuation a decisão é aprovada pela Safety Layer mas NÃO é
+        # fisicamente aplicada; o SSEM final só promete GRANTED quando o sinal
+        # muda mesmo. Aqui o estado é rejected, com evidência de "would grant".
+        self.assertEqual(final.status, ResponseStatus.REJECTED.value)
+        self.assertEqual(final.audit.rejection_reason, "sumo_no_actuation_flag_would_apply")
+        self.assertIn("tsp_would_grant_not_applied=true", final.audit.notes)
+        self.assertIn("tsp_status=approved", final.audit.notes)
         self.assertEqual(final.correlation_id, req.message_id)
         self.assertIn("tsp_decision_id=", final.audit.notes[1])
 
@@ -548,7 +565,9 @@ class Package4TSPTestCase(unittest.TestCase):
 
         class _CleanAdapter:
             def read_program_phase_count(self, tls_id: str) -> int:
-                return 8 if tls_id in Package4TSPTestCase._FDW_TLS else 6
+                # Topologia atual: 7 fases para todos os TLS (verde main, inter,
+                # all-red, verde minor, inter, all-red, fase pedonal exclusiva).
+                return 7
 
             def read_program_type(self, tls_id: str) -> str:
                 return "0"
@@ -629,7 +648,9 @@ class Package4TSPTestCase(unittest.TestCase):
 
         class _CleanAdapter:
             def read_program_phase_count(self, tls_id: str) -> int:
-                return 8 if tls_id in Package4TSPTestCase._FDW_TLS else 6
+                # Topologia atual: 7 fases para todos os TLS (verde main, inter,
+                # all-red, verde minor, inter, all-red, fase pedonal exclusiva).
+                return 7
 
             def read_program_type(self, tls_id: str) -> str:
                 return "0"
@@ -715,7 +736,7 @@ class Package4TSPTestCase(unittest.TestCase):
             tls_id="I7",
             rsu_id="RSU_BOAVISTA_07",
             timestamp_s=100.0,
-            current_phase_index=2,
+            current_phase_index=3,  # fase do verde conflituante (secundárias N/S) a truncar
             current_program_id="test",
             red_yellow_green_state="rrGG",
             next_switch_s=125.0,
@@ -748,7 +769,7 @@ class Package4TSPTestCase(unittest.TestCase):
             tls_id="I7",
             rsu_id="RSU_BOAVISTA_07",
             timestamp_s=100.0,
-            current_phase_index=2,
+            current_phase_index=3,  # fase do verde conflituante (secundárias N/S) a truncar
             current_program_id="test",
             red_yellow_green_state="rrGG",
             next_switch_s=125.0,
@@ -811,7 +832,7 @@ class Package4TSPTestCase(unittest.TestCase):
         simulated = SimulatedControllerAdapter(
             base=base,  # type: ignore[arg-type]
             contracts=build_controller_contracts(self.cits, self.tsp),
-            config={"default_mode": "automatic", "command_latency_s": 0.5, "pending_lock_s": 0.5},
+            config={"default_mode": "automatic", "command_latency_s": 0.0, "pending_lock_s": 0.5},
         )
         decision = self.engine.decide(self._request(), self._state(), sim_time_s=100.0)
         safe = decision.copy_with(status=DecisionStatus.APPROVED.value)
@@ -819,8 +840,33 @@ class Package4TSPTestCase(unittest.TestCase):
         self.assertTrue(result.applied)
         self.assertIsNotNone(base.duration_s)
         self.assertEqual(result.controller_response["reason"], "controller_command_accepted")
-        self.assertEqual(result.controller_response["effective_at_s"], 100.5)
+        self.assertEqual(result.controller_response["effective_at_s"], 100.0)
         self.assertEqual(result.parameters["controller_adapter"], "simulated_real_controller")
+
+    def test_simulated_controller_nacks_nonzero_latency_pending_scheduler(self) -> None:
+        # Limitação conhecida (roadmap P2): o adaptador simulado ainda não tem
+        # um command scheduler, por isso qualquer command_latency_s > 0 é
+        # rejeitado (NACK) em vez de agendado. Este teste ancora o comportamento
+        # atual; quando o scheduler for implementado, deve passar a ACK diferido.
+        class _BaseAdapter:
+            duration_s = None
+
+            def set_phase_duration(self, tls_id: str, duration_s: float) -> None:
+                self.duration_s = duration_s
+
+        base = _BaseAdapter()
+        simulated = SimulatedControllerAdapter(
+            base=base,  # type: ignore[arg-type]
+            contracts=build_controller_contracts(self.cits, self.tsp),
+            config={"default_mode": "automatic", "command_latency_s": 0.5, "pending_lock_s": 0.5},
+        )
+        decision = self.engine.decide(self._request(), self._state(), sim_time_s=100.0)
+        safe = decision.copy_with(status=DecisionStatus.APPROVED.value)
+        result = TraciTSPActuator(adapter=simulated, apply_actuation=True).apply(safe, self._state(), sim_time_s=100.0)
+        self.assertFalse(result.applied)
+        self.assertIsNone(base.duration_s)
+        self.assertEqual(result.reason, "controller_latency_requires_command_scheduler")
+        self.assertFalse(result.controller_response["accepted"])
 
     def test_simulated_controller_rejects_active_pedestrian_call(self) -> None:
         class _BaseAdapter:

@@ -571,10 +571,6 @@ def _service_matches(service: dict[str, Any], override: dict[str, Any]) -> bool:
     )
 
 
-def _known_route_ids(config: dict[str, Any]) -> set[str]:
-    return set(_known_route_edges(config))
-
-
 def _known_route_edges(config: dict[str, Any]) -> dict[str, list[str]]:
     """Return the route IDs and edge sequences emitted by the corridor generator."""
     from pps57_sumo.generate_plain_corridor import build_routes

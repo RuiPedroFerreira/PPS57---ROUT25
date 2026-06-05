@@ -55,6 +55,26 @@ class PriorityRequestStore:
         state.granted_at_s = sim_time_s
         state.last_seen_s = sim_time_s
 
+    def mark_cancelled(self, request: SREMLike, sim_time_s: float) -> None:
+        key = self._key(request.vehicle_id, request.tls_id)
+        state = self.states_by_key.get(key)
+        if state is None:
+            state = PriorityRequestState(request=request, first_seen_s=sim_time_s, last_seen_s=sim_time_s)
+            self.states_by_key[key] = state
+        state.request = request
+        state.status = "cleared"
+        state.cleared_at_s = sim_time_s
+        state.last_seen_s = sim_time_s
+        self.cleared_count += 1
+
+    def get_by_request_id(self, request_id: str) -> SREMLike | None:
+        for state in self.states_by_key.values():
+            if state.status in {"cleared", "expired"}:
+                continue
+            if state.request.request_id == request_id:
+                return state.request
+        return None
+
     def update_from_observations(self, observations: Iterable[VehicleObservation], sim_time_s: float) -> None:
         observed_by_vehicle = {item.vehicle_id: item for item in observations}
         for key, state in list(self.states_by_key.items()):

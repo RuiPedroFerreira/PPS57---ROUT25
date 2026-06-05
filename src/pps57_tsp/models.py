@@ -19,6 +19,16 @@ class TSPAction(str, Enum):
     REJECT = "reject"
 
 
+# Fonte de verdade única para o conjunto de ações que de facto atuam o
+# semáforo (TraCI setPhaseDuration). Antes este literal estava duplicado em
+# engine/optimizer/rl_trainer/event_dataset/policy_runtime, onde concordavam
+# apenas por coincidência. Consumidores com acesso a config devem preferir
+# TSPConfig.actuating_actions() (config-driven com este conjunto como default).
+DEFAULT_ACTUATING_ACTIONS: frozenset[str] = frozenset(
+    {TSPAction.GREEN_EXTENSION.value, TSPAction.EARLY_GREEN.value}
+)
+
+
 class DecisionStatus(str, Enum):
     PROPOSED = "proposed"
     APPROVED = "approved"
@@ -43,6 +53,7 @@ class TSPDecision:
     schedule_delay_s: float
     headway_deviation_s: float
     vehicle_class: str = ""
+    priority_level: str = ""
     current_edge_id: str = ""
     current_lane_id: str = ""
     next_edge_id: str = ""
@@ -54,12 +65,15 @@ class TSPDecision:
     target_phase_index: Optional[int] = None
     current_phase_index: Optional[int] = None
     current_signal_state: Optional[str] = None
+    current_next_switch_s: Optional[float] = None
+    current_spent_duration_s: Optional[float] = None
+    controlled_lanes: List[str] = field(default_factory=list)
     notes: List[str] = field(default_factory=list)
     correlation_id: Optional[str] = None
 
     @property
     def requires_actuation(self) -> bool:
-        return self.action in {TSPAction.GREEN_EXTENSION.value, TSPAction.EARLY_GREEN.value}
+        return self.action in DEFAULT_ACTUATING_ACTIONS
 
     def copy_with(self, **changes: Any) -> "TSPDecision":
         # `dataclasses.replace` preserva tipos (sem o round-trip JSON de

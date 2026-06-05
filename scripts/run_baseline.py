@@ -13,7 +13,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from pps57_sumo.build_network import build_sumo_artifacts  # noqa: E402
+from pps57_sumo.build_network import build_sumo_artifacts, sumo_environment  # noqa: E402
 from pps57_sumo.scenarios import apply_scenario_profile  # noqa: E402
 
 
@@ -28,7 +28,7 @@ def require(binary: str) -> str:
 
 def run(cmd: list[str]) -> None:
     print("$ " + " ".join(cmd))
-    subprocess.run(cmd, cwd=ROOT, check=True)
+    subprocess.run(cmd, cwd=ROOT, check=True, env=sumo_environment())
 
 
 def main() -> None:

@@ -24,6 +24,7 @@ from .messages import (
     CITSMessage,
     GrantedStrategy,
     MessageType,
+    OperatorPriorityClass,
     PrioritizationResponse,
     ResponseStatus,
     SSEMAudit,
@@ -346,11 +347,14 @@ class RSUAgent:
     def _eta_in_window(self, request: SREMLike) -> bool:
         policy = self.config.obu_policy
         eta = request.operator_telemetry.eta_to_stopline_s if request.operator_telemetry else 0.0
-        return (
-            float(policy.get("request_eta_min_s", 8))
-            <= eta
-            <= float(policy.get("request_eta_max_s", 45))
+        is_emergency = request.priority_level == OperatorPriorityClass.EMERGENCY.value
+        eta_min = 0.0 if is_emergency else float(policy.get("request_eta_min_s", 8))
+        eta_max = (
+            float(policy.get("emergency_request_eta_max_s", policy.get("request_eta_max_s", 45)))
+            if is_emergency
+            else float(policy.get("request_eta_max_s", 45))
         )
+        return eta_min <= eta <= eta_max
 
     def _priority_condition_met(self, request: SREMLike) -> bool:
         policy = self.config.obu_policy

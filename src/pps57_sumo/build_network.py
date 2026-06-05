@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-import importlib.util
 import json
 import os
 from pathlib import Path
@@ -22,6 +21,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from pps57_sumo.apply_tls_offsets import apply_tls_offsets
+from pps57_sumo.environment import ensure_sumo_environment
 from pps57_sumo.generate_plain_corridor import generate
 from pps57_sumo.scenarios import apply_scenario_profile
 
@@ -235,22 +235,8 @@ def write_sumocfg(config: dict, artifacts: SumoArtifacts, *, output_dir: Path) -
 
 
 def sumo_environment() -> dict[str, str]:
-    """Return an environment with a usable SUMO_HOME when the venv provides SUMO."""
-    env = os.environ.copy()
-    current = env.get("SUMO_HOME")
-    if current and _is_valid_sumo_home(Path(current)):
-        return env
-
-    spec = importlib.util.find_spec("sumo")
-    if spec and spec.origin:
-        package_home = Path(spec.origin).resolve().parent
-        if _is_valid_sumo_home(package_home):
-            env["SUMO_HOME"] = str(package_home)
-    return env
-
-
-def _is_valid_sumo_home(path: Path) -> bool:
-    return (path / "tools").is_dir() and (path / "data" / "xsd").is_dir()
+    """Return an environment with a usable SUMO_HOME."""
+    return ensure_sumo_environment()
 
 
 def _run_subprocess(cmd: Sequence[str], cwd: Path) -> None:
