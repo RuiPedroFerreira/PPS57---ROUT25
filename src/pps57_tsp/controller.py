@@ -36,7 +36,7 @@ from .actuator import TraciTSPActuator
 from .config import TSPConfig
 from .engine import TSPDecisionEngine
 from .logger import TSPJsonlLogger, write_tsp_summary
-from .models import ActuationResult, DecisionStatus, TSPAction, TSPDecision
+from .models import ActuationResult, DecisionStatus, ReasonCode, TSPAction, TSPDecision
 from .request_store import PriorityRequestStore
 from .safety import TSPSafetyLayer
 from .signal_control import (
@@ -300,7 +300,7 @@ class TSPControlController:
             if proposed.requires_actuation and request.tls_id in intervened_tls:
                 safe_decision = proposed.copy_with(
                     status=DecisionStatus.NOT_ACTUABLE.value,
-                    reason="superseded_by_earlier_intervention_same_step",
+                    reason=ReasonCode.SUPERSEDED_BY_EARLIER_INTERVENTION_SAME_STEP.value,
                     notes=list(proposed.notes)
                     + ["TLS já interveio neste passo; pedido suprimido para evitar atuação dupla."],
                 )
@@ -312,7 +312,7 @@ class TSPControlController:
                     applied=False,
                     no_actuation=not getattr(actuator, "apply_actuation", False),
                     command="none",
-                    reason="superseded_by_earlier_intervention_same_step",
+                    reason=ReasonCode.SUPERSEDED_BY_EARLIER_INTERVENTION_SAME_STEP.value,
                 )
             else:
                 validation = self.safety.validate(proposed, signal_state, sim_time_s)
@@ -321,7 +321,7 @@ class TSPControlController:
                 if validation.approved and network_state is not None and network_state.degraded:
                     safe_decision = safe_decision.copy_with(
                         status=DecisionStatus.BLOCKED_BY_SAFETY.value,
-                        reason="network_state_degraded_detector_read_failure",
+                        reason=ReasonCode.NETWORK_STATE_DEGRADED_DETECTOR_READ_FAILURE.value,
                         notes=list(safe_decision.notes)
                         + [
                             "Safety Layer bloqueou atuação: leitura detector/lane degradada "

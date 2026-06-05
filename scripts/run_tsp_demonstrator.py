@@ -111,10 +111,22 @@ def main() -> int:
         print(f"Command failed with exit code {exc.returncode}: {' '.join(exc.cmd)}", file=sys.stderr)
         return exc.returncode
 
+    # Best-effort: junta os contrafactuais offline do optimizer se o resumo
+    # existir (gerado por run_policy_optimization). Ausência -> secção
+    # "unavailable"; nunca recomputa reward no loop vivo.
+    policy_summary_path = ROOT / "reports/policy_optimization_summary.json"
+    policy_optimization_summary = None
+    if policy_summary_path.exists():
+        try:
+            policy_optimization_summary = json.loads(policy_summary_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            policy_optimization_summary = None
+
     report = build_demonstrator_report(
         baseline=load_demonstrator_run(baseline_root, "sumo_baseline"),
         tsp=load_demonstrator_run(tsp_root, "tsp"),
         tsp_controller=load_demonstrator_run(controller_root, "tsp_controller"),
+        policy_optimization_summary=policy_optimization_summary,
     )
     write_demonstrator_report(
         report,

@@ -37,6 +37,77 @@ class DecisionStatus(str, Enum):
     APPLIED = "applied"
 
 
+class ReasonCode(str, Enum):
+    """Registo único dos códigos de motivo emitidos no caminho de decisão TSP.
+
+    `.value` é exactamente igual à string (ou ao prefixo, para motivos
+    dinâmicos com operandos) emitida hoje por engine/safety/controller, pelo
+    que agregações por valor (p.ex. demonstrator.safety_block_by_reason)
+    permanecem inalteradas. Motivos dinâmicos (PRIORITY_SCORE_BELOW_THRESHOLD,
+    MIN_GREEN_NOT_SATISFIED) são emitidos como f"{code.value}:{operandos}". Um
+    teste de drift (tests/test_explainability) verifica que todo o literal de
+    motivo em engine/safety/controller está registado aqui.
+    """
+
+    # --- engine (decisão) ---
+    PRIORITY_REQUEST_CANCELLATION = "priority_request_cancellation_no_tsp_actuation"
+    REQUEST_EXPIRED = "request_expired_before_tsp_decision"
+    PRIORITY_SCORE_BELOW_THRESHOLD = "priority_score_below_threshold"  # dinâmico: :score<min
+    GREEN_WINDOW_ALREADY_SUFFICIENT = "green_window_already_sufficient"
+    EXTEND_CURRENT_GREEN = "extend_current_green_to_cover_bus_eta"
+    BUS_TOO_CLOSE_FOR_SAFE_RED_TRUNCATION = "bus_too_close_for_safe_red_truncation"
+    TRUNCATE_CONFLICTING_PHASE = "truncate_conflicting_phase_to_anticipate_priority_movement_green"
+
+    # --- safety: cooldown / consecutivas / amarelo / recovery ---
+    CURRENT_PHASE_IS_YELLOW = "current_phase_is_yellow_wait_for_next_cycle"
+    COOLDOWN_AFTER_PRIORITY_ACTIVE = "cooldown_after_priority_active"
+    RECOVERY_DEBT_LIMIT_ACTIVE = "recovery_debt_limit_active"
+    SAFETY_CONSTRAINT_MISSING_MAX_CONSECUTIVE = "safety_constraint_missing:max_consecutive_priority_interventions_per_tls"
+    MAX_CONSECUTIVE_INTERVENTIONS_REACHED = "max_consecutive_priority_interventions_reached"
+    UNSUPPORTED_TSP_ACTION = "unsupported_tsp_action"
+
+    # --- safety: green extension ---
+    GREEN_EXTENSION_DISABLED_BY_CONFIG = "green_extension_disabled_by_config"
+    SIGNAL_GROUP_CONTRACT_MISSING = "signal_group_contract_missing"
+    GREEN_EXTENSION_DISABLED_FOR_SIGNAL_GROUP = "green_extension_disabled_for_signal_group"
+    GREEN_EXTENSION_NOT_POSITIVE = "green_extension_not_positive"
+    GREEN_EXTENSION_UNKNOWN_TARGET_PHASE = "green_extension_unknown_target_phase"
+    GREEN_EXTENSION_REQUIRES_PRIORITY_MOVEMENT_GREEN_PHASE = "green_extension_requires_priority_movement_green_phase"
+    GREEN_EXTENSION_REQUIRES_PROTECTED_GREEN = "green_extension_requires_protected_green"
+    SAFETY_CONSTRAINT_MISSING_MAX_GREEN_EXTENSION_S = "safety_constraint_missing:max_green_extension_s"
+    SAFETY_CONSTRAINT_MISSING_MAX_TOTAL_GREEN_S = "safety_constraint_missing:max_total_green_s"
+    GREEN_EXTENSION_UNKNOWN_REMAINING_PHASE_TIME = "green_extension_unknown_remaining_phase_time"
+    GREEN_EXTENSION_UNKNOWN_SPENT_PHASE_TIME = "green_extension_unknown_spent_phase_time"
+    MAX_TOTAL_GREEN_ALREADY_REACHED = "max_total_green_already_reached"
+    GREEN_EXTENSION_CLIPPED_TO_ZERO = "green_extension_clipped_to_zero"
+    APPROVED_GREEN_EXTENSION = "approved_green_extension"
+
+    # --- safety: early green / red truncation ---
+    RED_TRUNCATION_DISABLED_BY_CONFIG = "red_truncation_disabled_by_config"
+    EARLY_GREEN_DISABLED_FOR_SIGNAL_GROUP = "early_green_disabled_for_signal_group"
+    SIGNAL_GROUP_CONFLICT_MATRIX_MISSING = "signal_group_conflict_matrix_missing"
+    SAFETY_CONSTRAINT_MISSING_MIN_GREEN_S = "safety_constraint_missing:min_green_s"
+    EARLY_GREEN_UNKNOWN_SPENT_PHASE_TIME = "early_green_unknown_spent_phase_time"
+    MIN_GREEN_NOT_SATISFIED = "min_green_not_satisfied"  # dinâmico: :spent<min
+    PEDESTRIAN_CLEARANCE_UNVERIFIABLE = "pedestrian_clearance_unverifiable_signal_program_not_validated"
+    PHASE_ALREADY_CLOSE_TO_SWITCH = "phase_already_close_to_switch"
+    APPROVED_RED_TRUNCATION = "approved_red_truncation"
+
+    # --- safety: verificações de sequência / conflito de fase ---
+    EARLY_GREEN_PHASE_INDICES_UNKNOWN = "early_green_phase_indices_unknown"
+    EARLY_GREEN_TARGET_PHASE_ALREADY_ACTIVE = "early_green_target_phase_already_active"
+    EARLY_GREEN_PHASE_NOT_IN_CONFIGURED_SEQUENCE = "early_green_phase_not_in_configured_sequence"
+    EARLY_GREEN_TARGET_PHASE_NOT_IN_REMAINING_SEQUENCE = "early_green_target_phase_not_in_remaining_sequence"
+    EARLY_GREEN_WOULD_SKIP_CLEARANCE_PHASE = "early_green_would_skip_clearance_phase"
+    EARLY_GREEN_CURRENT_PHASE_UNKNOWN = "early_green_current_phase_unknown"
+    EARLY_GREEN_CURRENT_PHASE_SIGNAL_GROUP_UNKNOWN = "early_green_current_phase_signal_group_unknown"
+    EARLY_GREEN_CURRENT_PHASE_NOT_CONFIGURED_AS_CONFLICT = "early_green_current_phase_not_configured_as_conflict"
+
+    # --- controller (orquestração) ---
+    SUPERSEDED_BY_EARLIER_INTERVENTION_SAME_STEP = "superseded_by_earlier_intervention_same_step"
+    NETWORK_STATE_DEGRADED_DETECTOR_READ_FAILURE = "network_state_degraded_detector_read_failure"
+
+
 @dataclass
 class TSPDecision:
     timestamp_s: float
@@ -70,6 +141,10 @@ class TSPDecision:
     controlled_lanes: List[str] = field(default_factory=list)
     notes: List[str] = field(default_factory=list)
     correlation_id: Optional[str] = None
+    # Decomposição por-termo do priority_score ({raw, normalised, weight,
+    # contribution} por objetivo). engine.priority_score já a computa; antes só
+    # o escalar sobrevivia. Aditivo e serializa via to_dict()/to_json().
+    score_components: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def requires_actuation(self) -> bool:

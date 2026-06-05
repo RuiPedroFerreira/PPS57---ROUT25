@@ -63,6 +63,7 @@ def build_demonstrator_report(
     baseline: DemonstratorRun,
     tsp: DemonstratorRun,
     tsp_controller: DemonstratorRun,
+    policy_optimization_summary: Optional[JsonDict] = None,
 ) -> JsonDict:
     runs = {
         baseline.label: _run_payload(baseline),
@@ -82,6 +83,9 @@ def build_demonstrator_report(
         },
         "runs": runs,
         "comparisons": comparisons,
+        "offline_policy_counterfactuals": _offline_counterfactuals(
+            runs.get(tsp.label, {}), policy_optimization_summary
+        ),
         "verdict": _verdict(comparisons),
         "evidence_paths": {
             baseline.label: _evidence_paths(baseline),
@@ -167,12 +171,55 @@ def render_demonstrator_markdown(report: JsonDict) -> str:
     lines.extend(_counter_section("Safety blocks", runtime.get("safety_block_by_reason", {})))
     lines.extend(_counter_section("Controller rejects", runtime.get("controller_rejection_by_reason", {})))
 
+    counterfactuals = report.get("offline_policy_counterfactuals", {})
+    lines.extend(["", "## Offline Policy Counterfactuals", ""])
+    if not counterfactuals.get("available"):
+        note = counterfactuals.get("note") or "no optimizer summary joined."
+        lines.extend([f"Offline counterfactuals unavailable: {_escape(str(note))}", ""])
+    else:
+        lines.append(f"- {_escape(str(counterfactuals.get('note', '')))}")
+        lines.append(
+            f"- Offline scenarios: {counterfactuals.get('scenario_count', 0)}; "
+            f"action changes vs baseline: {counterfactuals.get('offline_action_changes_vs_baseline', 0)}, "
+            f"unchanged: {counterfactuals.get('offline_action_unchanged_vs_baseline', 0)}."
+        )
+        lines.append("")
+        lines.extend(_counter_section("Runtime by action", counterfactuals.get("runtime_by_action", {})))
+        lines.extend(_counter_section("Offline baseline by action", counterfactuals.get("offline_baseline_by_action", {})))
+        lines.extend(_counter_section("Offline selected by action", counterfactuals.get("offline_selected_by_action", {})))
+
     limitations = report.get("limitations", [])
     if limitations:
         lines.extend(["", "## Limitations", ""])
         lines.extend([f"- {_escape(str(item))}" for item in limitations])
     lines.append("")
     return "\n".join(lines)
+
+
+def _offline_counterfactuals(tsp_payload: JsonDict, policy_summary: Optional[JsonDict]) -> JsonDict:
+    """Join the runtime action mix against the offline optimizer counterfactuals.
+
+    Reuses the EXISTING optimizer summary (baseline/selected by_action +
+    action-change counts) so the report surfaces 'action taken vs alternatives
+    considered' without recomputing the reward function inside the live loop.
+    """
+    if not policy_summary:
+        return {"available": False, "note": "No policy_optimization_summary provided."}
+    runtime = tsp_payload.get("runtime", {}) if isinstance(tsp_payload, dict) else {}
+    return {
+        "available": True,
+        "methodology": policy_summary.get("methodology"),
+        "scenario_count": policy_summary.get("scenario_count"),
+        "offline_baseline_by_action": policy_summary.get("baseline_by_action", {}),
+        "offline_selected_by_action": policy_summary.get("selected_by_action", {}),
+        "offline_action_changes_vs_baseline": policy_summary.get("optimized_action_changes_vs_baseline"),
+        "offline_action_unchanged_vs_baseline": policy_summary.get("optimized_action_unchanged_vs_baseline"),
+        "runtime_by_action": runtime.get("by_action", {}),
+        "note": (
+            "Offline argmax-over-safe-candidates counterfactuals from the optimizer summary; "
+            "reward is NOT recomputed in the live decision loop."
+        ),
+    }
 
 
 def _run_payload(run: DemonstratorRun) -> JsonDict:
