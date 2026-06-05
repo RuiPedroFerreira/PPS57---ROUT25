@@ -107,6 +107,10 @@ class ReasonCode(str, Enum):
     SUPERSEDED_BY_EARLIER_INTERVENTION_SAME_STEP = "superseded_by_earlier_intervention_same_step"
     NETWORK_STATE_DEGRADED_DETECTOR_READ_FAILURE = "network_state_degraded_detector_read_failure"
 
+    # --- corridor arbiter (P6) — downgrade-only, pré-Safety, opt-in ---
+    DEFERRED_CORRIDOR_RECOVERY_DEBT_EXHAUSTED = "deferred_corridor_recovery_debt_exhausted"
+    DEFERRED_DOWNSTREAM_SPILLBACK_RISK = "deferred_downstream_spillback_risk"
+
 
 @dataclass
 class TSPDecision:

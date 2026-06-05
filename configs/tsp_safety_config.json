@@ -40,6 +40,12 @@
     "allow_direct_phase_jump": false,
     "note": "No MVP, early_green é implementado como redução segura da duração da fase corrente via setPhaseDuration, não como salto direto de fase. Isto evita saltar amarelo/all-red."
   },
+  "corridor": {
+    "_comment": "Árbitro de corredor cross-TLS (P6), opt-in, corre pré-Safety e só DESCE decisões (a Safety Layer continua o portão final). Todas as features desligadas por defeito = no-op. É otimização, NÃO segurança — distinto dos safety_constraints fail-closed em cits_v2x_config.json. max_corridor_recovery_debt_s: null ou <= 0 = cap desligado (0 permite a primeira intervenção).",
+    "max_corridor_recovery_debt_s": null,
+    "respect_downstream_spillback": false,
+    "flag_green_wave": false
+  },
   "network_profile": {
     "enabled": true,
     "prefer_generated_contracts_for_unknown_tls": true,
