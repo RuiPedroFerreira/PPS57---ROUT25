@@ -62,6 +62,10 @@ class CITSConfig:
         return self.raw.get("schedule_plan", {})
 
     @property
+    def state_estimation(self) -> Dict[str, Any]:
+        return self.raw.get("state_estimation", {})
+
+    @property
     def logging(self) -> Dict[str, Any]:
         return self.raw.get("logging", {})
 

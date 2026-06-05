@@ -14,7 +14,7 @@ from typing import Any, List, Optional
 from pps57_sumo.environment import apply_sumo_environment
 
 from .config import CITSConfig, IntersectionConfig
-from .models import NetworkStateSnapshot, SignalState, VehicleObservation
+from .models import EtaParams, NetworkStateSnapshot, SignalState, VehicleObservation
 from .schedule_plan import SchedulePlanProvider
 
 
@@ -37,6 +37,23 @@ class TraciSimulationAdapter:
         # (default) -> observações mantêm schedule_delay_s/headway 0.0 e a OBU
         # recai no proxy de waiting-time (comportamento inalterado).
         self._schedule_plan = SchedulePlanProvider.from_config(config)
+        # P2: constantes de estimação de estado externalizadas. Defaults
+        # reproduzem os literais anteriores -> ETA/spillback byte-idênticos
+        # quando state_estimation está ausente.
+        se = config.state_estimation
+        self._eta_params = EtaParams(
+            free_flow_speed_mps=_cfg_float(se, "eta_free_flow_speed_mps", 8.0),
+            queue_penalty_s=_cfg_float(se, "eta_queue_penalty_s", 2.0),
+            waiting_cap_s=_cfg_float(se, "eta_waiting_cap_s", 15.0),
+            min_speed_mps=_cfg_float(se, "eta_min_speed_mps", 0.5),
+        )
+        self._spillback_occupancy = _cfg_float(se, "spillback_occupancy_threshold", 0.75)
+        self._spillback_halted_per_lane = _cfg_float(se, "spillback_halted_per_lane", 4.0)
+        # Back-of-queue real é opt-in (muda queue_vehicle_count em runs vivos e,
+        # por consequência, os buckets offline). Desligado -> queue == halted
+        # (proxy anterior, byte-idêntico).
+        self._real_back_of_queue = bool(se.get("real_back_of_queue", False))
+        self._queue_halt_speed_mps = _cfg_float(se, "queue_halt_speed_mps", 0.1)
 
     def start(self, extra_args: Optional[List[str]] = None) -> None:
         apply_sumo_environment()
@@ -132,6 +149,7 @@ class TraciSimulationAdapter:
                 next_edge_id=next_edge_id,
                 queue_ahead_vehicle_count=queue_ahead,
                 stop_count=int(_safe_call(lambda: traci.vehicle.getStopState(vehicle_id)) or 0),
+                eta_params=self._eta_params,
             )
             return self._with_schedule_adherence(observation, sim_time_s)
         except Exception:
@@ -183,6 +201,47 @@ class TraciSimulationAdapter:
                 count += 1
         return count
 
+    def _back_of_queue_count(self, lane_id: str) -> Optional[int]:
+        """Fila contígua a partir da stopline.
+
+        Difere de getLastStepHaltingNumber, que conta TODOS os veículos parados
+        na lane (incluindo um congestionamento a meio não ancorado no semáforo).
+        É subconjunto de halted desde que queue_halt_speed_mps <= ao limiar de
+        halting do SUMO (--halting-speed-threshold, default 0.1). Devolve None
+        apenas se a leitura ao-nível-da-lane (getLastStepVehicleIDs) falhar;
+        falhas pontuais por-veículo são saltadas (best-effort), pelo que o
+        caller só recai em halted nesse primeiro caso.
+        """
+        traci = self._require_traci()
+        vehicle_ids = _safe_call(lambda: traci.lane.getLastStepVehicleIDs(lane_id))
+        if vehicle_ids is None:
+            return None
+        samples: list[tuple[float, float]] = []
+        for other_id in vehicle_ids:
+            position = _safe_call(lambda other_id=other_id: float(traci.vehicle.getLanePosition(other_id)))
+            speed = _safe_call(lambda other_id=other_id: float(traci.vehicle.getSpeed(other_id)))
+            if position is not None and speed is not None:
+                samples.append((position, speed))
+        return self._contiguous_halted_from_stopline(samples, self._queue_halt_speed_mps)
+
+    @staticmethod
+    def _contiguous_halted_from_stopline(
+        samples: List[tuple], halt_speed_mps: float
+    ) -> int:
+        """Conta a corrida contígua de veículos parados desde a stopline.
+
+        `samples` é uma lista de (lane_position_m, speed_mps). A stopline é o
+        fim da lane (maior posição) -> ordena por posição desc. e conta até ao
+        primeiro veículo em movimento (que quebra a fila).
+        """
+        ordered = sorted(samples, key=lambda item: item[0], reverse=True)
+        count = 0
+        for _position, speed in ordered:
+            if speed < halt_speed_mps:
+                count += 1
+            else:
+                break
+        return count
 
     def set_phase_duration(self, tls_id: str, duration_s: float) -> None:
         """Define a duração restante da fase corrente do semáforo.
@@ -333,6 +392,7 @@ class TraciSimulationAdapter:
         lanes = self._network_state_lanes(intersection, signal_state)
         vehicle_count = 0
         halted_vehicle_count = 0
+        queue_vehicle_count = 0
         waiting_time_s = 0.0
         occupancy_values: list[float] = []
         weighted_speed_sum = 0.0
@@ -381,6 +441,16 @@ class TraciSimulationAdapter:
 
             vehicle_count += lane_vehicle_count
             halted_vehicle_count += lane_halted
+            # queue_vehicle_count: por defeito == halted (proxy anterior). Com
+            # real_back_of_queue, conta a fila contígua a partir da stopline
+            # (subconjunto de halted quando queue_halt_speed_mps <= limiar de
+            # halting do SUMO), recaindo em lane_halted se a leitura
+            # ao-nível-da-lane falhar para esta lane.
+            if self._real_back_of_queue:
+                lane_queue = self._back_of_queue_count(lane_id)
+                queue_vehicle_count += lane_queue if lane_queue is not None else lane_halted
+            else:
+                queue_vehicle_count += lane_halted
             waiting_time_s += lane_waiting
             if lane_vehicle_count > 0:
                 weighted_speed_sum += lane_speed * lane_vehicle_count
@@ -390,9 +460,12 @@ class TraciSimulationAdapter:
 
         mean_speed_mps = weighted_speed_sum / speed_weight if speed_weight else 0.0
         occupancy = sum(occupancy_values) / len(occupancy_values) if occupancy_values else 0.0
-        queue_vehicle_count = halted_vehicle_count
         degraded = detector_read_failures > 0
-        spillback_risk = degraded or occupancy >= 0.75 or (len(lanes) > 0 and halted_vehicle_count >= len(lanes) * 4)
+        spillback_risk = (
+            degraded
+            or occupancy >= self._spillback_occupancy
+            or (len(lanes) > 0 and halted_vehicle_count >= len(lanes) * self._spillback_halted_per_lane)
+        )
         return NetworkStateSnapshot(
             tls_id=intersection.tls_id,
             timestamp_s=sim_time_s,
@@ -484,6 +557,14 @@ def _safe_call(callable_):  # type: ignore[no-untyped-def]
         return callable_()
     except Exception:
         return None
+
+
+def _cfg_float(mapping: Any, key: str, default: float) -> float:
+    """Lê um float de config recaindo no default se ausente/malformado."""
+    try:
+        return float(mapping.get(key, default))
+    except (TypeError, ValueError, AttributeError):
+        return float(default)
 
 
 def _logic_program_id(logic) -> Optional[str]:  # type: ignore[no-untyped-def]

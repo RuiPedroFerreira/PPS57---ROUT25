@@ -106,6 +106,17 @@
         "schedule_delay_scale_s": 90.0,
         "headway_deviation_fraction": 0.25
     },
+    "state_estimation": {
+        "_comment": "Constantes de estimação de estado (ETA/spillback) e fila real. Defaults reproduzem os literais anteriores; real_back_of_queue é opt-in. queue_halt_speed_mps deve ficar <= ao --halting-speed-threshold do SUMO (0.1) para a fila ser subconjunto de halted. Ver pps57_cits.traci_adapter / models.EtaParams.",
+        "eta_free_flow_speed_mps": 8.0,
+        "eta_queue_penalty_s": 2.0,
+        "eta_waiting_cap_s": 15.0,
+        "eta_min_speed_mps": 0.5,
+        "spillback_occupancy_threshold": 0.75,
+        "spillback_halted_per_lane": 4,
+        "real_back_of_queue": false,
+        "queue_halt_speed_mps": 0.1
+    },
     "safety_constraints": {
         "min_green_s": 8,
         "max_green_extension_s": 12,
