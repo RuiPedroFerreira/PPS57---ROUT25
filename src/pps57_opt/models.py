@@ -29,6 +29,12 @@ class OfflineScenario:
     occupancy: float = 0.0
     spillback_risk: bool = False
     seconds_since_last_intervention_s: Optional[float] = None
+    # P4 (OPE inputs). behavior_policy_action: ação que a política em execução
+    # de facto tomou no log (a "behavior policy"). realized_outcome: KPI por-
+    # decisão observado, quando existir no event row — hoje ausente no corpus,
+    # logo None e o OPE devolve honestamente "inconclusive_without_outcomes".
+    behavior_policy_action: Optional[str] = None
+    realized_outcome: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -48,6 +54,8 @@ class OfflineScenario:
             "occupancy": self.occupancy,
             "spillback_risk": self.spillback_risk,
             "seconds_since_last_intervention_s": self.seconds_since_last_intervention_s,
+            "behavior_policy_action": self.behavior_policy_action,
+            "realized_outcome": self.realized_outcome,
         }
 
 

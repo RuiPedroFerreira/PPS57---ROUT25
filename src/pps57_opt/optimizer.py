@@ -2,6 +2,7 @@
 """Deterministic offline policy optimization with a mandatory safety filter."""
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 import json
 from typing import Dict, Iterable, List, Optional
@@ -349,6 +350,20 @@ class OfflineOptimizationController:
             if chosen.action != base.action:
                 action_changes += 1
 
+        # P4 observability: quão frequentemente o shield bloqueou a ação proposta,
+        # repartido por ação proposta e por regra de segurança (a ação safe de um
+        # candidato bloqueado mantém a proposta, logo .action == ação proposta). O
+        # NOVO sinal são as repartições (by_proposed_action / by_safety_reason) e a
+        # taxa; override_count == unsafe_candidates_filtered por construção, mantido
+        # para o sub-dict ser auto-contido e auditável.
+        blocked = [item for item in candidates if item.is_safety_blocked]
+        shield_overrides = {
+            "override_count": len(blocked),
+            "override_rate": round(len(blocked) / len(candidates), 4) if candidates else 0.0,
+            "by_proposed_action": dict(sorted(Counter(item.action for item in blocked).items())),
+            "by_safety_reason": dict(sorted(Counter(item.safety_reason for item in blocked).items())),
+        }
+
         summary = {
             "component_id": self.optimization_config.raw.get("component_id"),
             "version": self.optimization_config.raw.get("version"),
@@ -372,6 +387,7 @@ class OfflineOptimizationController:
                 "optimized_action_changes_vs_baseline."
             ),
             "baseline_unsafe_scenarios": baseline_unsafe,
+            "shield_overrides": shield_overrides,
             "optimized_action_changes_vs_baseline": action_changes,
             "optimized_action_unchanged_vs_baseline": len(selected) - action_changes,
             "baseline_by_action": baseline_by_action,

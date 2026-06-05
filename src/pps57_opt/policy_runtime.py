@@ -147,8 +147,11 @@ class RuntimePolicy:
                 notes=list(baseline.notes)
                 + notes
                 + [
+                    # Token estruturado e grep-able para que overrides do guard possam
+                    # vir a ser contados em logs (ainda sem consumidor dedicado).
+                    "shield_guard_override:policy_non_actuating_rule_kept_baseline_actuation",
                     "Runtime policy guard: non-actuating RL/optimized rule did not suppress "
-                    "baseline actuation because allow_policy_suppress_baseline_actuation=false."
+                    "baseline actuation because allow_policy_suppress_baseline_actuation=false.",
                 ]
             )
         return decision_for_action(
