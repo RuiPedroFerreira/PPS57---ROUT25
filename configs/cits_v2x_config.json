@@ -98,6 +98,14 @@
         "acceptance_mode": "processing_for_decision_engine",
         "default_reject_reason": "not_eligible_for_priority"
     },
+    "schedule_plan": {
+        "_comment": "Stand-in determinístico de aderência a horário (AVL/APC). Desligado por defeito; ligar desloca KPIs. Ver pps57_cits.schedule_plan.",
+        "enabled": false,
+        "random_seed": 57,
+        "timetable_source": "configs/sumo_scenario_base.json",
+        "schedule_delay_scale_s": 90.0,
+        "headway_deviation_fraction": 0.25
+    },
     "safety_constraints": {
         "min_green_s": 8,
         "max_green_extension_s": 12,

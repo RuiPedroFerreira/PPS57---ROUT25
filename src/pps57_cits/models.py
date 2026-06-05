@@ -22,6 +22,11 @@ class VehicleObservation:
     accumulated_waiting_time_s: float = 0.0
     schedule_delay_s: float = 0.0
     headway_deviation_s: float = 0.0
+    # True quando schedule_delay_s/headway_deviation_s vêm de um
+    # SchedulePlanProvider (stand-in AVL/APC). Permite à OBU distinguir
+    # "provider disse 0.0 (a horas)" de "sem provider, default 0.0" e só então
+    # recair no proxy de waiting-time. Ver pps57_cits.schedule_plan.
+    schedule_adherence_sourced: bool = False
     route_edges: List[str] = field(default_factory=list)
     next_edge_id: str = ""
     queue_ahead_vehicle_count: int = 0

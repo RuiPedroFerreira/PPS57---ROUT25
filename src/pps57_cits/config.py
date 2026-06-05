@@ -58,6 +58,10 @@ class CITSConfig:
         return self.raw.get("safety_constraints", {})
 
     @property
+    def schedule_plan(self) -> Dict[str, Any]:
+        return self.raw.get("schedule_plan", {})
+
+    @property
     def logging(self) -> Dict[str, Any]:
         return self.raw.get("logging", {})
 
