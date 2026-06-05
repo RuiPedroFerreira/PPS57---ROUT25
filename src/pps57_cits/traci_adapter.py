@@ -2,6 +2,7 @@
 """Adaptador TraCI para ler estado SUMO durante a emulação C-ITS."""
 from __future__ import annotations
 
+from dataclasses import replace
 import importlib
 import os
 from pathlib import Path
@@ -14,6 +15,7 @@ from pps57_sumo.environment import apply_sumo_environment
 
 from .config import CITSConfig, IntersectionConfig
 from .models import NetworkStateSnapshot, SignalState, VehicleObservation
+from .schedule_plan import SchedulePlanProvider
 
 
 class TraciUnavailableError(RuntimeError):
@@ -31,6 +33,10 @@ class TraciSimulationAdapter:
         self._controlled_links_cache: dict[str, list[Any]] = {}
         self._subscribed_lanes: set[str] = set()
         self._subscription_var_ids_by_name: dict[str, object] = {}
+        # Stand-in AVL/APC opcional; None quando schedule_plan.enabled=false
+        # (default) -> observações mantêm schedule_delay_s/headway 0.0 e a OBU
+        # recai no proxy de waiting-time (comportamento inalterado).
+        self._schedule_plan = SchedulePlanProvider.from_config(config)
 
     def start(self, extra_args: Optional[List[str]] = None) -> None:
         apply_sumo_environment()
@@ -83,14 +89,15 @@ class TraciSimulationAdapter:
 
     def read_vehicle_observations(self) -> List[VehicleObservation]:
         traci = self._require_traci()
+        sim_time_s = float(_safe_call(lambda: traci.simulation.getTime()) or 0.0)
         observations: List[VehicleObservation] = []
         for vehicle_id in traci.vehicle.getIDList():
-            observation = self._read_vehicle_observation(vehicle_id)
+            observation = self._read_vehicle_observation(vehicle_id, sim_time_s)
             if observation is not None:
                 observations.append(observation)
         return observations
 
-    def _read_vehicle_observation(self, vehicle_id: str) -> Optional[VehicleObservation]:
+    def _read_vehicle_observation(self, vehicle_id: str, sim_time_s: float = 0.0) -> Optional[VehicleObservation]:
         traci = self._require_traci()
         try:
             edge_id = traci.vehicle.getRoadID(vehicle_id)
@@ -108,7 +115,7 @@ class TraciSimulationAdapter:
             lane_length = self._lane_length(lane_id)
             queue_ahead = self._queue_ahead_vehicle_count(lane_id, lane_position)
             accumulated_waiting_time = float(_safe_call(lambda: traci.vehicle.getAccumulatedWaitingTime(vehicle_id)) or 0.0)
-            return VehicleObservation(
+            observation = VehicleObservation(
                 vehicle_id=vehicle_id,
                 vehicle_class=str(_safe_call(lambda: traci.vehicle.getVehicleClass(vehicle_id)) or ""),
                 type_id=str(_safe_call(lambda: traci.vehicle.getTypeID(vehicle_id)) or ""),
@@ -126,8 +133,38 @@ class TraciSimulationAdapter:
                 queue_ahead_vehicle_count=queue_ahead,
                 stop_count=int(_safe_call(lambda: traci.vehicle.getStopState(vehicle_id)) or 0),
             )
+            return self._with_schedule_adherence(observation, sim_time_s)
         except Exception:
             return None
+
+    def _with_schedule_adherence(
+        self, observation: VehicleObservation, sim_time_s: float
+    ) -> VehicleObservation:
+        """Injeta schedule_delay_s/headway_deviation_s do provider, se houver.
+
+        VehicleObservation é frozen, logo usa-se dataclasses.replace. Sem
+        provider (default), ou para linhas fora do horário, a observação fica
+        inalterada (schedule_adherence_sourced=False -> OBU usa o proxy).
+        """
+        if self._schedule_plan is None:
+            return observation
+        # Fail-open: o feed de horário é um input opcional, não um portão de
+        # segurança. Um erro do provider nunca deve descartar uma observação
+        # real (o caller envolve isto num try que devolveria None) -> recai na
+        # observação sem aderência (OBU usa o proxy).
+        try:
+            adherence = self._schedule_plan.schedule_adherence_for(observation, sim_time_s)
+        except Exception:
+            return observation
+        if adherence is None:
+            return observation
+        schedule_delay_s, headway_deviation_s = adherence
+        return replace(
+            observation,
+            schedule_delay_s=schedule_delay_s,
+            headway_deviation_s=headway_deviation_s,
+            schedule_adherence_sourced=True,
+        )
 
     def _lane_length(self, lane_id: str) -> float:
         if lane_id not in self._lane_length_cache:

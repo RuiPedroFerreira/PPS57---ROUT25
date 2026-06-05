@@ -389,6 +389,11 @@ class OBUEmulator:
         return observation.is_bus_like
 
     def _effective_schedule_delay(self, observation: VehicleObservation) -> float:
+        # Com um SchedulePlanProvider ligado (stand-in AVL/APC), o atraso vem
+        # do horário e é a fonte autoritativa — inclusive 0.0 (a horas). Sem
+        # provider, recai no proxy de waiting-time do SUMO.
+        if observation.schedule_adherence_sourced:
+            return observation.schedule_delay_s
         return max(
             observation.schedule_delay_s,
             observation.waiting_time_s,
