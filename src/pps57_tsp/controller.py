@@ -34,6 +34,7 @@ from pps57_opt.policy_runtime import RuntimePolicy
 
 from .actuator import TraciTSPActuator
 from .config import TSPConfig
+from .corridor_arbiter import CorridorArbiter
 from .engine import TSPDecisionEngine
 from .logger import TSPJsonlLogger, write_tsp_summary
 from .models import ActuationResult, DecisionStatus, ReasonCode, TSPAction, TSPDecision
@@ -63,6 +64,9 @@ class TSPControlController:
         self.rsu_agents = build_rsu_agents(self.cits_config)
         self.engine = TSPDecisionEngine(self.cits_config, self.tsp_config)
         self.safety = TSPSafetyLayer(self.cits_config, self.tsp_config)
+        # P6: árbitro de corredor (cross-TLS). No-op quando o bloco `corridor`
+        # está ausente da config; corre pré-Safety e só desce decisões.
+        self.corridor_arbiter = CorridorArbiter(self.cits_config, self.tsp_config)
         self.request_store = PriorityRequestStore(
             ttl_s=float(self.cits_config.obu_policy.get("request_lifecycle_ttl_s", 30.0))
         )
@@ -292,6 +296,21 @@ class TSPControlController:
                 proposed = proposed.copy_with(
                     notes=list(proposed.notes) + [_network_state_note(network_states[request.tls_id])]
                 )
+            # P6: árbitro de corredor (cross-TLS), pré-Safety e downgrade-only.
+            # Só corre para ações atuáveis; no-op completo se o bloco `corridor`
+            # estiver ausente. allow=True com nota -> flag green-wave (não muda
+            # a ação); allow=False -> defer mais abaixo (mirror da supressão).
+            arbiter_outcome = (
+                self.corridor_arbiter.arbitrate(
+                    proposed,
+                    recovery_debt_by_tls=self.safety.recovery_debt_by_tls,
+                    network_states=network_states,
+                )
+                if proposed.requires_actuation
+                else None
+            )
+            if arbiter_outcome is not None and arbiter_outcome.note:
+                proposed = proposed.copy_with(notes=list(proposed.notes) + [arbiter_outcome.note])
             # Supressão de mesmo-passo ANTES da Safety Layer: se este TLS já
             # interveio neste passo, o pedido é superseded (não atuável) — e não
             # bloqueado por cooldown, que a intervenção anterior deste mesmo passo
@@ -313,6 +332,26 @@ class TSPControlController:
                     no_actuation=not getattr(actuator, "apply_actuation", False),
                     command="none",
                     reason=ReasonCode.SUPERSEDED_BY_EARLIER_INTERVENTION_SAME_STEP.value,
+                )
+            elif proposed.requires_actuation and arbiter_outcome is not None and not arbiter_outcome.allow:
+                # Defer do árbitro de corredor: desce para NOT_ACTUABLE e salta a
+                # atuação (como a supressão). A Safety Layer continua a ser o
+                # portão final — um pedido deferido nunca chega a APPROVED.
+                safe_decision = proposed.copy_with(
+                    status=DecisionStatus.NOT_ACTUABLE.value,
+                    reason=arbiter_outcome.reason_code,
+                    notes=list(proposed.notes)
+                    + ["Corridor arbiter deferiu o pedido antes da Safety Layer (downgrade-only; nunca aprova)."],
+                )
+                result = ActuationResult(
+                    decision_id=safe_decision.decision_id,
+                    timestamp_s=sim_time_s,
+                    tls_id=safe_decision.tls_id,
+                    action=safe_decision.action,
+                    applied=False,
+                    no_actuation=not getattr(actuator, "apply_actuation", False),
+                    command="none",
+                    reason=arbiter_outcome.reason_code,
                 )
             else:
                 validation = self.safety.validate(proposed, signal_state, sim_time_s)

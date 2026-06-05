@@ -559,6 +559,41 @@ class Package4TSPTestCase(unittest.TestCase):
         self.assertEqual(superseded[0].status, DecisionStatus.NOT_ACTUABLE.value)
         self.assertFalse(any(a.applied for a in actuations))
 
+    def test_corridor_arbiter_defer_is_downgrade_only_in_controller_loop(self) -> None:
+        # P6: a corridor defer (pre-Safety) must downgrade to NOT_ACTUABLE, never
+        # reach APPROVED, never actuate, and NOT mark the TLS intervened (so a
+        # same-step follow-up is corridor-deferred, not superseded).
+        tsp = replace(self.tsp, raw={**self.tsp.raw, "corridor": {"max_corridor_recovery_debt_s": 1.0}})
+        controller = TSPControlController(self.cits, tsp)
+        controller.safety.recovery_debt_by_tls["I2"] = 5.0  # over the 1.0 corridor cap
+
+        class _NullLogger:
+            def write(self, item) -> None:  # noqa: ANN001
+                pass
+
+        req1 = self._request(vehicle_id="bus_a")
+        req2 = self._request(vehicle_id="bus_b")
+        decisions: list = []
+        actuations: list = []
+        controller._process_acknowledged_requests(
+            responses=[self._ack(req1), self._ack(req2)],
+            requests_by_id={req1.request_id: req1, req2.request_id: req2},
+            signal_states={"I2": self._state()},
+            actuator=TraciTSPActuator(adapter=None, apply_actuation=False),  # type: ignore[arg-type]
+            sim_time_s=100.0,
+            decision_logger=_NullLogger(),
+            actuation_logger=_NullLogger(),
+            decisions=decisions,
+            actuations=actuations,
+        )
+        self.assertEqual(len(decisions), 2)
+        for d in decisions:
+            self.assertEqual(d.status, DecisionStatus.NOT_ACTUABLE.value)
+            self.assertNotEqual(d.status, DecisionStatus.APPROVED.value)
+            # Both corridor-deferred (NOT "superseded") => defer never marked I2 intervened.
+            self.assertEqual(d.reason, "deferred_corridor_recovery_debt_exhausted")
+        self.assertFalse(any(a.applied for a in actuations))
+
     def test_signal_program_verification_detects_mismatch_and_actuated(self) -> None:
         # C3/C4: reconciliação do phase_mapping e deteção de TLS atuado.
         controller = TSPControlController(self.cits, self.tsp)
