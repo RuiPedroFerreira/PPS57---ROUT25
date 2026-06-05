@@ -64,6 +64,14 @@ class PolicyOptimizationTestCase(unittest.TestCase):
             self.assertGreater(summary["candidate_count"], summary["scenario_count"])
             self.assertGreater(summary["unsafe_candidates_filtered"], 0)
             self.assertGreaterEqual(summary["optimized_reward"], summary["baseline_reward"])
+            # P4 shield observability: structured override counter mirrors blocks.
+            shield = summary["shield_overrides"]
+            self.assertEqual(shield["override_count"], summary["unsafe_candidates_filtered"])
+            self.assertGreater(shield["override_count"], 0)
+            self.assertGreaterEqual(shield["override_rate"], 0.0)
+            self.assertIsInstance(shield["by_proposed_action"], dict)
+            self.assertIsInstance(shield["by_safety_reason"], dict)
+            self.assertEqual(sum(shield["by_proposed_action"].values()), shield["override_count"])
             self.assertTrue((tmp_root / "outputs/offline_policy_samples.jsonl").exists())
             self.assertTrue((tmp_root / "outputs/policy_candidates.jsonl").exists())
             self.assertTrue((tmp_root / "reports/policy_report.json").exists())

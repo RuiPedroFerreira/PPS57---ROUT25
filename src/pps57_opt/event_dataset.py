@@ -170,6 +170,8 @@ def load_event_training_scenarios(
                 occupancy=float(network_state["occupancy"]),
                 spillback_risk=bool(network_state["spillback_risk"]),
                 seconds_since_last_intervention_s=seconds_since,
+                behavior_policy_action=(str(row["action"]) if row.get("action") is not None else None),
+                realized_outcome=_optional_float(row.get("realized_outcome")),
             )
         )
         _maybe_record_intervention(row, last_applied_intervention_by_tls, intervention_actions)
