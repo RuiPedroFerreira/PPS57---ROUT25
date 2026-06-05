@@ -7,6 +7,22 @@ from typing import Any, List, Optional
 
 
 @dataclass(frozen=True)
+class EtaParams:
+    """Constantes físicas do cálculo de ETA à stopline (externalizadas em P2).
+
+    Os defaults reproduzem exactamente os literais anteriores, pelo que
+    eta_to_stopline_s é byte-idêntico quando state_estimation está ausente. O
+    adaptador injeta valores vindos de config; construções diretas (testes)
+    usam estes defaults.
+    """
+
+    free_flow_speed_mps: float = 8.0
+    queue_penalty_s: float = 2.0
+    waiting_cap_s: float = 15.0
+    min_speed_mps: float = 0.5
+
+
+@dataclass(frozen=True)
 class VehicleObservation:
     vehicle_id: str
     vehicle_class: str
@@ -31,6 +47,7 @@ class VehicleObservation:
     next_edge_id: str = ""
     queue_ahead_vehicle_count: int = 0
     stop_count: int = 0
+    eta_params: EtaParams = field(default_factory=EtaParams)
 
     @property
     def distance_to_stopline_m(self) -> float:
@@ -38,13 +55,13 @@ class VehicleObservation:
 
     @property
     def eta_to_stopline_s(self) -> float:
+        params = self.eta_params
         distance = self.distance_to_stopline_m
-        free_flow_speed = 8.0
-        current_speed_eta = distance / max(self.speed_mps, 0.5)
-        free_flow_eta = distance / free_flow_speed
-        queue_penalty_s = self.queue_ahead_vehicle_count * 2.0
-        if self.speed_mps < 0.5:
-            return free_flow_eta + queue_penalty_s + min(self.waiting_time_s, 15.0)
+        current_speed_eta = distance / max(self.speed_mps, params.min_speed_mps)
+        free_flow_eta = distance / params.free_flow_speed_mps
+        queue_penalty_s = self.queue_ahead_vehicle_count * params.queue_penalty_s
+        if self.speed_mps < params.min_speed_mps:
+            return free_flow_eta + queue_penalty_s + min(self.waiting_time_s, params.waiting_cap_s)
         return min(current_speed_eta, free_flow_eta + queue_penalty_s)
 
     @property
