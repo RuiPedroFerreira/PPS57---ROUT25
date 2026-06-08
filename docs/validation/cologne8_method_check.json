@@ -1,0 +1,160 @@
+{
+  "interpretation": "Map-agnostic NetworkProfile reproduced SUMO's loaded TLS programs with 0 mismatch(es) across 7 probed traffic light(s) of 8 in a real external reference network; the TSP engine + Safety Layer ran end-to-end on each. Safety blocks are correct fail-closed verdicts.",
+  "network_fingerprint_sha256": "51194519fd4d69726612d38b44606637c31389b86079f909139ba8f1aaffd2a8",
+  "probes": [
+    {
+      "decision_action": "early_green",
+      "decision_reason": "truncate_conflicting_phase_to_anticipate_priority_movement_green",
+      "mismatch_count": 0,
+      "safety_reason": "approved_red_truncation",
+      "safety_status": "approved",
+      "selected_movement": {
+        "conflict_count": 8,
+        "from_edge": "-22917421#14",
+        "movement_id": "247379907_movement_22917421_14_to_186623965_16_public_transport",
+        "target_phase_index": 4,
+        "target_signal_group_id": "247379907_movement_22917421_14_to_186623965_16",
+        "to_edge": "-186623965#16"
+      },
+      "status": "probed",
+      "tls_id": "247379907"
+    },
+    {
+      "decision_action": "early_green",
+      "decision_reason": "truncate_conflicting_phase_to_anticipate_priority_movement_green",
+      "mismatch_count": 0,
+      "safety_reason": "approved_red_truncation",
+      "safety_status": "approved",
+      "selected_movement": {
+        "conflict_count": 8,
+        "from_edge": "-23283579#0",
+        "movement_id": "252017285_movement_23283579_0_to_133081985_1_public_transport",
+        "target_phase_index": 2,
+        "target_signal_group_id": "252017285_movement_23283579_0_to_133081985_1",
+        "to_edge": "-133081985#1"
+      },
+      "status": "probed",
+      "tls_id": "252017285"
+    },
+    {
+      "decision_action": "early_green",
+      "decision_reason": "truncate_conflicting_phase_to_anticipate_priority_movement_green",
+      "mismatch_count": 0,
+      "safety_reason": "approved_red_truncation",
+      "safety_status": "approved",
+      "selected_movement": {
+        "conflict_count": 5,
+        "from_edge": "-24487264",
+        "movement_id": "256201389_movement_24487264_to_23648008_3_public_transport",
+        "target_phase_index": 4,
+        "target_signal_group_id": "256201389_movement_24487264_to_23648008_3",
+        "to_edge": "-23648008#3"
+      },
+      "status": "probed",
+      "tls_id": "256201389"
+    },
+    {
+      "decision_action": "early_green",
+      "decision_reason": "truncate_conflicting_phase_to_anticipate_priority_movement_green",
+      "mismatch_count": 0,
+      "safety_reason": "approved_red_truncation",
+      "safety_status": "approved",
+      "selected_movement": {
+        "conflict_count": 8,
+        "from_edge": "-297047310#2",
+        "movement_id": "26110729_movement_297047310_2_to_186623965_14_public_transport",
+        "target_phase_index": 4,
+        "target_signal_group_id": "26110729_movement_297047310_2_to_186623965_14",
+        "to_edge": "-186623965#14"
+      },
+      "status": "probed",
+      "tls_id": "26110729"
+    },
+    {
+      "decision_action": "early_green",
+      "decision_reason": "truncate_conflicting_phase_to_anticipate_priority_movement_green",
+      "mismatch_count": 0,
+      "safety_reason": "approved_red_truncation",
+      "safety_status": "approved",
+      "selected_movement": {
+        "conflict_count": 5,
+        "from_edge": "-23648008#0",
+        "movement_id": "280120513_movement_23648008_0_to_297047307_public_transport",
+        "target_phase_index": 4,
+        "target_signal_group_id": "280120513_movement_23648008_0_to_297047307",
+        "to_edge": "-297047307"
+      },
+      "status": "probed",
+      "tls_id": "280120513"
+    },
+    {
+      "detail": "No suitable movement found with target phase reachable through an intergreen phase.",
+      "status": "no_reachable_movement",
+      "tls_id": "32319828"
+    },
+    {
+      "decision_action": "early_green",
+      "decision_reason": "truncate_conflicting_phase_to_anticipate_priority_movement_green",
+      "mismatch_count": 0,
+      "safety_reason": "approved_red_truncation",
+      "safety_status": "approved",
+      "selected_movement": {
+        "conflict_count": 5,
+        "from_edge": "8716807#6",
+        "movement_id": "62426694_movement_8716807_6_to_297047308_public_transport",
+        "target_phase_index": 4,
+        "target_signal_group_id": "62426694_movement_8716807_6_to_297047308",
+        "to_edge": "-297047308"
+      },
+      "status": "probed",
+      "tls_id": "62426694"
+    },
+    {
+      "decision_action": "early_green",
+      "decision_reason": "truncate_conflicting_phase_to_anticipate_priority_movement_green",
+      "mismatch_count": 0,
+      "safety_reason": "approved_red_truncation",
+      "safety_status": "approved",
+      "selected_movement": {
+        "conflict_count": 8,
+        "from_edge": "-22959475#4",
+        "movement_id": "cluster_1098574052_1098574061_247379905_movement_22959475_4_to_22917421_14_public_transport",
+        "target_phase_index": 4,
+        "target_signal_group_id": "cluster_1098574052_1098574061_247379905_movement_22959475_4_to_22917421_14",
+        "to_edge": "-22917421#14"
+      },
+      "status": "probed",
+      "tls_id": "cluster_1098574052_1098574061_247379905"
+    }
+  ],
+  "sim_time_s": 30.0,
+  "source_of_truth": {
+    "bytes": 354765,
+    "commit_sha": "f2d1d871ca79febb9a60b2b64fec2f9c6470e129",
+    "data_license": "Creative Commons (cologne8 data, TAPASCologne/OSM lineage)",
+    "note": "Downloaded at build time into a git-ignored dir; not redistributed in this repo.",
+    "package_license": "MIT (sumo-rl)",
+    "raw_url": "https://raw.githubusercontent.com/LucasAlegre/sumo-rl/f2d1d871ca79febb9a60b2b64fec2f9c6470e129/sumo_rl/nets/RESCO/cologne8/cologne8.net.xml",
+    "repo": "https://github.com/LucasAlegre/sumo-rl",
+    "repo_path": "sumo_rl/nets/RESCO/cologne8/cologne8.net.xml",
+    "scenario": "RESCO cologne8 (8-intersection real Cologne slice)",
+    "sha256": "51194519fd4d69726612d38b44606637c31389b86079f909139ba8f1aaffd2a8",
+    "tag": "v1.4.5",
+    "vendored": false
+  },
+  "summary": {
+    "decision_actions_seen": [
+      "early_green"
+    ],
+    "max_profile_mismatch_count": 0,
+    "safety_statuses_seen": [
+      "approved"
+    ],
+    "tls_no_reachable_movement": 1,
+    "tls_probed": 7,
+    "tls_total": 8,
+    "zero_mismatch_on_all_probes": true
+  },
+  "validation_phase": "RESCO_cologne8_reference_method_port",
+  "verdict": "pass"
+}
