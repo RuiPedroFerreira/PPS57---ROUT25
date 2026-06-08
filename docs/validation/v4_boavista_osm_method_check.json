@@ -1,6 +1,6 @@
 {
   "interpretation": "Map-agnostic NetworkProfile reproduced SUMO's loaded TLS programs with 0 mismatch(es) across 35 probed traffic light(s) of 60 in a real external reference network; the TSP engine + Safety Layer ran end-to-end on each. Safety blocks are correct fail-closed verdicts.",
-  "network_fingerprint_sha256": "fd604bc5beb4bd3a300a4e8e0a141ddbb69577d1fe7f507981e548f3709020a6",
+  "network_fingerprint_sha256": "98c139ee1e4af992ffcb45f662ea2960fa05904f878297ad5bec41302c0a91ef",
   "probes": [
     {
       "decision_action": "early_green",
@@ -727,7 +727,7 @@
   "source_of_truth": {
     "net": {
       "input_osm": "/Users/ruipedro/Desktop/PPS57---ROUT25/.tools/boavista-osm/boavista.osm.xml",
-      "net_sha256": "fd604bc5beb4bd3a300a4e8e0a141ddbb69577d1fe7f507981e548f3709020a6",
+      "net_sha256": "98c139ee1e4af992ffcb45f662ea2960fa05904f878297ad5bec41302c0a91ef",
       "note": "OSM traffic_signals -> static TLS (real signal LOCATIONS, netconvert-default TIMINGS; real signal plans are not openly available).",
       "options": "--geometry.remove --roundabouts.guess --ramps.guess --junctions.join --tls.guess-signals --tls.discard-simple --tls.join --keep-edges.by-vclass passenger --remove-edges.isolated --no-turnarounds.tls --tls.default-type static --no-warnings true",
       "tool": "Eclipse SUMO netconvert 1.26.0",
@@ -761,6 +761,7 @@
       "blocked_by_safety"
     ],
     "tls_no_reachable_movement": 25,
+    "tls_probe_errors": 0,
     "tls_probed": 35,
     "tls_total": 60,
     "zero_mismatch_on_all_probes": true
