@@ -1,0 +1,239 @@
+{
+  "interpretation": "Map-agnostic NetworkProfile reproduced SUMO's loaded TLS programs with 0 mismatch(es) across 12 probed traffic light(s) of 12 in the real MoST network; the TSP engine + Safety Layer ran end-to-end on each. Safety blocks are correct fail-closed verdicts, not failures.",
+  "network_fingerprint_sha256": "cbbd424956caccdd2fa79c984f934d286176f11f6fa9e5fbbbc2320e30da9937",
+  "probes": [
+    {
+      "decision_action": "early_green",
+      "decision_reason": "truncate_conflicting_phase_to_anticipate_priority_movement_green",
+      "mismatch_count": 0,
+      "safety_reason": "min_green_not_satisfied:4.0<8.0",
+      "safety_status": "blocked_by_safety",
+      "selected_movement": {
+        "conflict_count": 4,
+        "from_edge": "152543",
+        "movement_id": "134872_movement_152543_to_153345_public_transport",
+        "target_phase_index": 3,
+        "target_signal_group_id": "134872_movement_152543_to_153345",
+        "to_edge": "-153345"
+      },
+      "status": "probed",
+      "tls_id": "134872"
+    },
+    {
+      "decision_action": "early_green",
+      "decision_reason": "truncate_conflicting_phase_to_anticipate_priority_movement_green",
+      "mismatch_count": 0,
+      "safety_reason": "min_green_not_satisfied:4.0<8.0",
+      "safety_status": "blocked_by_safety",
+      "selected_movement": {
+        "conflict_count": 6,
+        "from_edge": "-152404#0",
+        "movement_id": "137525_movement_152404_0_to_152330_0_public_transport",
+        "target_phase_index": 3,
+        "target_signal_group_id": "137525_movement_152404_0_to_152330_0",
+        "to_edge": "-152330#0"
+      },
+      "status": "probed",
+      "tls_id": "137525"
+    },
+    {
+      "decision_action": "early_green",
+      "decision_reason": "truncate_conflicting_phase_to_anticipate_priority_movement_green",
+      "mismatch_count": 0,
+      "safety_reason": "min_green_not_satisfied:4.0<8.0",
+      "safety_status": "blocked_by_safety",
+      "selected_movement": {
+        "conflict_count": 5,
+        "from_edge": "-152787#0",
+        "movement_id": "138808_movement_152787_0_to_152810_2_public_transport",
+        "target_phase_index": 3,
+        "target_signal_group_id": "138808_movement_152787_0_to_152810_2",
+        "to_edge": "-152810#2"
+      },
+      "status": "probed",
+      "tls_id": "138808"
+    },
+    {
+      "decision_action": "early_green",
+      "decision_reason": "truncate_conflicting_phase_to_anticipate_priority_movement_green",
+      "mismatch_count": 0,
+      "safety_reason": "min_green_not_satisfied:4.0<8.0",
+      "safety_status": "blocked_by_safety",
+      "selected_movement": {
+        "conflict_count": 1,
+        "from_edge": "152705#1",
+        "movement_id": "140144_movement_152705_1_to_152174_0_public_transport",
+        "target_phase_index": 3,
+        "target_signal_group_id": "140144_movement_152705_1_to_152174_0",
+        "to_edge": "152174#0"
+      },
+      "status": "probed",
+      "tls_id": "140144"
+    },
+    {
+      "decision_action": "early_green",
+      "decision_reason": "truncate_conflicting_phase_to_anticipate_priority_movement_green",
+      "mismatch_count": 0,
+      "safety_reason": "min_green_not_satisfied:4.0<8.0",
+      "safety_status": "blocked_by_safety",
+      "selected_movement": {
+        "conflict_count": 4,
+        "from_edge": "-152814#3",
+        "movement_id": "142742_movement_152814_3_to_152814_2_public_transport",
+        "target_phase_index": 2,
+        "target_signal_group_id": "142742_movement_152814_3_to_152814_2",
+        "to_edge": "-152814#2"
+      },
+      "status": "probed",
+      "tls_id": "142742"
+    },
+    {
+      "decision_action": "early_green",
+      "decision_reason": "truncate_conflicting_phase_to_anticipate_priority_movement_green",
+      "mismatch_count": 0,
+      "safety_reason": "min_green_not_satisfied:4.0<8.0",
+      "safety_status": "blocked_by_safety",
+      "selected_movement": {
+        "conflict_count": 2,
+        "from_edge": "152684",
+        "movement_id": "143517_movement_152684_to_152174_1_public_transport",
+        "target_phase_index": 3,
+        "target_signal_group_id": "143517_movement_152684_to_152174_1",
+        "to_edge": "152174#1"
+      },
+      "status": "probed",
+      "tls_id": "143517"
+    },
+    {
+      "decision_action": "early_green",
+      "decision_reason": "truncate_conflicting_phase_to_anticipate_priority_movement_green",
+      "mismatch_count": 0,
+      "safety_reason": "min_green_not_satisfied:4.0<8.0",
+      "safety_status": "blocked_by_safety",
+      "selected_movement": {
+        "conflict_count": 4,
+        "from_edge": "-153472#3",
+        "movement_id": "144421_movement_153472_3_to_153472_2_public_transport",
+        "target_phase_index": 3,
+        "target_signal_group_id": "144421_movement_153472_3_to_153472_2",
+        "to_edge": "-153472#2"
+      },
+      "status": "probed",
+      "tls_id": "144421"
+    },
+    {
+      "decision_action": "early_green",
+      "decision_reason": "truncate_conflicting_phase_to_anticipate_priority_movement_green",
+      "mismatch_count": 0,
+      "safety_reason": "min_green_not_satisfied:4.0<8.0",
+      "safety_status": "blocked_by_safety",
+      "selected_movement": {
+        "conflict_count": 4,
+        "from_edge": "152903",
+        "movement_id": "146268_movement_152903_to_153477_0_public_transport",
+        "target_phase_index": 3,
+        "target_signal_group_id": "146268_movement_152903_to_153477_0",
+        "to_edge": "-153477#0"
+      },
+      "status": "probed",
+      "tls_id": "146268"
+    },
+    {
+      "decision_action": "early_green",
+      "decision_reason": "truncate_conflicting_phase_to_anticipate_priority_movement_green",
+      "mismatch_count": 0,
+      "safety_reason": "min_green_not_satisfied:4.0<8.0",
+      "safety_status": "blocked_by_safety",
+      "selected_movement": {
+        "conflict_count": 4,
+        "from_edge": "152409#3",
+        "movement_id": "146640_movement_152409_3_to_152330_0_public_transport",
+        "target_phase_index": 2,
+        "target_signal_group_id": "146640_movement_152409_3_to_152330_0",
+        "to_edge": "152330#0"
+      },
+      "status": "probed",
+      "tls_id": "146640"
+    },
+    {
+      "decision_action": "early_green",
+      "decision_reason": "truncate_conflicting_phase_to_anticipate_priority_movement_green",
+      "mismatch_count": 0,
+      "safety_reason": "min_green_not_satisfied:4.0<8.0",
+      "safety_status": "blocked_by_safety",
+      "selected_movement": {
+        "conflict_count": 6,
+        "from_edge": "-152780",
+        "movement_id": "146732_movement_152780_to_152701_2_public_transport",
+        "target_phase_index": 3,
+        "target_signal_group_id": "146732_movement_152780_to_152701_2",
+        "to_edge": "-152701#2"
+      },
+      "status": "probed",
+      "tls_id": "146732"
+    },
+    {
+      "decision_action": "early_green",
+      "decision_reason": "truncate_conflicting_phase_to_anticipate_priority_movement_green",
+      "mismatch_count": 0,
+      "safety_reason": "min_green_not_satisfied:4.0<8.0",
+      "safety_status": "blocked_by_safety",
+      "selected_movement": {
+        "conflict_count": 4,
+        "from_edge": "-152555",
+        "movement_id": "148690_movement_152555_to_153357_2_public_transport",
+        "target_phase_index": 3,
+        "target_signal_group_id": "148690_movement_152555_to_153357_2",
+        "to_edge": "-153357#2"
+      },
+      "status": "probed",
+      "tls_id": "148690"
+    },
+    {
+      "decision_action": "early_green",
+      "decision_reason": "truncate_conflicting_phase_to_anticipate_priority_movement_green",
+      "mismatch_count": 0,
+      "safety_reason": "min_green_not_satisfied:4.0<8.0",
+      "safety_status": "blocked_by_safety",
+      "selected_movement": {
+        "conflict_count": 5,
+        "from_edge": "-152667#1",
+        "movement_id": "cluster_135794_135910_movement_152667_1_to_152657_0_public_transport",
+        "target_phase_index": 0,
+        "target_signal_group_id": "cluster_135794_135910_movement_152667_1_to_152657_0",
+        "to_edge": "152657#0"
+      },
+      "status": "probed",
+      "tls_id": "cluster_135794_135910"
+    }
+  ],
+  "sim_time_s": 30.0,
+  "source_of_truth": {
+    "bytes": 13886007,
+    "commit_sha": "088f97195e9b4a7e2b17a46d7afd3f84e71c73a1",
+    "license": "GPL-3.0",
+    "note": "Downloaded at build time into a git-ignored dir; not redistributed in this repo.",
+    "raw_url": "https://raw.githubusercontent.com/lcodeca/MoSTScenario/088f97195e9b4a7e2b17a46d7afd3f84e71c73a1/scenario/in/most.net.xml",
+    "repo": "https://github.com/lcodeca/MoSTScenario",
+    "repo_path": "scenario/in/most.net.xml",
+    "scenario": "MoST (Monaco SUMO Traffic)",
+    "sha256": "cbbd424956caccdd2fa79c984f934d286176f11f6fa9e5fbbbc2320e30da9937",
+    "tag": "v0.6",
+    "vendored": false
+  },
+  "summary": {
+    "decision_actions_seen": [
+      "early_green"
+    ],
+    "max_profile_mismatch_count": 0,
+    "safety_statuses_seen": [
+      "blocked_by_safety"
+    ],
+    "tls_no_reachable_movement": 0,
+    "tls_probed": 12,
+    "tls_total": 12,
+    "zero_mismatch_on_all_probes": true
+  },
+  "validation_phase": "V1_most_reference_method_port",
+  "verdict": "pass"
+}
