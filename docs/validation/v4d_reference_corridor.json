@@ -51,9 +51,12 @@
     "vehicles": 46
   },
   "run": {
+    "arterial_flows": 2,
     "bus_flows": 6,
+    "duarouter_ok": true,
     "sumo_ok": true,
-    "vehicles_routed": 4651
+    "vehicles_routed": 4651,
+    "webster_ok": true
   },
   "signals": {
     "note": "per-intersection Webster; coordination (green wave) would need tlsCoordinator.py",

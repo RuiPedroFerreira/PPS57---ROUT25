@@ -22,7 +22,6 @@ import json
 import os
 import re
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -32,6 +31,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from pps57_sumo.environment import ensure_sumo_environment, resolve_sumo_home  # noqa: E402
 from pps57_sumo.parse_tripinfo import parse_tripinfo  # noqa: E402
 
 SIM_END_S = 7200
@@ -40,10 +40,12 @@ MADRID_BAND = {"median": 397, "p75": 819, "p90": 1329, "source": "datos.madrid.e
 
 
 def _sumo_home() -> Path:
-    binary = shutil.which("sumo")
-    if not binary:
-        raise SystemExit("sumo not on PATH (activate .venv).")
-    return Path(binary).resolve().parents[1]
+    # Use the shared resolver: it validates tools/ + data/xsd and handles the
+    # /usr/bin + /usr/share split (the binary's grandparent is not SUMO_HOME there).
+    home = resolve_sumo_home()
+    if home is None:
+        raise SystemExit("Could not resolve SUMO_HOME (is SUMO installed / .venv active?).")
+    return home
 
 
 def _tool(sumo_home: Path, name: str) -> Path:
@@ -57,7 +59,8 @@ def _run(cmd, sumo_home: Path) -> subprocess.CompletedProcess:
     # Run from ROOT so SUMO tools echo RELATIVE paths into their XML comments. The
     # repo dir name 'PPS57---ROUT25' contains '---', which is illegal inside an XML
     # comment and breaks the tools' own read-back of absolute paths.
-    env = {**os.environ, "SUMO_HOME": str(sumo_home)}
+    env = ensure_sumo_environment()
+    env["SUMO_HOME"] = str(sumo_home)
     return subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=str(ROOT))
 
 
@@ -186,6 +189,11 @@ def main() -> None:
     edgedata_out = args.work / "boavista_edgedata.xml"
     tripinfo = args.work / "boavista_reference_tripinfo.xml"
 
+    # Fail-fast hygiene: drop stale tool outputs so a later "if file.exists()" can never
+    # read artifacts from a previous (different) run when a tool now fails.
+    for stale in (car_trips, car_routes, arterial_flows, bus_flows, routed, webster, edgedata_out, tripinfo):
+        stale.unlink(missing_ok=True)
+
     # 1) reference background demand (randomTrips, fringe-biased through traffic)
     rt = _run([sys.executable, str(_tool(sumo_home, "randomTrips.py")), "-n", _rel(args.net),
                "-o", _rel(car_trips), "-r", _rel(car_routes), "-b", "0", "-e", str(SIM_END_S),
@@ -237,7 +245,9 @@ def main() -> None:
         },
         "signals": {"tool": "SUMO tlsCycleAdaptation (Webster 1958)", "tls_programs_optimised": n_tls,
                     "note": "per-intersection Webster; coordination (green wave) would need tlsCoordinator.py"},
-        "run": {"vehicles_routed": n_routed, "bus_flows": n_flows, "sumo_ok": sumo.returncode == 0},
+        "run": {"vehicles_routed": n_routed, "bus_flows": n_flows, "arterial_flows": n_art,
+                "duarouter_ok": dua.returncode == 0, "webster_ok": wj.returncode == 0,
+                "sumo_ok": sumo.returncode == 0},
         "kpis_all_vehicles": kpis.get("all_vehicles", {}),
         "kpis_buses": kpis.get("buses", {}),
         "honest_notes": [
@@ -245,7 +255,8 @@ def main() -> None:
             "Signals are Webster-optimal for this demand, not the actual CMP plans.",
             "randomTrips OD is synthetic but rate-calibrated to the referenced arterial band.",
         ],
-        "verdict": "pass" if (n_tls > 0 and sumo.returncode == 0 and kpis.get("buses", {}).get("vehicles", 0) > 0 and in_band) else "review",
+        "verdict": "pass" if (n_tls > 0 and dua.returncode == 0 and sumo.returncode == 0
+                              and kpis.get("buses", {}).get("vehicles", 0) > 0 and in_band) else "review",
     }
     if report["verdict"] != "pass":
         report["debug"] = {"randomtrips_tail": (rt.stderr.strip().splitlines() or [""])[-2:],
