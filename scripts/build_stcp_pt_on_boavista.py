@@ -223,6 +223,7 @@ def main() -> None:
         },
         "lines_mapped": lines_present,
         "line_204_added": "204" in lines_present,
+        "all_corridor_lines_present": set(CORRIDOR_LINES).issubset(lines_present),
         "stop_mapping": {
             "total_in_bbox": len(all_stops),
             "snapped_to_bus_edge": len(snapped),
@@ -247,9 +248,9 @@ def main() -> None:
             "net boundary (roads clipped by the corridor bbox), not interior gaps." if not interior_gaps
             else f"{len(interior_gaps)} stop(s) failed to snap in the interior (real gaps).",
         ],
-        # Pass = all corridor lines incl. 204 instantiated, SUMO loads the stops, and every
-        # non-snapped stop is a boundary-clipping loss (zero interior snapping gaps).
-        "verdict": "pass" if (len(snapped) > 0 and "204" in lines_present
+        # Pass = ALL corridor lines (500/502/204) instantiated, SUMO loads the stops, and
+        # every non-snapped stop is a boundary-clipping loss (zero interior snapping gaps).
+        "verdict": "pass" if (set(CORRIDOR_LINES).issubset(lines_present) and len(snapped) > 0
                               and load["sumo_loads_busstops"] and not interior_gaps) else "review",
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
