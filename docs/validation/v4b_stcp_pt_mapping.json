@@ -1,0 +1,807 @@
+{
+  "busstops_emitted": 52,
+  "honest_notes": [
+    "Projection is affine from the net's own location metadata (no pyproj/PROJ); validated at ~8 m median snap distance.",
+    "Only the corridor segment inside the net bbox is instantiated; stops beyond it are dropped.",
+    "Headways are the real weekday GTFS values (V3); signal timings remain synthetic (V4).",
+    "gtfs2pt not used: it needs rtree+pandas (heavy native deps) that would pollute the locked .venv.",
+    "This emits bus stops + a regenerated services structure on the real net; wiring full bus flows/routes into a runnable scenario (duarouter) is the remaining step.",
+    "Stops that did not snap (16) are all within 200 m of the net boundary (roads clipped by the corridor bbox), not interior gaps."
+  ],
+  "line_204_added": true,
+  "lines_mapped": [
+    "204",
+    "500",
+    "502"
+  ],
+  "services": {
+    "204:0": {
+      "direction": "0",
+      "headway_allday_min": 14.0,
+      "headway_am_peak_min": 12.0,
+      "line": "204",
+      "stops_in_bbox": [
+        {
+          "edge": "212710704",
+          "lane": "212710704_0",
+          "lane_pos_m": 19.27,
+          "lat": 41.166589,
+          "lon": -8.627015,
+          "snap_dist_m": 2.34,
+          "snapped": true,
+          "stop_id": "CVI6",
+          "stop_name": "Carvalhido"
+        },
+        {
+          "edge": "13262695#0",
+          "lane": "13262695#0_0",
+          "lane_pos_m": 13.92,
+          "lat": 41.165012,
+          "lon": -8.631034,
+          "snap_dist_m": 2.16,
+          "snapped": true,
+          "stop_id": "CSBV1",
+          "stop_name": "Casa De Saúde Da Boavista"
+        },
+        {
+          "edge": "454037681#0",
+          "lane": "454037681#0_0",
+          "lane_pos_m": 35.3,
+          "lat": 41.162441,
+          "lon": -8.63292,
+          "snap_dist_m": 5.54,
+          "snapped": true,
+          "stop_id": "MRS2",
+          "stop_name": "Moreira Sá"
+        },
+        {
+          "edge": "176070912",
+          "lane": "176070912_0",
+          "lane_pos_m": 34.47,
+          "lat": 41.161217,
+          "lon": -8.629966,
+          "snap_dist_m": 19.66,
+          "snapped": true,
+          "stop_id": "CMS2",
+          "stop_name": "Casa Da Música (metro)"
+        },
+        {
+          "edge": "608418574#0",
+          "lane": "608418574#0_0",
+          "lane_pos_m": 13.61,
+          "lat": 41.157815,
+          "lon": -8.630409,
+          "snap_dist_m": 7.71,
+          "snapped": true,
+          "stop_id": "BCM5",
+          "stop_name": "Boavista-casa Da Música"
+        },
+        {
+          "edge": "13848825",
+          "lane": "13848825_0",
+          "lane_pos_m": 27.73,
+          "lat": 41.156358,
+          "lon": -8.629598,
+          "snap_dist_m": 4.55,
+          "snapped": true,
+          "stop_id": "RBVM1",
+          "stop_name": "Boavista (mercado)"
+        },
+        {
+          "lat": 41.153838,
+          "lon": -8.641309,
+          "snapped": false,
+          "stop_id": "FCUP1",
+          "stop_name": "Faculdade De Ciências"
+        },
+        {
+          "lat": 41.154528,
+          "lon": -8.644222,
+          "snapped": false,
+          "stop_id": "JB1",
+          "stop_name": "Jardim Botânico"
+        },
+        {
+          "lat": 41.154389,
+          "lon": -8.649028,
+          "snapped": false,
+          "stop_id": "LRD1",
+          "stop_name": "Lordelo"
+        },
+        {
+          "lat": 41.153538,
+          "lon": -8.670916,
+          "snapped": false,
+          "stop_id": "UC1",
+          "stop_name": "Univ. Católica"
+        },
+        {
+          "edge": "28394033",
+          "lane": "28394033_0",
+          "lane_pos_m": 34.19,
+          "lat": 41.155048,
+          "lon": -8.673343,
+          "snap_dist_m": 36.94,
+          "snapped": true,
+          "stop_id": "MFZ1",
+          "stop_name": "Mercado Da Foz"
+        },
+        {
+          "lat": 41.153352,
+          "lon": -8.676527,
+          "snapped": false,
+          "stop_id": "DTR",
+          "stop_name": "Diu/teatro"
+        }
+      ],
+      "weekday_trips": 69
+    },
+    "204:1": {
+      "direction": "1",
+      "headway_allday_min": 15.0,
+      "headway_am_peak_min": 12.0,
+      "line": "204",
+      "stops_in_bbox": [
+        {
+          "lat": 41.154021,
+          "lon": -8.673914,
+          "snapped": false,
+          "stop_id": "MFZ2",
+          "stop_name": "Mercado Da Foz"
+        },
+        {
+          "lat": 41.153543,
+          "lon": -8.671089,
+          "snapped": false,
+          "stop_id": "UC2",
+          "stop_name": "Univ. Católica"
+        },
+        {
+          "lat": 41.154139,
+          "lon": -8.647722,
+          "snapped": false,
+          "stop_id": "LRD2",
+          "stop_name": "Lordelo"
+        },
+        {
+          "lat": 41.154389,
+          "lon": -8.643722,
+          "snapped": false,
+          "stop_id": "JB2",
+          "stop_name": "Jardim Botânico"
+        },
+        {
+          "lat": 41.153614,
+          "lon": -8.641035,
+          "snapped": false,
+          "stop_id": "FCUP2",
+          "stop_name": "Faculdade De Ciências"
+        },
+        {
+          "lat": 41.153444,
+          "lon": -8.626333,
+          "snapped": false,
+          "stop_id": "PRG1",
+          "stop_name": "Pr. Da Galiza"
+        },
+        {
+          "edge": "128245297#0",
+          "lane": "128245297#0_0",
+          "lane_pos_m": 69.21,
+          "lat": 41.156403,
+          "lon": -8.62793,
+          "snap_dist_m": 0.82,
+          "snapped": true,
+          "stop_id": "BS1",
+          "stop_name": "Boavista - B.sucesso"
+        },
+        {
+          "edge": "219527968#0",
+          "lane": "219527968#0_0",
+          "lane_pos_m": 86.66,
+          "lat": 41.15978,
+          "lon": -8.6286,
+          "snap_dist_m": 1.09,
+          "snapped": true,
+          "stop_id": "BCM2",
+          "stop_name": "Boavista-casa Da Música"
+        },
+        {
+          "edge": "483715766#2",
+          "lane": "483715766#2_0",
+          "lane_pos_m": 54.07,
+          "lat": 41.162921,
+          "lon": -8.627502,
+          "snap_dist_m": 13.38,
+          "snapped": true,
+          "stop_id": "GRC1",
+          "stop_name": "Graciosa"
+        },
+        {
+          "edge": "608418840#0",
+          "lane": "608418840#0_0",
+          "lane_pos_m": 169.18,
+          "lat": 41.16632,
+          "lon": -8.626489,
+          "snap_dist_m": 14.02,
+          "snapped": true,
+          "stop_id": "CVI4",
+          "stop_name": "Carvalhido"
+        }
+      ],
+      "weekday_trips": 67
+    },
+    "500:0": {
+      "direction": "0",
+      "headway_allday_min": 13.0,
+      "headway_am_peak_min": 11.0,
+      "line": "500",
+      "stops_in_bbox": [
+        {
+          "lat": 41.153626,
+          "lon": -8.678787,
+          "snapped": false,
+          "stop_id": "PLUZ1",
+          "stop_name": "Praia Da Luz"
+        },
+        {
+          "edge": "13274855#0",
+          "lane": "13274855#0_0",
+          "lane_pos_m": 99.53,
+          "lat": 41.155623,
+          "lon": -8.68046,
+          "snap_dist_m": 10.14,
+          "snapped": true,
+          "stop_id": "PGON1",
+          "stop_name": "Praia De Gondarém"
+        },
+        {
+          "edge": "13274855#7",
+          "lane": "13274855#7_0",
+          "lane_pos_m": 39.84,
+          "lat": 41.157434,
+          "lon": -8.681984,
+          "snap_dist_m": 10.55,
+          "snapped": true,
+          "stop_id": "CRTO1",
+          "stop_name": "Crasto"
+        },
+        {
+          "edge": "207724059#0",
+          "lane": "207724059#0_0",
+          "lane_pos_m": 55.58,
+          "lat": 41.159754,
+          "lon": -8.683879,
+          "snap_dist_m": 4.79,
+          "snapped": true,
+          "stop_id": "MLH1",
+          "stop_name": "Molhe"
+        },
+        {
+          "edge": "1011328582#0",
+          "lane": "1011328582#0_0",
+          "lane_pos_m": 72.36,
+          "lat": 41.163454,
+          "lon": -8.685965,
+          "snap_dist_m": 6.61,
+          "snapped": true,
+          "stop_id": "HMLM3",
+          "stop_name": "Homem Do Leme"
+        },
+        {
+          "edge": "1011321769#0",
+          "lane": "1011321769#0_0",
+          "lane_pos_m": 136.24,
+          "lat": 41.165587,
+          "lon": -8.68717,
+          "snap_dist_m": 7.47,
+          "snapped": true,
+          "stop_id": "TIM1",
+          "stop_name": "Timor"
+        },
+        {
+          "edge": "12302717",
+          "lane": "12302717_0",
+          "lane_pos_m": 0.0,
+          "lat": 41.168236,
+          "lon": -8.687849,
+          "snap_dist_m": 20.18,
+          "snapped": true,
+          "stop_id": "CQ5",
+          "stop_name": "Sea Life Castelo Do Queijo"
+        },
+        {
+          "lat": 41.173823,
+          "lon": -8.688603,
+          "snapped": false,
+          "stop_id": "PCID1",
+          "stop_name": "Pr. Cid. Salvador"
+        }
+      ],
+      "weekday_trips": 71
+    },
+    "500:1": {
+      "direction": "1",
+      "headway_allday_min": 13.0,
+      "headway_am_peak_min": 13.0,
+      "line": "500",
+      "stops_in_bbox": [
+        {
+          "lat": 41.173285,
+          "lon": -8.689272,
+          "snapped": false,
+          "stop_id": "PCID2",
+          "stop_name": "Pr. Cid. Salvador"
+        },
+        {
+          "edge": "-1011321769#4",
+          "lane": "-1011321769#4_0",
+          "lane_pos_m": 69.86,
+          "lat": 41.165182,
+          "lon": -8.68712,
+          "snap_dist_m": 0.02,
+          "snapped": true,
+          "stop_id": "TIM2",
+          "stop_name": "Timor"
+        },
+        {
+          "edge": "-207724059#7",
+          "lane": "-207724059#7_0",
+          "lane_pos_m": 40.2,
+          "lat": 41.162377,
+          "lon": -8.685536,
+          "snap_dist_m": 1.15,
+          "snapped": true,
+          "stop_id": "HMLM2",
+          "stop_name": "Homem Do Leme"
+        },
+        {
+          "edge": "-207724059#7",
+          "lane": "-207724059#7_0",
+          "lane_pos_m": 380.85,
+          "lat": 41.159554,
+          "lon": -8.683929,
+          "snap_dist_m": 1.52,
+          "snapped": true,
+          "stop_id": "MLH2",
+          "stop_name": "Molhe"
+        },
+        {
+          "edge": "-13274855#10",
+          "lane": "-13274855#10_0",
+          "lane_pos_m": 243.91,
+          "lat": 41.157298,
+          "lon": -8.682113,
+          "snap_dist_m": 0.29,
+          "snapped": true,
+          "stop_id": "CRTO2",
+          "stop_name": "Crasto"
+        },
+        {
+          "edge": "-13274855#3",
+          "lane": "-13274855#3_0",
+          "lane_pos_m": 45.66,
+          "lat": 41.155418,
+          "lon": -8.680535,
+          "snap_dist_m": 1.11,
+          "snapped": true,
+          "stop_id": "PGON2",
+          "stop_name": "Praia De Gondarém"
+        }
+      ],
+      "weekday_trips": 70
+    },
+    "502:0": {
+      "direction": "0",
+      "headway_allday_min": 15.0,
+      "headway_am_peak_min": 13.0,
+      "line": "502",
+      "stops_in_bbox": [
+        {
+          "edge": "13854847#0",
+          "lane": "13854847#0_0",
+          "lane_pos_m": 158.5,
+          "lat": 41.157587,
+          "lon": -8.626672,
+          "snap_dist_m": 2.98,
+          "snapped": true,
+          "stop_id": "BVBR2",
+          "stop_name": "Boavista Brasília"
+        },
+        {
+          "edge": "608418573#0",
+          "lane": "608418573#0_0",
+          "lane_pos_m": 6.4,
+          "lat": 41.15895,
+          "lon": -8.62942,
+          "snap_dist_m": 5.4,
+          "snapped": true,
+          "stop_id": "BCM1",
+          "stop_name": "Boavista-casa Da Música"
+        },
+        {
+          "edge": "705491645#0",
+          "lane": "705491645#0_0",
+          "lane_pos_m": 112.62,
+          "lat": 41.158948,
+          "lon": -8.634595,
+          "snap_dist_m": 5.73,
+          "snapped": true,
+          "stop_id": "AGM1",
+          "stop_name": "Agramonte"
+        },
+        {
+          "edge": "975674101#0",
+          "lane": "975674101#0_0",
+          "lane_pos_m": 145.25,
+          "lat": 41.159843,
+          "lon": -8.639918,
+          "snap_dist_m": 7.63,
+          "snapped": true,
+          "stop_id": "ACRD1",
+          "stop_name": "António Cardoso"
+        },
+        {
+          "edge": "975224682",
+          "lane": "975224682_0",
+          "lane_pos_m": 8.95,
+          "lat": 41.16052,
+          "lon": -8.64406,
+          "snap_dist_m": 6.82,
+          "snapped": true,
+          "stop_id": "BSS1",
+          "stop_name": "Bessa"
+        },
+        {
+          "edge": "135411081#0",
+          "lane": "135411081#0_0",
+          "lane_pos_m": 67.86,
+          "lat": 41.16109,
+          "lon": -8.64746,
+          "snap_dist_m": 5.12,
+          "snapped": true,
+          "stop_id": "FOCO1",
+          "stop_name": "Foco"
+        },
+        {
+          "edge": "1016573835",
+          "lane": "1016573835_0",
+          "lane_pos_m": 26.49,
+          "lat": 41.161845,
+          "lon": -8.651927,
+          "snap_dist_m": 9.18,
+          "snapped": true,
+          "stop_id": "PINM1",
+          "stop_name": "Pinheiro Manso"
+        },
+        {
+          "edge": "974815081#0",
+          "lane": "974815081#0_0",
+          "lane_pos_m": 80.15,
+          "lat": 41.162848,
+          "lon": -8.657954,
+          "snap_dist_m": 8.67,
+          "snapped": true,
+          "stop_id": "SRV3",
+          "stop_name": "Serralves"
+        },
+        {
+          "edge": "41018357",
+          "lane": "41018357_0",
+          "lane_pos_m": 78.47,
+          "lat": 41.1632,
+          "lon": -8.660057,
+          "snap_dist_m": 5.43,
+          "snapped": true,
+          "stop_id": "PNV2",
+          "stop_name": "Paulo Novais"
+        },
+        {
+          "edge": "224649279#0",
+          "lane": "224649279#0_0",
+          "lane_pos_m": 39.12,
+          "lat": 41.163792,
+          "lon": -8.663486,
+          "snap_dist_m": 12.33,
+          "snapped": true,
+          "stop_id": "FTM4",
+          "stop_name": "Fonte Da Moura"
+        },
+        {
+          "edge": "224649279#0",
+          "lane": "224649279#0_0",
+          "lane_pos_m": 406.28,
+          "lat": 41.164488,
+          "lon": -8.667763,
+          "snap_dist_m": 11.04,
+          "snapped": true,
+          "stop_id": "LGO2",
+          "stop_name": "Liceu Garcia Orta"
+        },
+        {
+          "edge": "1164572117",
+          "lane": "1164572117_0",
+          "lane_pos_m": 3.53,
+          "lat": 41.165106,
+          "lon": -8.671218,
+          "snap_dist_m": 14.43,
+          "snapped": true,
+          "stop_id": "PRCD3",
+          "stop_name": "Parque Da Cidade"
+        },
+        {
+          "edge": "224649287#7",
+          "lane": "224649287#7_0",
+          "lane_pos_m": 15.65,
+          "lat": 41.166247,
+          "lon": -8.678083,
+          "snap_dist_m": 15.89,
+          "snapped": true,
+          "stop_id": "NEV2",
+          "stop_name": "Nevogilde"
+        },
+        {
+          "edge": "224649287#7",
+          "lane": "224649287#7_0",
+          "lane_pos_m": 555.77,
+          "lat": 41.167301,
+          "lon": -8.684367,
+          "snap_dist_m": 19.47,
+          "snapped": true,
+          "stop_id": "MAL2",
+          "stop_name": "Malaca"
+        },
+        {
+          "edge": "12302717",
+          "lane": "12302717_0",
+          "lane_pos_m": 0.0,
+          "lat": 41.168236,
+          "lon": -8.687849,
+          "snap_dist_m": 20.18,
+          "snapped": true,
+          "stop_id": "CQ5",
+          "stop_name": "Sea Life Castelo Do Queijo"
+        },
+        {
+          "lat": 41.173823,
+          "lon": -8.688603,
+          "snapped": false,
+          "stop_id": "PCID1",
+          "stop_name": "Pr. Cid. Salvador"
+        }
+      ],
+      "weekday_trips": 67
+    },
+    "502:1": {
+      "direction": "1",
+      "headway_allday_min": 15.0,
+      "headway_am_peak_min": 13.0,
+      "line": "502",
+      "stops_in_bbox": [
+        {
+          "lat": 41.173285,
+          "lon": -8.689272,
+          "snapped": false,
+          "stop_id": "PCID2",
+          "stop_name": "Pr. Cid. Salvador"
+        },
+        {
+          "edge": "224649287#15",
+          "lane": "224649287#15_0",
+          "lane_pos_m": 3.39,
+          "lat": 41.167532,
+          "lon": -8.687201,
+          "snap_dist_m": 6.11,
+          "snapped": true,
+          "stop_id": "CQ3",
+          "stop_name": "Castelo Do Queijo"
+        },
+        {
+          "edge": "903719972#0",
+          "lane": "903719972#0_0",
+          "lane_pos_m": 225.05,
+          "lat": 41.167167,
+          "lon": -8.685225,
+          "snap_dist_m": 5.11,
+          "snapped": true,
+          "stop_id": "MAL3",
+          "stop_name": "Malaca"
+        },
+        {
+          "edge": "135411469#4",
+          "lane": "135411469#4_0",
+          "lane_pos_m": 13.72,
+          "lat": 41.165917,
+          "lon": -8.677646,
+          "snap_dist_m": 4.91,
+          "snapped": true,
+          "stop_id": "NEV3",
+          "stop_name": "Nevogilde"
+        },
+        {
+          "edge": "135411469#4",
+          "lane": "135411469#4_0",
+          "lane_pos_m": 499.15,
+          "lat": 41.164958,
+          "lon": -8.672003,
+          "snap_dist_m": 1.11,
+          "snapped": true,
+          "stop_id": "PRCD4",
+          "stop_name": "Parque Da Cidade"
+        },
+        {
+          "edge": "224645476#0",
+          "lane": "224645476#0_0",
+          "lane_pos_m": 87.55,
+          "lat": 41.164308,
+          "lon": -8.668063,
+          "snap_dist_m": 1.79,
+          "snapped": true,
+          "stop_id": "LGO3",
+          "stop_name": "Liceu Garcia Orta"
+        },
+        {
+          "edge": "224645476#6",
+          "lane": "224645476#6_0",
+          "lane_pos_m": 58.81,
+          "lat": 41.163591,
+          "lon": -8.663793,
+          "snap_dist_m": 1.23,
+          "snapped": true,
+          "stop_id": "FTM5",
+          "stop_name": "Fonte Da Moura"
+        },
+        {
+          "edge": "962880375#0",
+          "lane": "962880375#0_0",
+          "lane_pos_m": 236.29,
+          "lat": 41.162987,
+          "lon": -8.660125,
+          "snap_dist_m": 0.7,
+          "snapped": true,
+          "stop_id": "PNV3",
+          "stop_name": "Paulo Novais"
+        },
+        {
+          "edge": "1189236715",
+          "lane": "1189236715_0",
+          "lane_pos_m": 8.53,
+          "lat": 41.162434,
+          "lon": -8.656803,
+          "snap_dist_m": 2.21,
+          "snapped": true,
+          "stop_id": "SRV4",
+          "stop_name": "Serralves"
+        },
+        {
+          "edge": "1051516037#0",
+          "lane": "1051516037#0_0",
+          "lane_pos_m": 0.0,
+          "lat": 41.16163,
+          "lon": -8.65196,
+          "snap_dist_m": 3.99,
+          "snapped": true,
+          "stop_id": "PINM3",
+          "stop_name": "Pinheiro Manso"
+        },
+        {
+          "edge": "13712233#6",
+          "lane": "13712233#6_0",
+          "lane_pos_m": 33.86,
+          "lat": 41.16073,
+          "lon": -8.64692,
+          "snap_dist_m": 1.24,
+          "snapped": true,
+          "stop_id": "FOCO2",
+          "stop_name": "Foco"
+        },
+        {
+          "edge": "1352740783",
+          "lane": "1352740783_0",
+          "lane_pos_m": 36.28,
+          "lat": 41.160182,
+          "lon": -8.643361,
+          "snap_dist_m": 6.15,
+          "snapped": true,
+          "stop_id": "BSS2",
+          "stop_name": "Bessa"
+        },
+        {
+          "edge": "975258841",
+          "lane": "975258841_0",
+          "lane_pos_m": 58.81,
+          "lat": 41.159592,
+          "lon": -8.639806,
+          "snap_dist_m": 8.07,
+          "snapped": true,
+          "stop_id": "ACRD2",
+          "stop_name": "António Cardoso"
+        },
+        {
+          "edge": "1177650958",
+          "lane": "1177650958_0",
+          "lane_pos_m": 0.0,
+          "lat": 41.158701,
+          "lon": -8.634352,
+          "snap_dist_m": 7.95,
+          "snapped": true,
+          "stop_id": "AGM2",
+          "stop_name": "Agramonte"
+        },
+        {
+          "edge": "608418574#1",
+          "lane": "608418574#1_0",
+          "lane_pos_m": 16.1,
+          "lat": 41.157164,
+          "lon": -8.629998,
+          "snap_dist_m": 9.43,
+          "snapped": true,
+          "stop_id": "BVCM3",
+          "stop_name": "Boavista Cemitério"
+        },
+        {
+          "edge": "13854848#0",
+          "lane": "13854848#0_0",
+          "lane_pos_m": 41.25,
+          "lat": 41.15756,
+          "lon": -8.627376,
+          "snap_dist_m": 7.89,
+          "snapped": true,
+          "stop_id": "BVBR1",
+          "stop_name": "Boavista Brasília"
+        },
+        {
+          "edge": "13854848#0",
+          "lane": "13854848#0_0",
+          "lane_pos_m": 247.49,
+          "lat": 41.15681,
+          "lon": -8.625066,
+          "snap_dist_m": 48.13,
+          "snapped": true,
+          "stop_id": "HML2",
+          "stop_name": "Hospital Militar"
+        }
+      ],
+      "weekday_trips": 72
+    }
+  },
+  "source_of_truth": {
+    "gtfs": {
+      "bytes": 5345615,
+      "dataset_id": "5275c986-592c-43f5-8f87-aabbd4e4f3a4",
+      "feed": "STCP GTFS (Porto)",
+      "license": "Creative Commons CC0",
+      "note": "Downloaded at build time into a git-ignored dir; not redistributed in this repo.",
+      "portal": "https://opendata.porto.digital",
+      "raw_url": "https://opendata.porto.digital/dataset/5275c986-592c-43f5-8f87-aabbd4e4f3a4/resource/c71a52cd-b4ed-4011-896a-898e92b15a6f/download/gtfs_feed.zip",
+      "resource_id": "c71a52cd-b4ed-4011-896a-898e92b15a6f",
+      "sha256": "48870fdaf236e473173d1c6a576f305220fb723de6e6f7850eea8821ef5c0669",
+      "snapshot_label": "GTFS STCP 05-06-2026 Mais Recente",
+      "vendored": false
+    },
+    "net": {
+      "input_osm": "/Users/ruipedro/Desktop/PPS57---ROUT25/.tools/boavista-osm/boavista.osm.xml",
+      "net_sha256": "fd604bc5beb4bd3a300a4e8e0a141ddbb69577d1fe7f507981e548f3709020a6",
+      "note": "OSM traffic_signals -> static TLS (real signal LOCATIONS, netconvert-default TIMINGS; real signal plans are not openly available).",
+      "options": "--geometry.remove --roundabouts.guess --ramps.guess --junctions.join --tls.guess-signals --tls.discard-simple --tls.join --keep-edges.by-vclass passenger --remove-edges.isolated --no-turnarounds.tls --tls.default-type static --no-warnings true",
+      "tool": "Eclipse SUMO netconvert 1.26.0",
+      "typemap": "osmNetconvert.typ.xml"
+    },
+    "projection": "affine from net <location> origBoundary->convBoundary (UTM z29, local approx)"
+  },
+  "stop_mapping": {
+    "boundary_clipping_losses": 16,
+    "interior_snapping_gaps": 0,
+    "snap_dist_m_max": 48.13,
+    "snap_dist_m_mean": 8.27,
+    "snap_dist_m_median": 6.11,
+    "snapped_to_bus_edge": 53,
+    "total_in_bbox": 69
+  },
+  "sumo_load_validation": {
+    "stderr_tail": "pj_obj_create: Cannot find proj.db",
+    "sumo_loads_busstops": true
+  },
+  "validation_phase": "V4b_stcp_pt_on_real_boavista_net",
+  "verdict": "pass"
+}
