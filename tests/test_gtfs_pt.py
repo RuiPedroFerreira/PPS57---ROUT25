@@ -88,6 +88,22 @@ class ServiceSelectionTests(unittest.TestCase):
             # DIAS UTEIS has 2 dates vs SABADOS 1 -> chosen as the weekday proxy.
             self.assertEqual(gtfs_pt.select_weekday_service_id(feed, "NONEXISTENT"), "DIAS UTEIS")
 
+    def test_calendar_txt_weekday_service(self) -> None:
+        # Standard GTFS: regular weekly service in calendar.txt (no calendar_dates.txt).
+        calendar = (
+            "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date\n"
+            "WEEKDAY,1,1,1,1,1,0,0,20260101,20261231\n"
+            "WEEKEND,0,0,0,0,0,1,1,20260101,20261231\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "feed.zip"
+            with zipfile.ZipFile(path, "w") as zf:
+                zf.writestr("routes.txt", _ROUTES)
+                zf.writestr("trips.txt", _TRIPS)
+                zf.writestr("stop_times.txt", _STOP_TIMES)
+                zf.writestr("calendar.txt", calendar)
+            self.assertEqual(gtfs_pt.select_weekday_service_id(str(path), "NONEXISTENT"), "WEEKDAY")
+
 
 class ExtractTests(unittest.TestCase):
     def test_headways_and_dwell(self) -> None:

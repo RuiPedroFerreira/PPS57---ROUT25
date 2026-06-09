@@ -38,18 +38,36 @@ def _read_table(zip_file: zipfile.ZipFile, name: str) -> Iterator[Dict[str, str]
 
 
 def select_weekday_service_id(zip_path: str, preferred: str = "DIAS UTEIS") -> str:
-    """Pick the weekday service_id: the preferred name if present, else the one
-    active on the most calendar dates (a robust weekday proxy across feeds)."""
-    counts: Dict[str, int] = {}
+    """Pick the weekday service_id, supporting both GTFS service-definition styles.
+
+    Standard GTFS defines regular weekly service in ``calendar.txt`` (monday..sunday
+    flags) and uses ``calendar_dates.txt`` only for exceptions; some feeds (e.g. STCP)
+    use ``calendar_dates.txt`` for the regular schedule. Prefer the named service; else
+    the one with the most weekday coverage (calendar.txt) or the most active dates
+    (calendar_dates.txt).
+    """
     with zipfile.ZipFile(zip_path) as zip_file:
-        for row in _read_table(zip_file, "calendar_dates.txt"):
-            sid = row["service_id"]
-            counts[sid] = counts.get(sid, 0) + 1
-    if preferred in counts:
-        return preferred
-    if not counts:
-        raise ValueError("calendar_dates.txt has no services")
-    return max(counts, key=counts.get)
+        names = set(zip_file.namelist())
+        if "calendar.txt" in names:
+            weekday: Dict[str, int] = {}
+            for row in _read_table(zip_file, "calendar.txt"):
+                served = sum(int(row.get(day, "0") or "0") for day in
+                             ("monday", "tuesday", "wednesday", "thursday", "friday"))
+                if served > 0:
+                    weekday[row["service_id"]] = served
+            if preferred in weekday:
+                return preferred
+            if weekday:
+                return max(weekday, key=weekday.get)
+        if "calendar_dates.txt" in names:
+            counts: Dict[str, int] = {}
+            for row in _read_table(zip_file, "calendar_dates.txt"):
+                counts[row["service_id"]] = counts.get(row["service_id"], 0) + 1
+            if preferred in counts:
+                return preferred
+            if counts:
+                return max(counts, key=counts.get)
+    raise ValueError("feed has no calendar.txt or calendar_dates.txt weekday service")
 
 
 def headway_stats(departures_s: Sequence[int], window: Tuple[int, int]) -> Optional[Dict[str, float]]:
