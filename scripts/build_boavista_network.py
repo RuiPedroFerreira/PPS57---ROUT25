@@ -14,8 +14,14 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from pps57_sumo.environment import resolve_sumo_home  # noqa: E402
 
 # Documented OSM-import recipe: drivable car network, OSM traffic_signals -> static
 # TLS, joined junctions/TLS. Real signal *locations* (from OSM), netconvert-default
@@ -37,10 +43,19 @@ def _sha256(path: Path) -> str:
 
 
 def _find_typemap() -> Path:
-    candidates = list((ROOT / ".venv").rglob("osmNetconvert.typ.xml"))
-    if not candidates:
-        raise SystemExit("osmNetconvert.typ.xml not found under .venv (is SUMO installed?)")
-    return candidates[0]
+    # Resolve via SUMO_HOME first (handles system-wide / SUMO_HOME installs where SUMO
+    # is on PATH but not inside this repo's .venv); fall back to a search.
+    home = resolve_sumo_home()
+    if home is not None:
+        candidate = home / "data" / "typemap" / "osmNetconvert.typ.xml"
+        if candidate.exists():
+            return candidate
+    search_roots = [ROOT / ".venv"] + ([home] if home is not None else [])
+    for root in search_roots:
+        hits = list(root.rglob("osmNetconvert.typ.xml"))
+        if hits:
+            return hits[0]
+    raise SystemExit("osmNetconvert.typ.xml not found (is SUMO installed / SUMO_HOME set?).")
 
 
 def build(osm_path: Path, out_dir: Path) -> Path:
