@@ -151,6 +151,7 @@
       "approved"
     ],
     "tls_no_reachable_movement": 1,
+    "tls_probe_errors": 0,
     "tls_probed": 7,
     "tls_total": 8,
     "zero_mismatch_on_all_probes": true
