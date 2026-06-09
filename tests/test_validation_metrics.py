@@ -82,6 +82,10 @@ class TravelTimeTests(unittest.TestCase):
         self.assertTrue(metrics.travel_time_within(150.0, 100.0, within_fraction=0.15, or_absolute_s=60.0))
         self.assertFalse(metrics.travel_time_within(170.0, 100.0, within_fraction=0.15, or_absolute_s=60.0))
 
+    def test_negative_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            metrics.travel_time_within(-10.0, 100.0, within_fraction=0.15, or_absolute_s=60.0)
+
 
 class ErrorStatTests(unittest.TestCase):
     def test_rmse(self) -> None:

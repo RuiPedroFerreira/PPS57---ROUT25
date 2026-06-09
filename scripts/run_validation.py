@@ -88,7 +88,9 @@ def main() -> None:
     text = json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True)
     args.out.write_text(text + "\n", encoding="utf-8")
     print(text)
-    if report["overall_verdict"] == "fail":
+    # Exit non-zero unless every gate passes: a "flagged" face-validity result must not
+    # report success to an automated validation step.
+    if report["overall_verdict"] != "pass":
         raise SystemExit(1)
 
 

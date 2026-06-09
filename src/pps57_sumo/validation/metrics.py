@@ -79,6 +79,8 @@ def travel_time_within(
     Tolerance = max(within_fraction * observed, or_absolute_s), encoding
     "within 15% (or 1 min, if higher)". Source: FHWA TAT Vol. III (Wisconsin DOT).
     """
+    if modelled_s < 0 or observed_s < 0:
+        raise ValueError("travel times must be non-negative (seconds)")
     tolerance = max(within_fraction * observed_s, or_absolute_s)
     return abs(modelled_s - observed_s) <= tolerance
 
