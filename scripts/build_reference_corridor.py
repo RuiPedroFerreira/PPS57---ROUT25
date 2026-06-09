@@ -224,14 +224,20 @@ def main() -> None:
         '<additional><edgeData id="ed" file="%s" begin="0" end="%d"/></additional>\n'
         % (edgedata_out.name, SIM_END_S), encoding="utf-8")  # file= is resolved next to the add file
     adds = ",".join(_rel(p) for p in ([webster, args.busstops, edgedata_add] if n_tls else [args.busstops, edgedata_add]))
+    # Explicit, high time-to-teleport so the KPI run does not fall back to SUMO's 300 s
+    # default (which teleports normally-queueing vehicles and skews KPIs); 900 s still lets
+    # a genuine deadlock resolve rather than gridlocking the whole run.
     sumo = _run(["sumo", "-n", _rel(args.net), "--additional-files", adds, "-r", _rel(routed),
                  "--tripinfo-output", _rel(tripinfo), "--end", str(SIM_END_S), "--no-step-log", "true",
-                 "--no-warnings", "true", "--ignore-route-errors", "true"], sumo_home)
+                 "--no-warnings", "true", "--ignore-route-errors", "true",
+                 "--time-to-teleport", "900"], sumo_home)
 
     kpis = parse_tripinfo(tripinfo) if tripinfo.exists() else {}
     arterial = measure_arterial_intensity(edgedata_out, bus_route_edges(routed)) if edgedata_out.exists() else {}
     p90 = arterial.get("p90_veh_h")
-    in_band = bool(p90 is not None and MADRID_BAND["median"] * 0.5 <= p90 <= MADRID_BAND["p90"])
+    # In-band = arterial p90 at least the documented Madrid median and at most its P90;
+    # the carriageway should carry no less than the citywide median intensity.
+    in_band = bool(p90 is not None and MADRID_BAND["median"] <= p90 <= MADRID_BAND["p90"])
 
     report = {
         "validation_phase": "V4d_reference_demand_and_webster_signals",
