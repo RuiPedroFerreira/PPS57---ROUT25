@@ -89,8 +89,9 @@ def evaluate_link_flow_calibration(
     )
     sum_geh_ok = sum_geh < sum_cfg["geh_threshold"]
 
-    geh_ok = geh_fraction >= net_cfg["min_fraction_passing"]
-    band_ok = band_fraction >= band_cfg["min_fraction_passing"]
+    # Strict ">" to match the documented "> 85%" criterion (exactly 85% does not pass).
+    geh_ok = geh_fraction > net_cfg["min_fraction_passing"]
+    band_ok = band_fraction > band_cfg["min_fraction_passing"]
     sum_ok = sum_within and sum_geh_ok
 
     return {
@@ -170,9 +171,9 @@ def evaluate_travel_times(
         "min_fraction_required": tt_cfg["min_fraction_passing"],
         "within_fraction": tt_cfg["within_fraction"],
         "or_absolute_s": tt_cfg["or_absolute_s"],
-        "passed": fraction >= tt_cfg["min_fraction_passing"],
+        "passed": fraction > tt_cfg["min_fraction_passing"],
         "source": tt_cfg["source"],
-        "verdict": "pass" if fraction >= tt_cfg["min_fraction_passing"] else "fail",
+        "verdict": "pass" if fraction > tt_cfg["min_fraction_passing"] else "fail",
     }
 
 
