@@ -44,12 +44,12 @@ _CALENDAR_DATES = (
 )
 
 
-def _make_feed(directory: Path) -> str:
+def _make_feed(directory: Path, stop_times: str = _STOP_TIMES) -> str:
     path = directory / "feed.zip"
     with zipfile.ZipFile(path, "w") as zf:
         zf.writestr("routes.txt", _ROUTES)
         zf.writestr("trips.txt", _TRIPS)
-        zf.writestr("stop_times.txt", _STOP_TIMES)
+        zf.writestr("stop_times.txt", stop_times)
         zf.writestr("calendar_dates.txt", _CALENDAR_DATES)
     return str(path)
 
@@ -104,6 +104,22 @@ class ExtractTests(unittest.TestCase):
         self.assertEqual(direction["weekday_trips"], 2)  # t3 (weekend) excluded
         # first departures 07:00 and 07:10 -> a single 10-minute headway
         self.assertAlmostEqual(direction["windows"]["am_peak"]["median_headway_min"], 10.0)
+
+    def test_first_departure_uses_min_sequence(self) -> None:
+        # GTFS only requires stop_sequence to increase; here the first stop is numbered 5.
+        stop_times = (
+            "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
+            "t1,07:00:00,07:00:00,S1,5\n"
+            "t1,07:05:00,07:05:00,S2,6\n"
+            "t2,07:12:00,07:12:00,S1,5\n"
+            "t2,07:17:00,07:17:00,S2,6\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            feed = _make_feed(Path(tmp), stop_times)
+            result = gtfs_pt.extract_corridor_headways(feed, ["999"], windows={"am_peak": (7 * 3600, 9 * 3600)})
+        direction = result["lines"]["999"]["directions"]["0"]
+        self.assertEqual(direction["weekday_trips"], 2)  # captured despite sequence starting at 5
+        self.assertAlmostEqual(direction["windows"]["am_peak"]["median_headway_min"], 12.0)
 
     def test_absent_line_marked(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

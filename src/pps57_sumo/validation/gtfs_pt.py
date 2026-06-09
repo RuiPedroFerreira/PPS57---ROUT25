@@ -98,18 +98,25 @@ def extract_corridor_headways(
             if row.get("route_id") in rid_to_short and row.get("service_id") == service_id:
                 trip_key[row["trip_id"]] = (rid_to_short[row["route_id"]], row.get("direction_id", ""))
 
-        first_departures: Dict[Tuple[str, str], List[int]] = {}
+        # Trip's first departure = the departure at its MINIMUM stop_sequence. GTFS only
+        # requires stop_sequence to increase along the trip, not to start at "1"; keying
+        # off the literal "1" would drop every departure for feeds numbered otherwise.
+        trip_first: Dict[str, Tuple[int, int]] = {}  # trip_id -> (min_seq, departure_s)
         target_rows = 0
         dwell_nonzero = 0
         for row in _read_table(zip_file, "stop_times.txt"):
-            key = trip_key.get(row["trip_id"])
-            if key is None:
+            tid = row["trip_id"]
+            if tid not in trip_key:
                 continue
             target_rows += 1
             if row["arrival_time"] != row["departure_time"]:
                 dwell_nonzero += 1
-            if row["stop_sequence"] == "1":
-                first_departures.setdefault(key, []).append(gtfs_time_to_seconds(row["departure_time"]))
+            seq = int(row["stop_sequence"])
+            if tid not in trip_first or seq < trip_first[tid][0]:
+                trip_first[tid] = (seq, gtfs_time_to_seconds(row["departure_time"]))
+        first_departures: Dict[Tuple[str, str], List[int]] = {}
+        for tid, (_seq, dep_s) in trip_first.items():
+            first_departures.setdefault(trip_key[tid], []).append(dep_s)
 
     lines: Dict[str, Dict[str, object]] = {}
     for short in sorted(short_set):
