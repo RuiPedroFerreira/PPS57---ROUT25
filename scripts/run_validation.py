@@ -75,9 +75,14 @@ def main() -> None:
         report["tsp_face_validity"] = result
         verdicts.append(result["verdict"])
 
-    report["overall_verdict"] = "fail" if "fail" in verdicts else (
-        "flagged" if "flagged" in verdicts else "pass"
-    )
+    # "no_measurements" (e.g. an empty --tsp-face-validity list) must NOT pass: the
+    # harness refuses to report success on empty/missing data.
+    if "fail" in verdicts or "no_measurements" in verdicts:
+        report["overall_verdict"] = "fail"
+    elif "flagged" in verdicts:
+        report["overall_verdict"] = "flagged"
+    else:
+        report["overall_verdict"] = "pass"
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True)
