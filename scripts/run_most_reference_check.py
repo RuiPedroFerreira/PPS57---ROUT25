@@ -69,7 +69,11 @@ def _probe(net: Path, tls_id: str, sim_time: float, port: int) -> dict:
         }
     out.unlink(missing_ok=True)
     detail = (proc.stderr.strip().splitlines() or ["unknown"])[-1]
-    return {"tls_id": tls_id, "status": "no_reachable_movement", "detail": detail[:200]}
+    # Only the documented "No suitable movement" exit is benign reduced coverage; any
+    # other no-report exit (SUMO/TraCI crash, empirical-script exception) is a real
+    # failure and must not be hidden as unreachable coverage.
+    status = "no_reachable_movement" if "No suitable movement" in proc.stderr else "probe_error"
+    return {"tls_id": tls_id, "status": status, "detail": detail[:200]}
 
 
 def main() -> None:
@@ -94,8 +98,10 @@ def main() -> None:
     probes = [_probe(args.net, tls, args.sim_time, args.base_port + i) for i, tls in enumerate(tls_ids)]
 
     probed = [p for p in probes if p["status"] == "probed"]
+    errors = [p for p in probes if p["status"] == "probe_error"]
     max_mismatch = max((p["mismatch_count"] for p in probed), default=0)
-    verdict = "pass" if (probed and max_mismatch == 0) else "fail"
+    # A probe crash (not the benign "no reachable movement") must fail the run.
+    verdict = "pass" if (probed and max_mismatch == 0 and not errors) else "fail"
 
     report = {
         "validation_phase": "V1_most_reference_method_port",
@@ -106,7 +112,8 @@ def main() -> None:
         "summary": {
             "tls_total": len(tls_ids),
             "tls_probed": len(probed),
-            "tls_no_reachable_movement": len(tls_ids) - len(probed),
+            "tls_no_reachable_movement": sum(1 for p in probes if p["status"] == "no_reachable_movement"),
+            "tls_probe_errors": len(errors),
             "max_profile_mismatch_count": max_mismatch,
             "zero_mismatch_on_all_probes": max_mismatch == 0 and bool(probed),
             "decision_actions_seen": sorted({p["decision_action"] for p in probed}),

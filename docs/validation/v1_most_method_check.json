@@ -230,6 +230,7 @@
       "blocked_by_safety"
     ],
     "tls_no_reachable_movement": 0,
+    "tls_probe_errors": 0,
     "tls_probed": 12,
     "tls_total": 12,
     "zero_mismatch_on_all_probes": true
