@@ -32,7 +32,7 @@ only one of them is built for. We therefore do **not** report such a score.
 
 ## What we did instead — method port onto a RESCO reference network
 
-We reuse the V1 approach (see [`v1_most_reference_validation.md`](v1_most_reference_validation.md)):
+We reuse the V1 approach (`docs/v1_most_reference_validation.md`, added in the V1 PR):
 run the TSP engine + Safety Layer on a real RESCO network and check that the
 map-agnostic `NetworkProfile` faithfully reproduces it.
 
