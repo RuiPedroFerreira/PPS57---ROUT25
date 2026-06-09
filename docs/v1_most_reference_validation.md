@@ -1,6 +1,6 @@
 # V1 — TSP method port onto the MoST reference network
 
-V1 of the [validation plan](validation_harness.md) answers the *method* question
+V1 of the validation plan (the V0 harness, added in a separate PR) answers the *method* question
 ("does the TSP engine decide correctly?") independently of the *model* question
 ("does our Porto demand imitate reality?"). It runs the existing TSP engine +
 Safety Layer on a **real, peer-reviewed, externally-built reference network**
@@ -50,12 +50,12 @@ invents nothing — every row is a real run against the pinned network.
 - The engine produced real priority decisions (e.g. `early_green` —
   *truncate_conflicting_phase_to_anticipate_priority_movement_green*) on real
   discovered movements with real conflict sets.
-- The **Safety Layer engaged on every intersection** and blocked, for genuine
-  fail-closed reasons that vary with phase timing
-  (`min_green_not_satisfied`, `current_phase_is_yellow`,
-  `green_extension_requires_priority_movement_green_phase`). **A block is the
-  correct outcome** when the probe's arbitrary arrival time coincides with unsafe
-  timing — it is not a failure.
+- The **Safety Layer engaged on every intersection** and blocked. In the committed
+  run, at the fixed 30 s probe time, all 12 report `min_green_not_satisfied:4.0<8.0`
+  (the probe arrives mid-min-green). Across other probe times the reason varies with
+  phase timing (e.g. `current_phase_is_yellow`,
+  `green_extension_requires_priority_movement_green_phase`). **A block is the correct
+  outcome** when the probe's arrival coincides with unsafe timing — it is not a failure.
 
 **Verdict: pass** — the criterion is zero profile mismatches and end-to-end
 execution on a real reference network, both met.
