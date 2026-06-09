@@ -82,6 +82,9 @@ def main() -> None:
         ]
         proxy_values = sorted(set(round(v, 1) for v in proxy.get(short, [])))
         if not am_medians or not proxy_values:
+            # A modelled line with no real medians or no proxy headways was NOT validated;
+            # that must fail, not silently pass on the other lines.
+            sanity_pass = False
             comparisons.append({"line": short, "status": "insufficient_data",
                                 "real_am_medians_min": am_medians, "proxy_headways_min": proxy_values})
             continue
