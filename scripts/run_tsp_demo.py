@@ -41,6 +41,7 @@ from pps57_sumo.parse_tripinfo import parse_tripinfo  # noqa: E402
 from pps57_sumo.stats import mean_ci95  # noqa: E402
 from pps57_tsp.config import TSPConfig  # noqa: E402
 from pps57_tsp.engine import TSPDecisionEngine  # noqa: E402
+from pps57_tsp.models import TSPAction  # noqa: E402
 from pps57_tsp.safety import TSPSafetyLayer  # noqa: E402
 
 # Face-validity envelope for the TSP gain (mirrors configs/validation_config.json, V0):
@@ -190,8 +191,17 @@ def run_tsp(sumocfg: Path, net: Path, end: int, port: int) -> dict:
                     continue
                 approved += 1
                 safe = validation.safe_decision
-                if safe.requires_actuation and safe.phase_duration_s is not None:
-                    traci.trafficlight.setPhaseDuration(tls_id, float(safe.phase_duration_s))
+                if safe.requires_actuation:
+                    # green_extension approves via extension_s (phase_duration_s stays None);
+                    # early_green via phase_duration_s. Mirror pps57_tsp.actuator so green
+                    # extensions are actually applied (and cooldown recorded), not skipped.
+                    if safe.action == TSPAction.GREEN_EXTENSION.value:
+                        remaining = (max(0.0, float(signal_state.next_switch_s) - sim_time)
+                                     if signal_state.next_switch_s is not None else 0.0)
+                        new_duration = remaining + float(safe.extension_s or 0.0)
+                    else:  # early_green = red truncation
+                        new_duration = float(safe.phase_duration_s or 2.0)
+                    traci.trafficlight.setPhaseDuration(tls_id, new_duration)
                     safety.mark_applied(safe, sim_time)
                     actuated += 1
     finally:
