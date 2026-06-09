@@ -53,10 +53,15 @@ DEMO = ROOT / ".tools" / "demo"
 
 
 def _write_sumocfg(path: Path, net: Path, routes: Path, busstops: Path, tripinfo: Path, end: int) -> None:
+    # Inputs may live outside .tools/boavista-osm; express them relative to the sumocfg
+    # directory (SUMO resolves config-relative paths from there), not just basenames.
+    net_rel = os.path.relpath(str(net), str(path.parent))
+    routes_rel = os.path.relpath(str(routes), str(path.parent))
+    busstops_rel = os.path.relpath(str(busstops), str(path.parent))
     path.write_text(
         "<configuration>\n"
-        f'  <input><net-file value="{net.name}"/><route-files value="{routes.name}"/>'
-        f'<additional-files value="{busstops.name}"/></input>\n'
+        f'  <input><net-file value="{net_rel}"/><route-files value="{routes_rel}"/>'
+        f'<additional-files value="{busstops_rel}"/></input>\n'
         f'  <time><begin value="0"/><end value="{end}"/></time>\n'
         f'  <output><tripinfo-output value="{tripinfo.name}"/></output>\n'
         '  <processing><ignore-route-errors value="true"/><time-to-teleport value="300"/></processing>\n'
