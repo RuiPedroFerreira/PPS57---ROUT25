@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
-"""Port the TSP engine onto an arbitrary pinned reference network and record evidence.
+"""V1: port the TSP engine onto the MoST reference network and record evidence.
 
-Generic reference-network method check: runs the existing empirical TSP + Safety
-probe (``scripts/empirical_network_profile_check.py``) across every traffic light
-in a real, externally-sourced network and consolidates the per-intersection
-results into a tracked, provenance-stamped report. Used for MoST (Monaco) and the
-RESCO 'cologne8' reference networks; the network is the source of truth, fetched
-(not vendored) by the matching ``scripts/fetch_*.py``.
+Runs the existing empirical TSP + Safety probe
+(``scripts/empirical_network_profile_check.py``) across every traffic light in
+the pinned MoST network — Monaco SUMO Traffic, a peer-reviewed, real-geometry
+reference scenario — and consolidates the per-intersection results into a
+tracked, provenance-stamped report.
 
-A pass means: on a real external network, the map-agnostic NetworkProfile
+MoST is the source of truth: it is downloaded (not vendored) by
+``scripts/fetch_most_scenario.py``. This runner invents nothing — every row is a
+real TraCI run against the pinned network.
+
+V1 passes when, on a real external network, the map-agnostic NetworkProfile
 reproduces SUMO's loaded TLS programs with **zero mismatches** and the pipeline
-runs end-to-end on the reachable intersections. A Safety Layer **block** is NOT a
-failure — a fail-closed verdict on unsafe timing is correct behaviour.
+runs end-to-end on the reachable intersections. A Safety Layer **block** is NOT
+a failure: a fail-closed verdict on unsafe timing is correct behaviour.
 """
 from __future__ import annotations
 
@@ -67,26 +70,27 @@ def _probe(net: Path, tls_id: str, sim_time: float, port: int) -> dict:
     out.unlink(missing_ok=True)
     detail = (proc.stderr.strip().splitlines() or ["unknown"])[-1]
     # Only the documented "No suitable movement" exit is benign reduced coverage; any
-    # other no-report exit (SUMO/TraCI crash, generated-config error) is a real failure
-    # and must not be hidden as unreachable coverage.
+    # other no-report exit (SUMO/TraCI crash, empirical-script exception) is a real
+    # failure and must not be hidden as unreachable coverage.
     status = "no_reachable_movement" if "No suitable movement" in proc.stderr else "probe_error"
     return {"tls_id": tls_id, "status": status, "detail": detail[:200]}
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--net", type=Path, required=True, help="pinned reference net.xml (git-ignored)")
-    parser.add_argument("--provenance", type=Path, help="PROVENANCE.json next to the net (defaults beside --net)")
-    parser.add_argument("--label", default="reference_network", help="phase label for the report")
+    parser.add_argument("--net", type=Path, default=ROOT / ".tools" / "most" / "most.net.xml")
     parser.add_argument("--sim-time", type=float, default=30.0)
-    parser.add_argument("--base-port", type=int, default=8890)
-    parser.add_argument("--out", type=Path, required=True, help="tracked report path under docs/validation/")
+    parser.add_argument("--base-port", type=int, default=8870)
+    parser.add_argument("--out", type=Path, default=ROOT / "docs" / "validation" / "v1_most_method_check.json")
     args = parser.parse_args()
 
     if not args.net.exists():
-        raise SystemExit(f"Reference network not found at {args.net}. Fetch it first (scripts/fetch_*.py).")
+        raise SystemExit(
+            f"MoST network not found at {args.net}. Fetch it first:\n"
+            f"  .venv/bin/python scripts/fetch_most_scenario.py"
+        )
 
-    provenance_path = args.provenance or (args.net.parent / "PROVENANCE.json")
+    provenance_path = args.net.parent / "PROVENANCE.json"
     provenance = json.loads(provenance_path.read_text(encoding="utf-8")) if provenance_path.exists() else {}
 
     profile = load_network_profile(args.net)
@@ -96,12 +100,11 @@ def main() -> None:
     probed = [p for p in probes if p["status"] == "probed"]
     errors = [p for p in probes if p["status"] == "probe_error"]
     max_mismatch = max((p["mismatch_count"] for p in probed), default=0)
-    # A probe crash (not the benign "no reachable movement") must fail the run, even if
-    # other probes have zero mismatches.
+    # A probe crash (not the benign "no reachable movement") must fail the run.
     verdict = "pass" if (probed and max_mismatch == 0 and not errors) else "fail"
 
     report = {
-        "validation_phase": args.label,
+        "validation_phase": "V1_most_reference_method_port",
         "source_of_truth": provenance,
         "network_fingerprint_sha256": profile.fingerprint,
         "sim_time_s": args.sim_time,
@@ -119,8 +122,8 @@ def main() -> None:
         "interpretation": (
             "Map-agnostic NetworkProfile reproduced SUMO's loaded TLS programs with "
             f"{max_mismatch} mismatch(es) across {len(probed)} probed traffic light(s) of "
-            f"{len(tls_ids)} in a real external reference network; the TSP engine + Safety "
-            "Layer ran end-to-end on each. Safety blocks are correct fail-closed verdicts."
+            f"{len(tls_ids)} in the real MoST network; the TSP engine + Safety Layer ran "
+            "end-to-end on each. Safety blocks are correct fail-closed verdicts, not failures."
         ),
         "verdict": verdict,
     }
@@ -128,7 +131,7 @@ def main() -> None:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
 
-    print(f"{args.label} — {provenance.get('tag', '?')} @ {profile.fingerprint[:12]}")
+    print(f"MoST V1 method port — {provenance.get('tag', '?')} @ {profile.fingerprint[:12]}")
     print(f"  TLS probed: {len(probed)}/{len(tls_ids)}   max profile mismatch: {max_mismatch}")
     print(f"  decisions: {report['summary']['decision_actions_seen']}")
     print(f"  safety:    {report['summary']['safety_statuses_seen']}")

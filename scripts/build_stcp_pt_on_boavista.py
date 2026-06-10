@@ -82,18 +82,24 @@ def corridor_lines(zip_path: Path, bbox):
         trips_by_key.setdefault((rid_to_short[t["route_id"]], t.get("direction_id", "")), []).append(t["trip_id"])
     stops = {s["stop_id"]: s for s in _gtfs_rows(zip_path, "stops.txt")}
 
-    # one pass over stop_times: per trip ordered stops, and first-stop departures per key
+    # one pass over stop_times: per trip ordered stops, and first-stop departures per key.
+    # First departure = departure at the trip's MINIMUM stop_sequence (GTFS only requires
+    # the sequence to increase, not to start at "1").
     target_trips = {tid for ids in trips_by_key.values() for tid in ids}
     trip_seq = {}
-    first_dep = {}
+    trip_first = {}  # tid -> (min_seq, departure_s)
     trip_to_key = {tid: key for key, ids in trips_by_key.items() for tid in ids}
     for row in _gtfs_rows(zip_path, "stop_times.txt"):
         tid = row["trip_id"]
         if tid not in target_trips:
             continue
-        trip_seq.setdefault(tid, []).append((int(row["stop_sequence"]), row["stop_id"]))
-        if row["stop_sequence"] == "1":
-            first_dep.setdefault(trip_to_key[tid], []).append(_secs(row["departure_time"]))
+        seq = int(row["stop_sequence"])
+        trip_seq.setdefault(tid, []).append((seq, row["stop_id"]))
+        if tid not in trip_first or seq < trip_first[tid][0]:
+            trip_first[tid] = (seq, _secs(row["departure_time"]))
+    first_dep = {}
+    for tid, (_seq, dep_s) in trip_first.items():
+        first_dep.setdefault(trip_to_key[tid], []).append(dep_s)
 
     out = {}
     for (short, direction), trip_ids in sorted(trips_by_key.items()):
@@ -223,6 +229,7 @@ def main() -> None:
         },
         "lines_mapped": lines_present,
         "line_204_added": "204" in lines_present,
+        "all_corridor_lines_present": set(CORRIDOR_LINES).issubset(lines_present),
         "stop_mapping": {
             "total_in_bbox": len(all_stops),
             "snapped_to_bus_edge": len(snapped),
@@ -247,9 +254,9 @@ def main() -> None:
             "net boundary (roads clipped by the corridor bbox), not interior gaps." if not interior_gaps
             else f"{len(interior_gaps)} stop(s) failed to snap in the interior (real gaps).",
         ],
-        # Pass = all corridor lines incl. 204 instantiated, SUMO loads the stops, and every
-        # non-snapped stop is a boundary-clipping loss (zero interior snapping gaps).
-        "verdict": "pass" if (len(snapped) > 0 and "204" in lines_present
+        # Pass = ALL corridor lines (500/502/204) instantiated, SUMO loads the stops, and
+        # every non-snapped stop is a boundary-clipping loss (zero interior snapping gaps).
+        "verdict": "pass" if (set(CORRIDOR_LINES).issubset(lines_present) and len(snapped) > 0
                               and load["sumo_loads_busstops"] and not interior_gaps) else "review",
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
