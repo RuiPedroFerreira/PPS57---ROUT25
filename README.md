@@ -1,6 +1,6 @@
 # PPS57 ROUT25 Traffic Priority Platform
 
-PPS57 ROUT25 is a local validation platform for public-transport traffic-signal priority on a simulated Porto/Boavista corridor model. It combines a SUMO digital twin, C-ITS/V2X message emulation, an explainable TSP decision engine, a mandatory Safety Layer, offline policy optimization, tabular reinforcement-learning training, and a scenario dashboard.
+PPS57 ROUT25 is a local validation platform for public-transport traffic-signal priority on a simulated Porto/Boavista corridor model. It combines a SUMO digital twin, C-ITS/V2X message emulation, an explainable TSP decision engine, a mandatory Safety Layer, offline policy optimization, and tabular reinforcement-learning training.
 
 The repository is designed for technical demonstration and validation. It is not an operational traffic-control deployment: network geometry, demand, public-transport lines and signal plans are synthetic SUMO assets for simulation only.
 
@@ -22,19 +22,17 @@ The repository is designed for technical demonstration and validation. It is not
 - Compares offline policy candidates against the baseline TSP engine.
 - Trains a tabular Q-learning policy from SUMO/TraCI event-derived scenarios.
 - Loads exported policies for runtime inference in semi-live TSP runs.
-- Serves a local scenario dashboard for running scenarios and comparing KPIs.
 
 ## Repository Layout
 
 ```text
-configs/                 Runtime configuration for C-ITS, TSP, policy training and platform checks
+configs/                 Runtime configuration for C-ITS, TSP and policy training
 docs/                    Protocol ICD and design notes
 outputs/                 Generated JSONL/XML/log artifacts
 reports/                 Generated summaries, KPIs and policy reports
 scripts/                 User-facing command-line entry points
 src/pps57_cits/          C-ITS/V2X emulation layer
 src/pps57_opt/           Policy optimization, runtime policy loading and RL training
-src/pps57_platform/      FastAPI runner and artifact aggregation
 src/pps57_sumo/          SUMO network generation and KPI parsing
 src/pps57_tsp/           TSP engine, Safety Layer and actuation
 sumo/                    SUMO network, routes, additional files and run config
@@ -45,8 +43,8 @@ tests/                   Unit and integration tests
 
 - [Prerequisites](#prerequisites) and [Environment Setup](#environment-setup)
   cover the local Python/SUMO setup.
-- [First Run Quick Start](#first-run-quick-start) gives the shortest validation,
-  simulation and dashboard paths.
+- [First Run Quick Start](#first-run-quick-start) gives the shortest validation
+  and simulation paths.
 - [Available Make Targets](#available-make-targets) is the command reference for
   common project workflows.
 - [Command-Line Workflows](#command-line-workflows) describes each pipeline and
@@ -133,20 +131,6 @@ Build learning data and policy reports after those logs exist:
 make build-event-training-dataset
 make optimize-offline
 make train-rl-policy
-make platform-check
-```
-
-Start the local scenario dashboard:
-
-```bash
-make dashboard
-```
-
-Default URLs:
-
-```text
-Dashboard: http://127.0.0.1:8000
-API docs:  http://127.0.0.1:8000/docs
 ```
 
 If `make build`, `make run` or a scenario command cannot find `sumo` or
@@ -174,8 +158,6 @@ external SUMO installation to `PATH`.
 | `make tsp-gui-no-actuation` | Run TSP with SUMO GUI observation only | Yes |
 | `make optimize-offline` | Compare safe offline policy candidates | No |
 | `make train-rl-policy` | Train tabular Q-learning policy offline | No |
-| `make platform-check` | Aggregate and validate platform artifacts | No |
-| `make dashboard` | Start the local scenario dashboard and API | No |
 | `make sort-routes` | Sort SUMO route definitions by departure time | No |
 | `make clean` | Remove known generated artifacts | No |
 
@@ -192,7 +174,6 @@ external SUMO installation to `PATH`.
 | Run TSP with TraCI signal actuation | `make tsp-sumo` |
 | Compare baseline, direct TSP and controller-mediated TSP | `make tsp-demonstrator` |
 | Train or refresh runtime policies | `make build-event-training-dataset`, then `make optimize-offline` or `make train-rl-policy` |
-| Inspect artifacts through the local UI | `make dashboard` |
 
 ## Command-Line Workflows
 
@@ -208,7 +189,7 @@ Checks the repository structure and validates the main JSON configs:
 configs/cits_v2x_config.json
 configs/tsp_safety_config.json
 configs/policy_training_config.json
-configs/platform_config.json
+configs/validation_config.json
 ```
 
 ### Run Tests
@@ -543,89 +524,6 @@ Generated outputs:
 reports/tabular_q_policy_report.json
 reports/rl_training_summary.json
 ```
-
-### Validate Platform Artifacts
-
-```bash
-.venv/bin/python scripts/check_platform_data.py
-```
-
-Useful options:
-
-```bash
-.venv/bin/python scripts/check_platform_data.py --strict
-.venv/bin/python scripts/check_platform_data.py --max-records 1000
-.venv/bin/python scripts/check_platform_data.py --out reports/platform_snapshot.json
-```
-
-Generated output:
-
-```text
-reports/platform_snapshot.json
-```
-
-### Run Scenario Dashboard
-
-```bash
-.venv/bin/python scripts/run_dashboard.py --host 127.0.0.1 --port 8000
-```
-
-The dashboard and local API are unauthenticated. Non-loopback hosts are blocked by
-default; use `--allow-non-loopback` only behind an explicit network restriction.
-
-With reload:
-
-```bash
-.venv/bin/python scripts/run_dashboard.py --reload
-```
-
-Dashboard endpoints:
-
-| Method | Endpoint | Purpose |
-|---|---|---|
-| `GET` | `/` | Scenario dashboard UI |
-| `GET` | `/api/health` | API and runner status |
-| `GET` | `/api/scenarios` | Configured scenario catalog |
-| `GET` | `/api/runs/current` | Current or last managed scenario run |
-| `POST` | `/api/runs/start` | Start a scenario run |
-| `POST` | `/api/runs/stop` | Stop the active managed scenario run |
-| `GET` | `/api/reports` | Latest per-scenario KPI reports |
-| `GET` | `/api/reports/{scenario_id}` | KPI comparison for one scenario |
-
-Start a full baseline / no-actuation / actuation comparison through the API:
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/runs/start \
-  -H 'Content-Type: application/json' \
-  -d '{"scenario_id":"baseline_am_peak","run_type":"comparison","steps":7200,"traci_port":8813}'
-```
-
-Set `"gui": true` in the request, or enable `Abrir sumo-gui` in the dashboard,
-to run the selected scenario visually with SUMO GUI.
-
-Run every configured scenario with the same comparison:
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/runs/start \
-  -H 'Content-Type: application/json' \
-  -d '{"all_scenarios":true,"run_type":"comparison","steps":7200,"traci_port":8813}'
-```
-
-### Inspect Platform Artifacts
-
-```bash
-make platform-check
-```
-
-The platform check reads generated artifacts and writes `reports/platform_snapshot.json` with:
-
-- artifact availability;
-- C-ITS message counts and recent events;
-- TSP decisions and Safety Layer outcomes;
-- actuation logs;
-- policy candidate comparison;
-- exported policy summaries;
-- SUMO baseline KPIs.
 
 ## C-ITS/V2X Message Flow
 
@@ -967,7 +865,6 @@ SUMO/TraCI event logs -> event training dataset -> RL training -> exported polic
 | `configs/cits_v2x_config.json` | OBU, RSU, C-ITS logging and safety constraints |
 | `configs/tsp_safety_config.json` | TSP scoring, actuation and runtime policy settings |
 | `configs/policy_training_config.json` | Candidate actions, reward and RL training settings |
-| `configs/platform_config.json` | Platform artifact paths, labels and load limits |
 | `configs/scenario_catalog.yaml` | Scenario descriptors |
 
 ## Development Checks
@@ -999,18 +896,6 @@ netconvert --version
 If `sumo-gui` is unavailable or the machine is headless, use the non-GUI targets
 such as `make run`, `make cits-sumo` or `make tsp-sumo-no-actuation`.
 
-### Platform checks have no data
-
-`make platform-check` aggregates existing artifacts; it does not create SUMO,
-C-ITS or TSP logs. Run a SUMO/TraCI workflow first:
-
-```bash
-make build
-make tsp-sumo-no-actuation
-make build-event-training-dataset
-make platform-check
-```
-
 ### Policy optimization or RL training says no event scenarios were found
 
 The policy commands require `outputs/event_training_dataset.jsonl` with rows
@@ -1021,14 +906,6 @@ make tsp-sumo-no-actuation
 make build-event-training-dataset
 make optimize-offline
 make train-rl-policy
-```
-
-### Dashboard or API port is already in use
-
-Start the dashboard on another port:
-
-```bash
-.venv/bin/python scripts/run_dashboard.py --port 8001
 ```
 
 ### Scenario runs need a fixed TraCI port

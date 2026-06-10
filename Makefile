@@ -1,4 +1,4 @@
-.PHONY: validate build run gui kpis scenario-list scenario-run scenario-suite sumo-smoke cits-sumo tsp-demonstrator compare-tsp-rl compare-sumo-kpis evaluate-decision-outcomes build-event-training-dataset tsp-sumo tsp-sumo-no-actuation tsp-gui tsp-gui-no-actuation optimize-offline train-rl-policy dashboard platform-check sort-routes test clean
+.PHONY: validate build run gui kpis scenario-list scenario-run scenario-suite sumo-smoke cits-sumo tsp-demonstrator compare-tsp-rl compare-sumo-kpis evaluate-decision-outcomes build-event-training-dataset tsp-sumo tsp-sumo-no-actuation tsp-gui tsp-gui-no-actuation optimize-offline train-rl-policy sort-routes test clean
 
 # Hardening: cada receita corre como `bash -ec`, garantindo `set -e` mesmo
 # em linhas encadeadas e abortando à primeira falha. Sem isto, alguém a
@@ -13,7 +13,7 @@ validate:
 	$(PYTHON) -m json.tool configs/cits_v2x_config.json >/dev/null
 	$(PYTHON) -m json.tool configs/tsp_safety_config.json >/dev/null
 	$(PYTHON) -m json.tool configs/policy_training_config.json >/dev/null
-	$(PYTHON) -m json.tool configs/platform_config.json >/dev/null
+	$(PYTHON) -m json.tool configs/validation_config.json >/dev/null
 
 # `validate` corre antes de `build` para que toda a cadeia (run/cits-sumo/
 # tsp-sumo/etc., que dependem de build) execute o gate fail-closed de XML
@@ -84,12 +84,6 @@ optimize-offline: build-event-training-dataset
 train-rl-policy: build-event-training-dataset
 	$(PYTHON) scripts/run_rl_training.py
 
-platform-check:
-	$(PYTHON) scripts/check_platform_data.py
-
-dashboard:
-	$(PYTHON) scripts/run_dashboard.py
-
 sort-routes:
 	# Item 15: wrapper sobre $SUMO_HOME/tools/route/sort_routes.py.
 	# Útil após edição manual de sumo/routes/routes.rou.xml; o `make validate`
@@ -108,7 +102,6 @@ clean:
 	rm -f outputs/cits_messages.jsonl outputs/cits_mapem_snapshot.json outputs/cits_spatem_snapshot.json
 	rm -f outputs/tsp_decisions.jsonl outputs/tsp_actuation.jsonl
 	rm -f outputs/offline_policy_samples.jsonl outputs/policy_candidates.jsonl
-	rm -f outputs/.dashboard/dashboard_runner_*.out.log outputs/.dashboard/dashboard_runner_*.err.log
 	rm -f reports/cits_emulation_summary.json reports/tsp_emulation_summary.json
 	rm -f reports/policy_report.json reports/policy_optimization_summary.json
 	rm -f reports/tabular_q_policy_report.json reports/rl_training_summary.json
