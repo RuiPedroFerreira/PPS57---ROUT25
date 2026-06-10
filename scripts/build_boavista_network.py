@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -75,7 +76,7 @@ def build(osm_path: Path, out_dir: Path) -> Path:
         "tool": version,
         "typemap": str(typemap.name),
         "options": " ".join(NETCONVERT_OPTIONS),
-        "input_osm": str(osm_path),
+        "input_osm": os.path.relpath(str(osm_path), str(ROOT)),  # checkout-independent
         "net_sha256": _sha256(net_path),
         "note": "OSM traffic_signals -> static TLS (real signal LOCATIONS, netconvert-default TIMINGS; "
                 "real signal plans are not openly available).",

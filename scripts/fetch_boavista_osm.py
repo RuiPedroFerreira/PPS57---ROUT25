@@ -81,7 +81,13 @@ def fetch(out_dir: Path) -> Path:
 
     sha = _sha256(osm_path)
     if EXPECTED_SHA256 and sha != EXPECTED_SHA256:
-        print(f"WARNING: OSM snapshot sha256 {sha} != pinned {EXPECTED_SHA256} (OSM is live; data changed).")
+        # Fail (don't just warn): the committed report was produced from the pinned
+        # snapshot. OSM is live, so if the change is intended, delete the cached extract
+        # and update EXPECTED_SHA256 to re-pin.
+        raise SystemExit(
+            f"OSM snapshot sha256 {sha} != pinned {EXPECTED_SHA256}. The pinned Boavista "
+            "extract changed (OSM is live); re-pin EXPECTED_SHA256 if this is intended."
+        )
 
     provenance = {
         "source": "OpenStreetMap via Overpass API",
