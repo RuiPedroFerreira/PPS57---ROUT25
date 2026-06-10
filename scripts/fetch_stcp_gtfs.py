@@ -21,6 +21,7 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import zipfile
 
 PORTAL = "https://opendata.porto.digital"
 DATASET_ID = "5275c986-592c-43f5-8f87-aabbd4e4f3a4"
@@ -47,11 +48,23 @@ def _sha256(path: Path) -> str:
 def fetch(out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     zip_path = out_dir / "gtfs_feed.zip"
-    if not zip_path.exists():
+    if not zip_path.exists() or not zipfile.is_zipfile(zip_path):
         if shutil.which("curl") is None:
             raise SystemExit("curl is required to fetch the pinned STCP GTFS feed")
         print(f"Downloading {RAW_URL}")
-        subprocess.run(["curl", "-fsSL", "-o", str(zip_path), RAW_URL], check=True)
+        tmp = zip_path.with_suffix(".part")
+        # Browser-like UA + retries: the portal can answer a bare curl UA with HTTP 403,
+        # and transient errors should retry. Download to a temp file and rename only after
+        # validating it is a real zip, so a failed/partial fetch never leaves a bad cache.
+        subprocess.run(
+            ["curl", "-fsSL", "--retry", "3", "--retry-delay", "2", "--retry-all-errors",
+             "-A", "Mozilla/5.0 (PPS57-ROUT25-validation)", "-o", str(tmp), RAW_URL],
+            check=True,
+        )
+        if not zipfile.is_zipfile(tmp):
+            tmp.unlink(missing_ok=True)
+            raise SystemExit(f"Downloaded STCP GTFS is not a valid zip (portal error?): {RAW_URL}")
+        tmp.replace(zip_path)
     else:
         print(f"Reusing cached {zip_path}")
 
