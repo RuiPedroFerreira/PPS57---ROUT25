@@ -1,0 +1,46 @@
+{
+  "bus_headways_observed": {
+    "204": {
+      "departures": 10,
+      "max_headway_s": 720.0,
+      "mean_headway_s": 720.0,
+      "min_headway_s": 720.0
+    },
+    "500": {
+      "departures": 20,
+      "max_headway_s": 660.0,
+      "mean_headway_s": 347.368,
+      "min_headway_s": 0.0
+    },
+    "502": {
+      "departures": 16,
+      "max_headway_s": 780.0,
+      "mean_headway_s": 364.0,
+      "min_headway_s": 0.0
+    }
+  },
+  "bus_kpis": {
+    "mean_depart_delay_s": 0.0,
+    "mean_duration_s": 594.935,
+    "mean_route_length_m": 3153.231,
+    "mean_speed_mps": 5.076,
+    "mean_stop_count": 5.783,
+    "mean_time_loss_s": 160.572,
+    "mean_waiting_time_s": 102.217,
+    "p95_duration_s": 1217.0,
+    "p95_time_loss_s": 352.06,
+    "vehicles": 46
+  },
+  "bus_vehicles_routed": 51,
+  "duarouter_ok": true,
+  "flows_built": 6,
+  "honest_notes": [
+    "Flows/stops/headways all derive from the real GTFS + real OSM net (V3/V4/V4b).",
+    "No background traffic: open Porto counts do not exist (V2 blocked), so adding demand would be fabrication. Bus times here are essentially free-flow.",
+    "Signal timings are synthetic (V4 limit)."
+  ],
+  "scope_note": "Buses only (no real background traffic — open Porto counts unavailable, V2 blocked); KPIs are near free-flow bus times on real geometry with real stops/headways.",
+  "sumo_ok": true,
+  "validation_phase": "V4c_run_real_boavista_corridor",
+  "verdict": "pass"
+}
