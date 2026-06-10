@@ -34,6 +34,7 @@ sumo/network/*.net.xml
 
 # Editor / tooling metadata (downloads helpers, gh cache, etc.)
 .tools/
+.claude/
 
 # Source patch artifacts already applied to the repository.
 *.patch
