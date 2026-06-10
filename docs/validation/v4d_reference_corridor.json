@@ -27,28 +27,28 @@
     "randomTrips OD is synthetic but rate-calibrated to the referenced arterial band."
   ],
   "kpis_all_vehicles": {
-    "mean_depart_delay_s": 0.37,
-    "mean_duration_s": 300.452,
-    "mean_route_length_m": 4512.148,
-    "mean_speed_mps": 14.664,
-    "mean_stop_count": 3.969,
-    "mean_time_loss_s": 113.31,
-    "mean_waiting_time_s": 20.586,
-    "p95_duration_s": 394.0,
-    "p95_time_loss_s": 176.56,
-    "vehicles": 4464
+    "mean_depart_delay_s": 0.373,
+    "mean_duration_s": 302.292,
+    "mean_route_length_m": 4538.078,
+    "mean_speed_mps": 14.683,
+    "mean_stop_count": 3.995,
+    "mean_time_loss_s": 113.903,
+    "mean_waiting_time_s": 20.655,
+    "p95_duration_s": 395.0,
+    "p95_time_loss_s": 177.22,
+    "vehicles": 4651
   },
   "kpis_buses": {
-    "mean_depart_delay_s": 0.978,
-    "mean_duration_s": 525.457,
-    "mean_route_length_m": 3153.12,
-    "mean_speed_mps": 5.776,
-    "mean_stop_count": 6.0,
-    "mean_time_loss_s": 90.163,
-    "mean_waiting_time_s": 28.109,
-    "p95_duration_s": 1118.0,
-    "p95_time_loss_s": 228.33,
-    "vehicles": 46
+    "mean_depart_delay_s": 0.902,
+    "mean_duration_s": 559.765,
+    "mean_route_length_m": 3370.456,
+    "mean_speed_mps": 5.807,
+    "mean_stop_count": 6.392,
+    "mean_time_loss_s": 96.538,
+    "mean_waiting_time_s": 29.725,
+    "p95_duration_s": 1122.0,
+    "p95_time_loss_s": 229.68,
+    "vehicles": 51
   },
   "run": {
     "arterial_flows": 2,

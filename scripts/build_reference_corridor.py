@@ -224,11 +224,13 @@ def main() -> None:
         '<additional><edgeData id="ed" file="%s" begin="0" end="%d"/></additional>\n'
         % (edgedata_out.name, SIM_END_S), encoding="utf-8")  # file= is resolved next to the add file
     adds = ",".join(_rel(p) for p in ([webster, args.busstops, edgedata_add] if n_tls else [args.busstops, edgedata_add]))
-    # Explicit, high time-to-teleport so the KPI run does not fall back to SUMO's 300 s
-    # default (which teleports normally-queueing vehicles and skews KPIs); 900 s still lets
-    # a genuine deadlock resolve rather than gridlocking the whole run.
+    # No --end: demand departs through SIM_END_S, so capping SUMO at the same time would
+    # drop late departures still finishing their trips from the KPIs. Let SUMO run until all
+    # vehicles arrive. Explicit high time-to-teleport so the KPI run does not fall back to
+    # SUMO's 300 s default (which teleports normal queues and skews KPIs); 900 s still lets a
+    # genuine deadlock resolve rather than gridlocking the whole run.
     sumo = _run(["sumo", "-n", _rel(args.net), "--additional-files", adds, "-r", _rel(routed),
-                 "--tripinfo-output", _rel(tripinfo), "--end", str(SIM_END_S), "--no-step-log", "true",
+                 "--tripinfo-output", _rel(tripinfo), "--no-step-log", "true",
                  "--no-warnings", "true", "--ignore-route-errors", "true",
                  "--time-to-teleport", "900"], sumo_home)
 
