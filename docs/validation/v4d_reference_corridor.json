@@ -1,0 +1,68 @@
+{
+  "demand": {
+    "arterial_flow_per_dir_veh_h": 700.0,
+    "arterial_flow_period_s": 5.143,
+    "arterial_intensity_measured": {
+      "arterial_edges_measured": 148,
+      "max_veh_h": 1394.5,
+      "mean_veh_h": 500.6,
+      "median_veh_h": 707.0,
+      "p90_veh_h": 819.5
+    },
+    "arterial_p90_in_madrid_band": true,
+    "background_car_trips": 1800,
+    "background_period_s": 4.0,
+    "hcm_anchor": "HCM-derived ~1224 veh/h inbound (~612 veh/h/lane); see configs calibration_methodology",
+    "madrid_reference_band_veh_h": {
+      "median": 397,
+      "p75": 819,
+      "p90": 1329,
+      "source": "datos.madrid.es / PMC11416623"
+    },
+    "model": "explicit arterial through-flows (HCM/Madrid target) + randomTrips diffuse cross-traffic"
+  },
+  "honest_notes": [
+    "Demand is reference-ADAPTED (HCM magnitudes, validated vs measured Madrid intensities), not Porto-measured (V2/CMP).",
+    "Signals are Webster-optimal for this demand, not the actual CMP plans.",
+    "randomTrips OD is synthetic but rate-calibrated to the referenced arterial band."
+  ],
+  "kpis_all_vehicles": {
+    "mean_depart_delay_s": 0.373,
+    "mean_duration_s": 302.292,
+    "mean_route_length_m": 4538.078,
+    "mean_speed_mps": 14.683,
+    "mean_stop_count": 3.995,
+    "mean_time_loss_s": 113.903,
+    "mean_waiting_time_s": 20.655,
+    "p95_duration_s": 395.0,
+    "p95_time_loss_s": 177.22,
+    "vehicles": 4651
+  },
+  "kpis_buses": {
+    "mean_depart_delay_s": 0.902,
+    "mean_duration_s": 559.765,
+    "mean_route_length_m": 3370.456,
+    "mean_speed_mps": 5.807,
+    "mean_stop_count": 6.392,
+    "mean_time_loss_s": 96.538,
+    "mean_waiting_time_s": 29.725,
+    "p95_duration_s": 1122.0,
+    "p95_time_loss_s": 229.68,
+    "vehicles": 51
+  },
+  "run": {
+    "arterial_flows": 2,
+    "bus_flows": 6,
+    "duarouter_ok": true,
+    "sumo_ok": true,
+    "vehicles_routed": 4651,
+    "webster_ok": true
+  },
+  "signals": {
+    "note": "per-intersection Webster; coordination (green wave) would need tlsCoordinator.py",
+    "tls_programs_optimised": 60,
+    "tool": "SUMO tlsCycleAdaptation (Webster 1958)"
+  },
+  "validation_phase": "V4d_reference_demand_and_webster_signals",
+  "verdict": "pass"
+}
