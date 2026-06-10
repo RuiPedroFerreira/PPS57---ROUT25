@@ -24,6 +24,14 @@ per build (netconvert writes a timestamp into the file header), so it is recorde
 the report rather than pinned here; within any build the `NetworkProfile` fingerprint
 equals the net SHA-256, proving the report came from exactly that net.
 
+**Reproducibility caveat.** OSM is a live database and public Overpass instances reject
+the dated/attic queries that would return the exact pinned bytes, so a fresh fetch will
+eventually drift from the pinned SHA-256. `fetch_boavista_osm.py` then **fails** (so the
+pipeline never silently uses different data); the bbox + Overpass query are the
+reproducible spec, and `--allow-drift` reproduces the pipeline on the *current* Boavista
+geometry (re-pin `EXPECTED_SHA256` afterward). The committed report documents the original
+snapshot.
+
 ## Reproduce
 
 ```bash

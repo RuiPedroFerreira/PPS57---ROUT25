@@ -59,35 +59,49 @@ def _sha256(path: Path) -> str:
 def _download(out: Path) -> None:
     if shutil.which("curl") is None:
         raise SystemExit("curl is required to fetch OSM data")
+    # Download to a temp file and publish (rename) only a COMPLETE response, so a transient
+    # Overpass error/partial body never persists as a bad cache that the next run reuses.
+    tmp = out.with_suffix(".part")
     for endpoint in ENDPOINTS:
         print(f"Querying Overpass: {endpoint}")
         result = subprocess.run(
-            ["curl", "-sS", "--max-time", "90", "-A", USER_AGENT,
-             "-o", str(out), endpoint, "--data-urlencode", f"data={OVERPASS_QUERY}"],
+            ["curl", "-sS", "--max-time", "90", "--retry", "2", "--retry-all-errors",
+             "-A", USER_AGENT, "-o", str(tmp), endpoint, "--data-urlencode", f"data={OVERPASS_QUERY}"],
             capture_output=True, text=True,
         )
-        if result.returncode == 0 and out.exists() and b"</osm>" in out.read_bytes()[-256:]:
+        if result.returncode == 0 and tmp.exists() and b"</osm>" in tmp.read_bytes()[-512:]:
+            tmp.replace(out)
             return
+    tmp.unlink(missing_ok=True)
     raise SystemExit("Overpass fetch failed on all endpoints (try again later; servers can be busy)")
 
 
-def fetch(out_dir: Path) -> Path:
+def fetch(out_dir: Path, allow_drift: bool = False) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     osm_path = out_dir / "boavista.osm.xml"
-    if not osm_path.exists():
+    # Re-download if the cache is missing OR not a complete OSM response: a previous
+    # transient failure must not be reused as a valid extract.
+    if not osm_path.exists() or b"</osm>" not in osm_path.read_bytes()[-512:]:
         _download(osm_path)
     else:
         print(f"Reusing cached {osm_path}")
 
     sha = _sha256(osm_path)
     if EXPECTED_SHA256 and sha != EXPECTED_SHA256:
-        # Fail (don't just warn): the committed report was produced from the pinned
-        # snapshot. OSM is live, so if the change is intended, delete the cached extract
-        # and update EXPECTED_SHA256 to re-pin.
-        raise SystemExit(
-            f"OSM snapshot sha256 {sha} != pinned {EXPECTED_SHA256}. The pinned Boavista "
-            "extract changed (OSM is live); re-pin EXPECTED_SHA256 if this is intended."
+        # OSM is a live database and public Overpass instances reject the dated/attic
+        # queries that would pin exact bytes, so the extract drifts over time. Fail by
+        # default (the committed report was produced from the pinned snapshot); --allow-drift
+        # reproduces the pipeline on the current geometry (then update EXPECTED_SHA256 to re-pin).
+        message = (
+            f"OSM snapshot sha256 {sha} != pinned {EXPECTED_SHA256}: the live Boavista extract "
+            "has drifted since the committed report was produced."
         )
+        if not allow_drift:
+            raise SystemExit(
+                message + " Re-run with --allow-drift to reproduce on the current geometry, "
+                "then update EXPECTED_SHA256 to re-pin."
+            )
+        print("WARNING: " + message + " Proceeding (--allow-drift); update EXPECTED_SHA256 to re-pin.")
 
     provenance = {
         "source": "OpenStreetMap via Overpass API",
@@ -110,8 +124,11 @@ def fetch(out_dir: Path) -> Path:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--out-dir", type=Path, default=ROOT / ".tools" / "boavista-osm")
+    parser.add_argument("--allow-drift", action="store_true",
+                        help="proceed if the live OSM extract no longer matches the pinned sha "
+                             "(reproduce the pipeline on the current Boavista geometry)")
     args = parser.parse_args()
-    fetch(args.out_dir)
+    fetch(args.out_dir, allow_drift=args.allow_drift)
 
 
 if __name__ == "__main__":
