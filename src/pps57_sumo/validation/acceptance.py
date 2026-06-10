@@ -191,7 +191,10 @@ def evaluate_tsp_face_validity(
 
     Each measurement is a mapping with ``metric`` (one of the configured bands,
     e.g. ``bus_running_time_improvement_pct``), ``value_pct`` and an optional
-    ``source``. A gain inside the band is plausible; outside is flagged.
+    ``source``. A gain inside the band is plausible; outside is flagged. The
+    configured ``corridor_travel_time_anchors_pct`` (published per-city point
+    anchors, not a band) is echoed into the report as context only — it gates
+    nothing.
     """
     fv_cfg = config["tsp_face_validity"]
     results: List[Dict[str, Any]] = []
@@ -214,7 +217,7 @@ def evaluate_tsp_face_validity(
                 "envelope_source": band["source"],
             }
         )
-    return {
+    report = {
         "metric": "tsp_face_validity",
         "n_measurements": len(measurements),
         "results": results,
@@ -222,3 +225,11 @@ def evaluate_tsp_face_validity(
             "no_measurements" if not measurements else "flagged"
         ),
     }
+    anchors = fv_cfg.get("corridor_travel_time_anchors_pct")
+    if anchors:
+        report["published_corridor_anchors_pct"] = {
+            "anchors": {key: value for key, value in anchors.items() if key != "source"},
+            "source": anchors.get("source", ""),
+            "role": "context only — published point anchors for comparison, not a pass/fail band",
+        }
+    return report

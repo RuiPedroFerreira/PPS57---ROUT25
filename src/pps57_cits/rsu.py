@@ -49,6 +49,12 @@ class RSUAgent:
     known_certificate_ids: Set[str] = field(default_factory=set)
     processed_request_keys: Dict[tuple[int, int, int], float] = field(default_factory=dict)
     last_sequence_by_request: Dict[tuple[int, int], tuple[int, float]] = field(default_factory=dict)
+    # Pedidos em PROCESSING ainda não fechados: (station_id, request_id) ->
+    # (expires_at_s, vehicle_id). Persiste entre ticks para que o limite
+    # max_active_requests_per_rsu conte o que está realmente ativo, não só o
+    # batch do tick corrente. Sai por SSEM final (granted via
+    # mark_priority_granted, rejected, cancelled) ou por expiração do TTL.
+    processing_request_expiry: Dict[tuple[int, int], tuple[float, str]] = field(default_factory=dict)
 
     @property
     def rsu_id(self) -> str:
@@ -59,9 +65,9 @@ class RSUAgent:
     ) -> List[SSEMLike]:
         responses: List[SSEMLike] = []
         max_active = int(self.config.rsu_policy.get("max_active_requests_per_rsu", 4))
-        active_count = 0  # só pedidos elegíveis contam para o limite
         seen_request_keys: Set[tuple] = set()  # dedupe por (station_id, request_id, sequence_number)
         self._prune_replay_cache(sim_time_s)
+        self._prune_processing_requests(sim_time_s)
 
         for message in messages:
             if message.message_type != MessageType.SREM.value:
@@ -78,22 +84,27 @@ class RSUAgent:
                 request.requests[0].request_id if request.requests else None,
                 request.sequence_number,
             )
-            if dedupe_key in seen_request_keys:
-                responses.append(self._reject(request, sim_time_s, "duplicate_request_in_batch"))
-                continue
+            # Cancelamentos são idempotentes por contrato: a retransmissão da
+            # mesma priorityCancellation devolve o mesmo ack em vez de uma
+            # rejeição por duplicado/replay.
+            if not request.is_cancellation:
+                if dedupe_key in seen_request_keys:
+                    responses.append(self._reject(request, sim_time_s, "duplicate_request_in_batch"))
+                    continue
+                replay_problem = self._replay_or_ordering_problem(request, sim_time_s)
+                if replay_problem is not None:
+                    responses.append(self._reject(request, sim_time_s, replay_problem))
+                    continue
             seen_request_keys.add(dedupe_key)
 
-            replay_problem = self._replay_or_ordering_problem(request, sim_time_s)
-            if replay_problem is not None:
-                responses.append(self._reject(request, sim_time_s, replay_problem))
-                continue
-
-            decision = self._evaluate_request(
-                request, sim_time_s, too_many_active=active_count >= max_active
+            active_key = self._active_request_key(request)
+            too_many_active = (
+                active_key not in self.processing_request_expiry
+                and len(self.processing_request_expiry) >= max_active
             )
+            decision = self._evaluate_request(request, sim_time_s, too_many_active=too_many_active)
             self._remember_request(request, sim_time_s)
-            if decision.response_status == ResponseStatus.PROCESSING.value:
-                active_count += 1
+            self._track_processing_request(request, decision, sim_time_s)
             responses.append(self._wrap_response(request, decision, sim_time_s))
         return responses
 
@@ -176,6 +187,12 @@ class RSUAgent:
     def mark_priority_granted(self, vehicle_id: str, sim_time_s: float) -> None:
         """Mark a real downstream priority grant, not merely RSU forwarding."""
         self.last_grant_time_by_vehicle[vehicle_id] = sim_time_s
+        # SSEM final (granted) fecha o pedido: liberta a quota de ativos.
+        self.processing_request_expiry = {
+            key: value
+            for key, value in self.processing_request_expiry.items()
+            if value[1] != vehicle_id
+        }
 
     # ------------------------------------------------------------------
     # Helpers de validação.
@@ -260,9 +277,6 @@ class RSUAgent:
         request_id = 0
         sequence_number = 0
         requestor_station_id = getattr(message, "station_id", 0)
-        if isinstance(message, SREMLike) and message.requests:
-            request_id = message.requests[0].request_id
-            sequence_number = message.sequence_number
         moy, timestamp_ms, generation_delta = sim_time_to_cdd(sim_time_s)
         response = PrioritizationResponse(
             request_id=request_id,
@@ -408,6 +422,47 @@ class RSUAgent:
             return None
         signal_request = request.requests[0]
         return (request.station_id, signal_request.request_id, request.sequence_number)
+
+    def _active_request_key(self, request: SREMLike) -> Optional[tuple[int, int]]:
+        """Chave do pedido lógico (sem sequence_number): updates do mesmo
+        pedido partilham a mesma entrada na quota de ativos."""
+        if not request.requests:
+            return None
+        return (request.station_id, request.requests[0].request_id)
+
+    def _track_processing_request(
+        self, request: SREMLike, decision: "_DecisionPair", sim_time_s: float
+    ) -> None:
+        key = self._active_request_key(request)
+        if key is None:
+            return
+        if decision.response_status == ResponseStatus.PROCESSING.value:
+            self.processing_request_expiry[key] = (
+                self._request_expiry(request, sim_time_s),
+                request.vehicle_id,
+            )
+        elif request.is_cancellation or decision.response_status == ResponseStatus.REJECTED.value:
+            # SSEM final (rejected/cancelled) fecha a cadeia deste pedido.
+            self.processing_request_expiry.pop(key, None)
+
+    def _request_expiry(self, request: SREMLike, sim_time_s: float) -> float:
+        if request.expires_at_s is not None:
+            return float(request.expires_at_s)
+        if request.requests and request.requests[0].duration_ms > 0:
+            return sim_time_s + request.requests[0].duration_ms / 1000.0
+        return sim_time_s + float(
+            self.config.rsu_policy.get(
+                "dedupe_cache_ttl_s",
+                self.config.obu_policy.get("request_lifecycle_ttl_s", 30.0),
+            )
+        )
+
+    def _prune_processing_requests(self, sim_time_s: float) -> None:
+        self.processing_request_expiry = {
+            key: value
+            for key, value in self.processing_request_expiry.items()
+            if value[0] > sim_time_s
+        }
 
     def _prune_replay_cache(self, sim_time_s: float) -> None:
         ttl_s = float(

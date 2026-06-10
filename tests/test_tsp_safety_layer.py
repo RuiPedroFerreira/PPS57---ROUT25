@@ -816,6 +816,57 @@ class Package4TSPTestCase(unittest.TestCase):
         self.assertTrue(result.approved, msg=f"reason={result.reason}")
         self.assertEqual(result.reason, "approved_red_truncation")
 
+    def _approved_early_green(self, safety: TSPSafetyLayer):
+        request = self._request(
+            destination_id="RSU_BOAVISTA_07",
+            intersection_id="I7",
+            tls_id="I7",
+            rsu_id="RSU_BOAVISTA_07",
+            current_edge_id="ATLANTIC_WEST_I7",
+            current_lane_id="ATLANTIC_WEST_I7_0",
+            priority_movement_id="I7_eastbound_public_transport",
+            target_signal_group_id="I7_priority_eastbound",
+        )
+        state = SignalState(
+            intersection_id="I7",
+            tls_id="I7",
+            rsu_id="RSU_BOAVISTA_07",
+            timestamp_s=100.0,
+            current_phase_index=3,
+            current_program_id="test",
+            red_yellow_green_state="rrGG",
+            next_switch_s=125.0,
+            spent_duration_s=20.0,
+            controlled_lanes=["I6_I7_0", "ATLANTIC_WEST_I7_0", "N_I7_I7_0", "S_I7_I7_0"],
+        )
+        decision = self.engine.decide(request, state, sim_time_s=100.0)
+        result = safety.validate(decision, state, sim_time_s=100.0)
+        self.assertTrue(result.approved, msg=f"reason={result.reason}")
+        self.assertEqual(result.safe_decision.action, TSPAction.EARLY_GREEN.value)
+        return result.safe_decision
+
+    def test_early_green_recovery_debt_is_green_removed_not_truncated_remaining(self) -> None:
+        # A dívida tem de medir o verde retirado à fase conflituante
+        # (restante na decisão - restante truncado), não o valor curto
+        # para que a fase foi truncada.
+        safety = TSPSafetyLayer(self.cits, self.tsp)
+        safety.set_signal_program_verified(True)
+        safe = self._approved_early_green(safety)
+        self.assertEqual(safe.phase_duration_s, 2.0)
+        safety.mark_applied(safe, sim_time_s=100.0)
+        # restante na decisão = next_switch 125 - timestamp 100 = 25s; truncado
+        # para 2s -> 23s de verde removido.
+        self.assertAlmostEqual(safety.recovery_debt_by_tls["I7"], 23.0)
+
+    def test_early_green_recovery_debt_falls_back_without_next_switch(self) -> None:
+        # Sem next_switch no snapshot o verde removido é desconhecido; a dívida
+        # mínima continua a ser a duração truncada (comportamento anterior).
+        safety = TSPSafetyLayer(self.cits, self.tsp)
+        safety.set_signal_program_verified(True)
+        safe = self._approved_early_green(safety)
+        safety.mark_applied(safe.copy_with(current_next_switch_s=None), sim_time_s=100.0)
+        self.assertAlmostEqual(safety.recovery_debt_by_tls["I7"], 2.0)
+
     def test_copy_with_does_not_alias_notes_list(self) -> None:
         # copy_with passou a usar dataclasses.replace; sem a cópia explícita
         # de `notes`, o objeto copiado partilharia a lista do original.

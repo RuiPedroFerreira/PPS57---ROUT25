@@ -520,7 +520,14 @@ class Package3CITSTestCase(unittest.TestCase):
     def test_safety_config_validation_accepts_current_configs(self) -> None:
         from pps57_sumo.validate_project import validate_safety_configs
 
-        validate_safety_configs(ROOT)  # must not raise
+        # must-not-raise: validate_safety_configs devolve None e aborta com
+        # SystemExit à primeira violação; passar sem excepção é o critério.
+        validate_safety_configs(ROOT)
+        # Garante que o validador correu sobre configs reais e não vazias.
+        cits = json.loads((ROOT / "configs/cits_v2x_config.json").read_text(encoding="utf-8"))
+        tsp = json.loads((ROOT / "configs/tsp_safety_config.json").read_text(encoding="utf-8"))
+        self.assertTrue(cits.get("safety_constraints"))
+        self.assertTrue(tsp.get("decision_policy"))
 
     def test_safety_config_validation_rejects_inverted_green_extension(self) -> None:
         from pps57_sumo.validate_project import validate_safety_configs

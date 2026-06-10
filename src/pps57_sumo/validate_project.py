@@ -60,9 +60,9 @@ def validate_routes_sorted(routes_path: Path) -> None:
     root_el = tree.getroot()
     timeline: list[tuple[float, str, str]] = []
     for child in root_el:
-        if child.tag in {"vehicle", "person"}:
+        if child.tag in {"vehicle", "person", "trip"}:
             time_attr = child.attrib.get("depart")
-        elif child.tag == "flow":
+        elif child.tag in {"flow", "personFlow"}:
             time_attr = child.attrib.get("begin")
         else:
             continue

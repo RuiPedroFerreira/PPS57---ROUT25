@@ -7,8 +7,9 @@ top-level) **não são** compatíveis e devem ser regenerados.
 """
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 import json
 
 from pps57_cits.messages import (
@@ -114,19 +115,24 @@ def write_event_training_dataset(
     }
 
 
-def load_event_training_scenarios(
+def load_event_training_dataset(
     path: str | Path,
     intervention_actions: Optional[Iterable[str]] = None,
-) -> List[OfflineScenario]:
+) -> Tuple[List[OfflineScenario], Dict[str, object]]:
     """Load optimization/RL scenarios from SUMO/TraCI event-derived rows.
 
-    Strict loader: rows sem o SREM original ou sem o estado SPATEM-derivado
-    são saltadas; dataset vazio é rejeitado pelos controllers. Isto previne
-    fallback silencioso para dados sintéticos.
+    Strict loader: rows sem o SREM original, sem o estado SPATEM-derivado, com
+    network_state incompleto ou indescodificáveis são saltadas **uma a uma**
+    (sem abortar o load inteiro) e contabilizadas no relatório devolvido, para
+    que nenhuma perda de dados seja silenciosa; dataset vazio é rejeitado
+    pelos controllers. Isto previne fallback silencioso para dados sintéticos.
 
     `intervention_actions` é a fonte de verdade única do conjunto de ações que
     atuam o semáforo (ver TSPConfig.actuating_actions); quando None recai em
     DEFAULT_ACTUATING_ACTIONS, mantendo o comportamento anterior.
+
+    Devolve `(scenarios, load_report)` onde o report inclui `row_count`,
+    `scenario_count`, `rows_skipped` e `rows_skipped_by_reason`.
     """
 
     raw_rows = list(_read_jsonl(Path(path)))
@@ -139,18 +145,30 @@ def load_event_training_scenarios(
     )
 
     scenarios: List[OfflineScenario] = []
+    skipped_by_reason: Counter[str] = Counter()
     for index, row in enumerate(raw_rows):
         request_payload = row.get("request") if isinstance(row.get("request"), dict) else {}
         signal_payload = row.get("signal_state") if isinstance(row.get("signal_state"), dict) else {}
         network_state = row.get("network_state") if isinstance(row.get("network_state"), dict) else {}
         if not request_payload or not signal_payload or not network_state:
+            skipped_by_reason["missing_request_signal_or_network_state"] += 1
             _maybe_record_intervention(row, last_applied_intervention_by_tls, intervention_actions)
             continue
-        request = _srem_from_payload(request_payload)
-        signal_payload = _merge_signal_context(signal_payload, row)
-        signal_state = _signal_state_from_payload(signal_payload, request)
+        network_metrics = _network_metrics(network_state)
+        if network_metrics is None:
+            skipped_by_reason["incomplete_network_state"] += 1
+            _maybe_record_intervention(row, last_applied_intervention_by_tls, intervention_actions)
+            continue
+        try:
+            request = _srem_from_payload(request_payload)
+            signal_payload = _merge_signal_context(signal_payload, row)
+            signal_state = _signal_state_from_payload(signal_payload, request)
+            timestamp_s = _float(row.get("timestamp_s") or 0.0)
+        except (ProtocolCodecError, TypeError, ValueError):
+            skipped_by_reason["undecodable_request_or_signal_state"] += 1
+            _maybe_record_intervention(row, last_applied_intervention_by_tls, intervention_actions)
+            continue
         scenario_id = str(row.get("decision_id") or row.get("request_id") or f"event_{index}")
-        timestamp_s = _float(row.get("timestamp_s"))
         tls_id = str(row.get("tls_id") or request.tls_id)
         last_intervention = last_applied_intervention_by_tls.get(tls_id)
         seconds_since = None if last_intervention is None else max(0.0, timestamp_s - last_intervention)
@@ -162,20 +180,52 @@ def load_event_training_scenarios(
                 sim_time_s=timestamp_s,
                 request=request,
                 signal_state=signal_state,
-                active_request_count=int(network_state["active_request_count"]),
-                queue_vehicle_count=int(network_state["queue_vehicle_count"]),
-                halted_vehicle_count=int(network_state["halted_vehicle_count"]),
-                mean_speed_mps=float(network_state["mean_speed_mps"]),
-                waiting_time_s=float(network_state["waiting_time_s"]),
-                occupancy=float(network_state["occupancy"]),
-                spillback_risk=bool(network_state["spillback_risk"]),
+                active_request_count=network_metrics["active_request_count"],
+                queue_vehicle_count=network_metrics["queue_vehicle_count"],
+                halted_vehicle_count=network_metrics["halted_vehicle_count"],
+                mean_speed_mps=network_metrics["mean_speed_mps"],
+                waiting_time_s=network_metrics["waiting_time_s"],
+                occupancy=network_metrics["occupancy"],
+                spillback_risk=network_metrics["spillback_risk"],
                 seconds_since_last_intervention_s=seconds_since,
                 behavior_policy_action=(str(row["action"]) if row.get("action") is not None else None),
                 realized_outcome=_optional_float(row.get("realized_outcome")),
             )
         )
         _maybe_record_intervention(row, last_applied_intervention_by_tls, intervention_actions)
+
+    load_report: Dict[str, object] = {
+        "source_path": str(path),
+        "row_count": len(raw_rows),
+        "scenario_count": len(scenarios),
+        "rows_skipped": sum(skipped_by_reason.values()),
+        "rows_skipped_by_reason": dict(sorted(skipped_by_reason.items())),
+    }
+    return scenarios, load_report
+
+
+def load_event_training_scenarios(
+    path: str | Path,
+    intervention_actions: Optional[Iterable[str]] = None,
+) -> List[OfflineScenario]:
+    """Backward-compatible wrapper that discards the load report."""
+    scenarios, _ = load_event_training_dataset(path, intervention_actions)
     return scenarios
+
+
+def _network_metrics(network_state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    try:
+        return {
+            "active_request_count": int(network_state["active_request_count"]),
+            "queue_vehicle_count": int(network_state["queue_vehicle_count"]),
+            "halted_vehicle_count": int(network_state["halted_vehicle_count"]),
+            "mean_speed_mps": float(network_state["mean_speed_mps"]),
+            "waiting_time_s": float(network_state["waiting_time_s"]),
+            "occupancy": float(network_state["occupancy"]),
+            "spillback_risk": bool(network_state["spillback_risk"]),
+        }
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def _maybe_record_intervention(

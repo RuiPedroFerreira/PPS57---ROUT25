@@ -134,12 +134,37 @@ def audit_protocol_lifecycle(
         if chain["first_srem_generation_time_ms"] is not None
         and chain["final_generation_time_ms"] is not None
     ]
+    # As cadeias são por (station:request:seq), mas a OBU incrementa o
+    # sequence_number em cada priorityRequestUpdate: só a seq mais recente de
+    # cada pedido recebe o SSEM final. As seqs anteriores ficam marcadas como
+    # supersedidas (contadas à parte) em vez de inflacionar missing_final_ssem.
+    latest_sequence_by_request: Dict[str, int] = {}
+    for key, chain in chains.items():
+        if chain["srem_count"] == 0:
+            continue
+        request_scope, sequence = _split_request_key(key)
+        if request_scope is None or sequence is None:
+            continue
+        current = latest_sequence_by_request.get(request_scope)
+        if current is None or sequence > current:
+            latest_sequence_by_request[request_scope] = sequence
+    superseded_chains = 0
+    for key, chain in chains.items():
+        request_scope, sequence = _split_request_key(key)
+        chain["superseded_by_newer_sequence"] = (
+            request_scope is not None
+            and sequence is not None
+            and sequence < latest_sequence_by_request.get(request_scope, sequence)
+        )
+        if chain["superseded_by_newer_sequence"]:
+            superseded_chains += 1
     missing_final = [
         key
         for key, chain in chains.items()
         if chain["srem_count"] > 0
         and chain["final_ssem_count"] == 0
         and chain["state"] not in {PriorityRequestState.CANCELLED.value}
+        and not chain["superseded_by_newer_sequence"]
     ]
 
     return {
@@ -157,6 +182,7 @@ def audit_protocol_lifecycle(
             "with_processing_ssem": sum(1 for chain in chains.values() if chain["processing_ssem_count"] > 0),
             "with_final_ssem": sum(1 for chain in chains.values() if chain["final_ssem_count"] > 0),
             "missing_final_ssem": len(missing_final),
+            "superseded_request_chains": superseded_chains,
             "orphan_ssem": orphan_ssem,
             "invalid_state_transitions": len(invalid_transitions),
             "controller_nacks": controller_nacks,
@@ -232,6 +258,17 @@ def _transition_chain(
 def _normalise_message_type(item: Dict[str, Any]) -> str:
     raw = str(item.get("message_type") or "")
     return raw[:-5] if raw.endswith("_like") else raw
+
+
+def _split_request_key(key: str) -> tuple[Optional[str], Optional[int]]:
+    """Divide "station:request:seq" em ("station:request", seq)."""
+    head, sep, sequence_text = str(key).rpartition(":")
+    if not sep:
+        return None, None
+    try:
+        return head, int(sequence_text)
+    except ValueError:
+        return None, None
 
 
 def _request_key_from_srem(item: Dict[str, Any]) -> Optional[str]:

@@ -319,7 +319,7 @@ def build_routes(config: dict, intersections: list[dict], terminals: dict[str, d
 
     for item in config.get("routes", []):
         route_defs[str(item["id"])] = [str(edge) for edge in item["edges"]]
-    return _expand_roundabout_routes(route_defs, intersections)
+    return _expand_roundabout_routes(route_defs, intersections, terminals)
 
 
 def _corridor_source_node(inter: dict[str, Any], *, direction: str, roundabout_arms: dict[str, dict[str, str]]) -> str:
@@ -362,16 +362,35 @@ def _add_roundabout_ring_edges(add_edge, inter: dict[str, Any], arms: dict[str, 
     return ring_ids
 
 
+def _roundabout_corridor_neighbours(
+    intersections: list[dict],
+    terminals: dict[str, dict],
+) -> Dict[str, dict[str, str]]:
+    """CITY/ATLANTIC corridor neighbours of each ring roundabout.
+
+    The roundabout's CITY arm is fed by the previous element along the corridor
+    (the preceding intersection, or the CITY_EAST terminal when the roundabout
+    is first) and its ATLANTIC arm by the next one — derived from the corridor
+    config's actual ordering, not hardcoded ids.
+    """
+    ids = [str(inter["id"]) for inter in intersections]
+    neighbours: Dict[str, dict[str, str]] = {}
+    for index, inter in enumerate(intersections):
+        if str(inter.get("roundabout_model", "")) != "ring":
+            continue
+        city_side = ids[index - 1] if index > 0 else str(terminals["CITY_EAST"]["id"])
+        atlantic_side = ids[index + 1] if index + 1 < len(ids) else str(terminals["ATLANTIC_WEST"]["id"])
+        neighbours[ids[index]] = {"CITY": city_side, "ATLANTIC": atlantic_side}
+    return neighbours
+
+
 def _expand_roundabout_routes(
     route_defs: Dict[str, List[str]],
     intersections: list[dict],
+    terminals: dict[str, dict],
 ) -> Dict[str, List[str]]:
-    roundabout_ids = {
-        str(inter["id"])
-        for inter in intersections
-        if str(inter.get("roundabout_model", "")) == "ring"
-    }
-    if not roundabout_ids:
+    neighbours = _roundabout_corridor_neighbours(intersections, terminals)
+    if not neighbours:
         return route_defs
     expanded: Dict[str, List[str]] = {}
     for route_id, edges in route_defs.items():
@@ -380,8 +399,15 @@ def _expand_roundabout_routes(
             out.append(edge_id)
             if index + 1 >= len(edges):
                 continue
-            for inter_id in roundabout_ids:
-                internal = _roundabout_internal_path(inter_id, edge_id, edges[index + 1])
+            for inter_id, arms in neighbours.items():
+                internal = _roundabout_internal_path(
+                    inter_id,
+                    edge_id,
+                    edges[index + 1],
+                    city_neighbour=arms["CITY"],
+                    atlantic_neighbour=arms["ATLANTIC"],
+                    route_id=route_id,
+                )
                 if internal:
                     out.extend(internal)
                     break
@@ -389,21 +415,37 @@ def _expand_roundabout_routes(
     return expanded
 
 
-def _roundabout_internal_path(inter_id: str, incoming_edge: str, outgoing_edge: str) -> list[str]:
+def _roundabout_internal_path(
+    inter_id: str,
+    incoming_edge: str,
+    outgoing_edge: str,
+    *,
+    city_neighbour: str,
+    atlantic_neighbour: str,
+    route_id: str = "",
+) -> list[str]:
     incoming_arm = {
-        f"I5_{inter_id}": "CITY",
-        f"I7_{inter_id}": "ATLANTIC",
+        f"{city_neighbour}_{inter_id}": "CITY",
+        f"{atlantic_neighbour}_{inter_id}": "ATLANTIC",
         f"N_{inter_id}_{inter_id}": "NORTH",
         f"S_{inter_id}_{inter_id}": "SOUTH",
     }.get(incoming_edge)
     outgoing_arm = {
-        f"{inter_id}_I5": "CITY",
-        f"{inter_id}_I7": "ATLANTIC",
+        f"{inter_id}_{city_neighbour}": "CITY",
+        f"{inter_id}_{atlantic_neighbour}": "ATLANTIC",
         f"{inter_id}_N_{inter_id}": "NORTH",
         f"{inter_id}_S_{inter_id}": "SOUTH",
     }.get(outgoing_edge)
-    if incoming_arm is None or outgoing_arm is None:
+    if incoming_arm is None and outgoing_arm is None:
         return []
+    if incoming_arm is None or outgoing_arm is None:
+        raise ValueError(
+            f"Route {route_id or '<unknown>'} touches roundabout {inter_id} but no internal ring path "
+            f"can be derived for the transition {incoming_edge!r} -> {outgoing_edge!r} "
+            f"(resolved arms: in={incoming_arm}, out={outgoing_arm}; corridor neighbours: "
+            f"CITY={city_neighbour}, ATLANTIC={atlantic_neighbour}). The route would be broken at the "
+            "roundabout; fix the route edges or the corridor config instead of generating a bad net."
+        )
     cycle = ["CITY", "NORTH", "ATLANTIC", "SOUTH"]
     if incoming_arm == outgoing_arm:
         return []

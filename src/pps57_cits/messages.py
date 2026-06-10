@@ -27,6 +27,7 @@ import hashlib
 import json
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
+import zlib
 
 
 # ---------------------------------------------------------------------------
@@ -812,14 +813,16 @@ def _is_uint(value: Any, bits: int) -> bool:
 def parse_intersection_ref_id(alias: str) -> int:
     """Deriva o `intersection_ref_id` uint16 a partir do alias operacional.
 
-    "I1" -> 1, "I12" -> 12. Quando não há dígitos no alias, devolve um hash
-    estável (16 bits) para que o id seja determinístico mesmo em ids exóticos.
+    Apenas aliases canónicos da forma estrita "I<n>" mapeiam para o número
+    ("I1" -> 1, "I12" -> 12). Qualquer outro alias (ex.: "TLS_1_2",
+    "cluster_1_2") usa um hash CRC32 determinístico de 16 bits — concatenar
+    dígitos faria "I12", "TLS_1_2" e "cluster_1_2" colidirem todos em 12.
+    Produtores (OBU/MAPEM/SPATEM) e consumidores (RSU) usam esta mesma função
+    para que o endereçamento legítimo continue a corresponder.
     """
-    digits = "".join(ch for ch in alias if ch.isdigit())
-    if digits:
-        return int(digits) & 0xFFFF
-    digest = hashlib.blake2b(alias.encode("utf-8"), digest_size=2).digest()
-    return int.from_bytes(digest, "big") & 0xFFFF
+    if len(alias) > 1 and alias[0] == "I" and alias[1:].isdigit():
+        return int(alias[1:]) & 0xFFFF
+    return zlib.crc32(alias.encode("utf-8")) & 0xFFFF
 
 
 def derive_station_id(vehicle_or_rsu_id: str) -> int:
@@ -887,7 +890,7 @@ _SUMO_TO_EVENT_STATE: Dict[str, str] = {
     "Y": EventState.PROTECTED_CLEARANCE.value,
     "g": EventState.PERMISSIVE_MOVEMENT_ALLOWED.value,
     "G": EventState.PROTECTED_MOVEMENT_ALLOWED.value,
-    "s": EventState.PROTECTED_MOVEMENT_ALLOWED.value,  # right-turn green arrow
+    "s": EventState.STOP_THEN_PROCEED.value,           # right-turn-on-red: parar e avançar com cautela
     "u": EventState.PRE_MOVEMENT.value,                # red-yellow, transição p/ verde
     "O": EventState.DARK.value,
     "o": EventState.CAUTION_CONFLICTING_TRAFFIC.value, # amarelo pisca

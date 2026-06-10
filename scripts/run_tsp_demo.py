@@ -10,8 +10,10 @@ twice and pairs the buses (identical routes/departures in both arms):
                and actuates approved priority via TraCI (setPhaseDuration).
 
 It reuses the validated engine + Safety Layer (same as scripts/empirical_network_profile_check.py),
-processing only buses (fast) and setting signal_program_verified(True) to bypass the global
-contract-verification gate that the OSM net's joined intersections trip (no conflict matrix).
+processing only buses (fast). The Safety Layer gets the NetworkBinding (authoritative conflict
+matrices from the net's own <request foes> data), so the joined-intersection conflict-matrix gate
+is served by real data; signal_program_verified(True) bypasses only the separate live
+program/pedestrian-clearance proof this thin loop does not reconcile.
 Nothing is invented: both arms run the same real corridor; only TSP actuation differs.
 """
 from __future__ import annotations
@@ -24,32 +26,36 @@ import re
 from statistics import fmean
 import subprocess
 import sys
-import tempfile
-import xml.etree.ElementTree as ET
+
+# M4: defusedxml em vez do stdlib — convenção do repo para parsing de XML.
+try:
+    from defusedxml import ElementTree as ET  # type: ignore[import-untyped]
+except ImportError:  # pragma: no cover - exercised in minimal CI images.
+    from xml.etree import ElementTree as ET  # type: ignore[no-redef]
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
+SCRIPTS = ROOT / "scripts"
+for entry in (str(SRC), str(SCRIPTS)):
+    if entry not in sys.path:
+        sys.path.insert(0, entry)
 
-from pps57_cits.config import load_cits_config  # noqa: E402
+from _evidence_common import auto_discovery_cits_config, auto_tsp_config, running_time_envelope  # noqa: E402
 from pps57_cits.messages import OperatorPriorityClass, synth_srem  # noqa: E402
 from pps57_cits.models import SignalState  # noqa: E402
 from pps57_sumo.environment import apply_sumo_environment, ensure_sumo_environment  # noqa: E402
+from pps57_sumo.network_binding import build_network_binding  # noqa: E402
 from pps57_sumo.network_profile import load_network_profile  # noqa: E402
 from pps57_sumo.parse_tripinfo import parse_tripinfo  # noqa: E402
 from pps57_sumo.stats import mean_ci95  # noqa: E402
-from pps57_tsp.config import TSPConfig  # noqa: E402
+from pps57_sumo.validation.acceptance import load_validation_config  # noqa: E402
 from pps57_tsp.engine import TSPDecisionEngine  # noqa: E402
 from pps57_tsp.models import TSPAction  # noqa: E402
 from pps57_tsp.safety import TSPSafetyLayer  # noqa: E402
+from pps57_tsp.signal_control import network_binding_aliases  # noqa: E402
 
-# Face-validity envelope for the TSP gain (mirrors configs/validation_config.json, V0):
-# bus running-time improvement 2-18% (US-DOT ITS Benefits DB, ID 2009-b00613).
-TSP_RUNNING_TIME_PCT = (2.0, 18.0)
 APPROACH_M = 120.0  # only act when a bus is within this distance of the TLS stop line
 WORK = ROOT / ".tools" / "boavista-osm"
-DEMO = ROOT / ".tools" / "demo"
 
 
 def _write_sumocfg(path: Path, net: Path, routes: Path, busstops: Path, tripinfo: Path, end: int) -> None:
@@ -71,44 +77,6 @@ def _write_sumocfg(path: Path, net: Path, routes: Path, busstops: Path, tripinfo
     )
 
 
-def _auto_cits_config(net: Path):
-    payload = {
-        "sumo": {"network": str(net)},
-        "network_discovery": {
-            "enabled": True, "augment_missing_intersections": True,
-            "auto_generate_priority_movements": True,
-            "priority_vehicle_classes": ["public_transport"], "rsu_id_prefix": "RSU_AUTO_",
-        },
-        "obu_policy": {}, "rsu_policy": {},
-        "safety_constraints": {
-            "min_green_s": 8, "max_green_extension_s": 12, "max_total_green_s": 55,
-            "yellow_s": 3, "all_red_s": 0,
-            "pedestrian_clearance_must_not_be_shortened": True, "never_skip_yellow_or_all_red": True,
-            "max_consecutive_priority_interventions_per_tls": 2, "cooldown_after_priority_s": 90,
-        },
-        "intersections": [],
-    }
-    handle = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
-    json.dump(payload, handle)
-    handle.close()
-    return load_cits_config(Path(handle.name), root=Path(handle.name).parent)
-
-
-def _auto_tsp_config() -> TSPConfig:
-    return TSPConfig(root=ROOT, raw={
-        "decision_policy": {
-            "min_priority_score": 0.0, "eta_arrival_buffer_s": 4, "green_extension_min_s": 3,
-            "green_extension_default_s": 8, "green_extension_max_s": 12, "early_green_min_eta_s": 10,
-            "red_truncation_to_s": 2, "delay_normalisation_s": 180, "headway_normalisation_s": 240,
-            "distance_normalisation_m": 250,
-            "weights": {"schedule_delay": 0.45, "headway_deviation": 0.2, "proximity": 0.2, "priority_level": 0.15}},
-        "actuation": {"allow_green_extension": True, "allow_red_truncation": True, "allow_direct_phase_jump": False},
-        "network_profile": {"enabled": True, "prefer_generated_contracts_for_unknown_tls": True},
-        "controller_contracts": {"default": {"adapter_type": "sumo_traci", "fixed_time_required": True,
-                                             "allowed_actions": ["green_extension", "early_green"]}},
-        "phase_mapping": {}})
-
-
 def _signal_state_from_traci(traci, tls_id: str, rsu_id: str, sim_time_s: float) -> SignalState:
     return SignalState(
         intersection_id=tls_id, tls_id=tls_id, rsu_id=rsu_id, timestamp_s=sim_time_s,
@@ -121,12 +89,16 @@ def _signal_state_from_traci(traci, tls_id: str, rsu_id: str, sim_time_s: float)
         controlled_links=list(traci.trafficlight.getControlledLinks(tls_id)))
 
 
-def run_baseline(sumocfg: Path) -> int:
+def run_baseline(sumocfg: Path) -> None:
     # ensure_sumo_environment sets BOTH SUMO_HOME and PATH, so `sumo` resolves even when it
     # lives under $SUMO_HOME/bin and is not already on PATH.
     env = ensure_sumo_environment()
     proc = subprocess.run(["sumo", "-c", str(sumocfg)], capture_output=True, text=True, env=env, cwd=str(ROOT))
-    return proc.returncode
+    if proc.returncode != 0:
+        # Fail loud: SUMO finaliza o XML mesmo em erro, e um baseline truncado a
+        # meio produziria evidência "value_demonstrated" a partir de meio-run.
+        stderr_tail = "\n".join((proc.stderr or "").strip().splitlines()[-10:])
+        raise SystemExit(f"baseline SUMO failed (rc={proc.returncode}):\n{stderr_tail}")
 
 
 def run_tsp(sumocfg: Path, net: Path, end: int, port: int) -> dict:
@@ -134,11 +106,20 @@ def run_tsp(sumocfg: Path, net: Path, end: int, port: int) -> dict:
     import traci  # scripts may use raw TraCI (see tests/test_actuation_seam.py scope)
 
     profile = load_network_profile(net)
-    cits = _auto_cits_config(net)
-    tsp = _auto_tsp_config()
+    cits = auto_discovery_cits_config(net)
+    tsp = auto_tsp_config(ROOT)
     engine = TSPDecisionEngine(cits, tsp)
     safety = TSPSafetyLayer(cits, tsp)
-    safety.set_signal_program_verified(True)  # bypass the global contract-verification gate
+    # NetworkBinding supplies the AUTHORITATIVE conflict matrix from the SUMO net's
+    # own <request foes> data, so most joined OSM intersections no longer trip the
+    # "sem matriz de conflitos" gate (43 -> 22 groups; see run_network_binding_check —
+    # the remaining 22 carry no resolvable foe data and honestly stay fail-closed).
+    safety.set_network_binding(
+        build_network_binding(net), aliases_by_tls=network_binding_aliases(cits, tsp)
+    )
+    # The thin loop still does not reconcile the live program/pedestrian-clearance
+    # proof, so the program-verified flag remains set for that separate gate.
+    safety.set_signal_program_verified(True)
 
     from collections import Counter
     decisions = approved = blocked = actuated = 0
@@ -239,11 +220,12 @@ def main() -> None:
     parser.add_argument("--end", type=int, default=3600)
     parser.add_argument("--port", type=int, default=8873)
     parser.add_argument("--out", type=Path, default=ROOT / "docs" / "validation" / "demo_baseline_vs_tsp.json")
+    parser.add_argument("--validation-config", type=Path, default=ROOT / "configs" / "validation_config.json")
     args = parser.parse_args()
+    envelope_pct, envelope_source = running_time_envelope(load_validation_config(args.validation_config))
     for p in (args.net, args.routes, args.busstops):
         if not p.exists():
             raise SystemExit(f"Missing {p}. Build the reference corridor first (scripts/build_reference_corridor.py).")
-    DEMO.mkdir(parents=True, exist_ok=True)
 
     base_tripinfo = WORK / "baseline_tripinfo.xml"
     tsp_tripinfo = WORK / "tsp_tripinfo.xml"
@@ -261,11 +243,13 @@ def main() -> None:
     paired = sorted(set(base_rows) & set(tsp_rows))
     improvement_s = [base_rows[b]["time_loss"] - tsp_rows[b]["time_loss"] for b in paired]
     ci = mean_ci95(improvement_s)
-    significant = ci["ci95_low"] is not None and ci["ci95_low"] > 0
+    # n>=2: com um único autocarro emparelhado o CI tem largura 0 (mean_ci95
+    # devolve ci95_low == mean) e "significância" seria um artefacto da amostra.
+    significant = ci["n"] >= 2 and ci["ci95_low"] is not None and ci["ci95_low"] > 0
     mean_base = fmean(base_rows[b]["duration"] for b in paired) if paired else 0.0
     mean_tsp = fmean(tsp_rows[b]["duration"] for b in paired) if paired else 0.0
     pct = round(100.0 * (mean_base - mean_tsp) / mean_base, 2) if mean_base else 0.0
-    in_env = TSP_RUNNING_TIME_PCT[0] <= pct <= TSP_RUNNING_TIME_PCT[1]
+    in_env = envelope_pct[0] <= pct <= envelope_pct[1]
 
     report = {
         "demo": "baseline_vs_tsp_real_boavista_reference_corridor",
@@ -278,15 +262,17 @@ def main() -> None:
             "time_loss_improvement_ci95": [ci["ci95_low"], ci["ci95_high"]],
             "significant_improvement": significant,
             "mean_running_time_improvement_pct": pct,
-            "tsp_running_time_envelope_pct": list(TSP_RUNNING_TIME_PCT),
+            "tsp_running_time_envelope_pct": list(envelope_pct),
             "within_published_envelope": in_env,
-            "envelope_source": "US-DOT ITS Benefits DB ID 2009-b00613 (TSP improves bus running time 2-18%)"},
+            "envelope_source": envelope_source},
         "honest_notes": [
             "Both arms run the SAME real corridor (geometry/demand/buses); only TSP actuation differs.",
             "Demand is HCM/Madrid-referenced, signals netconvert-default (Webster is V4d); not Porto-measured.",
             "Magnitude is plausible-not-calibrated (illustrative demand); the envelope check is face validity.",
-            "Thin TSP loop reuses the real engine + Safety Layer; signal_program_verified(True) bypasses the "
-            "joined-intersection conflict-matrix gate (the OSM net's clusters), like empirical_network_profile_check."],
+            "Thin TSP loop reuses the real engine + Safety Layer; the joined-intersection conflict-matrix "
+            "gate is served by the NetworkBinding (authoritative <request foes> data; groups without foe "
+            "data stay fail-closed). signal_program_verified(True) bypasses only the separate live "
+            "program/pedestrian-clearance proof, which this thin loop does not reconcile."],
         "verdict": "value_demonstrated" if (tsp_summary["actuations_applied"] > 0 and significant and in_env)
         else ("no_actuation" if tsp_summary["actuations_applied"] == 0 else "review"),
     }
@@ -298,8 +284,12 @@ def main() -> None:
           f"blocked {tsp_summary['safety_blocks']}  actuated {tsp_summary['actuations_applied']}")
     print(f"  buses paired: {len(paired)}")
     print(f"  mean time-loss improvement: {ci['mean']}s  CI95 [{ci['ci95_low']}, {ci['ci95_high']}]  significant: {significant}")
-    print(f"  running-time improvement: {pct}%  (envelope {TSP_RUNNING_TIME_PCT})  in_envelope: {in_env}")
+    print(f"  running-time improvement: {pct}%  (envelope {envelope_pct})  in_envelope: {in_env}")
     print(f"  verdict: {report['verdict']}  -> {args.out}")
+    # Propagar o veredito para o exit code: make/CI não deve ver sucesso num
+    # demo que não demonstrou valor.
+    if report["verdict"] != "value_demonstrated":
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

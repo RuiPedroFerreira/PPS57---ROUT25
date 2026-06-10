@@ -54,6 +54,9 @@ class TraciSimulationAdapter:
         # (proxy anterior, byte-idêntico).
         self._real_back_of_queue = bool(se.get("real_back_of_queue", False))
         self._queue_halt_speed_mps = _cfg_float(se, "queue_halt_speed_mps", 0.1)
+        # Leituras por-veículo que falharam (TraCIException) e foram saltadas;
+        # contadas para o run summary em vez de desaparecerem em silêncio.
+        self.vehicle_read_failures = 0
 
     def start(self, extra_args: Optional[List[str]] = None) -> None:
         apply_sumo_environment()
@@ -152,7 +155,11 @@ class TraciSimulationAdapter:
                 eta_params=self._eta_params,
             )
             return self._with_schedule_adherence(observation, sim_time_s)
-        except Exception:
+        except _traci_error_types():
+            # Veículo saiu da rede entre getIDList e a leitura, ou a chamada
+            # TraCI falhou neste tick. Salta a observação mas conta a
+            # degradação; erros de programação não-TraCI continuam a propagar.
+            self.vehicle_read_failures += 1
             return None
 
     def _with_schedule_adherence(
@@ -269,8 +276,8 @@ class TraciSimulationAdapter:
                     return logic
             if fallback is not None and current_program is None:
                 return fallback
-        if fallback is not None and current_program is not None:
-            return None
+        # programID atual conhecido mas sem logic correspondente: fail-closed
+        # por design — devolve None em vez de adivinhar um programa errado.
         return None
 
     def read_program_phase_count(self, tls_id: str) -> Optional[int]:
@@ -456,7 +463,12 @@ class TraciSimulationAdapter:
                 weighted_speed_sum += lane_speed * lane_vehicle_count
                 speed_weight += lane_vehicle_count
             if lane_occupancy is not None:
-                occupancy_values.append(float(lane_occupancy) / 100.0 if float(lane_occupancy) > 1.0 else float(lane_occupancy))
+                # traci==1.26.0 devolve LAST_STEP_OCCUPANCY de lane em
+                # percentagem (0..100); divide-se sempre por 100 para a
+                # fração 0..1. Adivinhar a unidade pela magnitude lia
+                # percentagens genuínas em (0.75, 1.0] como frações >= 0.75
+                # e disparava spillback_risk espúrio em lanes quase vazias.
+                occupancy_values.append(float(lane_occupancy) / 100.0)
 
         mean_speed_mps = weighted_speed_sum / speed_weight if speed_weight else 0.0
         occupancy = sum(occupancy_values) / len(occupancy_values) if occupancy_values else 0.0
@@ -557,6 +569,28 @@ def _safe_call(callable_):  # type: ignore[no-untyped-def]
         return callable_()
     except Exception:
         return None
+
+
+_TRACI_ERROR_TYPES: Optional[tuple] = None
+
+
+def _traci_error_types() -> tuple:
+    """Exceções TraCI a tratar como leitura degradada (resolvidas lazy).
+
+    O módulo `traci` é importado tardiamente (ver `_load_traci`), por isso o
+    tipo de exceção também só pode ser resolvido depois do bootstrap. Sem
+    `traci` instalado (ex.: testes com adaptadores fake) recai em `Exception`
+    para preservar o comportamento best-effort.
+    """
+    global _TRACI_ERROR_TYPES
+    if _TRACI_ERROR_TYPES is None:
+        try:
+            from traci.exceptions import FatalTraCIError, TraCIException
+
+            _TRACI_ERROR_TYPES = (TraCIException, FatalTraCIError)
+        except ImportError:
+            _TRACI_ERROR_TYPES = (Exception,)
+    return _TRACI_ERROR_TYPES
 
 
 def _cfg_float(mapping: Any, key: str, default: float) -> float:

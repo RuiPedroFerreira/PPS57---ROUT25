@@ -62,6 +62,10 @@ def select_weekday_service_id(zip_path: str, preferred: str = "DIAS UTEIS") -> s
         if "calendar_dates.txt" in names:
             counts: Dict[str, int] = {}
             for row in _read_table(zip_file, "calendar_dates.txt"):
+                # exception_type=1 adds service on that date; 2 REMOVES it.
+                # Counting removals would inflate exception-heavy services.
+                if (row.get("exception_type") or "").strip() != "1":
+                    continue
                 counts[row["service_id"]] = counts.get(row["service_id"], 0) + 1
             if preferred in counts:
                 return preferred
@@ -127,11 +131,17 @@ def extract_corridor_headways(
             if tid not in trip_key:
                 continue
             target_rows += 1
-            if row["arrival_time"] != row["departure_time"]:
+            arrival = (row.get("arrival_time") or "").strip()
+            departure = (row.get("departure_time") or "").strip()
+            if not arrival or not departure:
+                # GTFS allows blank times on non-timepoint stops; skip the row
+                # instead of fabricating (or crashing on) a missing time.
+                continue
+            if arrival != departure:
                 dwell_nonzero += 1
             seq = int(row["stop_sequence"])
             if tid not in trip_first or seq < trip_first[tid][0]:
-                trip_first[tid] = (seq, gtfs_time_to_seconds(row["departure_time"]))
+                trip_first[tid] = (seq, gtfs_time_to_seconds(departure))
         first_departures: Dict[Tuple[str, str], List[int]] = {}
         for tid, (_seq, dep_s) in trip_first.items():
             first_departures.setdefault(trip_key[tid], []).append(dep_s)

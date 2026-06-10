@@ -88,12 +88,33 @@ class OBUEmulator:
             state.current_message_id = None
             state.last_request_time_s = sim_time_s
 
-        # 2. Novos pedidos ou updates para os veículos elegíveis observados.
+        # 2. Varre estado de veículos que partiram: sem isto o dict cresce
+        # para sempre em corridas longas. A retenção pós-último-pedido cobre
+        # o TTL do replay-cache da RSU, para que um regresso ao corredor não
+        # reutilize sequence_numbers ainda em cache.
+        self._prune_departed_vehicles(observations_by_vehicle, sim_time_s)
+
+        # 3. Novos pedidos ou updates para os veículos elegíveis observados.
         for observation in observations_list:
             request = self._generate_request_or_update(observation, sim_time_s)
             if request is not None:
                 requests.append(request)
         return requests
+
+    def _prune_departed_vehicles(
+        self,
+        observations_by_vehicle: Dict[str, VehicleObservation],
+        sim_time_s: float,
+    ) -> None:
+        retention_s = float(self.config.obu_policy.get("state_retention_s", 60.0))
+        for vehicle_id, state in list(self.state_by_vehicle.items()):
+            if vehicle_id in observations_by_vehicle:
+                continue
+            if state.current_request_id is not None:
+                continue
+            last_seen = state.last_request_time_s
+            if last_seen is None or sim_time_s - last_seen >= retention_s:
+                del self.state_by_vehicle[vehicle_id]
 
     def generate_request(
         self, observation: VehicleObservation, sim_time_s: float
@@ -374,7 +395,12 @@ class OBUEmulator:
 
     def _is_priority_vehicle(self, observation: VehicleObservation) -> bool:
         policy = self.config.obu_policy
-        bus_prefixes = tuple(policy.get("bus_id_prefixes", ["bus_"]))
+        raw_bus_prefixes = policy.get("bus_id_prefixes", ["bus_"])
+        if isinstance(raw_bus_prefixes, str):
+            # String solta na config: tuple() iteraria os caracteres e quase
+            # todos os IDs passariam a contar como autocarro.
+            raw_bus_prefixes = (raw_bus_prefixes,)
+        bus_prefixes = tuple(raw_bus_prefixes)
         emergency_prefixes = tuple(policy.get("emergency_id_prefixes", ["ev_", "emergency_"]))
         priority_line_ids = set(policy.get("priority_line_ids", []))
 

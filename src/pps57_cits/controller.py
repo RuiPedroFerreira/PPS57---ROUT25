@@ -12,6 +12,7 @@ from .event_logger import CITSJsonlLogger, IncrementalCITSSummary, write_summary
 from .map_spat import build_mapem_messages, build_spatem_message_from_state
 from .messages import CITSMessage, SSEMLike
 from .obu import OBUEmulator
+from .protocol_codec import ProtocolCodecError
 from .rsu import build_rsu_agents
 from .traci_adapter import TraciSimulationAdapter, TraciUnavailableError
 
@@ -26,6 +27,7 @@ class CITSEmulationController:
         )
         self.obu = OBUEmulator(self.config)
         self.rsu_agents = build_rsu_agents(self.config)
+        self.publish_codec_failures: Dict[str, int] = {}
 
     def run_with_sumo(self, steps: Optional[int] = None, sumo_binary: str = "sumo", gui: bool = False) -> Dict[str, object]:
         """Executa a emulação ligada ao SUMO via TraCI.
@@ -91,6 +93,11 @@ class CITSEmulationController:
                 "steps": step_count,
                 "scenario_id": self.config.raw.get("scenario_id"),
                 "message_transport": self.broker.transport_stats(),
+                "publish_codec_failures": {
+                    "total": sum(self.publish_codec_failures.values()),
+                    "by_type": dict(self.publish_codec_failures),
+                },
+                "vehicle_read_failures": adapter.vehicle_read_failures,
             },
         )
 
@@ -101,8 +108,17 @@ class CITSEmulationController:
         summary: IncrementalCITSSummary,
     ) -> None:
         for message in messages:
+            try:
+                logger.write(message)
+            except ProtocolCodecError:
+                # Falha de codec num tick (ex.: leitura TLS degradada) não pode
+                # abortar a corrida inteira: a mensagem inválida é descartada e
+                # contada para o run summary em vez de engolida em silêncio.
+                self.publish_codec_failures[message.message_type] = (
+                    self.publish_codec_failures.get(message.message_type, 0) + 1
+                )
+                continue
             self.broker.publish(message)
-            logger.write(message)
             summary.add(message)
 
     def _process_rsu_queues(self, sim_time_s: float) -> List[SSEMLike]:

@@ -3,13 +3,9 @@ eclipse-sumo==1.26.0
 traci==1.26.0
 sumolib==1.26.0
 
-# Local validation platform API.
-fastapi>=0.115,<1.0
-uvicorn[standard]>=0.30,<1.0
-
 # M4: parser XML endurecido (drop-in para xml.etree.ElementTree) que bloqueia
 # ataques XXE/expansão de entidades em XML externo (tripinfo/route files).
 defusedxml>=0.7,<1.0
 
-# PyYAML is pulled in by uvicorn[standard] and used for YAML-based configs.
+# YAML-based configs (configs/scenario_catalog.yaml).
 PyYAML>=6.0,<7.0

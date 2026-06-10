@@ -7,7 +7,7 @@ SUMO/TraCI is one implementation of the adapter boundary, not the contract.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Protocol
 
@@ -15,6 +15,7 @@ from pps57_cits.config import CITSConfig, PriorityMovementConfig
 from pps57_cits.models import SignalState
 from pps57_cits.traci_adapter import TraciSimulationAdapter
 from pps57_cits.util import optional_int as _optional_int
+from pps57_sumo.network_binding import NetworkBinding
 from pps57_sumo.network_profile import MovementProfile, TLSProfile, load_network_profile
 
 from .config import TSPConfig
@@ -34,6 +35,23 @@ class SignalGroupContract:
     conflicts_with: List[str] = field(default_factory=list)
     requires_protected_green: bool = True
     allow_edge_state_fallback: bool = False
+    # True when an authoritative source (NetworkBinding, from SUMO junction foes)
+    # has determined this group's conflict matrix — even if it is empty (the group
+    # is genuinely conflict-free). Distinguishes a *known-empty* matrix from an
+    # *unknown* one, so the verifier does not fail-close a safe, conflict-free group.
+    conflict_matrix_known: bool = False
+
+
+def signal_group_lacks_conflict_matrix(group: SignalGroupContract) -> bool:
+    """Fail-close predicate: signal group com movimentos mas sem matriz de conflitos.
+
+    É exactamente a condição "sem matriz de conflitos" aplicada por
+    ``verify_controller_contracts``: o grupo serve movimentos, a lista de conflitos
+    está vazia e nenhuma fonte autoritativa (NetworkBinding) marcou a matriz como
+    conhecida. Exportada para que os scripts de evidência contem a mesma condição
+    que o verificador aplica, em vez de copiarem o predicado.
+    """
+    return bool(group.movement_ids) and not group.conflicts_with and not group.conflict_matrix_known
 
 
 @dataclass(frozen=True)
@@ -216,7 +234,12 @@ class TraciSignalControlAdapter:
                             f"{tls_id}: fase {idx} ('{states[idx]}') é intergreen mas contém "
                             "verde — clearance amarelo/all-red não garantida"
                         )
-                    if durations is not None and idx < len(durations) and "y" in states[idx].lower():
+                    if (
+                        durations is not None
+                        and idx < len(durations)
+                        and idx < len(states)
+                        and "y" in states[idx].lower()
+                    ):
                         duration_s = float(durations[idx])
                         if contract.min_yellow_s is not None and duration_s < contract.min_yellow_s:
                             problems.append(
@@ -259,7 +282,7 @@ class TraciSignalControlAdapter:
                         problems.append(
                             f"{tls_id}: signal_group {group.signal_group_id} referencia conflito inexistente {conflict}"
                         )
-                if group.movement_ids and not group.conflicts_with:
+                if signal_group_lacks_conflict_matrix(group):
                     problems.append(f"{tls_id}: signal_group {group.signal_group_id} sem matriz de conflitos")
 
             if contract.fixed_time_required:
@@ -420,6 +443,83 @@ def build_controller_contracts(cits_config: CITSConfig, tsp_config: TSPConfig) -
     ]
 
 
+def network_binding_aliases(
+    cits_config: CITSConfig, tsp_config: TSPConfig
+) -> Dict[str, Dict[str, str]]:
+    """Per-TLS map of profile signal-group ids -> contract signal-group ids.
+
+    ``build_controller_contract`` renames profile groups to the config's
+    ``target_signal_group_id`` (aliases); the NetworkBinding only knows the raw
+    profile names. Pass this map to :func:`apply_network_binding` so lookups and
+    conflict lists are translated into the contract namespace.
+    """
+    aliases: Dict[str, Dict[str, str]] = {}
+    for intersection in cits_config.signal_controlled_intersections:
+        tls_id = intersection.tls_id
+        tls_profile = _network_tls_profile(cits_config, tsp_config, tls_id)
+        profile_by_target_group = _profile_movements_by_target_group(
+            intersection.priority_movements, tls_profile
+        )
+        aliases[tls_id] = {
+            profile.signal_group_id: group_id
+            for group_id, profile in profile_by_target_group.items()
+            if profile is not None
+        }
+    return aliases
+
+
+def apply_network_binding(
+    contracts: Iterable[ControllerContract],
+    binding: NetworkBinding,
+    aliases_by_tls: Optional[Dict[str, Dict[str, str]]] = None,
+) -> List[ControllerContract]:
+    """Replace each signal group's conflict matrix with the network's authoritative one.
+
+    The :class:`~pps57_sumo.network_binding.NetworkBinding` reads the real conflict
+    matrix from the SUMO junction ``<request foes>`` data. For every signal group
+    the binding covers, this sets ``conflicts_with`` to the authoritative list and
+    marks ``conflict_matrix_known=True`` — even when the list is empty, meaning the
+    group is genuinely conflict-free. That stops ``verify_controller_contracts``
+    from fail-closing real (OSM, joined) intersections whose conflict matrix the
+    phase-disjointness heuristic could not infer.
+
+    ``aliases_by_tls`` (see :func:`network_binding_aliases`) translates between the
+    binding's raw profile group names and the contract's (possibly aliased) names —
+    both for the lookup and for the conflict lists written into the contract.
+    Without it, aliased groups are never bound and conflict lists can reference
+    profile names absent from the contract (fail-closed, but never functional).
+
+    Groups the binding does not cover are returned unchanged (and still fail-close
+    if their matrix was unknown). This never *grants* a permission — it only
+    supplies conflict information; the Safety Layer stays the final gate.
+    """
+    bound: List[ControllerContract] = []
+    for contract in contracts:
+        tls_binding = binding.binding_for_tls(contract.tls_id)
+        if tls_binding is None:
+            bound.append(contract)
+            continue
+        aliases = dict((aliases_by_tls or {}).get(contract.tls_id, {}))
+        contract_to_profile = {contract_id: profile_id for profile_id, contract_id in aliases.items()}
+        new_groups: Dict[str, SignalGroupContract] = {}
+        for group_id, group in contract.signal_groups.items():
+            profile_group_id = contract_to_profile.get(group_id, group_id)
+            group_binding = tls_binding.signal_groups.get(profile_group_id)
+            if group_binding is None or not group_binding.conflict_matrix_known:
+                new_groups[group_id] = group
+                continue
+            conflicts = sorted(
+                {aliases.get(name, name) for name in group_binding.conflicts_with} - {group_id}
+            )
+            new_groups[group_id] = replace(
+                group,
+                conflicts_with=conflicts,
+                conflict_matrix_known=True,
+            )
+        bound.append(replace(contract, signal_groups=new_groups))
+    return bound
+
+
 def build_controller_contract(cits_config: CITSConfig, tsp_config: TSPConfig, tls_id: str) -> ControllerContract:
     intersection = cits_config.tls_to_intersection[tls_id]
     raw = tsp_config.controller_contract_for_tls(tls_id)
@@ -512,7 +612,10 @@ def build_controller_contract(cits_config: CITSConfig, tsp_config: TSPConfig, tl
     pedestrian_phase_indices = _int_list(raw.get("pedestrian_phase_indices", []))
     if tls_profile is not None and (prefer_generated or not pedestrian_phase_indices):
         pedestrian_phase_indices = _pedestrian_phase_indices(tls_profile)
-    expected_cycle_default = tls_profile.expected_cycle_s if tls_profile is not None else 90
+    # Sem profile nem valor de config não há expectativa real de ciclo — None
+    # salta o check em vez de fabricar um default (90) que fail-closava qualquer
+    # plano legítimo != 90 s.
+    expected_cycle_default = tls_profile.expected_cycle_s if tls_profile is not None else None
     pedestrian_required = bool(
         raw.get(
             "pedestrian_phase_required",

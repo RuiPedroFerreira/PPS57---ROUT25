@@ -59,10 +59,14 @@ def fetch(out_dir: Path) -> Path:
             raise SystemExit("curl is required to fetch the pinned MoST network")
         print(f"Downloading {RAW_URL}")
         # curl uses the system trust store (the framework Python lacks a CA bundle).
+        # Download to a temp file and rename (atomic) only after the transfer completes,
+        # so an interrupted download never leaves a partial file at the final path.
+        tmp = net_path.with_suffix(".part")
         subprocess.run(
-            ["curl", "-fsSL", "-o", str(net_path), RAW_URL],
+            ["curl", "-fsSL", "-o", str(tmp), RAW_URL],
             check=True,
         )
+        tmp.replace(net_path)
     else:
         print(f"Reusing cached {net_path}")
 

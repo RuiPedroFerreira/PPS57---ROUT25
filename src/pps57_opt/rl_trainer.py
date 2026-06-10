@@ -30,7 +30,7 @@ from pps57_cits.config import CITSConfig
 from pps57_tsp.config import TSPConfig
 
 from .config import OptimizationConfig
-from .event_dataset import load_event_training_scenarios
+from .event_dataset import load_event_training_dataset
 from .models import CandidateEvaluation, LearnedPolicyRule, OfflineScenario
 from .optimizer import OfflineOptimizationController
 
@@ -43,6 +43,7 @@ class TabularQLearningController:
     scenarios: Optional[List[OfflineScenario]] = None
 
     def __post_init__(self) -> None:
+        self.event_dataset_load: Optional[Dict[str, object]] = None
         self.optimizer = OfflineOptimizationController(
             self.cits_config,
             self.tsp_config,
@@ -115,7 +116,8 @@ class TabularQLearningController:
         path = self.optimization_config.path_from_root(
             self.optimization_config.logging.get("event_training_dataset", "outputs/event_training_dataset.jsonl")
         )
-        scenarios = load_event_training_scenarios(path, self.tsp_config.actuating_actions())
+        scenarios, load_report = load_event_training_dataset(path, self.tsp_config.actuating_actions())
+        self.event_dataset_load = load_report
         if not scenarios:
             raise ValueError(
                 "No SUMO/TraCI event training scenarios found. Run a TSP SUMO execution and "
@@ -278,6 +280,7 @@ class TabularQLearningController:
             "training_environment": "event_derived_sumo_traci_scenarios",
             "online_learning_in_production": False,
             "scenario_count": len(scenarios or []),
+            "event_dataset_load": self.event_dataset_load,
             "episodes": episodes,
             "epsilon_start": float(cfg.get("epsilon_start", 0.35)),
             "state_action_count": len(q_values),

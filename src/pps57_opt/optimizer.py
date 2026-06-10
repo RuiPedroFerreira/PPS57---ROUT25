@@ -15,7 +15,7 @@ from pps57_tsp.models import DecisionStatus, TSPAction, TSPDecision
 from pps57_tsp.safety import TSPSafetyLayer
 
 from .config import OptimizationConfig
-from .event_dataset import load_event_training_scenarios
+from .event_dataset import load_event_training_dataset
 from .models import CandidateEvaluation, LearnedPolicyRule, OfflineScenario
 from .state import state_bucket_for_context
 
@@ -29,6 +29,7 @@ class OfflineOptimizationController:
 
     def __post_init__(self) -> None:
         self.engine = TSPDecisionEngine(self.cits_config, self.tsp_config)
+        self.event_dataset_load: Optional[Dict[str, object]] = None
 
     def run(self) -> Dict[str, object]:
         scenarios = self.scenarios or self._load_event_scenarios()
@@ -61,7 +62,8 @@ class OfflineOptimizationController:
         path = self.optimization_config.path_from_root(
             self.optimization_config.logging.get("event_training_dataset", "outputs/event_training_dataset.jsonl")
         )
-        scenarios = load_event_training_scenarios(path, self.tsp_config.actuating_actions())
+        scenarios, load_report = load_event_training_dataset(path, self.tsp_config.actuating_actions())
+        self.event_dataset_load = load_report
         if not scenarios:
             raise ValueError(
                 "No SUMO/TraCI event training scenarios found. Run a TSP SUMO execution and "
@@ -184,14 +186,21 @@ class OfflineOptimizationController:
             needed = max(0.0, required_green_s - remaining_s)
             if needed <= 0:
                 return -decision.extension_s * traffic_penalty
+            # O benefício só se concretiza se a extensão cobrir o défice de
+            # verde: uma extensão curta demais deixa o bus chegar já depois do
+            # fim do verde estendido, logo escala proporcionalmente.
+            service_ratio = min(1.0, decision.extension_s / needed)
             overserve_penalty = max(0.0, decision.extension_s - needed) * traffic_penalty
-            return benefit - decision.extension_s * traffic_penalty - overserve_penalty
+            return benefit * service_ratio - decision.extension_s * traffic_penalty - overserve_penalty
 
         if decision.action == TSPAction.EARLY_GREEN.value:
             min_eta = float(self.tsp_config.decision_policy.get("early_green_min_eta_s", 10))
             if request.eta_to_stopline_s < min_eta:
                 return -float(reward_cfg.get("reevaluate_penalty", 8.0)) * 2
-            truncation = float(decision.phase_duration_s or 0.0)
+            # `phase_duration_s` é o valor PARA o qual a fase conflituante é
+            # truncada (red_truncation_to_s); o verde realmente retirado ao
+            # tráfego conflituante é o restante da fase menos esse alvo.
+            truncation = max(0.0, remaining_s - float(decision.phase_duration_s or 0.0))
             return (
                 benefit
                 - truncation * traffic_penalty
@@ -372,6 +381,7 @@ class OfflineOptimizationController:
             "methodology": "deterministic_argmax_over_event_derived_sumo_traci_scenarios",
             "is_reinforcement_learning": False,
             "scenario_count": len(scenarios),
+            "event_dataset_load": self.event_dataset_load,
             "candidate_count": len(candidates),
             "unsafe_candidates_filtered": len(unsafe_filtered),
             "safety_filter_required": bool(self.optimization_config.safety.get("mandatory_filter", True)),

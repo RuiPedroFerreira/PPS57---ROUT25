@@ -137,6 +137,8 @@ def main() -> None:
                   f"proxy {c['proxy_densest_headway_min']}min | ratio {c['ratio_proxy_over_real']} | "
                   f"{c['descriptive_label']}")
     print(f"  dwell in GTFS: {real['dwell_encoded_in_gtfs']}   verdict: {report['verdict']}   -> {args.out}")
+    if report["verdict"] != "pass":
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

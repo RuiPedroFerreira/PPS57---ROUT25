@@ -33,7 +33,14 @@ from pps57_cits.models import SignalState
 from .config import TSPConfig
 from .engine import TSPDecisionEngine
 from .models import DecisionStatus, SafetyValidationResult, TSPAction, TSPDecision
-from .signal_control import ControllerContract, SignalGroupContract, build_controller_contract
+from pps57_sumo.network_binding import NetworkBinding
+
+from .signal_control import (
+    ControllerContract,
+    SignalGroupContract,
+    apply_network_binding,
+    build_controller_contract,
+)
 
 
 @dataclass
@@ -49,9 +56,27 @@ class TSPSafetyLayer:
     # Sem isto, não há prova de que truncar a fase corrente não compromete a
     # clearance pedonal -> fail-closed quando o flag de safety estiver ligado.
     signal_program_verified: bool = False
+    # Optional engine↔network binding. When set, the per-decision controller
+    # contract gets its conflict matrix from the SUMO network's own <request foes>
+    # data (authoritative), instead of the phase-disjointness heuristic. This is
+    # what lets real (OSM, joined) intersections pass the conflict-matrix gate
+    # without the blanket set_signal_program_verified(True) bypass.
+    network_binding: Optional[NetworkBinding] = None
+    # Tradução profile->contract dos ids de signal group (ver
+    # signal_control.network_binding_aliases); sem ela, grupos com alias em
+    # configs manuais nunca são ligados ao binding.
+    network_binding_aliases: Optional[Dict[str, Dict[str, str]]] = None
 
     def set_signal_program_verified(self, verified: bool) -> None:
         self.signal_program_verified = bool(verified)
+
+    def set_network_binding(
+        self,
+        binding: Optional[NetworkBinding],
+        aliases_by_tls: Optional[Dict[str, Dict[str, str]]] = None,
+    ) -> None:
+        self.network_binding = binding
+        self.network_binding_aliases = aliases_by_tls
 
     def validate(self, decision: TSPDecision, signal_state: SignalState, sim_time_s: float) -> SafetyValidationResult:
         notes = list(decision.notes)
@@ -112,7 +137,19 @@ class TSPSafetyLayer:
         self.consecutive_interventions_by_tls[decision.tls_id] = self.consecutive_interventions_by_tls.get(decision.tls_id, 0) + 1
         added_debt = max(0.0, float(decision.extension_s or 0.0))
         if decision.action == TSPAction.EARLY_GREEN.value:
-            added_debt = max(added_debt, float(decision.phase_duration_s or 0.0))
+            # A perturbação do early_green é o verde REMOVIDO à fase
+            # conflituante: o restante no momento da decisão menos o restante
+            # truncado (phase_duration_s é o valor PARA que se truncou, não o
+            # que se retirou). Sem next_switch no snapshot o verde removido é
+            # desconhecido -> mantém-se a duração truncada como dívida mínima.
+            truncated_to_s = max(0.0, float(decision.phase_duration_s or 0.0))
+            if decision.current_next_switch_s is not None:
+                remaining_at_decision_s = max(
+                    0.0, float(decision.current_next_switch_s) - float(decision.timestamp_s)
+                )
+                added_debt = max(added_debt, max(0.0, remaining_at_decision_s - truncated_to_s))
+            else:
+                added_debt = max(added_debt, truncated_to_s)
         self.recovery_debt_by_tls[decision.tls_id] = self.recovery_debt_by_tls.get(decision.tls_id, 0.0) + added_debt
         self.recovery_debt_update_time_by_tls[decision.tls_id] = sim_time_s
 
@@ -441,7 +478,12 @@ class TSPSafetyLayer:
         return "early_green_current_phase_not_configured_as_conflict"
 
     def _controller_contract(self, decision: TSPDecision) -> ControllerContract:
-        return build_controller_contract(self.cits_config, self.tsp_config, decision.tls_id)
+        contract = build_controller_contract(self.cits_config, self.tsp_config, decision.tls_id)
+        if self.network_binding is not None:
+            contract = apply_network_binding(
+                [contract], self.network_binding, aliases_by_tls=self.network_binding_aliases
+            )[0]
+        return contract
 
     def _signal_group(
         self,
