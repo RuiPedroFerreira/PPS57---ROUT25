@@ -711,10 +711,12 @@ class SumoKpiParsingTestCase(unittest.TestCase):
             kpis = parse_emissions(path)
             self.assertTrue(kpis["available"])
             self.assertEqual(kpis["vehicle_count"], 2)
-            self.assertEqual(kpis["totals_mg"]["CO2"], 4200.0)
-            self.assertEqual(kpis["totals_mg"]["fuel"], 1540.0)
+            # Valores SUMO de emission-output são POR-STEP (não cumulativos):
+            # o total de cada veículo é a soma dos seus steps.
+            self.assertEqual(kpis["totals_mg"]["CO2"], 4800.0)  # car 100+700, bus 500+3500
+            self.assertEqual(kpis["totals_mg"]["fuel"], 1760.0)
             self.assertEqual(kpis["bus_count"], 1)
-            self.assertEqual(kpis["bus_totals_mg"]["CO2"], 3500.0)
+            self.assertEqual(kpis["bus_totals_mg"]["CO2"], 4000.0)
 
     def test_emissions_parser_handles_missing_file(self) -> None:
         kpis = parse_emissions(Path("/nonexistent/emissions.xml"))
@@ -1376,6 +1378,89 @@ class SumoKpiParsingTestCase(unittest.TestCase):
             self.assertIn('route-files value="routes/routes.rou.xml"', sumocfg)
             self.assertIn('tripinfo-output value="../tripinfo.xml"', sumocfg)
             self.assertIn('file="../../e1_detectors.xml"', detectors)
+
+
+class RoundaboutInternalPathTestCase(unittest.TestCase):
+    """The ring internal path must be derived from the corridor's actual topology."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.base = json.loads((ROOT / "configs/sumo_scenario_base.json").read_text(encoding="utf-8"))
+
+    def test_base_config_ring_expansion_unchanged(self) -> None:
+        # Regression: the committed config (ring at I6, neighbours I5/I7) must keep
+        # producing exactly the internal paths the previous generator emitted.
+        from pps57_sumo.generate_plain_corridor import build_routes
+
+        intersections = self.base["network"]["intersections"]
+        terminals = {t["id"]: t for t in self.base["network"]["terminals"]}
+        routes = build_routes(self.base, intersections, terminals)
+        self.assertEqual(
+            routes["route_boavista_east_to_west"][5:9],
+            ["I5_I6", "RB_I6_CITY_TO_NORTH", "RB_I6_NORTH_TO_ATLANTIC", "I6_I7"],
+        )
+        self.assertEqual(
+            routes["route_boavista_west_to_east"][1:5],
+            ["I7_I6", "RB_I6_ATLANTIC_TO_SOUTH", "RB_I6_SOUTH_TO_CITY", "I6_I5"],
+        )
+        self.assertEqual(
+            routes["route_cross_NS_I6"],
+            ["N_I6_I6", "RB_I6_NORTH_TO_ATLANTIC", "RB_I6_ATLANTIC_TO_SOUTH", "I6_S_I6"],
+        )
+
+    def test_neighbours_derived_from_corridor_order_not_hardcoded_ids(self) -> None:
+        from pps57_sumo.generate_plain_corridor import (
+            _expand_roundabout_routes,
+            _roundabout_corridor_neighbours,
+        )
+
+        intersections = [{"id": "A"}, {"id": "B", "roundabout_model": "ring"}, {"id": "C"}]
+        terminals = {
+            "CITY_EAST": {"id": "CITY_EAST"},
+            "ATLANTIC_WEST": {"id": "ATLANTIC_WEST"},
+        }
+        self.assertEqual(
+            _roundabout_corridor_neighbours(intersections, terminals),
+            {"B": {"CITY": "A", "ATLANTIC": "C"}},
+        )
+        expanded = _expand_roundabout_routes({"r": ["A_B", "B_C"]}, intersections, terminals)
+        self.assertEqual(expanded["r"], ["A_B", "RB_B_CITY_TO_NORTH", "RB_B_NORTH_TO_ATLANTIC", "B_C"])
+
+    def test_ring_at_corridor_ends_uses_terminals_as_neighbours(self) -> None:
+        from pps57_sumo.generate_plain_corridor import _roundabout_corridor_neighbours
+
+        terminals = {
+            "CITY_EAST": {"id": "CITY_EAST"},
+            "ATLANTIC_WEST": {"id": "ATLANTIC_WEST"},
+        }
+        first_ring = [{"id": "A", "roundabout_model": "ring"}, {"id": "B"}]
+        last_ring = [{"id": "A"}, {"id": "B", "roundabout_model": "ring"}]
+        self.assertEqual(
+            _roundabout_corridor_neighbours(first_ring, terminals),
+            {"A": {"CITY": "CITY_EAST", "ATLANTIC": "B"}},
+        )
+        self.assertEqual(
+            _roundabout_corridor_neighbours(last_ring, terminals),
+            {"B": {"CITY": "A", "ATLANTIC": "ATLANTIC_WEST"}},
+        )
+
+    def test_underivable_internal_path_fails_loudly(self) -> None:
+        from pps57_sumo.generate_plain_corridor import (
+            _expand_roundabout_routes,
+            _roundabout_internal_path,
+        )
+
+        with self.assertRaises(ValueError):
+            _roundabout_internal_path(
+                "B", "A_B", "X_Y", city_neighbour="A", atlantic_neighbour="C", route_id="broken"
+            )
+        intersections = [{"id": "A"}, {"id": "B", "roundabout_model": "ring"}, {"id": "C"}]
+        terminals = {
+            "CITY_EAST": {"id": "CITY_EAST"},
+            "ATLANTIC_WEST": {"id": "ATLANTIC_WEST"},
+        }
+        with self.assertRaises(ValueError):
+            _expand_roundabout_routes({"broken": ["A_B", "X_Y"]}, intersections, terminals)
 
 
 if __name__ == "__main__":

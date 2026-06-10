@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 import sys
 from typing import Dict, Iterable, List, Optional
 
@@ -31,6 +32,7 @@ from pps57_cits.obu import OBUEmulator
 from pps57_cits.rsu import build_rsu_agents
 from pps57_cits.traci_adapter import TraciSimulationAdapter, TraciUnavailableError
 from pps57_opt.policy_runtime import RuntimePolicy
+from pps57_sumo.network_binding import NetworkBinding, build_network_binding
 
 from .actuator import TraciTSPActuator
 from .config import TSPConfig
@@ -45,7 +47,10 @@ from .signal_control import (
     SignalControlAdapter,
     SimulatedControllerAdapter,
     TraciSignalControlAdapter,
+    _network_profile_enabled,
+    apply_network_binding,
     build_controller_contracts,
+    network_binding_aliases,
 )
 
 
@@ -64,6 +69,16 @@ class TSPControlController:
         self.rsu_agents = build_rsu_agents(self.cits_config)
         self.engine = TSPDecisionEngine(self.cits_config, self.tsp_config)
         self.safety = TSPSafetyLayer(self.cits_config, self.tsp_config)
+        # NetworkBinding autoritativo (junction <request foes>) construído UMA
+        # vez aqui e partilhado por contratos, verificação e Safety Layer — uma
+        # única fonte de verdade, como em scripts/run_network_binding_check.py.
+        self.network_binding: Optional[NetworkBinding] = None
+        self.network_binding_aliases: Optional[Dict[str, Dict[str, str]]] = None
+        self.network_binding_error: Optional[str] = None
+        self._bind_network()
+        self.safety.set_network_binding(
+            self.network_binding, aliases_by_tls=self.network_binding_aliases
+        )
         # P6: árbitro de corredor (cross-TLS). No-op quando o bloco `corridor`
         # está ausente da config; corre pré-Safety e só desce decisões.
         self.corridor_arbiter = CorridorArbiter(self.cits_config, self.tsp_config)
@@ -497,11 +512,47 @@ class TSPControlController:
             intersection.tls_id
             for intersection in self.cits_config.signal_controlled_intersections
         }
-        return [
+        contracts = [
             contract
             for contract in build_controller_contracts(self.cits_config, self.tsp_config)
             if contract.tls_id in signal_controlled_tls
         ]
+        if self.network_binding is not None:
+            contracts = apply_network_binding(
+                contracts, self.network_binding, aliases_by_tls=self.network_binding_aliases
+            )
+        return contracts
+
+    def _bind_network(self) -> None:
+        """Constrói o NetworkBinding a partir da rede SUMO configurada.
+
+        A matriz de conflitos passa a vir dos ``<request foes>`` da própria
+        rede, em vez da heurística de disjunção de fases — é isto que permite
+        a redes reais (OSM, interseções joined) passarem a verificação sem o
+        bypass global de ``set_signal_program_verified(True)``. Rede ausente
+        ou ilegível não é fatal: regista o erro (fail-loud) e os contratos
+        seguem sem matriz autoritativa, continuando fail-closed.
+        """
+        if not _network_profile_enabled(self.cits_config, self.tsp_config):
+            return
+        network = self.cits_config.sumo.get("network")
+        if not network:
+            return
+        network_path = Path(str(network))
+        if not network_path.is_absolute():
+            network_path = self.cits_config.root / network_path
+        try:
+            self.network_binding = build_network_binding(network_path)
+        except (FileNotFoundError, OSError, ValueError) as exc:
+            self.network_binding_error = f"{network_path}: {exc}"
+            print(
+                f"[SAFETY] NetworkBinding indisponível ({self.network_binding_error}); "
+                "contratos seguem sem matriz de conflitos autoritativa (fail-closed).",
+                file=sys.stderr,
+                flush=True,
+            )
+            return
+        self.network_binding_aliases = network_binding_aliases(self.cits_config, self.tsp_config)
 
     def _read_network_states(
         self,

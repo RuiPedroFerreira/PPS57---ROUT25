@@ -35,7 +35,6 @@ OVERPASS_QUERY = (
 ENDPOINTS = [
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
-    "https://overpass-api.de/api/interpreter",
 ]
 USER_AGENT = "PPS57-ROUT25-validation/1.0 (research)"
 LICENSE = "ODbL (OpenStreetMap contributors)"
@@ -64,8 +63,10 @@ def _download(out: Path) -> None:
     tmp = out.with_suffix(".part")
     for endpoint in ENDPOINTS:
         print(f"Querying Overpass: {endpoint}")
+        # --fail: without it curl exits 0 on HTTP errors, saving the error body as if it
+        # were data, and --retry-all-errors never sees HTTP-level errors to retry.
         result = subprocess.run(
-            ["curl", "-sS", "--max-time", "90", "--retry", "2", "--retry-all-errors",
+            ["curl", "-sS", "--fail", "--max-time", "90", "--retry", "2", "--retry-all-errors",
              "-A", USER_AGENT, "-o", str(tmp), endpoint, "--data-urlencode", f"data={OVERPASS_QUERY}"],
             capture_output=True, text=True,
         )

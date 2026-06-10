@@ -1,10 +1,11 @@
 """Aggregate per-vehicle emission/fuel KPIs from a SUMO emission-output XML.
 
-SUMO emits per-step `<vehicle>` entries with cumulative CO2/NOx/PMx/fuel values
-within `<timestep>` elements. Aggregating the *last* observation per vehicle
-yields total emissions over that vehicle's trip. Sustainability claims (TSP
-reduces CO2, fuel use, etc.) are only verifiable once this file is parsed —
-otherwise the KPIs are absent from the run summary.
+SUMO emits per-step `<vehicle>` entries within `<timestep>` elements whose
+CO2/NOx/PMx/fuel values are **per-step rates** (mg or ml emitted during that
+step), NOT cumulative — the per-vehicle series is non-monotone. Total emissions
+over a vehicle's trip are therefore the SUM of its per-step observations.
+Sustainability claims (TSP reduces CO2, fuel use, etc.) are only verifiable once
+this file is parsed — otherwise the KPIs are absent from the run summary.
 """
 from __future__ import annotations
 
@@ -47,7 +48,8 @@ def parse_emissions(path: Path | None) -> Dict[str, Any]:
                 if value is None:
                     continue
                 try:
-                    bucket[metric] = max(bucket.get(metric, 0.0), float(value))
+                    # Valores por-step (não cumulativos): o total da viagem é a soma.
+                    bucket[metric] = bucket.get(metric, 0.0) + float(value)
                 except ValueError:
                     continue
             v_type = elem.attrib.get("type") or elem.attrib.get("eclass")

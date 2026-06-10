@@ -8,19 +8,28 @@ AVL/GTFS observations and reference scenarios. It fabricates no data.
 """
 from __future__ import annotations
 
-from pps57_sumo.validation import acceptance, metrics
+from pps57_sumo.validation import acceptance, metrics, reference_counts
 from pps57_sumo.validation.acceptance import (
     evaluate_link_flow_calibration,
     evaluate_travel_times,
     evaluate_tsp_face_validity,
     load_validation_config,
 )
+from pps57_sumo.validation.reference_counts import (
+    distribution,
+    evaluate_corridor_plausibility,
+    evaluate_demand_envelope,
+)
 
 __all__ = [
     "acceptance",
     "metrics",
+    "reference_counts",
     "evaluate_link_flow_calibration",
     "evaluate_travel_times",
     "evaluate_tsp_face_validity",
     "load_validation_config",
+    "distribution",
+    "evaluate_corridor_plausibility",
+    "evaluate_demand_envelope",
 ]

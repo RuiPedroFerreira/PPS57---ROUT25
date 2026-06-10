@@ -27,6 +27,27 @@
       "source": "FHWA Traffic Analysis Toolbox Vol. III (Wisconsin DOT): soma de todos os fluxos dentro de 5% da soma das contagens e GEH < 4 para a soma."
     }
   },
+  "demand_reference_envelope": {
+    "note": "V2 reference-envelope transfer. Porto tem zero contagens de trafego abertas (pedido formal a CMP declinado), logo uma calibracao GEH ao Porto exigiria fabricar contagens. Em substituicao, verifica-se que a intensidade arterial modelada do corredor Boavista cai dentro do espectro veh/h medido em vias urbanas reais de OUTRAS cidades europeias. E um gate de face-validity (transferencia), NAO uma calibracao ao Porto. Cada numero de referencia vem de um dataset real fetchado (Madrid informo + UK DfT).",
+    "percentiles_checked": ["median", "p90"],
+    "gate": {
+      "min_reference_cities": 2,
+      "rule": "corridor_appropriate",
+      "source": "Um corredor unico nao e a rede inteira de uma cidade: nao reproduz a cauda superior pesada de uma cidade (muitas vias-A de cargas diferentes -> p90 por-sitio alto; uma avenida tem arestas uniformes). Logo o teste apropriado e: (a) intensidade tipica bate certo -> mediana do corredor dentro da gama inter-cidades de medianas; (b) nao implausivelmente pesado/leve -> p90 do corredor dentro de [min mediana cidade, max p90 cidade]. Plausivel sse ambos. O teste ingenuo 'p90 do corredor dentro do espectro de p90 das cidades' e reportado em paralelo (percentile_checks) para transparencia, mas nao e apples-to-apples na cauda. Convencao de face-validity (cf. FHWA TAT Vol. III: comparacao com observacoes independentes)."
+    },
+    "dft_peak_hour_factor_k": {
+      "value": 0.10,
+      "source": "HCM 6th Ed. (TRB) / FHWA: o volume da hora de ponta e tipicamente 8-10% do trafego diario medio anual (fator K). Usa-se K=0.10 (urbano) para converter o AADF por direcao do UK DfT em veh/h de ponta, comparavel a intensidade veh/h de Madrid e do corredor."
+    },
+    "dft_urban_road_categories": {
+      "value": ["PA", "TA"],
+      "source": "UK DfT road traffic statistics: road_category 'PA' (Principal A road) e 'TA' (Trunk A road) sao as vias-A, o analogo urbano-arterial de uma avenida como a Boavista. Classes M/B excluidas."
+    },
+    "madrid_only_urban": {
+      "value": true,
+      "source": "datos.madrid.es: o feed informo/pm.xml mistura detectores urbanos (URB) e do anel M-30. Filtra-se a URB (via catalogo de pontos de medida) para uma banda urbana-arterial; o erro=='N' garante leitura valida."
+    }
+  },
   "travel_time_validation": {
     "within_fraction": 0.15,
     "or_absolute_s": 60.0,

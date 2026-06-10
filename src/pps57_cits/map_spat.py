@@ -7,6 +7,7 @@ from typing import List
 from .config import CITSConfig
 from .messages import (
     Approach,
+    EventState,
     MAPEMLike,
     MovementEvent,
     SPATEMLike,
@@ -129,6 +130,7 @@ def build_spatem_message_from_state(state: SignalState) -> SPATEMLike:
         remaining_ms = 0
 
     movement_events: List[MovementEvent] = []
+    intersection_status: dict[str, bool] = {}
     for link_index, char in enumerate(ryg):
         movement_events.append(
             MovementEvent(
@@ -138,6 +140,23 @@ def build_spatem_message_from_state(state: SignalState) -> SPATEMLike:
                 max_end_time_ms=remaining_ms,
                 likely_time_ms=remaining_ms,
                 confidence=15 if state.next_switch_s is not None else 0,
+            )
+        )
+    if not movement_events:
+        # Leitura TLS degradada neste tick (getRedYellowGreenState falhou):
+        # em vez de produzir um SPATEM inválido (movement_events vazio, que o
+        # codec rejeita), declara explicitamente a indisponibilidade com o
+        # flag standard e um MovementEvent `unavailable` — o broadcast
+        # continua e os consumidores sabem que não há SPAT válido agora.
+        intersection_status["noValidSPATisAvailableAtThisTime"] = True
+        movement_events.append(
+            MovementEvent(
+                signal_group_id=1,
+                event_state=EventState.UNAVAILABLE.value,
+                min_end_time_ms=0,
+                max_end_time_ms=0,
+                likely_time_ms=0,
+                confidence=0,
             )
         )
 
@@ -158,6 +177,6 @@ def build_spatem_message_from_state(state: SignalState) -> SPATEMLike:
         tls_id=state.tls_id,
         revision=1,
         movement_events=movement_events,
-        intersection_status={},
+        intersection_status=intersection_status,
         debug_sumo_state=ryg or None,
     )

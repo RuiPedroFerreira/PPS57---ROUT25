@@ -13,16 +13,17 @@ import argparse
 import json
 from pathlib import Path
 import sys
-import tempfile
 from typing import Any, Dict, Optional
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
+SCRIPTS = ROOT / "scripts"
+for entry in (str(SRC), str(SCRIPTS)):
+    if entry not in sys.path:
+        sys.path.insert(0, entry)
 
-from pps57_cits.config import load_cits_config  # noqa: E402
+from _evidence_common import auto_discovery_cits_config, auto_tsp_config  # noqa: E402
 from pps57_cits.messages import OperatorPriorityClass, synth_srem  # noqa: E402
 from pps57_cits.models import SignalState  # noqa: E402
 from pps57_sumo.environment import apply_sumo_environment  # noqa: E402
@@ -81,8 +82,8 @@ def run_check(
     import traci  # imported lazily so static imports work without SUMO tools
 
     profile = load_network_profile(network)
-    cits = _load_auto_cits_config(network)
-    tsp = _auto_tsp_config(cits.root)
+    cits = auto_discovery_cits_config(network)
+    tsp = auto_tsp_config(cits.root)
 
     traci.start(
         [sumo_binary, "-n", str(network), "--no-step-log", "true", "--no-warnings", "true"],
@@ -310,80 +311,6 @@ def _has_intergreen_between(tls: TLSProfile, current: int, target: int) -> bool:
             break
         between.append(phase)
     return any(phase in tls.intergreen_phase_indices for phase in between)
-
-
-def _load_auto_cits_config(network: Path) -> Any:
-    payload = {
-        "sumo": {"network": str(network)},
-        "network_discovery": {
-            "enabled": True,
-            "augment_missing_intersections": True,
-            "auto_generate_priority_movements": True,
-            "priority_vehicle_classes": ["public_transport"],
-            "rsu_id_prefix": "RSU_AUTO_",
-        },
-        "obu_policy": {},
-        "rsu_policy": {},
-        "safety_constraints": {
-            "min_green_s": 8,
-            "max_green_extension_s": 12,
-            "max_total_green_s": 55,
-            "yellow_s": 3,
-            "all_red_s": 0,
-            "pedestrian_clearance_must_not_be_shortened": True,
-            "never_skip_yellow_or_all_red": True,
-            "max_consecutive_priority_interventions_per_tls": 2,
-            "cooldown_after_priority_s": 90,
-        },
-        "intersections": [],
-    }
-    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
-        json.dump(payload, handle)
-        path = Path(handle.name)
-    return load_cits_config(path, root=path.parent)
-
-
-def _auto_tsp_config(root: Path) -> TSPConfig:
-    return TSPConfig(
-        root=root,
-        raw={
-            "decision_policy": {
-                "min_priority_score": 0.0,
-                "eta_arrival_buffer_s": 4,
-                "green_extension_min_s": 3,
-                "green_extension_default_s": 8,
-                "green_extension_max_s": 12,
-                "early_green_min_eta_s": 10,
-                "red_truncation_to_s": 2,
-                "delay_normalisation_s": 180,
-                "headway_normalisation_s": 240,
-                "distance_normalisation_m": 250,
-                "weights": {
-                    "schedule_delay": 0.45,
-                    "headway_deviation": 0.2,
-                    "proximity": 0.2,
-                    "priority_level": 0.15,
-                },
-            },
-            "actuation": {
-                "allow_green_extension": True,
-                "allow_red_truncation": True,
-                "allow_direct_phase_jump": False,
-            },
-            "network_profile": {
-                "enabled": True,
-                "prefer_generated_contracts_for_unknown_tls": True,
-            },
-            "controller_contracts": {
-                "default": {
-                    "adapter_type": "sumo_traci",
-                    "fixed_time_required": True,
-                    "allowed_actions": ["green_extension", "early_green"],
-                }
-            },
-            "phase_mapping": {},
-        },
-    )
 
 
 if __name__ == "__main__":

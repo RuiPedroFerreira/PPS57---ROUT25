@@ -60,7 +60,11 @@ def fetch(out_dir: Path) -> Path:
         if shutil.which("curl") is None:
             raise SystemExit("curl is required to fetch the pinned cologne8 network")
         print(f"Downloading {RAW_URL}")
-        subprocess.run(["curl", "-fsSL", "-o", str(net_path), RAW_URL], check=True)
+        # Download to a temp file and rename (atomic) only after the transfer completes,
+        # so an interrupted download never leaves a partial file at the final path.
+        tmp = net_path.with_suffix(".part")
+        subprocess.run(["curl", "-fsSL", "-o", str(tmp), RAW_URL], check=True)
+        tmp.replace(net_path)
     else:
         print(f"Reusing cached {net_path}")
 

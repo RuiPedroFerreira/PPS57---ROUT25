@@ -33,10 +33,50 @@ if str(SRC) not in sys.path:
 
 from pps57_sumo.environment import ensure_sumo_environment, resolve_sumo_home  # noqa: E402
 from pps57_sumo.parse_tripinfo import parse_tripinfo  # noqa: E402
+from pps57_sumo.validation import reference_counts as rc  # noqa: E402
 
 SIM_END_S = 7200
-# Madrid open-data intensity band (veh/h per detector) for face validation.
-MADRID_BAND = {"median": 397, "p75": 819, "p90": 1329, "source": "datos.madrid.es / PMC11416623"}
+# Madrid open-data intensity band (veh/h per detector) for face validation —
+# PINNED STATIC SNAPSHOT, used only as a fallback when no fetched V2 snapshot
+# exists under .tools/reference-counts/ (scripts/fetch_reference_counts.py).
+MADRID_BAND = {
+    "median": 397, "p75": 819, "p90": 1329,
+    "source": "datos.madrid.es / PMC11416623",
+    "band_origin": "pinned_static_snapshot",
+}
+REFERENCE_COUNTS_DIR = ROOT / ".tools" / "reference-counts"
+
+
+def load_madrid_band(raw_dir: Path = REFERENCE_COUNTS_DIR) -> dict:
+    """Madrid intensity band from the fetched V2 snapshot, else the pinned fallback.
+
+    When scripts/fetch_reference_counts.py has produced a snapshot (raw feed +
+    catalogue + provenance), the band is recomputed from those exact bytes (URB
+    detectors, error=='N') and tagged with the snapshot's feed timestamp and
+    SHA-256. Otherwise the documented static band is used and labelled as such.
+    """
+    pm = raw_dir / "madrid_pm.xml"
+    cat = raw_dir / "madrid_catalogue.csv"
+    prov_path = raw_dir / "provenance.json"
+    if not (pm.exists() and cat.exists() and prov_path.exists()):
+        return dict(MADRID_BAND)
+    catalogue = rc.parse_madrid_catalogue(cat.read_text(encoding="utf-8", errors="replace"))
+    values = rc.parse_madrid_intensities(pm.read_text(encoding="utf-8", errors="replace"), catalogue, only_urban=True)
+    if not values:
+        raise SystemExit(
+            f"Fetched Madrid snapshot in {raw_dir} parsed to zero URB intensities — refusing to fall "
+            "back silently. Re-run scripts/fetch_reference_counts.py or remove the stale snapshot."
+        )
+    dist = rc.distribution(values)
+    madrid_prov = (json.loads(prov_path.read_text(encoding="utf-8")).get("sources") or {}).get("madrid") or {}
+    return {
+        "median": dist["median"], "p75": dist["p75"], "p90": dist["p90"],
+        "n_detectors": dist["n"],
+        "source": "datos.madrid.es informo URB snapshot (fetched by scripts/fetch_reference_counts.py)",
+        "band_origin": "fetched_snapshot",
+        "feed_timestamp": madrid_prov.get("feed_timestamp"),
+        "intensity_sha256": madrid_prov.get("intensity_sha256"),
+    }
 
 
 def _sumo_home() -> Path:
@@ -142,8 +182,16 @@ def bus_route_edges(routed_path: Path) -> set[str]:
 
 
 def measure_arterial_intensity(edgedata_path: Path, arterial_edges: set[str]) -> dict:
-    """Mean per-edge intensity (veh/h) on the arterial edges, for Madrid-band validation."""
+    """Mean per-edge intensity (veh/h) on the arterial edges, for Madrid-band validation.
+
+    Methodology choice, stated explicitly: edges the routed demand never entered
+    are EXCLUDED from the percentile sample (they are typically short junction
+    fragments the buses' routes touch but through-traffic does not use). The
+    exclusion biases the statistic upward, so the count of excluded edges is
+    reported alongside the stats and echoed in the report's honest_notes.
+    """
     intensities = []
+    zero_flow_excluded = 0
     for interval in _parse_sumo_xml(edgedata_path).findall("interval"):
         begin = float(interval.get("begin", 0)); end = float(interval.get("end", SIM_END_S))
         hours = max((end - begin) / 3600.0, 1e-9)
@@ -152,11 +200,14 @@ def measure_arterial_intensity(edgedata_path: Path, arterial_edges: set[str]) ->
                 entered = float(edge.get("entered", 0) or 0)
                 if entered > 0:
                     intensities.append(entered / hours)
+                else:
+                    zero_flow_excluded += 1
     intensities.sort()
     if not intensities:
-        return {"arterial_edges_measured": 0}
+        return {"arterial_edges_measured": 0, "zero_flow_edges_excluded": zero_flow_excluded}
     return {
         "arterial_edges_measured": len(intensities),
+        "zero_flow_edges_excluded": zero_flow_excluded,
         "mean_veh_h": round(sum(intensities) / len(intensities), 1),
         "median_veh_h": round(intensities[len(intensities) // 2], 1),
         "p90_veh_h": round(intensities[int(len(intensities) * 0.9)], 1),
@@ -236,10 +287,11 @@ def main() -> None:
 
     kpis = parse_tripinfo(tripinfo) if tripinfo.exists() else {}
     arterial = measure_arterial_intensity(edgedata_out, bus_route_edges(routed)) if edgedata_out.exists() else {}
+    madrid_band = load_madrid_band()
     p90 = arterial.get("p90_veh_h")
     # In-band = arterial p90 at least the documented Madrid median and at most its P90;
     # the carriageway should carry no less than the citywide median intensity.
-    in_band = bool(p90 is not None and MADRID_BAND["median"] <= p90 <= MADRID_BAND["p90"])
+    in_band = bool(p90 is not None and madrid_band["median"] <= p90 <= madrid_band["p90"])
 
     report = {
         "validation_phase": "V4d_reference_demand_and_webster_signals",
@@ -247,7 +299,7 @@ def main() -> None:
             "model": "explicit arterial through-flows (HCM/Madrid target) + randomTrips diffuse cross-traffic",
             "arterial_flow_per_dir_veh_h": args.arterial_veh_h, "arterial_flow_period_s": art_period,
             "background_car_trips": n_cars, "background_period_s": args.car_period,
-            "arterial_intensity_measured": arterial, "madrid_reference_band_veh_h": MADRID_BAND,
+            "arterial_intensity_measured": arterial, "madrid_reference_band_veh_h": madrid_band,
             "arterial_p90_in_madrid_band": in_band,
             "hcm_anchor": "HCM-derived ~1224 veh/h inbound (~612 veh/h/lane); see configs calibration_methodology",
         },
@@ -262,6 +314,15 @@ def main() -> None:
             "Demand is reference-ADAPTED (HCM magnitudes, validated vs measured Madrid intensities), not Porto-measured (V2/CMP).",
             "Signals are Webster-optimal for this demand, not the actual CMP plans.",
             "randomTrips OD is synthetic but rate-calibrated to the referenced arterial band.",
+            f"Arterial intensity stats EXCLUDE zero-flow arterial edges "
+            f"({arterial.get('zero_flow_edges_excluded', 0)} excluded this run): edges the routed demand "
+            "never entered are dropped from the per-edge sample, which biases the percentiles upward; "
+            "the exclusion is a stated methodology choice, counted and reported, not hidden.",
+            ("Madrid band recomputed from the fetched V2 snapshot "
+             f"(feed {madrid_band.get('feed_timestamp')}, sha256 {str(madrid_band.get('intensity_sha256'))[:12]}…)."
+             if madrid_band.get("band_origin") == "fetched_snapshot" else
+             "Madrid band is the PINNED STATIC snapshot (datos.madrid.es / PMC11416623); run "
+             "scripts/fetch_reference_counts.py to validate against a live, hashed snapshot."),
         ],
         "verdict": "pass" if (n_tls > 0 and dua.returncode == 0 and sumo.returncode == 0
                               and kpis.get("buses", {}).get("vehicles", 0) > 0 and in_band) else "review",
@@ -275,7 +336,9 @@ def main() -> None:
     args.out.write_text(json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
 
     print(f"V4d reference corridor — cars {n_cars} (p={args.car_period}s), Webster TLS {n_tls}, routed {n_routed}")
-    print(f"  arterial p90 {arterial.get('p90_veh_h')} veh/h (median {arterial.get('median_veh_h')})  Madrid band {MADRID_BAND['median']}-{MADRID_BAND['p90']}  in_band={in_band}")
+    print(f"  arterial p90 {arterial.get('p90_veh_h')} veh/h (median {arterial.get('median_veh_h')})  "
+          f"Madrid band {madrid_band['median']}-{madrid_band['p90']} ({madrid_band['band_origin']})  in_band={in_band}  "
+          f"zero-flow edges excluded: {arterial.get('zero_flow_edges_excluded', 0)}")
     b = kpis.get("buses", {})
     print(f"  buses: {b.get('vehicles', 0)}  mean duration {b.get('mean_duration_s')}s  time loss {b.get('mean_time_loss_s')}s")
     print(f"  verdict: {report['verdict']}  -> {args.out}")

@@ -106,7 +106,10 @@ class CITSConfig:
             allowed = {normalise_vehicle_class(item) for item in movement.vehicle_classes}
             if not allowed or vehicle_class_norm in allowed or "*" in allowed:
                 return movement
-        return movements[0] if movements else None
+        # Todos os movimentos restringem vehicle_classes e nenhum cobre esta
+        # classe: não há movimento elegível. Devolver um movimento restrito a
+        # outra classe daria prioridade a veículos fora do catálogo.
+        return None
 
 
 def load_cits_config(path: str | Path, root: Optional[str | Path] = None) -> CITSConfig:

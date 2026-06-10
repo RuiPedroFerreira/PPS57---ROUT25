@@ -77,6 +77,11 @@ def main() -> None:
     tripinfo_path = args.work / "boavista_corridor_tripinfo.xml"
     n_flows = build_flows(services, flows_path)
 
+    # Fail-fast hygiene: drop stale tool outputs so the "if file.exists()" reads below
+    # can never pick up artifacts from a previous (different) run when a tool now fails.
+    for stale in (routed_path, tripinfo_path):
+        stale.unlink(missing_ok=True)
+
     duarouter = subprocess.run(
         ["duarouter", "-n", str(args.net), "--additional-files", str(args.busstops),
          "--route-files", str(flows_path), "-o", str(routed_path),
@@ -112,7 +117,8 @@ def main() -> None:
             "would be fabrication. Bus times here are essentially free-flow.",
             "Signal timings are synthetic (V4 limit).",
         ],
-        "verdict": "pass" if (routed_vehicles > 0 and sumo.returncode == 0 and buses.get("vehicles", 0) > 0) else "review",
+        "verdict": "pass" if (duarouter.returncode == 0 and routed_vehicles > 0 and sumo.returncode == 0
+                              and buses.get("vehicles", 0) > 0) else "review",
     }
     if report["verdict"] != "pass":
         report["duarouter_stderr_tail"] = (duarouter.stderr.strip().splitlines() or [""])[-3:]

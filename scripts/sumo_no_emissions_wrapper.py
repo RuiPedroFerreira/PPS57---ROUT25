@@ -32,6 +32,10 @@ def main() -> int:
             saw_emission_output = True
             continue
         filtered.append(arg)
+    if skip_next:
+        # A trailing --emission-output with no value: drop the dangling flag
+        # (there is nothing to skip), otherwise the rewritten command is broken.
+        filtered.pop()
     if not saw_emission_output:
         filtered.extend(["--emission-output", "/dev/null"])
 

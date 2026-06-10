@@ -88,6 +88,26 @@ class ServiceSelectionTests(unittest.TestCase):
             # DIAS UTEIS has 2 dates vs SABADOS 1 -> chosen as the weekday proxy.
             self.assertEqual(gtfs_pt.select_weekday_service_id(feed, "NONEXISTENT"), "DIAS UTEIS")
 
+    def test_removed_dates_do_not_count_as_active(self) -> None:
+        # exception_type=2 means service REMOVED on that date; a service with
+        # many removals must not win the "most active dates" fallback.
+        calendar_dates = (
+            "service_id,date,exception_type\n"
+            "DIAS UTEIS,20260105,1\n"
+            "DIAS UTEIS,20260106,1\n"
+            "FERIADOS,20260101,2\n"
+            "FERIADOS,20260102,2\n"
+            "FERIADOS,20260103,2\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "feed.zip"
+            with zipfile.ZipFile(path, "w") as zf:
+                zf.writestr("routes.txt", _ROUTES)
+                zf.writestr("trips.txt", _TRIPS)
+                zf.writestr("stop_times.txt", _STOP_TIMES)
+                zf.writestr("calendar_dates.txt", calendar_dates)
+            self.assertEqual(gtfs_pt.select_weekday_service_id(str(path), "NONEXISTENT"), "DIAS UTEIS")
+
     def test_calendar_txt_weekday_service(self) -> None:
         # Standard GTFS: regular weekly service in calendar.txt (no calendar_dates.txt).
         calendar = (
@@ -136,6 +156,28 @@ class ExtractTests(unittest.TestCase):
         direction = result["lines"]["999"]["directions"]["0"]
         self.assertEqual(direction["weekday_trips"], 2)  # captured despite sequence starting at 5
         self.assertAlmostEqual(direction["windows"]["am_peak"]["median_headway_min"], 12.0)
+
+    def test_blank_non_timepoint_times_are_skipped(self) -> None:
+        # GTFS allows blank arrival/departure on non-timepoint stops; the blank
+        # row must be skipped (no ValueError, no fabricated time, no dwell).
+        stop_times = (
+            "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
+            "t1,07:00:00,07:00:00,S1,1\n"
+            "t1,,,S2,2\n"  # non-timepoint stop without encoded times
+            "t1,07:08:00,07:08:00,S3,3\n"
+            "t2,07:10:00,07:10:00,S1,1\n"
+            "t2,07:15:00,07:15:00,S2,2\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            feed = _make_feed(Path(tmp), stop_times)
+            result = gtfs_pt.extract_corridor_headways(
+                feed, ["999"], windows={"am_peak": (7 * 3600, 9 * 3600)}
+            )
+        direction = result["lines"]["999"]["directions"]["0"]
+        self.assertEqual(direction["weekday_trips"], 2)
+        self.assertFalse(result["dwell_encoded_in_gtfs"])  # blank row is not dwell
+        # first departures 07:00 and 07:10 -> a single 10-minute headway
+        self.assertAlmostEqual(direction["windows"]["am_peak"]["median_headway_min"], 10.0)
 
     def test_absent_line_marked(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

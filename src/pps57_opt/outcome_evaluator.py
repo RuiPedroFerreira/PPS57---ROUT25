@@ -25,8 +25,11 @@ def evaluate_decision_outcomes(
 ) -> Dict[str, object]:
     baseline_decision_list = list(baseline_decisions)
     rl_decision_list = list(rl_decisions)
-    baseline_by_key = {_decision_key(item): item for item in baseline_decision_list}
-    rl_by_key = {_decision_key(item): item for item in rl_decision_list}
+    # Cada chave guarda a LISTA de decisões: múltiplas decisões para o mesmo
+    # (timestamp, veículo, TLS) são emparelhadas por ordem de log em vez de
+    # colapsadas silenciosamente em last-wins.
+    baseline_by_key = _decisions_by_key(baseline_decision_list)
+    rl_by_key = _decisions_by_key(rl_decision_list)
     baseline_actuation_by_decision = _actuations_by_decision_id(baseline_actuations)
     rl_actuation_by_decision = _actuations_by_decision_id(rl_actuations)
 
@@ -34,25 +37,24 @@ def evaluate_decision_outcomes(
     missing_baseline = 0
     missing_rl = 0
     for key in sorted(set(baseline_by_key) | set(rl_by_key)):
-        baseline = baseline_by_key.get(key)
-        rl = rl_by_key.get(key)
-        if baseline is None:
+        baseline_items = baseline_by_key.get(key, [])
+        rl_items = rl_by_key.get(key, [])
+        for baseline, rl in zip(baseline_items, rl_items):
+            rows.append(
+                _evaluate_pair(
+                    key,
+                    baseline,
+                    baseline_actuation_by_decision.get(str(baseline.get("decision_id")), {}),
+                    rl,
+                    rl_actuation_by_decision.get(str(rl.get("decision_id")), {}),
+                )
+            )
+        for rl in rl_items[len(baseline_items):]:
             missing_baseline += 1
             rows.append(_missing_row(key, "missing_baseline", rl))
-            continue
-        if rl is None:
+        for baseline in baseline_items[len(rl_items):]:
             missing_rl += 1
             rows.append(_missing_row(key, "missing_rl", baseline))
-            continue
-        rows.append(
-            _evaluate_pair(
-                key,
-                baseline,
-                baseline_actuation_by_decision.get(str(baseline.get("decision_id")), {}),
-                rl,
-                rl_actuation_by_decision.get(str(rl.get("decision_id")), {}),
-            )
-        )
 
     verdict_counts: Dict[str, int] = {}
     for row in rows:
@@ -66,6 +68,10 @@ def evaluate_decision_outcomes(
         "matched_decision_count": len(rows) - missing_baseline - missing_rl,
         "missing_baseline_count": missing_baseline,
         "missing_rl_count": missing_rl,
+        "pairing_key_collisions": {
+            "baseline": _collision_count(baseline_by_key),
+            "rl": _collision_count(rl_by_key),
+        },
         "verdict_counts": verdict_counts,
         "baseline_summary": _summary_projection(baseline_summary),
         "rl_summary": _summary_projection(rl_summary),
@@ -258,6 +264,17 @@ def _decision_key(item: Dict[str, Any]) -> Tuple[float, str, str]:
         str(item.get("vehicle_id", "")),
         str(item.get("tls_id", "")),
     )
+
+
+def _decisions_by_key(items: Iterable[Dict[str, Any]]) -> Dict[Tuple[float, str, str], List[Dict[str, Any]]]:
+    grouped: Dict[Tuple[float, str, str], List[Dict[str, Any]]] = {}
+    for item in items:
+        grouped.setdefault(_decision_key(item), []).append(item)
+    return grouped
+
+
+def _collision_count(grouped: Dict[Tuple[float, str, str], List[Dict[str, Any]]]) -> int:
+    return sum(len(items) - 1 for items in grouped.values() if len(items) > 1)
 
 
 def _actuations_by_decision_id(rows: Iterable[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:

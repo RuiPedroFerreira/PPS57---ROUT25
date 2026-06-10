@@ -134,6 +134,17 @@ def main() -> int:
     )
     (reports_dir / "scenario_suite_report.md").write_text(render_suite_report(scenario_report), encoding="utf-8")
     print(json.dumps(scenario_report, indent=2, ensure_ascii=False))
+    # Propaga o veredito para o exit code: qualquer cenário executado com veredito
+    # != "pass" (fail/inconclusive) tem de falhar o processo, senão CI/make engolem
+    # regressões com exit 0. (--list já retornou acima; --generate-only produz "pass".)
+    not_passing = [
+        summary.get("scenario_id", "?")
+        for summary in run_summaries
+        if summary.get("verdict", {}).get("status") != "pass"
+    ]
+    if not_passing:
+        print(f"Scenario verdict not 'pass' for: {', '.join(not_passing)}", file=sys.stderr)
+        return 1
     return 0
 
 
@@ -481,10 +492,9 @@ GLOBAL_SUMO_OUTPUTS = ("tripinfo.xml", "summary.xml", "statistics.xml", "emissio
 def clear_global_sumo_outputs() -> None:
     # SUMO writes these files at fixed paths declared in corredor.sumocfg, so
     # only one scenario at a time can own them. The CLI runs scenarios
-    # sequentially (--all is a serial loop) and the dashboard runner holds a
-    # process lock; do NOT parallelise scenario execution without first moving
-    # these outputs into per-run paths via SUMO's --tripinfo-output/--summary
-    # flags.
+    # sequentially (--all is a serial loop); do NOT parallelise scenario
+    # execution without first moving these outputs into per-run paths via
+    # SUMO's --tripinfo-output/--summary flags.
     for name in GLOBAL_SUMO_OUTPUTS:
         path = ROOT / "outputs" / name
         if path.exists():
