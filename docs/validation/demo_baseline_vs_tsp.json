@@ -1,0 +1,76 @@
+{
+  "buses": {
+    "baseline": {
+      "mean_depart_delay_s": 1.15,
+      "mean_duration_s": 594.5,
+      "mean_route_length_m": 2639.887,
+      "mean_speed_mps": 4.702,
+      "mean_stop_count": 6.75,
+      "mean_time_loss_s": 218.262,
+      "mean_waiting_time_s": 155.5,
+      "p95_duration_s": 1614.0,
+      "p95_time_loss_s": 709.1,
+      "vehicles": 20
+    },
+    "tsp": {
+      "mean_depart_delay_s": 0.85,
+      "mean_duration_s": 569.8,
+      "mean_route_length_m": 2639.887,
+      "mean_speed_mps": 5.097,
+      "mean_stop_count": 5.7,
+      "mean_time_loss_s": 196.042,
+      "mean_waiting_time_s": 141.35,
+      "p95_duration_s": 1621.0,
+      "p95_time_loss_s": 712.87,
+      "vehicles": 20
+    }
+  },
+  "demo": "baseline_vs_tsp_real_boavista_reference_corridor",
+  "honest_notes": [
+    "Both arms run the SAME real corridor (geometry/demand/buses); only TSP actuation differs.",
+    "Demand is HCM/Madrid-referenced, signals netconvert-default (Webster is V4d); not Porto-measured.",
+    "Magnitude is plausible-not-calibrated (illustrative demand); the envelope check is face validity.",
+    "Thin TSP loop reuses the real engine + Safety Layer; signal_program_verified(True) bypasses the joined-intersection conflict-matrix gate (the OSM net's clusters), like empirical_network_profile_check."
+  ],
+  "paired_comparison": {
+    "buses_paired": 20,
+    "envelope_source": "US-DOT ITS Benefits DB ID 2009-b00613 (TSP improves bus running time 2-18%)",
+    "mean_bus_time_loss_improvement_s": 22.22,
+    "mean_running_time_improvement_pct": 4.15,
+    "significant_improvement": true,
+    "time_loss_improvement_ci95": [
+      2.701,
+      41.738
+    ],
+    "tsp_running_time_envelope_pct": [
+      2.0,
+      18.0
+    ],
+    "within_published_envelope": true
+  },
+  "sim_window_s": 3600,
+  "tsp_loop": {
+    "actuation_enabled": true,
+    "actuations_applied": 28,
+    "approved": 28,
+    "block_reasons": {
+      "bus_too_close_for_safe_red_truncation": 1658,
+      "cooldown_after_priority_active": 186,
+      "current_phase_is_yellow_wait_for_next_cycle": 426,
+      "early_green_would_skip_clearance_phase": 147,
+      "green_extension_requires_priority_movement_green_phase": 615,
+      "green_window_already_sufficient": 634,
+      "min_green_not_satisfied:7.0<8.0": 15,
+      "signal_group_conflict_matrix_missing": 22
+    },
+    "decision_actions": {
+      "early_green": 799,
+      "green_extension": 714,
+      "no_action": 634,
+      "reevaluate_next_cycle": 1658
+    },
+    "decisions": 3805,
+    "safety_blocks": 3777
+  },
+  "verdict": "value_demonstrated"
+}
