@@ -1,4 +1,4 @@
-# V4 — real Boavista geometry from OpenStreetMap
+    # V4 — real Boavista geometry from OpenStreetMap
 
 V4 replaces the synthetic 5-intersection corridor with the **real Avenida da
 Boavista road network** from OpenStreetMap, and validates that the TSP engine +
@@ -16,11 +16,21 @@ git-ignored `.tools/boavista-osm/`; only our derived report is committed.
 | OSM bbox (S,W,N,E) | `41.156, -8.692, 41.170, -8.627` — from Nominatim-sourced corridor endpoints (Rotunda da Boavista → Castelo do Queijo) + margin |
 | OSM extract SHA-256 | `012ac5593ce72b131944ad368a41bb48f517387fb4c62d136045ff9a9cffce99` |
 | netconvert | Eclipse SUMO 1.26.0 (`osmNetconvert.typ.xml`, documented options) |
-| net SHA-256 | `fd604bc5beb4bd3a300a4e8e0a141ddbb69577d1fe7f507981e548f3709020a6` |
+| net SHA-256 | build-dependent (netconvert embeds a build timestamp); the report records the actual value |
 | License | ODbL (OpenStreetMap contributors) |
 
-OSM is a live database; the SHA-256 pins the exact snapshot the committed report
-was produced from. The `NetworkProfile` fingerprint equals the net SHA-256.
+The **OSM extract** SHA-256 pins the stable source snapshot. The net SHA-256 varies
+per build (netconvert writes a timestamp into the file header), so it is recorded in
+the report rather than pinned here; within any build the `NetworkProfile` fingerprint
+equals the net SHA-256, proving the report came from exactly that net.
+
+**Reproducibility caveat.** OSM is a live database and public Overpass instances reject
+the dated/attic queries that would return the exact pinned bytes, so a fresh fetch will
+eventually drift from the pinned SHA-256. `fetch_boavista_osm.py` then **fails** (so the
+pipeline never silently uses different data); the bbox + Overpass query are the
+reproducible spec, and `--allow-drift` reproduces the pipeline on the *current* Boavista
+geometry (re-pin `EXPECTED_SHA256` afterward). The committed report documents the original
+snapshot.
 
 ## Reproduce
 

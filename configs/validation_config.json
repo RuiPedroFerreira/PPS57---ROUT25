@@ -1,0 +1,54 @@
+{
+  "schema_version": "0.1.0",
+  "status_note": "Instrumento de validacao sim-to-real (V0). Consome pares (modelado, observado) fornecidos a partir de fontes reais (deteccoes CMP, contagens IMT, AVL/GTFS STCP) e de cenarios de referencia (MoST/LuST, UTD19). NAO gera nem assume dados: cada limiar abaixo tem um campo 'source' rastreavel e os pares de entrada sao fornecidos pelo utilizador. A regua e independente do simulador para quebrar a circularidade oracle = sistema-sob-teste.",
+  "link_flow_calibration": {
+    "geh": {
+      "good_below": 5.0,
+      "investigate_below": 10.0,
+      "source": "DMRB (Design Manual for Roads and Bridges) e FHWA Traffic Analysis Toolbox Vol. III. GEH = sqrt(2*(M-C)^2/(M+C)), M=fluxo horario modelado, C=contagem horaria observada. <5 bom; 5-10 a investigar; >10 alta probabilidade de erro de modelo ou de dados."
+    },
+    "network_acceptance": {
+      "geh_threshold": 5.0,
+      "min_fraction_passing": 0.85,
+      "source": "DMRB / FHWA Traffic Analysis Toolbox Vol. III, Tabela de criterios (Wisconsin DOT, baseada em guidelines do Reino Unido): GEH < 5 em > 85% dos links."
+    },
+    "flow_percentage_bands": {
+      "bands": [
+        {"max_flow_veh_h": 700.0, "tolerance_abs_veh_h": 100.0},
+        {"min_flow_veh_h": 700.0, "max_flow_veh_h": 2700.0, "tolerance_fraction": 0.15},
+        {"min_flow_veh_h": 2700.0, "tolerance_abs_veh_h": 400.0}
+      ],
+      "min_fraction_passing": 0.85,
+      "source": "FHWA Traffic Analysis Toolbox Vol. III (Wisconsin DOT): Flow < 700 veh/h dentro de 100 veh/h; 700 <= Flow < 2700 veh/h dentro de 15%; Flow >= 2700 veh/h dentro de 400 veh/h; criterio cumprido em > 85% dos casos."
+    },
+    "sum_of_flows": {
+      "within_fraction": 0.05,
+      "geh_threshold": 4.0,
+      "source": "FHWA Traffic Analysis Toolbox Vol. III (Wisconsin DOT): soma de todos os fluxos dentro de 5% da soma das contagens e GEH < 4 para a soma."
+    }
+  },
+  "travel_time_validation": {
+    "within_fraction": 0.15,
+    "or_absolute_s": 60.0,
+    "min_fraction_passing": 0.85,
+    "source": "FHWA Traffic Analysis Toolbox Vol. III (Wisconsin DOT): tempo de percurso modelado dentro de 15% (ou 1 minuto, se superior) da observacao, em > 85% dos casos."
+  },
+  "tsp_face_validity": {
+    "note": "Bandas de face validity para o GANHO do TSP. Um ganho dentro da banda e plausivel; fora dela e bandeira (bug ou achado extraordinario). Distinguir 'melhoria do tempo de percurso' de 'reducao de atraso na intersecao' - sao bandas diferentes.",
+    "bus_running_time_improvement_pct": {
+      "min": 2.0,
+      "max": 18.0,
+      "source": "US-DOT ITS Benefits Database, ID 2009-b00613: a implementacao de TSP melhora os tempos de percurso dos autocarros em 2 a 18%."
+    },
+    "bus_delay_reduction_pct": {
+      "min": 15.0,
+      "max": 80.0,
+      "source": "TCRP Synthesis 83 / Synthesis 149 (Transit Signal Priority): reducao do atraso dos autocarros em sinais com TSP entre 15 e 80%."
+    },
+    "corridor_travel_time_anchors_pct": {
+      "los_angeles": 7.5,
+      "chicago": 15.0,
+      "source": "US-DOT ITS Benefits Database, ID 633c546777c6ad4985257b65005ece88: TSP reduziu os tempos medios de percurso dos autocarros em 7.5% (Los Angeles) e 15% (Chicago)."
+    }
+  }
+}

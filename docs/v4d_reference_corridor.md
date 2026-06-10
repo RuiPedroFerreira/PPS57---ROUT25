@@ -30,8 +30,8 @@ per detector — [PMC11416623](https://pmc.ncbi.nlm.nih.gov/articles/PMC11416623
 - **Arterial intensity p90 = 819.5 veh/h** (median 707) — lands **exactly on
   Madrid's P75 (819)** and inside the measured band → `arterial_p90_in_madrid_band: true`.
 - **Webster optimised all 60 traffic-light programs** from the routed demand.
-- The corridor runs: **4,464 vehicles** complete (mean speed ~14.7 m/s) and **46
-  STCP buses** traverse, mean trip ~525 s, **time loss ~90 s** — lower than V4c's
+- The corridor runs: **4,651 vehicles** complete (mean speed ~14.7 m/s) and **51
+  STCP buses** traverse, mean trip ~560 s, **time loss ~97 s** — lower than V4c's
   ~161 s under netconvert-default signals, i.e. Webster timing already helps the
   buses before any TSP.
 
