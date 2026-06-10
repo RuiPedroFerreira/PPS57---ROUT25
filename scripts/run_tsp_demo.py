@@ -35,7 +35,7 @@ if str(SRC) not in sys.path:
 from pps57_cits.config import load_cits_config  # noqa: E402
 from pps57_cits.messages import OperatorPriorityClass, synth_srem  # noqa: E402
 from pps57_cits.models import SignalState  # noqa: E402
-from pps57_sumo.environment import apply_sumo_environment, resolve_sumo_home  # noqa: E402
+from pps57_sumo.environment import apply_sumo_environment, ensure_sumo_environment  # noqa: E402
 from pps57_sumo.network_profile import load_network_profile  # noqa: E402
 from pps57_sumo.parse_tripinfo import parse_tripinfo  # noqa: E402
 from pps57_sumo.stats import mean_ci95  # noqa: E402
@@ -122,10 +122,9 @@ def _signal_state_from_traci(traci, tls_id: str, rsu_id: str, sim_time_s: float)
 
 
 def run_baseline(sumocfg: Path) -> int:
-    env = {**os.environ}
-    home = resolve_sumo_home()
-    if home is not None:
-        env["SUMO_HOME"] = str(home)
+    # ensure_sumo_environment sets BOTH SUMO_HOME and PATH, so `sumo` resolves even when it
+    # lives under $SUMO_HOME/bin and is not already on PATH.
+    env = ensure_sumo_environment()
     proc = subprocess.run(["sumo", "-c", str(sumocfg)], capture_output=True, text=True, env=env, cwd=str(ROOT))
     return proc.returncode
 
