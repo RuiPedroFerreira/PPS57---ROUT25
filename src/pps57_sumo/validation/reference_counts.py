@@ -63,7 +63,9 @@ def parse_madrid_catalogue(csv_text: str) -> dict[int, str]:
     ``"tipo_elem";"distrito";"id";...``. Only ``id`` and ``tipo_elem`` are used.
     """
     mapping: dict[int, str] = {}
-    lines = [ln for ln in csv_text.splitlines() if ln.strip()]
+    # The portal's sibling feed ships a UTF-8 BOM; tolerate one here too, or the
+    # header lookup fails and every detector would be silently dropped as non-URB.
+    lines = [ln for ln in csv_text.lstrip("﻿").splitlines() if ln.strip()]
     if not lines:
         return mapping
     header = [h.strip().strip('"').lower() for h in lines[0].split(";")]
@@ -84,6 +86,24 @@ def parse_madrid_catalogue(csv_text: str) -> dict[int, str]:
     return mapping
 
 
+def _valid_madrid_pms(xml_text: str) -> Iterable[Any]:
+    """``<pm>`` elements with a valid reading (``error == 'N'``) from the feed.
+
+    The feed begins with a BOM and is well-formed XML; strip a BOM if present.
+    """
+    root = ET.fromstring(xml_text.lstrip("﻿"))
+    for pm in root.findall("pm"):
+        if (pm.findtext("error") or "").strip().upper() == "N":
+            yield pm
+
+
+def _madrid_detector_id(pm: Any) -> int | None:
+    try:
+        return int((pm.findtext("idelem") or "").strip())
+    except ValueError:
+        return None
+
+
 def parse_madrid_intensities(
     xml_text: str,
     catalogue: Mapping[int, str] | None = None,
@@ -97,25 +117,39 @@ def parse_madrid_intensities(
     catalogued as ``URB`` (drops the M-30 ring motorway), so the distribution is
     urban-arterial, comparable to the Boavista avenue.
     """
-    # The feed begins with a BOM and is well-formed XML; strip a BOM if present.
-    root = ET.fromstring(xml_text.lstrip("﻿"))
     values: list[float] = []
-    for pm in root.findall("pm"):
-        if (pm.findtext("error") or "").strip().upper() != "N":
-            continue
+    for pm in _valid_madrid_pms(xml_text):
         intensity = _to_float(pm.findtext("intensidad"))
         if intensity is None or intensity < 0:
             continue
         if only_urban and catalogue is not None:
-            id_text = (pm.findtext("idelem") or "").strip()
-            try:
-                det_id = int(id_text)
-            except ValueError:
-                continue
-            if catalogue.get(det_id, "").upper() != "URB":
+            det_id = _madrid_detector_id(pm)
+            if det_id is None or catalogue.get(det_id, "").upper() != "URB":
                 continue
         values.append(intensity)
     return values
+
+
+def madrid_feed_catalogue_coverage(xml_text: str, catalogue: Mapping[int, str]) -> dict:
+    """How many valid feed detectors the points catalogue actually covers.
+
+    ``only_urban`` filtering treats "id not in catalogue" the same as "not URB",
+    so a stale catalogue snapshot silently drops every detector added or
+    renumbered since it was published, biasing the reference distribution. This
+    measures that join so the fetch step can refuse a catalogue that no longer
+    matches the live feed instead of dropping readings quietly.
+    """
+    feed_ids = {
+        det_id for pm in _valid_madrid_pms(xml_text)
+        if (det_id := _madrid_detector_id(pm)) is not None
+    }
+    matched = sum(1 for det_id in feed_ids if det_id in catalogue)
+    return {
+        "feed_valid_detectors": len(feed_ids),
+        "in_catalogue": matched,
+        "missing_from_catalogue": len(feed_ids) - matched,
+        "coverage": round(matched / len(feed_ids), 4) if feed_ids else None,
+    }
 
 
 def _dft_records(payload: Any) -> Iterable[Mapping[str, Any]]:

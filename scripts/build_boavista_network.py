@@ -84,9 +84,9 @@ def build(osm_path: Path, out_dir: Path) -> Path:
     (out_dir / "NET_PROVENANCE.json").write_text(
         json.dumps(provenance, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
-    # run_reference_network_check.py reads PROVENANCE.json beside the net by default;
-    # write the combined OSM+net provenance there so the documented fetch->build->check
-    # sequence yields the full source_of_truth instead of an empty {}.
+    # Downstream consumers read PROVENANCE.json beside the net; write the combined
+    # OSM+net provenance there so the fetch->build sequence yields the full
+    # source_of_truth instead of an empty {}.
     osm_prov_path = out_dir / "OSM_PROVENANCE.json"
     combined = {
         "phase_input": "real OSM Boavista geometry (V4)",

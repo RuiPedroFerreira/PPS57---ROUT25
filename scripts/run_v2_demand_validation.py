@@ -13,11 +13,14 @@ Inputs (produced by scripts/fetch_reference_counts.py into .tools/reference-coun
   * dft_aadf.json                          — UK DfT AADF per count point/direction
   * provenance.json                        — URLs, SHA-256, timestamps, licences
 
-The modelled corridor intensity comes from the committed V4d evidence
-(docs/validation/v4d_reference_corridor.json :: demand.arterial_intensity_measured),
-so V2 is additive and re-runs no SUMO.
+The modelled corridor intensity comes from the V4d evidence produced by
+scripts/build_reference_corridor.py (default path
+docs/validation/v4d_reference_corridor.json :: demand.arterial_intensity_measured;
+the file is generated locally, not committed). V2 itself re-runs no SUMO.
 
-Run scripts/fetch_reference_counts.py first; this script refuses to invent data.
+Run scripts/fetch_reference_counts.py (reference counts) and
+scripts/build_reference_corridor.py (V4d evidence) first, or pass --v4d;
+this script refuses to invent data.
 """
 from __future__ import annotations
 
@@ -39,9 +42,9 @@ from pps57_sumo.validation.acceptance import load_validation_config  # noqa: E40
 RAW_DIR = ROOT / ".tools" / "reference-counts"
 
 
-def _require(path: Path) -> Path:
+def _require(path: Path, hint: str = "Run scripts/fetch_reference_counts.py first") -> Path:
     if not path.exists():
-        raise SystemExit(f"Missing {path}. Run scripts/fetch_reference_counts.py first (no data is invented).")
+        raise SystemExit(f"Missing {path}. {hint} (no data is invented).")
     return path
 
 
@@ -163,8 +166,12 @@ def main() -> None:
     cities["Madrid (ES)"] = madrid_distribution(args.raw_dir, only_urban)
     cities.update(dft_city_distributions(args.raw_dir, provenance, categories, k_factor))
 
-    # Modelled corridor intensity from the committed V4d evidence.
-    v4d = json.loads(_require(args.v4d).read_text(encoding="utf-8"))
+    # Modelled corridor intensity from the locally built V4d evidence.
+    v4d_path = _require(
+        args.v4d,
+        hint="Build the V4d evidence with scripts/build_reference_corridor.py, or pass --v4d",
+    ).resolve()
+    v4d = json.loads(v4d_path.read_text(encoding="utf-8"))
     measured = v4d["demand"]["arterial_intensity_measured"]
     corridor_stats = {
         "median": measured.get("median_veh_h"),
@@ -190,7 +197,11 @@ def main() -> None:
             "reference number traces to a fetched, hashed dataset; no Porto count is fabricated."
         ),
         "corridor_arterial_intensity_veh_h": corridor_stats,
-        "corridor_source": "docs/validation/v4d_reference_corridor.json :: demand.arterial_intensity_measured",
+        # Repo-relative when possible so the committed report carries no local home path.
+        "corridor_source": (
+            f"{v4d_path.relative_to(ROOT) if v4d_path.is_relative_to(ROOT) else v4d_path} "
+            ":: demand.arterial_intensity_measured (built by scripts/build_reference_corridor.py)"
+        ),
         "reference_cities": cities,
         "method": {
             "madrid": "informo real-time intensidad (veh/h), error=='N', URB detectors only (joined to catalogue).",
