@@ -52,8 +52,8 @@ USER_AGENT = "PPS57-ROUT25-validation/1.0 (research; sim-to-real V2)"
 
 MADRID_INTENSITY_URL = "https://informo.madrid.es/informo/tmadrid/pm.xml"
 # Measurement-point catalogue dataset ("Tráfico. Ubicación de los puntos de
-# medida del tráfico"): one pmed_ubicacion_MM-YYYY.csv snapshot per month. The
-# current resource is resolved from this CKAN endpoint at fetch time.
+# medida del tráfico"): one CSV location snapshot per month. The current
+# resource is resolved from this CKAN endpoint at fetch time.
 MADRID_CATALOGUE_DATASET_API = (
     "https://datos.madrid.es/api/3/action/package_show?id=202468-0-intensidad-trafico"
 )
@@ -123,15 +123,15 @@ def resolve_madrid_catalogue_resource() -> dict:
     if not payload.get("success"):
         raise SystemExit("datos.madrid.es package_show returned success=false — cannot resolve the catalogue.")
     resources = (payload.get("result") or {}).get("resources") or []
-    candidates = [
-        res for res in resources
-        # each month ships CSV/ZIP/XLSX variants with the same created date —
-        # only the CSV matches what parse_madrid_catalogue consumes
-        if "pmed_ubicacion_" in str(res.get("url", "")) and str(res.get("format", "")).upper() == "CSV"
-    ]
+    # Every CSV in this dataset is a monthly point-location snapshot (ZIP/XLSX are
+    # the same data in other formats), but only recent months carry the
+    # pmed_ubicacion_MM-YYYY name — older snapshots have opaque ids. Select by
+    # format + created instead of filename; the join-coverage gate below fails
+    # loudly if the portal ever publishes a CSV that is not a usable catalogue.
+    candidates = [res for res in resources if str(res.get("format", "")).upper() == "CSV"]
     if not candidates:
         raise SystemExit(
-            "No pmed_ubicacion_* CSV catalogue resource found in the datos.madrid.es dataset — "
+            "No CSV catalogue resource found in the datos.madrid.es measurement-points dataset — "
             "refusing to fall back to a stale pinned snapshot."
         )
     newest = max(candidates, key=lambda res: str(res.get("created", "")))
