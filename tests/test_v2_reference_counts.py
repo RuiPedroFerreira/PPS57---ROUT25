@@ -66,6 +66,26 @@ class MadridParsingTests(unittest.TestCase):
         # keeps 1 (600) and 2 (900); drops 3 (M30), 4 (error), 5 (not in catalogue).
         self.assertEqual(sorted(vals), [600.0, 900.0])
 
+    def test_feed_catalogue_coverage_counts_missing_detectors(self) -> None:
+        # Valid (error=='N') detectors: 1, 2, 3, 5; the catalogue knows 1, 2, 3 →
+        # detector 5 is the stale-snapshot case the fetch gate must surface.
+        cov = rc.madrid_feed_catalogue_coverage(MADRID_XML, rc.parse_madrid_catalogue(MADRID_CSV))
+        self.assertEqual(cov["feed_valid_detectors"], 4)
+        self.assertEqual(cov["in_catalogue"], 3)
+        self.assertEqual(cov["missing_from_catalogue"], 1)
+        self.assertEqual(cov["coverage"], 0.75)
+
+    def test_feed_catalogue_coverage_empty_feed(self) -> None:
+        cov = rc.madrid_feed_catalogue_coverage("<pms></pms>", {1: "URB"})
+        self.assertEqual(cov["feed_valid_detectors"], 0)
+        self.assertIsNone(cov["coverage"])
+
+    def test_catalogue_tolerates_utf8_bom(self) -> None:
+        # The portal's sibling feed ships a BOM; a BOM'd catalogue header must not
+        # silently parse to {} (which would drop every detector as non-URB).
+        cat = rc.parse_madrid_catalogue("﻿" + MADRID_CSV)
+        self.assertEqual(cat, {1: "URB", 2: "URB", 3: "M30"})
+
 
 class DftParsingTests(unittest.TestCase):
     def test_filters_to_a_roads_and_year(self) -> None:

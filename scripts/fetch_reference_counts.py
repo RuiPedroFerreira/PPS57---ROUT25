@@ -17,8 +17,12 @@ Sources
       - real-time intensity feed informo/tmadrid/pm.xml (intensidad in veh/h,
         error validity flag) — the actual measured flows;
       - measurement-point catalogue CSV (tipo_elem URB/M30) — to keep only urban
-        detectors. Live feed: SHA-256 is recorded, not pinned (it changes ~every
-        5 min); the committed report names the exact snapshot used.
+        detectors. The portal publishes one catalogue snapshot per month, so the
+        current resource is resolved from its CKAN API at fetch time (a pinned
+        resource id goes stale: the 2019 snapshot silently lost ~20% of the live
+        feed's detectors) and the feed↔catalogue join coverage is checked before
+        anything is written. Live feed: SHA-256 is recorded, not pinned (it
+        changes ~every 5 min); the committed report names the exact snapshot used.
   * United Kingdom — Department for Transport road traffic statistics open API
     (roadtraffic.dft.gov.uk), AADF per count point/direction for a set of city
     local authorities. Open Government Licence v3.0. A given survey year is
@@ -37,14 +41,25 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from pps57_sumo.validation import reference_counts as rc  # noqa: E402
+
 OUT_DIR = ROOT / ".tools" / "reference-counts"
 USER_AGENT = "PPS57-ROUT25-validation/1.0 (research; sim-to-real V2)"
 
 MADRID_INTENSITY_URL = "https://informo.madrid.es/informo/tmadrid/pm.xml"
-MADRID_CATALOGUE_URL = (
-    "https://datos.madrid.es/dataset/202468-0-intensidad-trafico/resource/"
-    "202468-122-intensidad-trafico-csv/download/202468-122-intensidad-trafico-csv"
+# Measurement-point catalogue dataset ("Tráfico. Ubicación de los puntos de
+# medida del tráfico"): one pmed_ubicacion_MM-YYYY.csv snapshot per month. The
+# current resource is resolved from this CKAN endpoint at fetch time.
+MADRID_CATALOGUE_DATASET_API = (
+    "https://datos.madrid.es/api/3/action/package_show?id=202468-0-intensidad-trafico"
 )
+# Detectors absent from the catalogue are silently treated as non-URB and
+# dropped, so a join this poor means the catalogue no longer describes the feed.
+MADRID_MIN_CATALOGUE_COVERAGE = 0.95
 MADRID_LICENSE = "Ayuntamiento de Madrid open data conditions (datos.madrid.es)"
 
 DFT_API = "https://roadtraffic.dft.gov.uk/api"
@@ -88,8 +103,7 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def _madrid_source_timestamp(xml_bytes: bytes) -> str | None:
-    text = xml_bytes.decode("utf-8", errors="replace")
+def _madrid_source_timestamp(text: str) -> str | None:
     start = text.find("<fecha_hora>")
     end = text.find("</fecha_hora>")
     if start != -1 and end != -1:
@@ -97,11 +111,55 @@ def _madrid_source_timestamp(xml_bytes: bytes) -> str | None:
     return None
 
 
-def fetch_madrid(out_dir: Path) -> dict:
+def resolve_madrid_catalogue_resource() -> dict:
+    """The newest monthly measurement-point catalogue resource from the portal.
+
+    The dataset republishes the point locations every month; resolving the
+    current resource (instead of pinning one id) keeps detectors added or
+    renumbered since any given snapshot. Which exact resource was used goes
+    into provenance.
+    """
+    payload = json.loads(_get(MADRID_CATALOGUE_DATASET_API))
+    if not payload.get("success"):
+        raise SystemExit("datos.madrid.es package_show returned success=false — cannot resolve the catalogue.")
+    resources = (payload.get("result") or {}).get("resources") or []
+    candidates = [
+        res for res in resources
+        # each month ships CSV/ZIP/XLSX variants with the same created date —
+        # only the CSV matches what parse_madrid_catalogue consumes
+        if "pmed_ubicacion_" in str(res.get("url", "")) and str(res.get("format", "")).upper() == "CSV"
+    ]
+    if not candidates:
+        raise SystemExit(
+            "No pmed_ubicacion_* CSV catalogue resource found in the datos.madrid.es dataset — "
+            "refusing to fall back to a stale pinned snapshot."
+        )
+    newest = max(candidates, key=lambda res: str(res.get("created", "")))
+    return {"url": str(newest["url"]), "created": str(newest.get("created", "")), "id": str(newest.get("id", ""))}
+
+
+def fetch_madrid(out_dir: Path, catalogue_url: str | None = None) -> dict:
     intensity = _get(MADRID_INTENSITY_URL)
     if b"<intensidad>" not in intensity:
         raise SystemExit("Madrid feed returned no <intensidad> elements — refusing to fabricate.")
-    catalogue = _get(MADRID_CATALOGUE_URL)
+    if catalogue_url:
+        resource = {"url": catalogue_url, "created": None, "id": None, "note": "overridden via --madrid-catalogue-url"}
+    else:
+        resource = resolve_madrid_catalogue_resource()
+    catalogue = _get(resource["url"])
+    intensity_text = intensity.decode("utf-8", errors="replace")
+    # The catalogue must actually describe the feed: detectors missing from it are
+    # silently dropped by only_urban filtering, so a poor join is a stale snapshot.
+    coverage = rc.madrid_feed_catalogue_coverage(
+        intensity_text,
+        rc.parse_madrid_catalogue(catalogue.decode("utf-8", errors="replace")),
+    )
+    if coverage["coverage"] is None or coverage["coverage"] < MADRID_MIN_CATALOGUE_COVERAGE:
+        raise SystemExit(
+            f"Madrid catalogue covers only {coverage['in_catalogue']}/{coverage['feed_valid_detectors']} "
+            f"valid feed detectors (coverage {coverage['coverage']}, minimum {MADRID_MIN_CATALOGUE_COVERAGE}). "
+            f"Stale or wrong catalogue resource ({resource['url']}) — refusing to drop readings silently."
+        )
     # Write only after validation, so a bad fetch can never leave raw files on disk
     # that disagree with (or lack) provenance.
     (out_dir / "madrid_pm.xml").write_bytes(intensity)
@@ -110,13 +168,15 @@ def fetch_madrid(out_dir: Path) -> dict:
         "source": "datos.madrid.es",
         "license": MADRID_LICENSE,
         "fetched_at_utc": _now_iso(),
-        "feed_timestamp": _madrid_source_timestamp(intensity),
+        "feed_timestamp": _madrid_source_timestamp(intensity_text),
         "intensity_url": MADRID_INTENSITY_URL,
         "intensity_sha256": _sha256_bytes(intensity),
         "intensity_bytes": len(intensity),
-        "catalogue_url": MADRID_CATALOGUE_URL,
+        "catalogue_url": resource["url"],
+        "catalogue_resource": {k: v for k, v in resource.items() if k != "url"},
         "catalogue_sha256": _sha256_bytes(catalogue),
         "catalogue_bytes": len(catalogue),
+        "feed_catalogue_coverage": coverage,
         "sha256_note": "live feed — recorded, not pinned; the committed report names this snapshot.",
     }
 
@@ -218,6 +278,11 @@ def merge_provenance(existing: dict | None, fetched_sources: dict, *, fetched_at
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--out", type=Path, default=OUT_DIR)
+    parser.add_argument(
+        "--madrid-catalogue-url",
+        default=None,
+        help="pin a specific catalogue resource URL instead of resolving the newest monthly snapshot",
+    )
     parser.add_argument("--dft-cities", nargs="*", default=DEFAULT_DFT_CITIES)
     parser.add_argument("--dft-year", type=int, default=DEFAULT_DFT_YEAR)
     parser.add_argument("--skip-madrid", action="store_true")
@@ -229,9 +294,12 @@ def main() -> None:
 
     if not args.skip_madrid:
         print("Fetching Madrid (informo intensity + measurement-point catalogue)…")
-        fetched_sources["madrid"] = fetch_madrid(args.out)
+        fetched_sources["madrid"] = fetch_madrid(args.out, args.madrid_catalogue_url)
         m = fetched_sources["madrid"]
+        cov = m["feed_catalogue_coverage"]
         print(f"  madrid: feed {m['feed_timestamp']}  {m['intensity_bytes']} B  sha {m['intensity_sha256'][:12]}…")
+        print(f"  madrid catalogue: {m['catalogue_url'].rsplit('/', 1)[-1]}  "
+              f"join {cov['in_catalogue']}/{cov['feed_valid_detectors']} detectors (coverage {cov['coverage']})")
     if not args.skip_dft:
         print(f"Fetching UK DfT AADF (year {args.dft_year}) for {len(args.dft_cities)} cities…")
         fetched_sources["dft"] = fetch_dft(args.out, args.dft_cities, args.dft_year)
