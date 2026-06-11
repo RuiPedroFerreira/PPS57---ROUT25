@@ -341,6 +341,10 @@ def run_scenario_type(
     summary["reports_dir"] = str(run_report_dir.relative_to(ROOT))
     summary["max_steps"] = args.steps
     summary["requested_steps"] = args.steps
+    # Sem isto, _replication_kpis_by_seed não consegue emparelhar réplicas
+    # (rep.get("seed") era sempre None) e o teste de significância t-Student
+    # nunca aparecia nos sumários multi-seed.
+    summary["seed"] = int(seed)
     summary["step_length_s"] = float(config.get("simulation_step_length_s", 1.0))
     summary["configured_end_s"] = float(config.get("simulation_end_s", 7200))
     summary["sumo_quality_thresholds"] = dict(config.get("sumo_quality_thresholds", {}))
