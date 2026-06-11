@@ -22,6 +22,27 @@ class TraciUnavailableError(RuntimeError):
     pass
 
 
+# Variáveis subscritas por veículo (espelham os getters do caminho
+# por-veículo em _read_vehicle_observation). A subscrição troca centenas de
+# round-trips TraCI por passo por uma única leitura batched — com a rede
+# carregada (~340 veículos) o caminho por-veículo custava ~0.5s/passo.
+_VEHICLE_SUBSCRIPTION_VARS = (
+    "VAR_ROAD_ID",
+    "VAR_LANE_ID",
+    "VAR_LANEPOSITION",
+    "VAR_SPEED",
+    "VAR_WAITING_TIME",
+    "VAR_ACCUMULATED_WAITING_TIME",
+    "VAR_STOPSTATE",
+    "VAR_TYPE",
+    "VAR_VEHICLECLASS",
+    "VAR_LINE",
+    "VAR_ROUTE_ID",
+    "VAR_EDGES",
+    "VAR_ROUTE_INDEX",
+)
+
+
 class TraciSimulationAdapter:
     def __init__(self, config: CITSConfig, sumo_binary: str = "sumo", gui: bool = False) -> None:
         self.config = config
@@ -33,6 +54,8 @@ class TraciSimulationAdapter:
         self._controlled_links_cache: dict[str, list[Any]] = {}
         self._subscribed_lanes: set[str] = set()
         self._subscription_var_ids_by_name: dict[str, object] = {}
+        self._subscribed_vehicles: set[str] = set()
+        self._vehicle_var_ids_by_name: dict[str, object] = {}
         # Stand-in AVL/APC opcional; None quando schedule_plan.enabled=false
         # (default) -> observações mantêm schedule_delay_s/headway 0.0 e a OBU
         # recai no proxy de waiting-time (comportamento inalterado).
@@ -110,12 +133,156 @@ class TraciSimulationAdapter:
     def read_vehicle_observations(self) -> List[VehicleObservation]:
         traci = self._require_traci()
         sim_time_s = float(_safe_call(lambda: traci.simulation.getTime()) or 0.0)
+        vehicle_ids = list(traci.vehicle.getIDList())
+        snapshot = self._vehicle_subscription_snapshot(vehicle_ids)
+        lane_samples = self._lane_samples_from_snapshot(snapshot)
         observations: List[VehicleObservation] = []
-        for vehicle_id in traci.vehicle.getIDList():
-            observation = self._read_vehicle_observation(vehicle_id, sim_time_s)
+        for vehicle_id in vehicle_ids:
+            values = snapshot.get(vehicle_id)
+            if values is not None:
+                observation = self._observation_from_subscription(
+                    vehicle_id, values, lane_samples, sim_time_s
+                )
+            else:
+                # Sem snapshot para este veículo (subscrição indisponível ou
+                # incompleta neste tick) -> caminho por-veículo original.
+                observation = self._read_vehicle_observation(vehicle_id, sim_time_s)
             if observation is not None:
                 observations.append(observation)
         return observations
+
+    def _vehicle_subscription_snapshot(self, vehicle_ids: List[str]) -> dict[str, dict[str, Any]]:
+        """Valores subscritos de TODOS os veículos da rede, num round-trip.
+
+        Devolve {vehicle_id: {nome_var: valor}} apenas para veículos com as
+        13 variáveis completas; os restantes ficam fora do dict e o caller
+        recai no caminho por-veículo (mesma semântica, só mais lento). Com um
+        backend sem API de subscrições (ex.: fakes de teste) devolve {} e o
+        comportamento é exatamente o anterior.
+        """
+        traci = self._require_traci()
+        constants = getattr(traci, "constants", None)
+        if constants is None:
+            return {}
+        for name in _VEHICLE_SUBSCRIPTION_VARS:
+            if name not in self._vehicle_var_ids_by_name:
+                value = getattr(constants, name, None)
+                if value is not None:
+                    self._vehicle_var_ids_by_name[name] = value
+        if len(self._vehicle_var_ids_by_name) != len(_VEHICLE_SUBSCRIPTION_VARS):
+            return {}
+        var_ids = [self._vehicle_var_ids_by_name[name] for name in _VEHICLE_SUBSCRIPTION_VARS]
+
+        current = set(vehicle_ids)
+        self._subscribed_vehicles &= current
+        for vehicle_id in vehicle_ids:
+            if vehicle_id in self._subscribed_vehicles:
+                continue
+            try:
+                traci.vehicle.subscribe(vehicle_id, var_ids)
+            except Exception:
+                # Veículo saiu entre getIDList e a subscrição, ou o backend
+                # não suporta subscribe -> este veículo segue o caminho
+                # por-veículo neste tick.
+                continue
+            self._subscribed_vehicles.add(vehicle_id)
+
+        results = _safe_call(lambda: traci.vehicle.getAllSubscriptionResults())
+        if not isinstance(results, dict):
+            return {}
+        name_by_var_id = {var_id: name for name, var_id in self._vehicle_var_ids_by_name.items()}
+        snapshot: dict[str, dict[str, Any]] = {}
+        for vehicle_id, raw_values in results.items():
+            if not isinstance(raw_values, dict):
+                continue
+            values = {
+                name_by_var_id[var_id]: value
+                for var_id, value in raw_values.items()
+                if var_id in name_by_var_id
+            }
+            if len(values) == len(_VEHICLE_SUBSCRIPTION_VARS):
+                snapshot[vehicle_id] = values
+        return snapshot
+
+    @staticmethod
+    def _lane_samples_from_snapshot(
+        snapshot: dict[str, dict[str, Any]]
+    ) -> dict[str, list[tuple[float, float]]]:
+        """Índice lane_id -> [(lane_position_m, speed_mps)] do snapshot.
+
+        Substitui, por lane, o par getLastStepVehicleIDs + getters
+        por-veículo usado em _queue_ahead_vehicle_count.
+        """
+        lane_samples: dict[str, list[tuple[float, float]]] = {}
+        for values in snapshot.values():
+            lane_id = str(values.get("VAR_LANE_ID") or "")
+            if not lane_id:
+                continue
+            try:
+                sample = (float(values["VAR_LANEPOSITION"]), float(values["VAR_SPEED"]))
+            except (TypeError, ValueError, KeyError):
+                continue
+            lane_samples.setdefault(lane_id, []).append(sample)
+        return lane_samples
+
+    def _observation_from_subscription(
+        self,
+        vehicle_id: str,
+        values: dict[str, Any],
+        lane_samples: dict[str, list[tuple[float, float]]],
+        sim_time_s: float,
+    ) -> Optional[VehicleObservation]:
+        """Constrói a observação a partir do snapshot subscrito.
+
+        Espelha campo-a-campo _read_vehicle_observation (mesmos defaults e
+        mesmo filtro de corredor); diverge apenas na origem dos valores.
+        """
+        edge_id = str(values.get("VAR_ROAD_ID") or "")
+        if edge_id not in self.config.edge_to_intersection:
+            return None
+        lane_id = str(values.get("VAR_LANE_ID") or "")
+        if not lane_id:
+            return None
+        try:
+            route_edges = [str(edge) for edge in (values.get("VAR_EDGES") or [])]
+            route_index_raw = values.get("VAR_ROUTE_INDEX")
+            route_index = int(route_index_raw) if route_index_raw is not None else None
+            next_edge_id = ""
+            if route_index is not None and 0 <= route_index + 1 < len(route_edges):
+                next_edge_id = str(route_edges[route_index + 1])
+            lane_position = float(values.get("VAR_LANEPOSITION") or 0.0)
+            lane_length = self._lane_length(lane_id)
+            queue_ahead = sum(
+                1
+                for other_position, other_speed in lane_samples.get(lane_id, [])
+                if other_position > lane_position and other_speed < 0.5
+            )
+            observation = VehicleObservation(
+                vehicle_id=vehicle_id,
+                vehicle_class=str(values.get("VAR_VEHICLECLASS") or ""),
+                type_id=str(values.get("VAR_TYPE") or ""),
+                line_id=str(values.get("VAR_LINE") or ""),
+                route_id=str(values.get("VAR_ROUTE_ID") or ""),
+                edge_id=edge_id,
+                lane_id=lane_id,
+                lane_position_m=lane_position,
+                lane_length_m=lane_length,
+                speed_mps=float(values.get("VAR_SPEED") or 0.0),
+                waiting_time_s=float(values.get("VAR_WAITING_TIME") or 0.0),
+                accumulated_waiting_time_s=float(values.get("VAR_ACCUMULATED_WAITING_TIME") or 0.0),
+                route_edges=route_edges,
+                next_edge_id=next_edge_id,
+                queue_ahead_vehicle_count=queue_ahead,
+                stop_count=int(values.get("VAR_STOPSTATE") or 0),
+                eta_params=self._eta_params,
+            )
+        except (TypeError, ValueError):
+            # Valor de subscrição com tipo inesperado neste tick: trata como
+            # leitura degradada (contada), tal como uma TraCIException no
+            # caminho por-veículo.
+            self.vehicle_read_failures += 1
+            return None
+        return self._with_schedule_adherence(observation, sim_time_s)
 
     def _read_vehicle_observation(self, vehicle_id: str, sim_time_s: float = 0.0) -> Optional[VehicleObservation]:
         traci = self._require_traci()
