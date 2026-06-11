@@ -70,7 +70,7 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
         self.assertLess(operational_peak["estimated_car_departures"], raw_peak["estimated_car_departures"])
 
     def test_scenario_summary_counts_scheduled_bus_departures(self) -> None:
-        for scenario_id in ("baseline_am_peak", "baseline_off_peak", "baseline_pm_peak"):
+        for scenario_id in ("baseline_am_peak", "baseline_off_peak", "congested_delayed_bus"):
             config = apply_scenario_profile(self.base, scenario_id)
             actual = sum(
                 len(list(_service_departures(service, config)))
@@ -106,8 +106,6 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
             event_types = {event.get("type") for event in config.get("events", [])}
             if scenario_id == "emergency_vehicle_conflict":
                 self.assertIn("emergency_vehicle", event_types)
-            elif scenario_id == "stochastic_incidents_am_peak":
-                self.assertTrue(event_types.issubset({"stopped_vehicle"}), msg=scenario_id)
             else:
                 self.assertEqual(event_types, set(), msg=scenario_id)
 
@@ -150,9 +148,23 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
         with self.assertRaises(ScenarioConfigError):
             apply_scenario_profile(broken, "broken")
 
-    def test_rainy_scenario_applies_weather_vehicle_overrides(self) -> None:
+    def test_weather_vehicle_overrides_apply_to_vehicle_types(self) -> None:
+        # O catalogo v05 ja nao inclui cenarios meteorologicos; a mecanica de
+        # vehicle_overrides continua suportada e valida-se com perfil inline.
+        cfg = json.loads(json.dumps(self.base))
+        cfg["scenario_profiles"]["rainy_inline"] = {
+            "demand_profile": "am_peak",
+            "vehicle_overrides": {
+                "all": {
+                    "tau_delta": 0.2,
+                    "speed_factor_multiplier": 0.88,
+                    "decel_multiplier": 0.85,
+                    "min_gap_multiplier": 1.15,
+                }
+            },
+        }
         baseline = apply_scenario_profile(self.base, "baseline_am_peak")
-        rainy = apply_scenario_profile(self.base, "baseline_rainy_am_peak")
+        rainy = apply_scenario_profile(cfg, "rainy_inline")
         base_car = {vt["id"]: vt for vt in baseline["vehicle_types"]}["car"]
         rain_car = {vt["id"]: vt for vt in rainy["vehicle_types"]}["car"]
         self.assertGreater(float(rain_car["tau"]), float(base_car["tau"]))
@@ -168,18 +180,6 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
         }
         inbound = next(flow for flow in flows.values() if flow["route"] == "route_boavista_west_to_east")
         self.assertLess(float(inbound["period"]), 7.5)
-
-    def test_pm_peak_inverts_corridor_dominance(self) -> None:
-        pm = apply_scenario_profile(self.base, "baseline_pm_peak")
-        flows = {
-            flow["route"]: flow
-            for flow in pm["demand_profiles"][pm["active_demand_profile"]]["flows"]
-            if flow["route"].startswith("route_boavista_")
-        }
-        self.assertLess(
-            float(flows["route_boavista_east_to_west"]["period"]),
-            float(flows["route_boavista_west_to_east"]["period"]),
-        )
 
     def test_actuated_tls_type_propagates_to_generated_nodes(self) -> None:
         # O base config é atualmente todo em tempo fixo (sem tls_type=actuated)
@@ -277,7 +277,28 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
         self.assertIn('numLanes="2"', ring_line)
 
     def test_av_penetration_high_replaces_urban_mix(self) -> None:
-        av = apply_scenario_profile(self.base, "av_penetration_high")
+        # Mecanica de vehicle_distribution_overrides validada com perfil inline
+        # (mix ~60% AV do antigo cenario av_penetration_high do catalogo v04).
+        cfg = json.loads(json.dumps(self.base))
+        cfg["scenario_profiles"]["av_high_inline"] = {
+            "demand_profile": "am_peak",
+            "vehicle_distribution_overrides": {
+                "urban_mix": [
+                    {"type": "car", "probability": 0.1},
+                    {"type": "car_cautious", "probability": 0.05},
+                    {"type": "car_aggressive", "probability": 0.05},
+                    {"type": "car_acc", "probability": 0.27},
+                    {"type": "car_acc_ev", "probability": 0.08},
+                    {"type": "car_cacc", "probability": 0.18},
+                    {"type": "car_cacc_ev", "probability": 0.07},
+                    {"type": "motorcycle", "probability": 0.05},
+                    {"type": "taxi", "probability": 0.04},
+                    {"type": "lcv", "probability": 0.07},
+                    {"type": "hgv", "probability": 0.04},
+                ]
+            },
+        }
+        av = apply_scenario_profile(cfg, "av_high_inline")
         urban = next(d for d in av["vehicle_type_distributions"] if d["id"] == "urban_mix")
         types = {c["type"]: float(c["probability"]) for c in urban["components"]}
         self.assertIn("car_acc", types)
@@ -320,9 +341,31 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
     def test_stochastic_incidents_materialise_deterministic_events(self) -> None:
         from pps57_sumo.generate_plain_corridor import build_routes
 
-        cfg_a = apply_scenario_profile(self.base, "stochastic_incidents_am_peak")
+        # Mecanica de stochastic_incidents validada com perfil inline (template
+        # do antigo cenario stochastic_incidents_am_peak do catalogo v04).
+        cfg = json.loads(json.dumps(self.base))
+        cfg["scenario_profiles"]["stochastic_inline"] = {
+            "demand_profile": "am_peak",
+            "stochastic_incidents": [
+                {
+                    "id_prefix": "stop_lcv_corridor",
+                    "type": "stopped_vehicle",
+                    "vehicle_type": "lcv",
+                    "route_candidates": [
+                        "route_boavista_west_to_east",
+                        "route_boavista_east_to_west",
+                    ],
+                    "edge_candidates": ["I2_I3", "I3_I4", "I4_I5", "I5_I6"],
+                    "depart_window_s": [1500, 5400],
+                    "duration_s_mean": 180,
+                    "duration_s_std": 45,
+                    "probability": 0.6,
+                }
+            ],
+        }
+        cfg_a = apply_scenario_profile(cfg, "stochastic_inline")
         # Same seed -> same events (determinism).
-        cfg_b = apply_scenario_profile(self.base, "stochastic_incidents_am_peak")
+        cfg_b = apply_scenario_profile(cfg, "stochastic_inline")
         self.assertEqual(cfg_a["events"], cfg_b["events"])
         intersections = cfg_a["network"]["intersections"]
         terminals = {t["id"]: t for t in cfg_a["network"]["terminals"]}

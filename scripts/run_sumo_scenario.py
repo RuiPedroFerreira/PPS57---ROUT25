@@ -48,7 +48,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--generate-only", action="store_true", help="Generate SUMO XMLs but do not execute SUMO.")
     parser.add_argument(
         "--run-type",
-        choices=[*RUN_TYPES, "comparison", "all"],
+        choices=[*RUN_TYPES, "pair", "comparison", "all"],
         default="baseline",
         help="Pipeline to run for each scenario.",
     )
@@ -155,7 +155,9 @@ def run_scenario(args: argparse.Namespace, base_config: dict, catalog: dict, sce
     scenario_output_dir.mkdir(parents=True, exist_ok=True)
     scenario_report_dir.mkdir(parents=True, exist_ok=True)
 
-    if args.run_type == "comparison":
+    if args.run_type == "pair":
+        run_types = ["baseline", "tsp_actuation"]
+    elif args.run_type == "comparison":
         run_types = ["baseline", "tsp_no_actuation", "tsp_actuation"]
     else:
         run_types = list(RUN_TYPES) if args.run_type == "all" else [args.run_type]

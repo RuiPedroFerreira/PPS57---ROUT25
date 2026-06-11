@@ -1185,16 +1185,6 @@
       "period_scale": 1.9,
       "id_suffix": "off_peak"
     },
-    "high_demand_corridor": {
-      "description": "Eixo Boavista em pressao: procura no corredor principal aumenta dentro do envelope operacional para expor saturacao longitudinal sem backlog artificial de insercao.",
-      "derived_from": "am_peak_operational",
-      "period_scale": 1.0,
-      "route_period_scale": {
-        "route_boavista_west_to_east": 0.88,
-        "route_boavista_east_to_west": 0.92
-      },
-      "id_suffix": "high_corridor"
-    },
     "cross_traffic_pressure": {
       "description": "Pressao transversal em Bessa e Praca do Imperio, mantendo o corredor principal no envelope operacional para testar rejeicoes por impacto lateral sem saturar entradas.",
       "derived_from": "am_peak_operational",
@@ -1216,84 +1206,17 @@
       },
       "id_suffix": "delayed_bus_w"
     },
-    "delayed_bus_eastbound": {
-      "description": "Pico com sentido mar->cidade carregado dentro do envelope operacional para gerar atraso no TP eastbound sem backlog de insercao.",
-      "derived_from": "am_peak_operational",
-      "period_scale": 1.0,
-      "route_period_scale": {
-        "route_boavista_west_to_east": 0.92
-      },
-      "id_suffix": "delayed_bus_e"
-    },
     "bunched_buses": {
       "description": "Procura de pico com dois servicos TP aproximados para provocar headway curto e testar recuperacao de regularidade.",
       "derived_from": "am_peak_operational",
       "period_scale": 1.0,
       "id_suffix": "bunched_buses"
     },
-    "long_dwell_stop": {
-      "description": "Paragem critica com dwell elevado em Serralves, com procura ligeiramente amortecida para isolar atraso de dwell sem backlog artificial de insercao.",
-      "derived_from": "am_peak_operational",
-      "period_scale": 1.08,
-      "flow_period_scale": {
-        "flow_minor_SN_I6": 1.30,
-        "flow_minor_NS_I6": 1.15
-      },
-      "id_suffix": "long_dwell"
-    },
-    "incident_minor_road_queue": {
-      "description": "Incidente operacional numa via transversal: procura forte e persistente numa aproximacao secundaria dentro do envelope de viabilidade SUMO.",
-      "derived_from": "am_peak_operational",
-      "period_scale": 1.0,
-      "flow_period_scale": {
-        "flow_minor_NS_I4": 0.55,
-        "flow_minor_SN_I4": 0.60
-      },
-      "id_suffix": "minor_incident"
-    },
     "emergency_vehicle_conflict": {
       "description": "Pico com evento pontual de emergencia concorrente com TP no corredor principal.",
       "derived_from": "am_peak_operational",
       "period_scale": 1.0,
       "id_suffix": "emergency_conflict"
-    },
-    "pm_peak": {
-      "description": "Ponta da tarde operacional: sentido cidade->mar (oeste) torna-se dominante, espelhando o regresso a Matosinhos/Boavista, sem herdar a procura bruta que domina a simulacao por backlog de insercao.",
-      "derived_from": "am_peak_operational",
-      "period_scale": 1.0,
-      "route_period_scale": {
-        "route_boavista_west_to_east": 1.35,
-        "route_boavista_east_to_west": 0.72
-      },
-      "id_suffix": "pm_peak"
-    },
-    "am_peak_low": {
-      "description": "Envelope inferior da ponta da manha: procura 15% abaixo do baseline proxy para representar incerteza sem contagens reais.",
-      "derived_from": "am_peak_operational",
-      "period_scale": 1.15,
-      "id_suffix": "am_low"
-    },
-    "am_peak_high": {
-      "description": "Envelope superior da ponta da manha: procura cerca de 6-7% acima do baseline proxy para testar sensibilidade sem saturar artificialmente a insercao SUMO.",
-      "derived_from": "am_peak_operational",
-      "period_scale": 0.94,
-      "id_suffix": "am_high"
-    },
-    "pm_peak_low": {
-      "description": "Envelope inferior da ponta da tarde com o mesmo padrao direcional do PM peak e procura amortecida para evitar teleports espurios em rotunda/TLS.",
-      "derived_from": "pm_peak",
-      "period_scale": 1.22,
-      "flow_period_scale": {
-        "flow_minor_NS_I6": 1.15,
-        "flow_minor_SN_I6": 1.15
-      },
-      "id_suffix": "pm_low"
-    },
-    "pm_peak_high": {
-      "description": "Envelope superior da ponta da tarde com o mesmo padrao direcional do PM peak, calibrado para permanecer dentro do envelope de insercao material.",
-      "derived_from": "pm_peak",
-      "period_scale": 0.94,
-      "id_suffix": "pm_high"
     },
     "congested_am_peak": {
       "description": "Pico saturado operacional: procura agravada em ambos os sentidos do corredor para aproximar o grau de saturacao de 0.95 mantendo viabilidade material.",
@@ -1310,73 +1233,8 @@
         "flow_minor_SN_I6": 0.96
       },
       "id_suffix": "congested"
-    },
-    "rainy_am_peak": {
-      "description": "Pico da manha em condicoes adversas (chuva): procura reduzida por evitamento e comportamento dos condutores ajustado por vehicle_overrides do cenario.",
-      "derived_from": "am_peak_operational",
-      "period_scale": 1.25,
-      "flow_period_scale": {
-        "flow_minor_NS_I6": 1.10,
-        "flow_minor_SN_I6": 1.10,
-        "flow_minor_N_to_city_at_I6": 1.10,
-        "flow_minor_N_to_atlantic_at_I6": 1.10,
-        "flow_minor_S_to_city_at_I6": 1.10,
-        "flow_minor_S_to_atlantic_at_I6": 1.10,
-        "flow_minor_N_to_city_at_I7": 1.10,
-        "flow_minor_N_to_atlantic_at_I7": 1.10,
-        "flow_minor_S_to_city_at_I7": 1.10,
-        "flow_minor_S_to_atlantic_at_I7": 1.10
-      },
-      "id_suffix": "rainy"
-    },
-    "foggy_am_peak": {
-      "description": "Pico da manha com nevoeiro denso: visibilidade reduzida e procura materialmente inferior por evitamento.",
-      "derived_from": "am_peak_operational",
-      "period_scale": 1.25,
-      "flow_period_scale": {
-        "flow_minor_NS_I6": 1.45,
-        "flow_minor_SN_I6": 1.45,
-        "flow_minor_N_to_city_at_I6": 1.45,
-        "flow_minor_N_to_atlantic_at_I6": 1.45,
-        "flow_minor_S_to_city_at_I6": 1.45,
-        "flow_minor_S_to_atlantic_at_I6": 1.45,
-        "flow_minor_N_to_city_at_I7": 1.10,
-        "flow_minor_N_to_atlantic_at_I7": 1.10,
-        "flow_minor_S_to_city_at_I7": 1.10,
-        "flow_minor_S_to_atlantic_at_I7": 1.10
-      },
-      "id_suffix": "foggy"
-    },
-    "winter_morning_am_peak": {
-      "description": "Pico da manha em manha de inverno frio: piso gelado em algumas transversais menores, atraso geral por aquecimento do veiculo.",
-      "derived_from": "am_peak_operational",
-      "period_scale": 1.10,
-      "id_suffix": "winter"
-    },
-    "av_penetration_low": {
-      "description": "Penetracao baixa de veiculos automatizados (~10%) com procura operacional ligeiramente amortecida pelo envelope de seguranca AV em trafego misto.",
-      "derived_from": "am_peak_operational",
-      "period_scale": 1.03,
-      "id_suffix": "av_low"
-    },
-    "av_penetration_medium": {
-      "description": "Penetracao media de veiculos automatizados (~30%) com procura ajustada para evitar que headways AV conservadores dominem a viabilidade.",
-      "derived_from": "am_peak_operational",
-      "period_scale": 1.12,
-      "id_suffix": "av_medium"
-    },
-    "av_penetration_high": {
-      "description": "Penetracao alta de veiculos automatizados (~60%) sob envelope urbano conservador de seguranca e procura reduzida para manter insercao material.",
-      "derived_from": "am_peak_operational",
-      "period_scale": 1.18,
-      "id_suffix": "av_high"
-    },
-    "stochastic_incidents_am_peak": {
-      "description": "Pico da manha com possibilidade probabilistica de paragens breves de veiculo na via principal; cenario materializa eventos a partir do random_seed com margem operacional para recuperacao.",
-      "derived_from": "am_peak_operational",
-      "period_scale": 1.04,
-      "id_suffix": "stoch_incidents"
     }
+
   },
   "events": [],
   "scenario_profiles": {
@@ -1384,7 +1242,11 @@
       "description": "Referencia principal de ponta da manha no corredor Boavista.",
       "justification": "Janela de 2h, sentido oeste->este mais forte e headways TP de 10-15 min sao plausiveis para uma arterial urbana radial. Usa o perfil am_peak_operational para que a referencia sem eventos especiais nao fique dominada por backlog de insercao SUMO.",
       "demand_profile": "am_peak_operational",
-      "random_seeds": [57, 58, 59, 60, 61],
+      "random_seeds": [
+        57,
+        58,
+        59
+      ],
       "events": [],
       "kpi_focus": ["travel_time", "bus_time_loss", "general_traffic_delay", "queue_baseline"],
       "expected_behaviour": "Sem eventos especiais; deve servir como baseline comparavel para TSP."
@@ -1393,6 +1255,11 @@
       "description": "Referencia fora de ponta para validar comportamento em regime fluido.",
       "justification": "Procura geral aproximadamente metade do pico e headways TP mais espacados representam periodo intermedio sem saturacao.",
       "demand_profile": "off_peak",
+      "random_seeds": [
+        57,
+        58,
+        59
+      ],
       "service_overrides": [
         {"line_id": "STCP500", "direction": "W", "headway_s": 900},
         {"line_id": "STCP500", "direction": "E", "headway_s": 900},
@@ -1403,18 +1270,15 @@
       "kpi_focus": ["low_delay_regime", "unnecessary_interventions", "travel_time_variability"],
       "expected_behaviour": "A rede deve operar sem filas persistentes; prioridade nominal deve ter impacto pequeno."
     },
-    "high_demand_corridor": {
-      "description": "Procura elevada no eixo principal para observar saturacao longitudinal.",
-      "justification": "Aumenta sobretudo o eixo Boavista, onde ha maior capacidade e maior risco de penalizar o trafego geral com extensoes de verde repetidas.",
-      "demand_profile": "high_demand_corridor",
-      "events": [],
-      "kpi_focus": ["corridor_throughput", "bus_time_loss", "general_traffic_penalty", "queue_growth"],
-      "expected_behaviour": "O baseline deve mostrar maiores perdas; TSP deve ser medido contra custo no trafego geral."
-    },
     "cross_traffic_pressure": {
       "description": "Pressao transversal em Bessa e Praca do Imperio.",
       "justification": "Transversais com procura elevada representam zonas onde dar prioridade ao TP pode agravar filas laterais; e um caso essencial para safety/negociacao.",
       "demand_profile": "cross_traffic_pressure",
+      "random_seeds": [
+        57,
+        58,
+        59
+      ],
       "events": [],
       "kpi_focus": ["cross_street_queues", "blocked_by_safety", "controller_rejections", "bus_vs_general_tradeoff"],
       "expected_behaviour": "O sistema deve justificar rejeicoes quando a fila transversal excede limites."
@@ -1423,7 +1287,11 @@
       "description": "Autocarro westbound atrasado no sentido cidade->mar.",
       "justification": "Carga adicional no sentido oeste e dwell ligeiramente maior criam atraso operacional sem inventar telemetria externa.",
       "demand_profile": "delayed_bus_westbound",
-      "random_seeds": [57, 58, 59, 60, 61],
+      "random_seeds": [
+        57,
+        58,
+        59
+      ],
       "service_overrides": [
         {"line_id": "STCP500", "direction": "W", "headway_s": 600, "offset_s": 120},
         {"line_id": "STCP502", "direction": "W", "headway_s": 900, "offset_s": 300}
@@ -1436,27 +1304,15 @@
       "kpi_focus": ["westbound_bus_delay", "priority_request_rate", "green_extension_effect"],
       "expected_behaviour": "Pedidos westbound devem aparecer quando o atraso acumulado/espera se aproxima dos limiares."
     },
-    "delayed_bus_eastbound": {
-      "description": "Autocarro eastbound atrasado no sentido mar->cidade.",
-      "justification": "O sentido inverso valida simetria funcional e evita calibrar o algoritmo apenas para um movimento prioritario.",
-      "demand_profile": "delayed_bus_eastbound",
-      "random_seeds": [57, 58, 59, 60, 61],
-      "service_overrides": [
-        {"line_id": "STCP500", "direction": "E", "headway_s": 600, "offset_s": 180},
-        {"line_id": "STCP502", "direction": "E", "headway_s": 900, "offset_s": 420}
-      ],
-      "stop_overrides": [
-        {"id": "bs_praca_imperio_e", "dwell_s": 36},
-        {"id": "bs_bessa_e", "dwell_s": 34}
-      ],
-      "events": [],
-      "kpi_focus": ["eastbound_bus_delay", "priority_request_rate", "early_green_effect"],
-      "expected_behaviour": "Pedidos eastbound devem ser elegiveis nas intersecoes a jusante, sem enviesamento westbound."
-    },
     "bunched_buses": {
       "description": "Dois autocarros da mesma linha circulam demasiado proximos.",
       "justification": "Offsets proximos simulam irregularidade de headway, frequente em corredores urbanos quando um veiculo perde tempo em paragens.",
       "demand_profile": "bunched_buses",
+      "random_seeds": [
+        57,
+        58,
+        59
+      ],
       "service_overrides": [
         {"line_id": "STCP500", "direction": "W", "headway_s": 600, "offset_s": 0},
         {"line_id": "STCP502", "direction": "W", "headway_s": 600, "offset_s": 90}
@@ -1468,30 +1324,15 @@
       "kpi_focus": ["headway_variability", "second_bus_priority_suppression", "bus_bunching"],
       "expected_behaviour": "A avaliacao deve distinguir atraso real de simples proximidade entre autocarros."
     },
-    "long_dwell_stop": {
-      "description": "Paragens Serralves com tempos de embarque/desembarque elevados.",
-      "justification": "Dwell de 75-90s representa paragem carregada ou acessibilidade reduzida, separando atraso de paragem de atraso semaforico.",
-      "demand_profile": "long_dwell_stop",
-      "stop_overrides": [
-        {"id": "bs_serralves_w", "dwell_s": 90},
-        {"id": "bs_serralves_e", "dwell_s": 75}
-      ],
-      "events": [],
-      "kpi_focus": ["dwell_induced_delay", "schedule_delay", "priority_effectiveness_limit"],
-      "expected_behaviour": "TSP pode reduzir perdas semaforicas, mas nao deve prometer recuperar todo o atraso de dwell."
-    },
-    "incident_minor_road_queue": {
-      "description": "Fila anomala numa via secundaria junto a Serralves.",
-      "justification": "Procura transversal muito elevada numa intersecao cria um caso conservador para testar protecao do trafego conflitante.",
-      "demand_profile": "incident_minor_road_queue",
-      "events": [],
-      "kpi_focus": ["minor_road_queue", "safety_blocks", "general_traffic_penalty"],
-      "expected_behaviour": "Prioridades que agravem a transversal devem ser rejeitadas ou adiadas."
-    },
     "emergency_vehicle_conflict": {
       "description": "Veiculo de emergencia compete com TP no corredor.",
       "justification": "Evento pontual a meio da janela permite validar hierarquia sem contaminar todos os KPIs de baseline.",
       "demand_profile": "emergency_vehicle_conflict",
+      "random_seeds": [
+        57,
+        58,
+        59
+      ],
       "events": [
         {
           "id": "ev_conflict_west_to_east_3600",
@@ -1511,224 +1352,61 @@
         "note": "Emergency-vehicle preemption transiently disturbs the I6 roundabout, where minor-approach vehicles can yield-teleport while the EV clears the ring. Allow up to 6 yield-type teleports (vs the corridor default of 3) given the event is specifically designed to test disturbance recovery. max_teleports_jam=0 still enforces zero gridlock."
       }
     },
-    "baseline_pm_peak": {
-      "description": "Referencia de ponta da tarde com sentido cidade->mar dominante.",
-      "justification": "O sentido inverso ao AM peak valida simetria operacional do corredor e expoe o algoritmo a um padrao de procura espelhado, evitando calibracao enviesada.",
-      "demand_profile": "pm_peak",
-      "random_seeds": [57, 58, 59, 60, 61],
-      "service_overrides": [
-        {"line_id": "STCP500", "direction": "W", "headway_s": 540},
-        {"line_id": "STCP500", "direction": "E", "headway_s": 480},
-        {"line_id": "STCP502", "direction": "W", "headway_s": 780},
-        {"line_id": "STCP502", "direction": "E", "headway_s": 720}
-      ],
-      "events": [],
-      "kpi_focus": ["pm_corridor_throughput", "westbound_bus_delay", "direction_symmetry", "queue_baseline"],
-      "expected_behaviour": "Baseline simetrico ao AM peak; o TSP deve mostrar ganhos comparaveis em ambos os sentidos."
-    },
-    "baseline_am_peak_low": {
-      "description": "Envelope inferior da ponta da manha.",
-      "justification": "Sem contagens reais, o baseline deve ser interpretado como intervalo. Este caso reduz a procura para medir sensibilidade e evitar overfitting ao valor proxy central.",
-      "demand_profile": "am_peak_low",
-      "events": [],
-      "kpi_focus": ["demand_uncertainty_low", "travel_time_range", "queue_range"],
-      "expected_behaviour": "Menos fila e menor timeLoss do que baseline_am_peak."
-    },
-    "baseline_am_peak_high": {
-      "description": "Envelope superior da ponta da manha.",
-      "justification": "Aumenta a procura proxy para testar se conclusoes do TSP se mantem quando o corredor esta mais carregado, sem recorrer a calibradores sinteticos.",
-      "demand_profile": "am_peak_high",
-      "events": [],
-      "kpi_focus": ["demand_uncertainty_high", "travel_time_range", "queue_spillback_risk"],
-      "expected_behaviour": "Mais fila e maior timeLoss do que baseline_am_peak."
-    },
-    "baseline_pm_peak_low": {
-      "description": "Envelope inferior da ponta da tarde.",
-      "justification": "Versao de baixa procura do PM peak para avaliar robustez direcional sob incerteza de procura.",
-      "demand_profile": "pm_peak_low",
-      "events": [],
-      "kpi_focus": ["pm_uncertainty_low", "direction_symmetry", "queue_range"],
-      "expected_behaviour": "Menos fila do que baseline_pm_peak mantendo predominancia cidade->mar."
-    },
-    "baseline_pm_peak_high": {
-      "description": "Envelope superior da ponta da tarde.",
-      "justification": "Versao de alta procura do PM peak para avaliar spillback e robustez sem dados reais de contagem.",
-      "demand_profile": "pm_peak_high",
-      "events": [],
-      "kpi_focus": ["pm_uncertainty_high", "direction_symmetry", "queue_spillback_risk"],
-      "expected_behaviour": "Mais fila do que baseline_pm_peak mantendo predominancia cidade->mar."
-    },
     "congested_am_peak": {
       "description": "Pico da manha saturado: grau de saturacao acima de 0.95 em ambos os sentidos do corredor.",
       "justification": "Testar TSP em condicoes de saturacao e essencial — algoritmos que funcionam bem em fluxo livre podem falhar quando a fila ja atinge o detector de jusante.",
       "demand_profile": "congested_am_peak",
-      "random_seeds": [57, 58, 59, 60, 61],
+      "random_seeds": [
+        57,
+        58,
+        59
+      ],
       "events": [],
       "kpi_focus": ["saturated_corridor_throughput", "tsp_under_saturation", "queue_spillback", "bus_time_loss"],
       "expected_behaviour": "Forte aumento de timeLoss no baseline; TSP deve mitigar perdas dos autocarros sem agravar fila transversal."
-    },
-    "baseline_rainy_am_peak": {
-      "description": "Pico da manha em condicoes de chuva: friccao reduzida, condutores mais cautelosos, velocidade media inferior.",
-      "justification": "Porto regista ~150 dias chuvosos/ano. A chuva reduz friccao (decel max), aumenta o tempo de reacao (tau +0.2s) e reduz a velocidade desejada (speedFactor x0.88). Testar TSP em condicoes degradadas valida robustez.",
-      "demand_profile": "rainy_am_peak",
-      "vehicle_overrides": {
-        "all": {
-          "tau_delta": 0.20,
-          "speed_factor_multiplier": 0.88,
-          "decel_multiplier": 0.85,
-          "min_gap_multiplier": 1.15
-        },
-        "by_class": {
-          "motorcycle": {"speed_factor_multiplier": 0.80, "decel_multiplier": 0.75, "min_gap_multiplier": 1.30},
-          "truck": {"decel_multiplier": 0.80}
-        }
-      },
-      "events": [],
-      "kpi_focus": ["wet_road_travel_time", "tsp_robustness", "headway_reliability", "queue_growth_under_rain"],
-      "expected_behaviour": "Tempo medio de viagem maior; TSP deve manter ganhos relativos sem comprometer seguranca."
-    },
-    "baseline_foggy_am_peak": {
-      "description": "Pico da manha com nevoeiro: visibilidade reduzida, velocidade desejada baixa, condutores extra-cautelosos.",
-      "justification": "Nevoeiro denso no Porto reduz a velocidade percecionada como segura. SpeedFactor cai significativamente (~0.75) e o tempo de reacao sobe; o piso continua seco, decel mantem-se.",
-      "demand_profile": "foggy_am_peak",
-      "vehicle_overrides": {
-        "all": {
-          "tau_delta": 0.35,
-          "speed_factor_multiplier": 0.75,
-          "min_gap_multiplier": 1.25
-        },
-        "by_class": {
-          "motorcycle": {"speed_factor_multiplier": 0.65, "min_gap_multiplier": 1.40}
-        }
-      },
-      "events": [],
-      "kpi_focus": ["low_visibility_travel_time", "tsp_robustness_fog", "speed_dispersion"],
-      "expected_behaviour": "Tempo medio de viagem sobe; TSP deve continuar a operar mas com ganhos atenuados."
-    },
-    "baseline_winter_morning_am_peak": {
-      "description": "Pico da manha de inverno: piso frio e localizado escorregadio em transversais menores; aquecimento dos veiculos cria fase mais lenta no arranque.",
-      "justification": "Inverno em Porto traz piso frio e gelo pontual; nao tao severo como chuva intensa, mas o arranque demora mais (accel x0.9) e a friccao em vias secundarias cai (decel x0.85).",
-      "demand_profile": "winter_morning_am_peak",
-      "vehicle_overrides": {
-        "all": {
-          "tau_delta": 0.15,
-          "accel_multiplier": 0.90,
-          "speed_factor_multiplier": 0.92
-        },
-        "by_class": {
-          "truck": {"accel_multiplier": 0.80, "decel_multiplier": 0.85}
-        }
-      },
-      "events": [],
-      "kpi_focus": ["cold_start_delay", "tsp_robustness_winter", "truck_acceleration_penalty"],
-      "expected_behaviour": "Atraso ligeiro nos pesados; TSP deve manter ganhos com pequena reducao."
-    },
-    "av_penetration_low": {
-      "description": "Penetracao baixa de AVs (~10% car_acc, ~0% car_cacc): mistura representativa de transicao inicial.",
-      "justification": "Os AVs reduzem dispersao de tau e sigma, o que melhora capacidade do corredor. Validar TSP em fleet mix de transicao e essencial antes de qualquer despliegue real.",
-      "demand_profile": "av_penetration_low",
-      "vehicle_distribution_overrides": {
-        "urban_mix": [
-          {"type": "car", "probability": 0.30},
-          {"type": "car_cautious", "probability": 0.15},
-          {"type": "car_aggressive", "probability": 0.15},
-          {"type": "car_acc", "probability": 0.08},
-          {"type": "car_acc_ev", "probability": 0.02},
-          {"type": "car_cacc", "probability": 0.015},
-          {"type": "car_cacc_ev", "probability": 0.005},
-          {"type": "motorcycle", "probability": 0.10},
-          {"type": "taxi", "probability": 0.06},
-          {"type": "lcv", "probability": 0.08},
-          {"type": "hgv", "probability": 0.04}
-        ]
-      },
-      "events": [],
-      "kpi_focus": ["av_low_penetration_throughput", "headway_smoothing", "tsp_with_av"],
-      "expected_behaviour": "Ganhos modestos vs. baseline; TSP deve continuar relevante.",
-      "sumo_quality_threshold_overrides": {
-        "max_emergency_braking": 350,
-        "max_emergency_braking_per_1000_vehicles": 75,
-        "note": "Mild relaxation for the ~10% AV mix. With most vehicles still human, eB stays close to baseline but ACC followers contribute extra hard-braking events."
-      }
-    },
-    "av_penetration_medium": {
-      "description": "Penetracao media de AVs (~30% combinado): transicao avancada.",
-      "justification": "30% de penetracao ja produz efeito observavel em capacidade e estabilidade da fila. Cenario realista para projecoes 2030-2035.",
-      "demand_profile": "av_penetration_medium",
-      "vehicle_distribution_overrides": {
-        "urban_mix": [
-          {"type": "car", "probability": 0.20},
-          {"type": "car_cautious", "probability": 0.10},
-          {"type": "car_aggressive", "probability": 0.10},
-          {"type": "car_acc", "probability": 0.18},
-          {"type": "car_acc_ev", "probability": 0.04},
-          {"type": "car_cacc", "probability": 0.06},
-          {"type": "car_cacc_ev", "probability": 0.02},
-          {"type": "motorcycle", "probability": 0.10},
-          {"type": "taxi", "probability": 0.06},
-          {"type": "lcv", "probability": 0.08},
-          {"type": "hgv", "probability": 0.04},
-          {"type": "bus_12m", "probability": 0.02}
-        ]
-      },
-      "events": [],
-      "kpi_focus": ["av_mid_penetration_throughput", "tsp_smoothing", "queue_reduction"],
-      "expected_behaviour": "Capacidade do corredor sobe ~5-10%; TSP gain atenuado mas presente.",
-      "sumo_quality_threshold_overrides": {
-        "max_emergency_braking": 700,
-        "max_emergency_braking_per_1000_vehicles": 160,
-        "note": "Moderate relaxation for the ~30% AV mix where ACC/CACC followers are common enough to lift the eB rate above the human-only gate while still nowhere near collision."
-      }
-    },
-    "av_penetration_high": {
-      "description": "Penetracao alta de AVs (~60% combinado): regime predominante de veiculos automatizados.",
-      "justification": "Cenario de longo prazo: AVs dominam o trafego. Necessario validar que TSP nao se torna contraproducente quando os AVs ja coordenam por si.",
-      "demand_profile": "av_penetration_high",
-      "vehicle_distribution_overrides": {
-        "urban_mix": [
-          {"type": "car", "probability": 0.10},
-          {"type": "car_cautious", "probability": 0.05},
-          {"type": "car_aggressive", "probability": 0.05},
-          {"type": "car_acc", "probability": 0.27},
-          {"type": "car_acc_ev", "probability": 0.08},
-          {"type": "car_cacc", "probability": 0.18},
-          {"type": "car_cacc_ev", "probability": 0.07},
-          {"type": "motorcycle", "probability": 0.05},
-          {"type": "taxi", "probability": 0.04},
-          {"type": "lcv", "probability": 0.07},
-          {"type": "hgv", "probability": 0.04}
-        ]
-      },
-      "events": [],
-      "kpi_focus": ["av_high_penetration_throughput", "tsp_vs_av_coordination", "controller_relevance"],
-      "expected_behaviour": "TSP deve continuar a beneficiar autocarros mas com risco de interferencia em platooning de AVs.",
-      "sumo_quality_threshold_overrides": {
-        "max_emergency_braking": 1200,
-        "max_emergency_braking_per_1000_vehicles": 280,
-        "note": "AV mixes legitimately drive the emergency-braking count above the human-only gate. ACC/CACC controllers respond to leader yields/turns with sharper braking than human drivers, and SUMO's ACC/CACC carFollowModel is calibrated for highway driving without intersection anticipation. Collisions, jam-teleports, insertion backlog and total-teleports all remain at the global floor."
-      }
-    },
-    "stochastic_incidents_am_peak": {
-      "description": "Pico da manha com incidentes probabilisticos: paragens de veiculo materializadas a partir do random_seed.",
-      "justification": "Incidentes reais sao estocasticos. Um cenario que sempre coloca evento em t=3600 inflate confianca. A materializacao via random_seed (cada seed produz padrao diferente) testa a robustez ao longo de replicacoes.",
-      "demand_profile": "stochastic_incidents_am_peak",
-      "random_seeds": [57, 58, 59, 60, 61],
-      "stochastic_incidents": [
+    }
+,
+    "congested_delayed_bus": {
+      "description": "Autocarro westbound atrasado num corredor saturado: o caso onde a prioridade vale mais e custa mais.",
+      "justification": "Combina a procura saturada de congested_am_peak com os service/stop overrides calibrados de delayed_bus_westbound; nao introduz novos numeros de procura.",
+      "demand_profile": "congested_am_peak",
+      "random_seeds": [
+        57,
+        58,
+        59
+      ],
+      "service_overrides": [
         {
-          "id_prefix": "stop_lcv_corridor",
-          "type": "stopped_vehicle",
-          "vehicle_type": "lcv",
-          "route_candidates": ["route_boavista_west_to_east", "route_boavista_east_to_west"],
-          "edge_candidates": ["I2_I3", "I3_I4", "I4_I5", "I5_I6"],
-          "depart_window_s": [1500, 5400],
-          "duration_s_mean": 180,
-          "duration_s_std": 45,
-          "probability": 0.6
+          "line_id": "STCP500",
+          "direction": "W",
+          "headway_s": 600,
+          "offset_s": 120
+        },
+        {
+          "line_id": "STCP502",
+          "direction": "W",
+          "headway_s": 900,
+          "offset_s": 300
+        }
+      ],
+      "stop_overrides": [
+        {
+          "id": "bs_bessa_w",
+          "dwell_s": 35
+        },
+        {
+          "id": "bs_serralves_w",
+          "dwell_s": 38
         }
       ],
       "events": [],
-      "kpi_focus": ["incident_recovery_time", "tsp_under_random_disturbance", "headway_variability"],
-      "expected_behaviour": "Filas pontuais; TSP deve adaptar-se sem aumentar excessivamente fila transversal."
+      "kpi_focus": [
+        "bus_time_loss_under_saturation",
+        "green_extension_effect",
+        "general_traffic_penalty",
+        "queue_spillback"
+      ],
+      "expected_behaviour": "TSP deve recuperar parte do atraso do TP; o custo lateral e de fila deve ficar dentro dos limites de qualidade."
     }
   },
   "detectors": {
