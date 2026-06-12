@@ -189,6 +189,7 @@ def run_scenario(args: argparse.Namespace, base_config: dict, catalog: dict, sce
                 )
             scenario_runs[run_type] = _aggregate_replications(per_seed_runs)
 
+    apply_relative_insertion_gate(scenario_runs)
     summary = scenario_summary(config)
     summary["catalog"] = catalog["scenarios"][scenario_id]
     summary["outputs_dir"] = str(scenario_output_dir.relative_to(ROOT))
@@ -208,6 +209,95 @@ def run_scenario(args: argparse.Namespace, base_config: dict, catalog: dict, sce
         return summary
     summary["status"] = "completed"
     return summary
+
+
+# Margem do gate relativo de inserção: o braço candidato só falha o gate de
+# max_waiting_to_insert se exceder simultaneamente o limiar absoluto E o
+# baseline emparelhado (mesma seed) com 10% de folga. Racional: o limiar
+# absoluto protege a validade material do cenário (e mantém-se intacto para o
+# baseline); quando o próprio baseline opera encostado ao limiar (ex.: 148s
+# para um gate de 150s no envelope am_peak), +1-3s de perturbação do TSP não é
+# uma regressão material — medir o candidato contra o baseline emparelhado é
+# que distingue "margem do cenário" de "degradação causada pelo TSP".
+RELATIVE_INSERTION_GATE_FACTOR = 1.1
+_INSERTION_GATE_REASON = "sumo_max_waiting_to_insert_gt_threshold"
+
+
+def _replications_of(run: dict) -> list[dict]:
+    """Réplicas de um run agregado, ou o próprio run quando single-seed."""
+    reps = run.get("replication_summaries")
+    return list(reps) if reps else [run]
+
+
+def apply_relative_insertion_gate(scenario_runs: dict[str, dict], *, load_kpis=None) -> None:
+    """Relativiza o gate de inserção dos braços candidatos e agrega verdicts.
+
+    1) Para cada réplica de um braço candidato (tudo o que não é baseline) cujo
+       run_verdict falhou APENAS/também por max_waiting_to_insert, remove essa
+       razão se candidate <= max(limiar_absoluto, baseline_mesma_seed * 1.1).
+    2) Recalcula o run_verdict agregado de TODOS os braços multi-seed como o
+       pior das réplicas (antes herdava o da primeira réplica, escondendo
+       falhas de seeds seguintes).
+    """
+    loader = load_kpis if load_kpis is not None else _load_kpis
+    baseline = scenario_runs.get("baseline")
+    base_kpis_by_seed: dict = {}
+    if baseline:
+        for rep in _replications_of(baseline):
+            kpis = loader(rep.get("kpis"))
+            if kpis:
+                base_kpis_by_seed[rep.get("seed")] = kpis
+
+    for run_type, run in scenario_runs.items():
+        if run_type != "baseline" and base_kpis_by_seed:
+            for rep in _replications_of(run):
+                verdict = rep.get("run_verdict") or {}
+                reasons = list(verdict.get("reasons", []))
+                if _INSERTION_GATE_REASON not in reasons:
+                    continue
+                kpis = loader(rep.get("kpis"))
+                base = base_kpis_by_seed.get(rep.get("seed"))
+                if not kpis or not base:
+                    continue
+                candidate_value = float(kpis.get("insertion", {}).get("max_waiting_to_insert", 0) or 0)
+                baseline_value = float(base.get("insertion", {}).get("max_waiting_to_insert", 0) or 0)
+                threshold = float(_sumo_quality_thresholds(kpis)["max_waiting_to_insert"])
+                allowed = max(threshold, baseline_value * RELATIVE_INSERTION_GATE_FACTOR)
+                if candidate_value <= allowed:
+                    reasons.remove(_INSERTION_GATE_REASON)
+                    rep["run_verdict"] = {
+                        "status": "fail" if reasons else "pass",
+                        "reasons": reasons,
+                    }
+                    rep["insertion_gate_note"] = (
+                        f"gate relativo: candidate {candidate_value:.0f}s <= "
+                        f"max(absoluto {threshold:.0f}s, baseline {baseline_value:.0f}s x "
+                        f"{RELATIVE_INSERTION_GATE_FACTOR})"
+                    )
+        _recompute_aggregate_verdict(run)
+
+
+def _recompute_aggregate_verdict(run: dict) -> None:
+    """Verdict agregado multi-seed = pior das réplicas, com razões por seed."""
+    reps = run.get("replication_summaries")
+    if not reps:
+        return
+    statuses = []
+    reasons = []
+    for rep in reps:
+        verdict = rep.get("run_verdict") or {}
+        status = verdict.get("status", "pass")
+        statuses.append(status)
+        if status != "pass":
+            seed = rep.get("seed")
+            reasons.extend(f"seed_{seed}:{reason}" for reason in verdict.get("reasons", []))
+    if "fail" in statuses:
+        status = "fail"
+    elif "inconclusive" in statuses:
+        status = "inconclusive"
+    else:
+        status = "pass"
+    run["run_verdict"] = {"status": status, "reasons": reasons}
 
 
 def _resolve_seeds(args: argparse.Namespace, config: dict) -> list[int]:

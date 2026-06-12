@@ -1245,7 +1245,9 @@
       "random_seeds": [
         57,
         58,
-        59
+        59,
+        60,
+        61
       ],
       "events": [],
       "kpi_focus": ["travel_time", "bus_time_loss", "general_traffic_delay", "queue_baseline"],
@@ -1290,7 +1292,9 @@
       "random_seeds": [
         57,
         58,
-        59
+        59,
+        60,
+        61
       ],
       "service_overrides": [
         {"line_id": "STCP500", "direction": "W", "headway_s": 600, "offset_s": 120},
@@ -1359,7 +1363,9 @@
       "random_seeds": [
         57,
         58,
-        59
+        59,
+        60,
+        61
       ],
       "events": [],
       "kpi_focus": ["saturated_corridor_throughput", "tsp_under_saturation", "queue_spillback", "bus_time_loss"],
@@ -1373,7 +1379,9 @@
       "random_seeds": [
         57,
         58,
-        59
+        59,
+        60,
+        61
       ],
       "service_overrides": [
         {
