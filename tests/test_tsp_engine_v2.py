@@ -267,6 +267,114 @@ class EngineV2CostAwareTestCase(unittest.TestCase):
         self.assertNotIn("network_pressure_defer_intervention", decision.reason)
         self.assertEqual(decision.action, TSPAction.EARLY_GREEN.value)
 
+    # ------------------------------------------------------------------
+    # v2.2: ETA corrigida pela fila (queue-aware ETA)
+    # ------------------------------------------------------------------
+    def test_queue_ahead_grows_required_extension(self) -> None:
+        # eta 4s, remaining 2s -> sem fila: needed = 4+4-2 = 6s. Com 3 parados
+        # na lane do autocarro (+6s de descarga): needed = 10+4-2 = 12s.
+        request = self._request_i2(eta_to_stopline_s=4.0)
+        state = self._state_i2_green(next_switch_s=102.0)
+        no_queue = self.engine.decide(request, state, sim_time_s=100.0)
+        self.assertEqual(no_queue.action, TSPAction.GREEN_EXTENSION.value)
+        self.assertAlmostEqual(no_queue.extension_s, 6.0)
+
+        snapshot = self._snapshot(tls_id="I2", halted_by_lane={"I1_I2_0": 3})
+        with_queue = self.engine.decide(request, state, sim_time_s=100.0, network_state=snapshot)
+        self.assertEqual(with_queue.action, TSPAction.GREEN_EXTENSION.value)
+        self.assertAlmostEqual(with_queue.extension_s, 12.0)
+        self.assertTrue(any("eta corrigida pela fila" in note for note in with_queue.notes))
+
+    def test_queue_ahead_flips_no_action_to_extension(self) -> None:
+        # remaining 12s cobre eta 4+4=8 (no_action), mas não cobre a chegada
+        # real atrás de 4 veículos parados (eta efetiva 12 -> required 16).
+        request = self._request_i2(eta_to_stopline_s=4.0)
+        state = self._state_i2_green(next_switch_s=112.0)
+        no_queue = self.engine.decide(request, state, sim_time_s=100.0)
+        self.assertEqual(no_queue.action, TSPAction.NO_ACTION.value)
+
+        snapshot = self._snapshot(tls_id="I2", halted_by_lane={"I1_I2_0": 4})
+        with_queue = self.engine.decide(request, state, sim_time_s=100.0, network_state=snapshot)
+        self.assertEqual(with_queue.action, TSPAction.GREEN_EXTENSION.value)
+
+    def test_queue_correction_is_clamped_by_distance(self) -> None:
+        # 9 parados na lane mas só 15m até à stopline: cabem 2 veículos
+        # (jam_spacing 7.5m) -> correção 4s, não 18s. needed = 4+4+4-2 = 10s.
+        request = self._request_i2(eta_to_stopline_s=4.0, distance_to_stopline_m=15.0)
+        state = self._state_i2_green(next_switch_s=102.0)
+        snapshot = self._snapshot(tls_id="I2", halted_by_lane={"I1_I2_0": 9})
+        decision = self.engine.decide(request, state, sim_time_s=100.0, network_state=snapshot)
+        self.assertEqual(decision.action, TSPAction.GREEN_EXTENSION.value)
+        self.assertAlmostEqual(decision.extension_s, 10.0)
+
+    def test_halted_bus_does_not_count_itself_in_queue(self) -> None:
+        # 3 parados na lane do bus, mas o próprio bus está parado (speed 0) e
+        # é um deles: a descarga à frente é de 2 veículos (4s), não 3 (6s).
+        # needed = 4 + 4 + 4 - 2 = 10s (vs 12s sem o desconto).
+        request = self._request_i2(eta_to_stopline_s=4.0, speed_mps=0.0)
+        state = self._state_i2_green(next_switch_s=102.0)
+        snapshot = self._snapshot(tls_id="I2", halted_by_lane={"I1_I2_0": 3})
+        decision = self.engine.decide(request, state, sim_time_s=100.0, network_state=snapshot)
+        self.assertEqual(decision.action, TSPAction.GREEN_EXTENSION.value)
+        self.assertAlmostEqual(decision.extension_s, 10.0)
+
+    def test_moving_bus_counts_full_queue(self) -> None:
+        # Bus em andamento (speed 10): os 3 parados estão todos à frente.
+        request = self._request_i2(eta_to_stopline_s=4.0, speed_mps=10.0)
+        state = self._state_i2_green(next_switch_s=102.0)
+        snapshot = self._snapshot(tls_id="I2", halted_by_lane={"I1_I2_0": 3})
+        decision = self.engine.decide(request, state, sim_time_s=100.0, network_state=snapshot)
+        self.assertAlmostEqual(decision.extension_s, 12.0)
+
+    def test_unreadable_phase_time_defers_extension_instead_of_proposing(self) -> None:
+        # Pré-consulta: sem next_switch (ou spent) a Safety bloquearia sempre a
+        # extensão; o engine defere em vez de inflacionar blocked_by_safety.
+        request = self._request_i2()
+        no_switch = self.engine.decide(
+            request, self._state_i2_green(next_switch_s=None), sim_time_s=100.0
+        )
+        self.assertEqual(no_switch.action, TSPAction.REEVALUATE_NEXT_CYCLE.value)
+        self.assertIn("green_extension_precheck_defer:unknown_remaining", no_switch.reason)
+
+        no_spent = self.engine.decide(
+            request, self._state_i2_green(spent_duration_s=None), sim_time_s=100.0
+        )
+        self.assertEqual(no_spent.action, TSPAction.REEVALUATE_NEXT_CYCLE.value)
+        self.assertIn("green_extension_precheck_defer:unknown_spent", no_spent.reason)
+
+    def test_queue_correction_disabled_with_zero_headway_dial(self) -> None:
+        from dataclasses import replace as dc_replace
+
+        tsp = dc_replace(
+            self.tsp,
+            raw={
+                **self.tsp.raw,
+                "decision_policy": {**self.tsp.decision_policy, "queue_discharge_headway_s": 0},
+            },
+        )
+        engine = TSPDecisionEngine(self.cits, tsp)
+        request = self._request_i2(eta_to_stopline_s=4.0)
+        state = self._state_i2_green(next_switch_s=102.0)
+        snapshot = self._snapshot(tls_id="I2", halted_by_lane={"I1_I2_0": 3})
+        decision = engine.decide(request, state, sim_time_s=100.0, network_state=snapshot)
+        self.assertAlmostEqual(decision.extension_s, 6.0)
+        self.assertFalse(any("eta corrigida" in note for note in decision.notes))
+
+    def test_queue_correction_applies_to_early_green_min_eta_gate(self) -> None:
+        # eta 8 < early_green_min_eta_s=10 -> demasiado perto para truncar; com
+        # 2 parados à frente a chegada efetiva é 12s e a truncagem volta a ser
+        # útil e segura (a fila absorve a transição).
+        request = self._request_i7(eta_to_stopline_s=8.0)
+        state = self._state_i7_red()
+        too_close = self.engine.decide(request, state, sim_time_s=100.0)
+        self.assertEqual(too_close.action, TSPAction.REEVALUATE_NEXT_CYCLE.value)
+        self.assertIn("bus_too_close", too_close.reason)
+
+        snapshot = self._snapshot(halted_by_lane={"ATLANTIC_WEST_I7_0": 2})
+        decision = self.engine.decide(request, state, sim_time_s=100.0, network_state=snapshot)
+        self.assertNotIn("bus_too_close", decision.reason)
+        self.assertEqual(decision.action, TSPAction.EARLY_GREEN.value)
+
 
 if __name__ == "__main__":
     unittest.main()

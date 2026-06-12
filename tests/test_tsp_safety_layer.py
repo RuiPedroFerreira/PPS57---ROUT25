@@ -398,6 +398,160 @@ class Package4TSPTestCase(unittest.TestCase):
         self.assertTrue(result.approved)
         self.assertEqual(safety.consecutive_interventions_by_tls["I2"], 0)
 
+    def _run_burst_at_cooldown_pace(self, safety: TSPSafetyLayer, start_s: float = 100.0) -> float:
+        """Aplica max_consecutive intervenções ao ritmo máximo (espaçadas ao
+        cooldown), via o fluxo real validate+mark_applied. Devolve o instante
+        do pedido seguinte (um cooldown depois da última intervenção)."""
+        constraints = self.cits.safety_constraints
+        cooldown = float(constraints["cooldown_after_priority_s"])
+        max_consecutive = int(constraints["max_consecutive_priority_interventions_per_tls"])
+        state = self._state()
+        sim_time_s = start_s
+        for _ in range(max_consecutive):
+            request = self._request(expires_at_s=sim_time_s + 30.0)
+            decision = self.engine.decide(request, state, sim_time_s=sim_time_s)
+            result = safety.validate(decision, state, sim_time_s=sim_time_s)
+            self.assertTrue(result.approved, result.reason)
+            safety.mark_applied(result.safe_decision, sim_time_s)
+            sim_time_s += cooldown
+        return sim_time_s
+
+    def test_max_consecutive_blocks_burst_at_cooldown_pace(self) -> None:
+        # Regressão (constraint morta): o reset do contador usava o MESMO
+        # limiar do gate de cooldown, pelo que qualquer pedido que sobrevivesse
+        # ao gate já tinha ganho o reset — max_consecutive nunca disparava no
+        # fluxo real (mark_applied define sempre last_intervention_time). Após
+        # esgotar o orçamento ao ritmo máximo, o pedido seguinte tem de ser
+        # bloqueado por max_consecutive, não aprovado.
+        safety = TSPSafetyLayer(self.cits, self.tsp)
+        sim_time_s = self._run_burst_at_cooldown_pace(safety)
+        state = self._state()
+        request = self._request(expires_at_s=sim_time_s + 30.0)
+        decision = self.engine.decide(request, state, sim_time_s=sim_time_s)
+        result = safety.validate(decision, state, sim_time_s=sim_time_s)
+        self.assertFalse(result.approved)
+        self.assertEqual(result.reason, "max_consecutive_priority_interventions_reached")
+
+    def test_max_consecutive_budget_recovers_after_reset_window(self) -> None:
+        # Depois da janela de recuperação (default 2x cooldown) sem novas
+        # intervenções, o contador reseta e o TLS volta a receber prioridade.
+        safety = TSPSafetyLayer(self.cits, self.tsp)
+        cooldown = float(self.cits.safety_constraints["cooldown_after_priority_s"])
+        sim_time_s = self._run_burst_at_cooldown_pace(safety)
+        last_intervention_s = sim_time_s - cooldown
+        recovered_s = last_intervention_s + 2.0 * cooldown
+        state = self._state()
+        request = self._request(expires_at_s=recovered_s + 30.0)
+        decision = self.engine.decide(request, state, sim_time_s=recovered_s)
+        result = safety.validate(decision, state, sim_time_s=recovered_s)
+        self.assertTrue(result.approved, result.reason)
+        self.assertEqual(safety.consecutive_interventions_by_tls[request.tls_id], 0)
+
+    def test_consecutive_reset_window_below_cooldown_does_not_revive_dead_bound(self) -> None:
+        # Um valor explícito <= cooldown recriaria exactamente a constraint
+        # morta (reset ganho por qualquer pedido que passe o gate); a safety
+        # tem de o ignorar e manter a janela default de 2x cooldown.
+        cits = deepcopy(self.cits)
+        cooldown = float(cits.safety_constraints["cooldown_after_priority_s"])
+        cits.raw["safety_constraints"]["consecutive_interventions_reset_after_s"] = cooldown
+        safety = TSPSafetyLayer(cits, self.tsp)
+        sim_time_s = self._run_burst_at_cooldown_pace(safety)
+        state = self._state()
+        request = self._request(expires_at_s=sim_time_s + 30.0)
+        decision = self.engine.decide(request, state, sim_time_s=sim_time_s)
+        result = safety.validate(decision, state, sim_time_s=sim_time_s)
+        self.assertFalse(result.approved)
+        self.assertEqual(result.reason, "max_consecutive_priority_interventions_reached")
+
+    def test_priority_event_rolling_extension_continuations_and_budget(self) -> None:
+        # v2.2 lifecycle: a abertura concede uma prestação rolling (4s, não os
+        # 12 one-shot); prestações seguintes do MESMO evento não pagam cooldown
+        # nem contam como novas intervenções; o orçamento CUMULATIVO do evento
+        # (max_green_extension_s=12) bloqueia a 4.ª prestação.
+        from pps57_tsp.events import PriorityEventManager
+
+        tsp = replace(
+            self.tsp,
+            raw={
+                **self.tsp.raw,
+                "actuation": {
+                    **self.tsp.raw.get("actuation", {}),
+                    "priority_event_lifecycle_enabled": True,
+                },
+            },
+        )
+        engine = TSPDecisionEngine(self.cits, tsp)
+        safety = TSPSafetyLayer(self.cits, tsp)
+        events = PriorityEventManager(self.cits, tsp)
+        safety.set_event_lifecycle(events)
+
+        def grant(sim_s: float, next_switch_s: float, spent_s: float):
+            request = self._request(expires_at_s=sim_s + 30.0)
+            state = self._state(next_switch_s=next_switch_s, spent_duration_s=spent_s)
+            decision = engine.decide(request, state, sim_time_s=sim_s)
+            result = safety.validate(decision, state, sim_time_s=sim_s)
+            if result.approved:
+                # Ordem do controller: mark_applied antes de register_applied
+                # (mark consulta o evento para distinguir abertura/prestação).
+                safety.mark_applied(result.safe_decision, sim_s)
+                events.register_applied(result.safe_decision)
+            return decision, result
+
+        decision, result = grant(100.0, 102.0, 33.0)
+        self.assertEqual(decision.action, TSPAction.GREEN_EXTENSION.value)
+        self.assertTrue(result.approved, result.reason)
+        self.assertAlmostEqual(result.safe_decision.extension_s, 4.0)
+        self.assertEqual(safety.consecutive_interventions_by_tls["I2"], 1)
+
+        # Outro veículo no mesmo TLS durante o cooldown: bloqueado — o bypass
+        # é do evento (tls, veículo, fase), não do TLS.
+        other = self._request(vehicle_id="bus_2", expires_at_s=200.0)
+        other_state = self._state(next_switch_s=106.0, spent_duration_s=38.0)
+        other_decision = engine.decide(other, other_state, sim_time_s=105.0)
+        other_result = safety.validate(other_decision, other_state, sim_time_s=105.0)
+        self.assertFalse(other_result.approved)
+        self.assertEqual(other_result.reason, "cooldown_after_priority_active")
+
+        # Prestações 2 e 3 do evento: aprovadas dentro do cooldown, contador
+        # consecutivo continua em 1 (é a mesma intervenção).
+        _, result = grant(105.0, 106.0, 38.0)
+        self.assertTrue(result.approved, result.reason)
+        self.assertAlmostEqual(result.safe_decision.extension_s, 4.0)
+        self.assertEqual(safety.consecutive_interventions_by_tls["I2"], 1)
+        _, result = grant(110.0, 110.5, 43.0)
+        self.assertTrue(result.approved, result.reason)
+        self.assertAlmostEqual(events.active_event("I2", "bus_1", 0).granted_total_s, 12.0)
+
+        # Prestação 4: orçamento cumulativo de 12s esgotado.
+        _, result = grant(115.0, 115.5, 47.0)
+        self.assertFalse(result.approved)
+        self.assertEqual(result.reason, "green_extension_event_budget_exhausted")
+
+    def test_consecutive_reset_window_honours_explicit_config_above_cooldown(self) -> None:
+        # Janela explícita > cooldown é honrada: ao fim de 2x cooldown (que no
+        # default já resetava) o orçamento continua esgotado; só depois da
+        # janela explícita é que o TLS recupera.
+        cits = deepcopy(self.cits)
+        cooldown = float(cits.safety_constraints["cooldown_after_priority_s"])
+        cits.raw["safety_constraints"]["consecutive_interventions_reset_after_s"] = 5.0 * cooldown
+        safety = TSPSafetyLayer(cits, self.tsp)
+        sim_time_s = self._run_burst_at_cooldown_pace(safety)
+        last_intervention_s = sim_time_s - cooldown
+        state = self._state()
+
+        still_blocked_s = last_intervention_s + 2.0 * cooldown
+        request = self._request(expires_at_s=still_blocked_s + 30.0)
+        decision = self.engine.decide(request, state, sim_time_s=still_blocked_s)
+        result = safety.validate(decision, state, sim_time_s=still_blocked_s)
+        self.assertFalse(result.approved)
+        self.assertEqual(result.reason, "max_consecutive_priority_interventions_reached")
+
+        recovered_s = last_intervention_s + 5.0 * cooldown
+        request = self._request(expires_at_s=recovered_s + 30.0)
+        decision = self.engine.decide(request, state, sim_time_s=recovered_s)
+        result = safety.validate(decision, state, sim_time_s=recovered_s)
+        self.assertTrue(result.approved, result.reason)
+
     def test_engine_lane_match_is_not_fooled_by_edge_prefix_collision(self) -> None:
         # M1: "I1_I20_0" não pode ser tratada como pertencente à edge "I1_I2".
         request = self._request()  # current_edge_id=I1_I2, current_lane_id=I1_I2_0

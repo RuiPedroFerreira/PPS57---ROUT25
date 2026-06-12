@@ -39,6 +39,7 @@ from .config import TSPConfig
 from .compensation import GreenCompensationManager
 from .corridor_arbiter import CorridorArbiter
 from .engine import TSPDecisionEngine
+from .events import PriorityEventManager
 from .logger import TSPJsonlLogger, write_tsp_summary
 from .models import ActuationResult, DecisionStatus, ReasonCode, TSPAction, TSPDecision
 from .request_store import PriorityRequestStore
@@ -84,6 +85,10 @@ class TSPControlController:
         # está ausente da config; corre pré-Safety e só desce decisões.
         self.corridor_arbiter = CorridorArbiter(self.cits_config, self.tsp_config)
         self.compensation = GreenCompensationManager(self.cits_config, self.tsp_config)
+        # v2.2 (opt-in): lifecycle check-in/check-out de eventos de prioridade.
+        # A Safety consulta-o para distinguir prestações de novas intervenções.
+        self.events = PriorityEventManager(self.cits_config, self.tsp_config)
+        self.safety.set_event_lifecycle(self.events)
         self._intervened_tls_this_step: set[str] = set()
         self.request_store = PriorityRequestStore(
             ttl_s=float(self.cits_config.obu_policy.get("request_lifecycle_ttl_s", 30.0))
@@ -204,6 +209,7 @@ class TSPControlController:
                     # separada de `actuations` para não inflacionar os KPIs de
                     # atuação TSP (applied_events); o log JSONL partilhado
                     # mantém a rastreabilidade completa.
+                    commanded_tls_this_step = set(self._intervened_tls_this_step)
                     for comp_result in self.compensation.step(
                         signal_states,
                         signal_control,
@@ -213,6 +219,23 @@ class TSPControlController:
                     ):
                         actuation_logger.write(comp_result)
                         compensations.append(comp_result)
+                        commanded_tls_this_step.add(comp_result.tls_id)
+                    # v2.2: check-out de eventos — devolve verde não usado. O
+                    # skip inclui TLS comandados neste passo (TSP ou
+                    # compensação): o signal_state pré-comando já não reflete o
+                    # fim de fase verdadeiro; o check-out reavalia no seguinte.
+                    for event_result in self.events.step(
+                        signal_states,
+                        self.request_store,
+                        signal_control,
+                        self.safety,
+                        self.compensation,
+                        sim_time_s,
+                        apply_actuation=effective_actuation,
+                        skip_tls=commanded_tls_this_step,
+                    ):
+                        actuation_logger.write(event_result)
+                        compensations.append(event_result)
             finally:
                 adapter.close()
 
@@ -254,6 +277,7 @@ class TSPControlController:
                     **self.compensation.summary(),
                     "events": len(compensations),
                 },
+                "priority_events": self.events.summary(),
             },
         )
 
@@ -440,13 +464,16 @@ class TSPControlController:
                         # v2.1: a fase truncada por um early green ganha direito
                         # a verde de compensação no ciclo seguinte (NEMA-style).
                         self.compensation.register_applied(safe_decision)
+                        # v2.2: regista o evento DEPOIS de mark_applied — o
+                        # mark_applied consulta o evento para distinguir a
+                        # abertura (conta como intervenção) das prestações.
+                        self.events.register_applied(safe_decision)
+                        intervened_tls.add(safe_decision.tls_id)
                     if result.applied:
                         self.request_store.mark_granted(request, sim_time_s)
                         rsu = self.rsu_agents.get(request.rsu_id)
                         if rsu is not None:
                             rsu.mark_priority_granted(request.vehicle_id, sim_time_s)
-                    if result.applied or result.no_actuation or actuation_error:
-                        intervened_tls.add(safe_decision.tls_id)
                     if actuation_error:
                         print(
                             f"[ACTUATION_ERROR] tls={safe_decision.tls_id} "

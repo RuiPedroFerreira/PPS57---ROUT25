@@ -6,6 +6,7 @@ from pps57_cits.util import optional_int as _optional_int
 
 from .config import TSPConfig
 from .models import DecisionStatus, TSPAction, TSPDecision
+from .util import positive_float as _positive_float
 
 
 def decision_for_action(
@@ -54,11 +55,3 @@ def decision_for_action(
         target_phase_index=None,
         notes=notes,
     )
-
-
-def _positive_float(mapping: dict, key: str, default: float) -> float:
-    try:
-        value = float(mapping.get(key, default))
-    except (TypeError, ValueError):
-        return default
-    return value if value > 0 else default

@@ -63,8 +63,12 @@ class ReasonCode(str, Enum):
     NETWORK_PRESSURE_DEFER = "network_pressure_defer_intervention"  # dinâmico: :sinal observado
     EARLY_GREEN_DEFERRED_MIN_GREEN = "early_green_deferred_until_min_green_served"  # dinâmico: :spent<min
     EARLY_GREEN_PRECHECK_DEFER = "early_green_precheck_defer"  # dinâmico: :problema de sequência
+    GREEN_EXTENSION_PRECHECK_DEFER = "green_extension_precheck_defer"  # dinâmico: :dado em falta
     INTERVENTION_BENEFIT_TOO_SMALL = "intervention_benefit_too_small"  # dinâmico: :saving<min
     GREEN_COMPENSATION_PAYBACK = "green_compensation_payback"
+    # v2.2: recuperação de coordenação — devolve o desvio de ciclo causado por
+    # extensões de verde, encurtando a fase estendida na ativação seguinte.
+    COORDINATION_RECOVERY_PAYBACK = "coordination_recovery_cycle_resync_payback"
 
     # --- safety: cooldown / consecutivas / amarelo / recovery ---
     CURRENT_PHASE_IS_YELLOW = "current_phase_is_yellow_wait_for_next_cycle"
@@ -89,6 +93,9 @@ class ReasonCode(str, Enum):
     MAX_TOTAL_GREEN_ALREADY_REACHED = "max_total_green_already_reached"
     GREEN_EXTENSION_CLIPPED_TO_ZERO = "green_extension_clipped_to_zero"
     APPROVED_GREEN_EXTENSION = "approved_green_extension"
+    # v2.2: lifecycle check-in/check-out — orçamento cumulativo do evento.
+    GREEN_EXTENSION_EVENT_BUDGET_EXHAUSTED = "green_extension_event_budget_exhausted"
+    EXTENSION_RETURNED_AT_CHECKOUT = "green_extension_returned_at_bus_checkout"
 
     # --- safety: early green / red truncation ---
     RED_TRUNCATION_DISABLED_BY_CONFIG = "red_truncation_disabled_by_config"

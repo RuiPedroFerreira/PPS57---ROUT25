@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 from copy import deepcopy
 import json
-import math
 from pathlib import Path
 import shutil
 import statistics
@@ -64,6 +63,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=None,
         help="One or more random seeds to run as replications. Overrides scenario_profile.random_seeds.",
+    )
+    parser.add_argument(
+        "--tsp-config",
+        default="configs/tsp_safety_config.json",
+        type=Path,
+        help="TSP config para os braços tsp_* (permite A/B de flags, ex.: v2.2 lifecycle).",
     )
     parser.add_argument("--sumo-binary", default="sumo")
     parser.add_argument("--gui", action="store_true", help="Use sumo-gui for visual scenario execution.")
@@ -524,7 +529,9 @@ def run_tsp(
 ) -> None:
     clear_global_sumo_outputs()
     cits_config_path = write_cits_config(scenario_id, run_output_dir, run_report_dir, artifacts)
-    tsp_config_path = write_tsp_config(scenario_id, run_output_dir, run_report_dir)
+    tsp_config_path = write_tsp_config(
+        scenario_id, run_output_dir, run_report_dir, source=ROOT / args.tsp_config
+    )
     cits_config = load_cits_config(cits_config_path, root=ROOT)
     tsp_config = load_tsp_config(tsp_config_path, root=ROOT)
     controller = TSPControlController(cits_config, tsp_config)
@@ -567,8 +574,13 @@ def write_cits_config(scenario_id: str, run_output_dir: Path, run_report_dir: Pa
     return config_path
 
 
-def write_tsp_config(scenario_id: str, run_output_dir: Path, run_report_dir: Path) -> Path:
-    raw = json.loads((ROOT / "configs/tsp_safety_config.json").read_text(encoding="utf-8"))
+def write_tsp_config(
+    scenario_id: str,
+    run_output_dir: Path,
+    run_report_dir: Path,
+    source: Path | None = None,
+) -> Path:
+    raw = json.loads((source or ROOT / "configs/tsp_safety_config.json").read_text(encoding="utf-8"))
     raw["scenario_id"] = f"{scenario_id}_tsp"
     raw.setdefault("logging", {}).update(
         {

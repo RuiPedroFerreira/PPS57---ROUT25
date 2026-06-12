@@ -262,7 +262,7 @@ class TraciSignalControlAdapter:
                     problems.append(f"{tls_id}: controller_contract phase index {idx} fora do programa (fases={phase_count})")
 
             states = self.read_program_phase_states(tls_id)
-            durations = self._read_phase_durations_if_available(tls_id)
+            durations = self.read_program_phase_durations(tls_id)
             if states is None:
                 problems.append(f"{tls_id}: estados de fase ilegíveis (fail-closed)")
             else:
@@ -347,11 +347,6 @@ class TraciSignalControlAdapter:
                         "o contrato TSP assume controlo de tempo fixo"
                     )
         return problems
-
-    def _read_phase_durations_if_available(self, tls_id: str) -> Optional[List[float]]:
-        if hasattr(self, "read_program_phase_durations"):
-            return self.read_program_phase_durations(tls_id)
-        return None
 
 
 @dataclass

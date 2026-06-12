@@ -24,7 +24,7 @@ decisão é BLOQUEADA (fail-closed), nunca aprovada com defaults permissivos.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Dict, Optional, TYPE_CHECKING
 
 from pps57_cits.config import CITSConfig
 from pps57_cits.messages import OperatorPriorityClass
@@ -33,7 +33,15 @@ from pps57_cits.models import SignalState
 from .config import TSPConfig
 from .engine import TSPDecisionEngine
 from .models import DecisionStatus, SafetyValidationResult, TSPAction, TSPDecision
+from .util import (
+    controlled_links_match_request as _controlled_links_match_request,
+    lane_belongs_to_edge_set as _lane_belongs_to_edge_set,
+    positive_float as _positive_float,
+)
 from pps57_sumo.network_binding import NetworkBinding
+
+if TYPE_CHECKING:  # import só para tipos: events importa request_store, não safety
+    from .events import ActivePriorityEvent, PriorityEventManager
 
 from .signal_control import (
     ControllerContract,
@@ -67,9 +75,21 @@ class TSPSafetyLayer:
     # signal_control.network_binding_aliases); sem ela, grupos com alias em
     # configs manuais nunca são ligados ao binding.
     network_binding_aliases: Optional[Dict[str, Dict[str, str]]] = None
+    # v2.2 (opt-in): lifecycle de eventos de prioridade. Quando presente,
+    # prestações do MESMO evento (tls, veículo, fase) não pagam cooldown nem
+    # contam como novas intervenções; o orçamento cumulativo do evento fica
+    # limitado a max_green_extension_s em _validate_green_extension.
+    event_lifecycle: Optional["PriorityEventManager"] = None
+    # Contratos são estáticos durante um run (mesma premissa do cache do
+    # engine); cache por TLS evita reconstruir contrato + binding em cada
+    # validate. Invalidado em set_network_binding.
+    _contract_cache: Dict[str, ControllerContract] = field(default_factory=dict, repr=False)
 
     def set_signal_program_verified(self, verified: bool) -> None:
         self.signal_program_verified = bool(verified)
+
+    def set_event_lifecycle(self, events: Optional["PriorityEventManager"]) -> None:
+        self.event_lifecycle = events
 
     def set_network_binding(
         self,
@@ -78,6 +98,8 @@ class TSPSafetyLayer:
     ) -> None:
         self.network_binding = binding
         self.network_binding_aliases = aliases_by_tls
+        # Contratos dependem do binding: invalidar o cache por-TLS.
+        self._contract_cache.clear()
 
     def validate(self, decision: TSPDecision, signal_state: SignalState, sim_time_s: float) -> SafetyValidationResult:
         notes = list(decision.notes)
@@ -97,12 +119,26 @@ class TSPSafetyLayer:
         if self._is_yellow_transition(signal_state, decision):
             return self._blocked(decision, "current_phase_is_yellow_wait_for_next_cycle", notes)
 
-        if not emergency_preemption and self._cooldown_active(decision.tls_id, sim_time_s):
+        # v2.2: prestação de um evento de prioridade ativo (mesmo tls, veículo
+        # e fase). Continuações não pagam cooldown nem contam como novas
+        # intervenções — o evento já os pagou ao abrir; o custo cumulativo é
+        # limitado pelo orçamento do evento em _validate_green_extension.
+        continuation_event = self._continuation_event(decision)
+        if continuation_event is not None:
+            notes.append(
+                f"Prestação de evento ativo: {continuation_event.granted_total_s:.1f}s já concedidos."
+            )
+
+        if (
+            not emergency_preemption
+            and continuation_event is None
+            and self._cooldown_active(decision.tls_id, sim_time_s)
+        ):
             return self._blocked(decision, "cooldown_after_priority_active", notes)
         if emergency_preemption:
             notes.append("Emergency preemption: cooldown/recovery-debt rationing bypassed; clearance checks still enforced.")
 
-        self._reset_count_after_cooldown(decision.tls_id, sim_time_s)
+        self._reset_count_after_recovery_window(decision.tls_id, sim_time_s)
         if not emergency_preemption:
             self._recover_debt(decision.tls_id, sim_time_s)
             max_recovery_debt = self._optional_safety_value("max_recovery_debt_s")
@@ -119,11 +155,17 @@ class TSPSafetyLayer:
                 notes,
             )
         max_consecutive = int(max_consecutive_raw)
-        if not emergency_preemption and self.consecutive_interventions_by_tls.get(decision.tls_id, 0) >= max_consecutive:
+        if (
+            not emergency_preemption
+            and continuation_event is None
+            and self.consecutive_interventions_by_tls.get(decision.tls_id, 0) >= max_consecutive
+        ):
             return self._blocked(decision, "max_consecutive_priority_interventions_reached", notes)
 
         if decision.action == TSPAction.GREEN_EXTENSION.value:
-            return self._validate_green_extension(decision, signal_state, sim_time_s, notes)
+            return self._validate_green_extension(
+                decision, signal_state, sim_time_s, notes, continuation_event=continuation_event
+            )
 
         if decision.action == TSPAction.EARLY_GREEN.value:
             return self._validate_early_green(decision, signal_state, sim_time_s, notes)
@@ -135,7 +177,11 @@ class TSPSafetyLayer:
             return
         self._recover_debt(decision.tls_id, sim_time_s)
         self.last_intervention_time_by_tls[decision.tls_id] = sim_time_s
-        self.consecutive_interventions_by_tls[decision.tls_id] = self.consecutive_interventions_by_tls.get(decision.tls_id, 0) + 1
+        # v2.2: prestações do mesmo evento são UMA intervenção — só a abertura
+        # incrementa o contador consecutivo (events.register_applied corre
+        # depois deste mark_applied, logo na abertura ainda não há evento).
+        if self._continuation_event(decision) is None:
+            self.consecutive_interventions_by_tls[decision.tls_id] = self.consecutive_interventions_by_tls.get(decision.tls_id, 0) + 1
         added_debt = max(0.0, float(decision.extension_s or 0.0))
         if decision.action == TSPAction.EARLY_GREEN.value:
             # A perturbação do early_green é o verde REMOVIDO à fase
@@ -157,12 +203,30 @@ class TSPSafetyLayer:
     def reset_intervention_count(self, tls_id: str) -> None:
         self.consecutive_interventions_by_tls[tls_id] = 0
 
+    def return_recovery_debt(self, tls_id: str, returned_s: float) -> None:
+        """Abate dívida quando verde estendido foi devolvido no check-out:
+        esse verde nunca chegou a ser um custo para a transversal."""
+        if returned_s <= 0:
+            return
+        debt = self.recovery_debt_by_tls.get(tls_id, 0.0)
+        if debt <= 0:
+            return
+        self.recovery_debt_by_tls[tls_id] = max(0.0, debt - float(returned_s))
+
+    def _continuation_event(self, decision: TSPDecision) -> Optional["ActivePriorityEvent"]:
+        if self.event_lifecycle is None or decision.action != TSPAction.GREEN_EXTENSION.value:
+            return None
+        return self.event_lifecycle.active_event(
+            decision.tls_id, decision.vehicle_id, decision.current_phase_index
+        )
+
     def _validate_green_extension(
         self,
         decision: TSPDecision,
         signal_state: SignalState,
         sim_time_s: float,
         notes: list[str],
+        continuation_event: Optional["ActivePriorityEvent"] = None,
     ) -> SafetyValidationResult:
         policy = self.tsp_config.decision_policy
         actuation = self.tsp_config.actuation
@@ -197,6 +261,13 @@ class TSPSafetyLayer:
         # O teto de política só pode *reduzir* a extensão, nunca substituir o
         # bound de segurança.
         max_extension = min(max_extension, _positive_float(policy, "green_extension_max_s", max_extension))
+        # v2.2: o orçamento de um evento é CUMULATIVO — as prestações já
+        # concedidas consomem o mesmo max_extension que limitava o one-shot.
+        if continuation_event is not None:
+            event_budget_left = max_extension - max(0.0, continuation_event.granted_total_s)
+            if event_budget_left <= 0:
+                return self._blocked(decision, "green_extension_event_budget_exhausted", notes)
+            max_extension = min(max_extension, event_budget_left)
         extension_s = min(decision.extension_s, max_extension)
         if extension_s < decision.extension_s:
             notes.append(f"Extensão reduzida pela safety layer: {decision.extension_s:.1f}s -> {extension_s:.1f}s.")
@@ -349,15 +420,38 @@ class TSPSafetyLayer:
             return True
         return sim_time_s - last < cooldown
 
-    def _reset_count_after_cooldown(self, tls_id: str, sim_time_s: float) -> None:
+    def _reset_count_after_recovery_window(self, tls_id: str, sim_time_s: float) -> None:
+        # A janela de reset tem de ser ESTRITAMENTE maior que o gate de
+        # cooldown: quando ambas usavam cooldown_after_priority_s, qualquer
+        # pedido que sobrevivesse ao gate já tinha ganho o reset, e o bound
+        # max_consecutive nunca disparava no fluxo real (constraint morta).
         last = self.last_intervention_time_by_tls.get(tls_id)
         if last is None:
             return
-        cooldown = self._required_safety_value("cooldown_after_priority_s")
-        if cooldown is None:
-            return  # fail-closed: sem cooldown configurado, nunca reseta o contador
-        if sim_time_s - last >= cooldown:
+        window = self._consecutive_reset_window_s()
+        if window is None:
+            return  # fail-closed: sem janela derivável, nunca reseta o contador
+        if sim_time_s - last >= window:
             self.reset_intervention_count(tls_id)
+
+    def _consecutive_reset_window_s(self) -> Optional[float]:
+        """Janela sem intervenções após a qual o contador consecutivo reseta.
+
+        Default: 2x o cooldown — intervenções ao ritmo máximo permitido pelo
+        gate contam como consecutivas; um intervalo de pelo menos um cooldown
+        adicional devolve o orçamento. Um valor explícito
+        (consecutive_interventions_reset_after_s) só é honrado se for maior
+        que o cooldown; um valor <= cooldown recriaria a constraint morta.
+        """
+        cooldown = self._required_safety_value("cooldown_after_priority_s")
+        explicit = self._optional_safety_value("consecutive_interventions_reset_after_s")
+        if cooldown is None:
+            # Sem cooldown o gate já bloqueia tudo (fail-closed); honra-se o
+            # valor explícito apenas para o caminho de emergência.
+            return explicit
+        if explicit is not None and explicit > cooldown:
+            return explicit
+        return 2.0 * cooldown
 
     def _recover_debt(self, tls_id: str, sim_time_s: float) -> None:
         debt = self.recovery_debt_by_tls.get(tls_id, 0.0)
@@ -457,11 +551,15 @@ class TSPSafetyLayer:
         return "early_green_current_phase_not_configured_as_conflict"
 
     def _controller_contract(self, decision: TSPDecision) -> ControllerContract:
+        cached = self._contract_cache.get(decision.tls_id)
+        if cached is not None:
+            return cached
         contract = build_controller_contract(self.cits_config, self.tsp_config, decision.tls_id)
         if self.network_binding is not None:
             contract = apply_network_binding(
                 [contract], self.network_binding, aliases_by_tls=self.network_binding_aliases
             )[0]
+        self._contract_cache[decision.tls_id] = contract
         return contract
 
     def _signal_group(
@@ -492,13 +590,9 @@ class TSPSafetyLayer:
             return None
 
     def _optional_safety_value(self, key: str) -> Optional[float]:
-        value = self.cits_config.safety_constraints.get(key)
-        if value is None:
-            return None
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return None
+        """Mesmo parsing de _required_safety_value; contrato do chamador difere:
+        None aqui significa "funcionalidade desligada", não motivo de bloqueio."""
+        return self._required_safety_value(key)
 
     def _blocked(self, decision: TSPDecision, reason: str, notes: Optional[list[str]] = None) -> SafetyValidationResult:
         safe = decision.copy_with(status=DecisionStatus.BLOCKED_BY_SAFETY.value, reason=reason, notes=list(notes or []))
@@ -510,33 +604,6 @@ class TSPSafetyLayer:
             safe_decision=safe,
             notes=list(notes or []) + [f"Safety Layer bloqueou decisão: {reason}."],
         )
-
-
-def _lane_belongs_to_edge_set(lane_id: Optional[str], edges: set[str]) -> bool:
-    """Lane SUMO `<edge>_<index>` pertence a `edges` sse extracted-edge ∈ edges."""
-    if not lane_id or not edges:
-        return False
-    edge, _, suffix = lane_id.rpartition("_")
-    if not edge or not suffix.isdigit():
-        return False
-    return edge in edges
-
-
-def _controlled_links_match_request(links_for_signal: object, lane_id: str, next_edge_id: str) -> bool:
-    if not lane_id or not isinstance(links_for_signal, list):
-        return False
-    for link in links_for_signal:
-        if not isinstance(link, (list, tuple)) or len(link) < 2:
-            continue
-        incoming_lane = str(link[0])
-        outgoing_lane = str(link[1])
-        if incoming_lane != lane_id:
-            continue
-        if not next_edge_id:
-            return True
-        if outgoing_lane == next_edge_id or outgoing_lane.startswith(f"{next_edge_id}_"):
-            return True
-    return False
 
 
 def _request_has_protected_green(
@@ -564,11 +631,3 @@ def _request_has_protected_green(
         if _lane_belongs_to_edge_set(lane_id, {decision.current_edge_id}):
             return ryg[index] == "G"
     return False
-
-
-def _positive_float(mapping: dict, key: str, default: float) -> float:
-    try:
-        value = float(mapping.get(key, default))
-    except (TypeError, ValueError):
-        return default
-    return value if value > 0 else default

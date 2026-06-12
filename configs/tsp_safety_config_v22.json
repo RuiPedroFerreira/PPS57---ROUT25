@@ -1,0 +1,1048 @@
+{
+  "component_id": "tsp_safety_layer",
+  "version": "0.4.0",
+  "scenario_id": "porto_boavista_base_v04_tsp_safety_layer",
+  "description": "Motor de decisão TSP e Safety Layer para prioridade semafórica contextual em movimentos prioritários configurados.",
+  "logging": {
+    "decision_log": "outputs/tsp_decisions.jsonl",
+    "actuation_log": "outputs/tsp_actuation.jsonl",
+    "summary_report": "reports/tsp_emulation_summary.json"
+  },
+  "decision_policy": {
+    "min_priority_score": 0.2,
+    "delay_normalisation_s": 180,
+    "headway_normalisation_s": 240,
+    "distance_normalisation_m": 250,
+    "eta_arrival_buffer_s": 4,
+    "green_extension_min_s": 3,
+    "green_extension_default_s": 8,
+    "green_extension_max_s": 12,
+    "early_green_min_eta_s": 10,
+    "red_truncation_to_s": 2,
+    "_v2_policy_comment": "Engine v2 (prioridade condicional e decisao cost-aware). need_min_schedule_delay_s=20 esta calibrado ao regime PROXY de atraso (max(schedule_delay, waiting, accumulated_waiting) do SUMO; distribuicao v1 observada: p50=8.5s p75=15.5s p90=23.5s max=63s) - com AVL real (schedule_plan.enabled=true) subir para 60-120s, pratica comum de prioridade condicional. cross_pressure_halted_threshold=8 alinha com o limiar de spillback dos detectores E2 (intervals_above_8_veh). v2.1: sob congestao (occupancy >= congested_occupancy_threshold) o dial e o portao de necessidade endurecido (need_min_schedule_delay_congested_s=35) + min_priority_score_congested=0.4 ALCANCAVEL (score max do regime proxy ~0.485; 0.5 desligava o TSP por inteiro sob saturacao). Vitimas de pressao medidas pela mascara RYG: extensao -> lanes em vermelho puro; early green -> lanes com verde corrente. max_green_removed_per_event_s limita a severidade POR EVENTO da truncagem (o recovery debt da safety ja limita a frequencia). min_useful_intervention_s evita truncagens cujo teto de poupanca para o TP e marginal.",
+    "need_min_schedule_delay_s": 20,
+    "need_min_schedule_delay_congested_s": 35,
+    "need_min_headway_deviation_s": 120,
+    "congested_occupancy_threshold": 0.5,
+    "min_priority_score_congested": 0.4,
+    "cross_pressure_halted_threshold": 8,
+    "green_extension_max_congested_s": 6,
+    "max_green_removed_per_event_s": 10,
+    "min_useful_intervention_s": 5,
+    "recovery_note": "After a TSP intervention, the controller returns to the base SUMO signal program; coordinated offsets remain a calibration task.",
+    "priority_level_weights": {
+      "emergency": 1.0,
+      "high_delay": 0.85,
+      "headway_recovery": 0.7,
+      "nominal": 0.45
+    },
+    "actuating_actions": [
+      "green_extension",
+      "early_green"
+    ],
+    "weights": {
+      "schedule_delay": 0.45,
+      "headway_deviation": 0.2,
+      "proximity": 0.2,
+      "priority_level": 0.15
+    }
+  },
+  "actuation": {
+    "allow_green_extension": true,
+    "allow_red_truncation": true,
+    "allow_direct_phase_jump": false,
+    "compensation_enabled": true,
+    "compensation_max_per_cycle_s": 8,
+    "compensation_note": "v2.1 NEMA-style: a fase truncada por um early green recebe verde de compensacao na proxima activacao, em prestacoes <= compensation_max_per_cycle_s e sem exceder max_total_green_s (fail-closed sem next_switch/spent). Ataca o custo residual no trafego geral medido na geracao v1 (+20% a +44%).",
+    "note": "No MVP, early_green é implementado como redução segura da duração da fase corrente via setPhaseDuration, não como salto direto de fase. Isto evita saltar amarelo/all-red.",
+    "coordination_recovery_enabled": true,
+    "priority_event_lifecycle_enabled": true,
+    "_v22_comment": "Variante A/B v2.2: identica a tsp_safety_config.json excepto os dois flags opt-in (coordination_recovery_enabled, priority_event_lifecycle_enabled). Queue-aware ETA e' decision-side e esta' activo em AMBOS os bracos."
+  },
+  "corridor": {
+    "_comment": "Árbitro de corredor cross-TLS (P6), opt-in, corre pré-Safety e só DESCE decisões (a Safety Layer continua o portão final). Todas as features desligadas por defeito = no-op. É otimização, NÃO segurança — distinto dos safety_constraints fail-closed em cits_v2x_config.json. max_corridor_recovery_debt_s: null ou <= 0 = cap desligado (0 permite a primeira intervenção).",
+    "max_corridor_recovery_debt_s": 48,
+    "respect_downstream_spillback": true,
+    "flag_green_wave": false
+  },
+  "network_profile": {
+    "enabled": true,
+    "prefer_generated_contracts_for_unknown_tls": true,
+    "description": "Quando um novo net.xml e importado sem contrato especifico, gera phase_sequence, grupos e conflitos a partir do programa SUMO."
+  },
+  "controller_contracts": {
+    "default": {
+      "adapter_type": "sumo_traci",
+      "fixed_time_required": true,
+      "allowed_actions": [
+        "green_extension",
+        "early_green"
+      ],
+      "phase_sequence": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "service_green_phase_indices": [
+        0,
+        3
+      ],
+      "intergreen_phase_indices": [
+        1,
+        2,
+        4,
+        5
+      ],
+      "pedestrian_phase_indices": [
+        6
+      ],
+      "priority_signal_group_defaults": {
+        "phase_index": 0,
+        "min_green_s": 8,
+        "max_green_s": 55,
+        "max_extension_s": 12,
+        "pedestrian_clearance_s": 4,
+        "conflicts_with": [
+          "{tls_id}_secondary_northbound",
+          "{tls_id}_secondary_southbound",
+          "{tls_id}_pedestrian_major_crossing",
+          "{tls_id}_pedestrian_minor_crossing",
+          "{tls_id}_protected_left_turn"
+        ]
+      },
+      "additional_signal_groups": [
+        {
+          "signal_group_id": "{tls_id}_secondary_northbound",
+          "phase_index": 3,
+          "min_green_s": 8,
+          "max_green_s": 55,
+          "conflicts_with": [
+            "{tls_id}_priority_westbound",
+            "{tls_id}_priority_eastbound",
+            "{tls_id}_pedestrian_minor_crossing"
+          ]
+        },
+        {
+          "signal_group_id": "{tls_id}_secondary_southbound",
+          "phase_index": 3,
+          "min_green_s": 8,
+          "max_green_s": 55,
+          "conflicts_with": [
+            "{tls_id}_priority_westbound",
+            "{tls_id}_priority_eastbound",
+            "{tls_id}_pedestrian_minor_crossing"
+          ]
+        },
+        {
+          "signal_group_id": "{tls_id}_pedestrian_major_crossing",
+          "phase_index": null,
+          "pedestrian_clearance_s": 4,
+          "conflicts_with": [
+            "{tls_id}_priority_westbound",
+            "{tls_id}_priority_eastbound",
+            "{tls_id}_protected_left_turn"
+          ]
+        },
+        {
+          "signal_group_id": "{tls_id}_pedestrian_minor_crossing",
+          "phase_index": null,
+          "pedestrian_clearance_s": 4,
+          "conflicts_with": [
+            "{tls_id}_secondary_northbound",
+            "{tls_id}_secondary_southbound",
+            "{tls_id}_protected_left_turn"
+          ]
+        },
+        {
+          "signal_group_id": "{tls_id}_protected_left_turn",
+          "phase_index": null,
+          "min_green_s": 6,
+          "max_green_s": 25,
+          "conflicts_with": [
+            "{tls_id}_priority_westbound",
+            "{tls_id}_priority_eastbound",
+            "{tls_id}_pedestrian_major_crossing",
+            "{tls_id}_pedestrian_minor_crossing"
+          ]
+        }
+      ]
+    },
+    "controllers": {
+      "I1": {
+        "adapter_type": "sumo_traci",
+        "fixed_time_required": true,
+        "allowed_actions": [
+          "green_extension",
+          "early_green"
+        ],
+        "phase_sequence": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "service_green_phase_indices": [
+          0,
+          3
+        ],
+        "intergreen_phase_indices": [
+          1,
+          2,
+          4,
+          5
+        ],
+        "signal_groups": {
+          "I1_priority_westbound": {
+            "phase_index": 0,
+            "min_green_s": 8,
+            "max_green_s": 55,
+            "max_extension_s": 12,
+            "pedestrian_clearance_s": 4,
+            "conflicts_with": [
+              "I1_secondary_northbound",
+              "I1_secondary_southbound",
+              "I1_pedestrian_major_crossing",
+              "I1_protected_left_turn"
+            ]
+          },
+          "I1_priority_eastbound": {
+            "phase_index": 0,
+            "min_green_s": 8,
+            "max_green_s": 55,
+            "max_extension_s": 12,
+            "pedestrian_clearance_s": 4,
+            "conflicts_with": [
+              "I1_secondary_northbound",
+              "I1_secondary_southbound",
+              "I1_pedestrian_major_crossing",
+              "I1_pedestrian_minor_crossing",
+              "I1_protected_left_turn"
+            ]
+          }
+        },
+        "additional_signal_groups": [
+          {
+            "signal_group_id": "I1_secondary_northbound",
+            "phase_index": 3,
+            "min_green_s": 8,
+            "max_green_s": 55,
+            "conflicts_with": [
+              "I1_priority_westbound",
+              "I1_priority_eastbound",
+              "I1_pedestrian_minor_crossing",
+              "I1_protected_left_turn"
+            ]
+          },
+          {
+            "signal_group_id": "I1_secondary_southbound",
+            "phase_index": 3,
+            "min_green_s": 8,
+            "max_green_s": 55,
+            "conflicts_with": [
+              "I1_priority_westbound",
+              "I1_priority_eastbound",
+              "I1_pedestrian_minor_crossing",
+              "I1_protected_left_turn"
+            ]
+          },
+          {
+            "signal_group_id": "I1_pedestrian_major_crossing",
+            "phase_index": null,
+            "pedestrian_clearance_s": 4,
+            "conflicts_with": [
+              "I1_priority_westbound",
+              "I1_priority_eastbound",
+              "I1_protected_left_turn"
+            ]
+          },
+          {
+            "signal_group_id": "I1_pedestrian_minor_crossing",
+            "phase_index": null,
+            "pedestrian_clearance_s": 4,
+            "conflicts_with": [
+              "I1_secondary_northbound",
+              "I1_secondary_southbound",
+              "I1_protected_left_turn",
+              "I1_priority_westbound",
+              "I1_priority_eastbound"
+            ]
+          },
+          {
+            "signal_group_id": "I1_protected_left_turn",
+            "phase_index": null,
+            "min_green_s": 6,
+            "max_green_s": 25,
+            "conflicts_with": [
+              "I1_priority_westbound",
+              "I1_priority_eastbound",
+              "I1_secondary_northbound",
+              "I1_secondary_southbound",
+              "I1_pedestrian_major_crossing",
+              "I1_pedestrian_minor_crossing"
+            ]
+          }
+        ]
+      },
+      "I2": {
+        "adapter_type": "sumo_traci",
+        "fixed_time_required": true,
+        "allowed_actions": [
+          "green_extension",
+          "early_green"
+        ],
+        "phase_sequence": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "service_green_phase_indices": [
+          0,
+          3
+        ],
+        "intergreen_phase_indices": [
+          1,
+          2,
+          4,
+          5
+        ],
+        "signal_groups": {
+          "I2_priority_westbound": {
+            "phase_index": 0,
+            "min_green_s": 8,
+            "max_green_s": 55,
+            "max_extension_s": 12,
+            "pedestrian_clearance_s": 4,
+            "conflicts_with": [
+              "I2_secondary_northbound",
+              "I2_secondary_southbound",
+              "I2_pedestrian_major_crossing",
+              "I2_protected_left_turn"
+            ]
+          },
+          "I2_priority_eastbound": {
+            "phase_index": 0,
+            "min_green_s": 8,
+            "max_green_s": 55,
+            "max_extension_s": 12,
+            "pedestrian_clearance_s": 4,
+            "conflicts_with": [
+              "I2_secondary_northbound",
+              "I2_secondary_southbound",
+              "I2_pedestrian_major_crossing",
+              "I2_pedestrian_minor_crossing",
+              "I2_protected_left_turn"
+            ]
+          }
+        },
+        "additional_signal_groups": [
+          {
+            "signal_group_id": "I2_secondary_northbound",
+            "phase_index": 3,
+            "min_green_s": 8,
+            "max_green_s": 55,
+            "conflicts_with": [
+              "I2_priority_westbound",
+              "I2_priority_eastbound",
+              "I2_pedestrian_minor_crossing",
+              "I2_protected_left_turn"
+            ]
+          },
+          {
+            "signal_group_id": "I2_secondary_southbound",
+            "phase_index": 3,
+            "min_green_s": 8,
+            "max_green_s": 55,
+            "conflicts_with": [
+              "I2_priority_westbound",
+              "I2_priority_eastbound",
+              "I2_pedestrian_minor_crossing",
+              "I2_protected_left_turn"
+            ]
+          },
+          {
+            "signal_group_id": "I2_pedestrian_major_crossing",
+            "phase_index": null,
+            "pedestrian_clearance_s": 4,
+            "conflicts_with": [
+              "I2_priority_westbound",
+              "I2_priority_eastbound",
+              "I2_protected_left_turn"
+            ]
+          },
+          {
+            "signal_group_id": "I2_pedestrian_minor_crossing",
+            "phase_index": null,
+            "pedestrian_clearance_s": 4,
+            "conflicts_with": [
+              "I2_secondary_northbound",
+              "I2_secondary_southbound",
+              "I2_protected_left_turn",
+              "I2_priority_westbound",
+              "I2_priority_eastbound"
+            ]
+          },
+          {
+            "signal_group_id": "I2_protected_left_turn",
+            "phase_index": null,
+            "min_green_s": 6,
+            "max_green_s": 25,
+            "conflicts_with": [
+              "I2_priority_westbound",
+              "I2_priority_eastbound",
+              "I2_secondary_northbound",
+              "I2_secondary_southbound",
+              "I2_pedestrian_major_crossing",
+              "I2_pedestrian_minor_crossing"
+            ]
+          }
+        ]
+      },
+      "I3": {
+        "adapter_type": "sumo_traci",
+        "fixed_time_required": true,
+        "allowed_actions": [
+          "green_extension",
+          "early_green"
+        ],
+        "phase_sequence": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "service_green_phase_indices": [
+          0,
+          3
+        ],
+        "intergreen_phase_indices": [
+          1,
+          2,
+          4,
+          5
+        ],
+        "signal_groups": {
+          "I3_priority_westbound": {
+            "phase_index": 0,
+            "min_green_s": 8,
+            "max_green_s": 55,
+            "max_extension_s": 12,
+            "pedestrian_clearance_s": 4,
+            "conflicts_with": [
+              "I3_secondary_northbound",
+              "I3_secondary_southbound",
+              "I3_pedestrian_major_crossing",
+              "I3_protected_left_turn"
+            ]
+          },
+          "I3_priority_eastbound": {
+            "phase_index": 0,
+            "min_green_s": 8,
+            "max_green_s": 55,
+            "max_extension_s": 12,
+            "pedestrian_clearance_s": 4,
+            "conflicts_with": [
+              "I3_secondary_northbound",
+              "I3_secondary_southbound",
+              "I3_pedestrian_major_crossing",
+              "I3_pedestrian_minor_crossing",
+              "I3_protected_left_turn"
+            ]
+          }
+        },
+        "additional_signal_groups": [
+          {
+            "signal_group_id": "I3_secondary_northbound",
+            "phase_index": 3,
+            "min_green_s": 8,
+            "max_green_s": 55,
+            "conflicts_with": [
+              "I3_priority_westbound",
+              "I3_priority_eastbound",
+              "I3_pedestrian_minor_crossing",
+              "I3_protected_left_turn"
+            ]
+          },
+          {
+            "signal_group_id": "I3_secondary_southbound",
+            "phase_index": 3,
+            "min_green_s": 8,
+            "max_green_s": 55,
+            "conflicts_with": [
+              "I3_priority_westbound",
+              "I3_priority_eastbound",
+              "I3_pedestrian_minor_crossing",
+              "I3_protected_left_turn"
+            ]
+          },
+          {
+            "signal_group_id": "I3_pedestrian_major_crossing",
+            "phase_index": null,
+            "pedestrian_clearance_s": 4,
+            "conflicts_with": [
+              "I3_priority_westbound",
+              "I3_priority_eastbound",
+              "I3_protected_left_turn"
+            ]
+          },
+          {
+            "signal_group_id": "I3_pedestrian_minor_crossing",
+            "phase_index": null,
+            "pedestrian_clearance_s": 4,
+            "conflicts_with": [
+              "I3_secondary_northbound",
+              "I3_secondary_southbound",
+              "I3_protected_left_turn",
+              "I3_priority_westbound",
+              "I3_priority_eastbound"
+            ]
+          },
+          {
+            "signal_group_id": "I3_protected_left_turn",
+            "phase_index": null,
+            "min_green_s": 6,
+            "max_green_s": 25,
+            "conflicts_with": [
+              "I3_priority_westbound",
+              "I3_priority_eastbound",
+              "I3_secondary_northbound",
+              "I3_secondary_southbound",
+              "I3_pedestrian_major_crossing",
+              "I3_pedestrian_minor_crossing"
+            ]
+          }
+        ]
+      },
+      "I4": {
+        "adapter_type": "sumo_traci",
+        "fixed_time_required": true,
+        "allowed_actions": [
+          "green_extension",
+          "early_green"
+        ],
+        "phase_sequence": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "service_green_phase_indices": [
+          0,
+          3
+        ],
+        "intergreen_phase_indices": [
+          1,
+          2,
+          4,
+          5
+        ],
+        "signal_groups": {
+          "I4_priority_westbound": {
+            "phase_index": 0,
+            "min_green_s": 8,
+            "max_green_s": 55,
+            "max_extension_s": 12,
+            "pedestrian_clearance_s": 4,
+            "conflicts_with": [
+              "I4_secondary_northbound",
+              "I4_secondary_southbound",
+              "I4_pedestrian_major_crossing",
+              "I4_protected_left_turn"
+            ]
+          },
+          "I4_priority_eastbound": {
+            "phase_index": 0,
+            "min_green_s": 8,
+            "max_green_s": 55,
+            "max_extension_s": 12,
+            "pedestrian_clearance_s": 4,
+            "conflicts_with": [
+              "I4_secondary_northbound",
+              "I4_secondary_southbound",
+              "I4_pedestrian_major_crossing",
+              "I4_pedestrian_minor_crossing",
+              "I4_protected_left_turn"
+            ]
+          }
+        },
+        "additional_signal_groups": [
+          {
+            "signal_group_id": "I4_secondary_northbound",
+            "phase_index": 3,
+            "min_green_s": 8,
+            "max_green_s": 55,
+            "conflicts_with": [
+              "I4_priority_westbound",
+              "I4_priority_eastbound",
+              "I4_pedestrian_minor_crossing",
+              "I4_protected_left_turn"
+            ]
+          },
+          {
+            "signal_group_id": "I4_secondary_southbound",
+            "phase_index": 3,
+            "min_green_s": 8,
+            "max_green_s": 55,
+            "conflicts_with": [
+              "I4_priority_westbound",
+              "I4_priority_eastbound",
+              "I4_pedestrian_minor_crossing",
+              "I4_protected_left_turn"
+            ]
+          },
+          {
+            "signal_group_id": "I4_pedestrian_major_crossing",
+            "phase_index": null,
+            "pedestrian_clearance_s": 4,
+            "conflicts_with": [
+              "I4_priority_westbound",
+              "I4_priority_eastbound",
+              "I4_protected_left_turn"
+            ]
+          },
+          {
+            "signal_group_id": "I4_pedestrian_minor_crossing",
+            "phase_index": null,
+            "pedestrian_clearance_s": 4,
+            "conflicts_with": [
+              "I4_secondary_northbound",
+              "I4_secondary_southbound",
+              "I4_protected_left_turn",
+              "I4_priority_westbound",
+              "I4_priority_eastbound"
+            ]
+          },
+          {
+            "signal_group_id": "I4_protected_left_turn",
+            "phase_index": null,
+            "min_green_s": 6,
+            "max_green_s": 25,
+            "conflicts_with": [
+              "I4_priority_westbound",
+              "I4_priority_eastbound",
+              "I4_secondary_northbound",
+              "I4_secondary_southbound",
+              "I4_pedestrian_major_crossing",
+              "I4_pedestrian_minor_crossing"
+            ]
+          }
+        ]
+      },
+      "I5": {
+        "adapter_type": "sumo_traci",
+        "fixed_time_required": true,
+        "allowed_actions": [
+          "green_extension",
+          "early_green"
+        ],
+        "phase_sequence": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "service_green_phase_indices": [
+          0,
+          3
+        ],
+        "intergreen_phase_indices": [
+          1,
+          2,
+          4,
+          5
+        ],
+        "signal_groups": {
+          "I5_priority_westbound": {
+            "phase_index": 0,
+            "min_green_s": 8,
+            "max_green_s": 55,
+            "max_extension_s": 12,
+            "pedestrian_clearance_s": 4,
+            "conflicts_with": [
+              "I5_secondary_northbound",
+              "I5_secondary_southbound",
+              "I5_pedestrian_major_crossing",
+              "I5_protected_left_turn"
+            ]
+          },
+          "I5_priority_eastbound": {
+            "phase_index": 0,
+            "min_green_s": 8,
+            "max_green_s": 55,
+            "max_extension_s": 12,
+            "pedestrian_clearance_s": 4,
+            "conflicts_with": [
+              "I5_secondary_northbound",
+              "I5_secondary_southbound",
+              "I5_pedestrian_major_crossing",
+              "I5_pedestrian_minor_crossing",
+              "I5_protected_left_turn"
+            ]
+          }
+        },
+        "additional_signal_groups": [
+          {
+            "signal_group_id": "I5_secondary_northbound",
+            "phase_index": 3,
+            "min_green_s": 8,
+            "max_green_s": 55,
+            "conflicts_with": [
+              "I5_priority_westbound",
+              "I5_priority_eastbound",
+              "I5_pedestrian_minor_crossing",
+              "I5_protected_left_turn"
+            ]
+          },
+          {
+            "signal_group_id": "I5_secondary_southbound",
+            "phase_index": 3,
+            "min_green_s": 8,
+            "max_green_s": 55,
+            "conflicts_with": [
+              "I5_priority_westbound",
+              "I5_priority_eastbound",
+              "I5_pedestrian_minor_crossing",
+              "I5_protected_left_turn"
+            ]
+          },
+          {
+            "signal_group_id": "I5_pedestrian_major_crossing",
+            "phase_index": null,
+            "pedestrian_clearance_s": 4,
+            "conflicts_with": [
+              "I5_priority_westbound",
+              "I5_priority_eastbound",
+              "I5_protected_left_turn"
+            ]
+          },
+          {
+            "signal_group_id": "I5_pedestrian_minor_crossing",
+            "phase_index": null,
+            "pedestrian_clearance_s": 4,
+            "conflicts_with": [
+              "I5_secondary_northbound",
+              "I5_secondary_southbound",
+              "I5_protected_left_turn",
+              "I5_priority_westbound",
+              "I5_priority_eastbound"
+            ]
+          },
+          {
+            "signal_group_id": "I5_protected_left_turn",
+            "phase_index": null,
+            "min_green_s": 6,
+            "max_green_s": 25,
+            "conflicts_with": [
+              "I5_priority_westbound",
+              "I5_priority_eastbound",
+              "I5_secondary_northbound",
+              "I5_secondary_southbound",
+              "I5_pedestrian_major_crossing",
+              "I5_pedestrian_minor_crossing"
+            ]
+          }
+        ]
+      },
+      "I7": {
+        "adapter_type": "sumo_traci",
+        "fixed_time_required": true,
+        "allowed_actions": [
+          "green_extension",
+          "early_green"
+        ],
+        "phase_sequence": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "service_green_phase_indices": [
+          0,
+          3
+        ],
+        "intergreen_phase_indices": [
+          1,
+          2,
+          4,
+          5
+        ],
+        "signal_groups": {
+          "I7_priority_westbound": {
+            "phase_index": 0,
+            "min_green_s": 8,
+            "max_green_s": 55,
+            "max_extension_s": 12,
+            "pedestrian_clearance_s": 4,
+            "conflicts_with": [
+              "I7_secondary_northbound",
+              "I7_secondary_southbound",
+              "I7_pedestrian_major_crossing",
+              "I7_protected_left_turn"
+            ]
+          },
+          "I7_priority_eastbound": {
+            "phase_index": 0,
+            "min_green_s": 8,
+            "max_green_s": 55,
+            "max_extension_s": 12,
+            "pedestrian_clearance_s": 4,
+            "conflicts_with": [
+              "I7_secondary_northbound",
+              "I7_secondary_southbound",
+              "I7_pedestrian_major_crossing",
+              "I7_pedestrian_minor_crossing",
+              "I7_protected_left_turn"
+            ]
+          }
+        },
+        "additional_signal_groups": [
+          {
+            "signal_group_id": "I7_secondary_northbound",
+            "phase_index": 3,
+            "min_green_s": 8,
+            "max_green_s": 55,
+            "conflicts_with": [
+              "I7_priority_westbound",
+              "I7_priority_eastbound",
+              "I7_pedestrian_minor_crossing",
+              "I7_protected_left_turn"
+            ]
+          },
+          {
+            "signal_group_id": "I7_secondary_southbound",
+            "phase_index": 3,
+            "min_green_s": 8,
+            "max_green_s": 55,
+            "conflicts_with": [
+              "I7_priority_westbound",
+              "I7_priority_eastbound",
+              "I7_pedestrian_minor_crossing",
+              "I7_protected_left_turn"
+            ]
+          },
+          {
+            "signal_group_id": "I7_pedestrian_major_crossing",
+            "phase_index": null,
+            "pedestrian_clearance_s": 4,
+            "conflicts_with": [
+              "I7_priority_westbound",
+              "I7_priority_eastbound",
+              "I7_protected_left_turn"
+            ]
+          },
+          {
+            "signal_group_id": "I7_pedestrian_minor_crossing",
+            "phase_index": null,
+            "pedestrian_clearance_s": 4,
+            "conflicts_with": [
+              "I7_secondary_northbound",
+              "I7_secondary_southbound",
+              "I7_protected_left_turn",
+              "I7_priority_westbound",
+              "I7_priority_eastbound"
+            ]
+          },
+          {
+            "signal_group_id": "I7_protected_left_turn",
+            "phase_index": null,
+            "min_green_s": 6,
+            "max_green_s": 25,
+            "conflicts_with": [
+              "I7_priority_westbound",
+              "I7_priority_eastbound",
+              "I7_secondary_northbound",
+              "I7_secondary_southbound",
+              "I7_pedestrian_major_crossing",
+              "I7_pedestrian_minor_crossing"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "policy_runtime": {
+    "policy_report": "reports/policy_report.json",
+    "rl_policy_report": "reports/tabular_q_policy_report.json",
+    "state_buckets": {
+      "eta_close_s": 10,
+      "eta_far_s": 25,
+      "medium_delay_s": 60,
+      "high_delay_s": 90,
+      "phase_switch_close_s": 5,
+      "high_active_requests": 2,
+      "high_queue_vehicle_count": 8,
+      "high_halted_vehicle_count": 8,
+      "low_mean_speed_mps": 2.0,
+      "high_waiting_time_s": 120,
+      "high_occupancy": 0.6,
+      "cooldown_recent_s": 90
+    },
+    "fallback_policy": "baseline_tsp_decision_engine",
+    "allow_policy_suppress_baseline_actuation": false,
+    "safety_filter_required": true
+  },
+  "phase_mapping": {
+    "default": {
+      "target_phase_index": 0,
+      "service_green_phase_indices": [
+        0,
+        3
+      ],
+      "phase_sequence": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "notes": "Mapeamento de movimentos prioritários para fases SUMO. Deve ser substituído pelo mapping real de signal groups/control groups quando houver planos semafóricos reais."
+    },
+    "I1": {
+      "service_green_phase_indices": [
+        0,
+        3
+      ],
+      "phase_sequence": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "I2": {
+      "service_green_phase_indices": [
+        0,
+        3
+      ],
+      "phase_sequence": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "I3": {
+      "service_green_phase_indices": [
+        0,
+        3
+      ],
+      "phase_sequence": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "I4": {
+      "service_green_phase_indices": [
+        0,
+        3
+      ],
+      "phase_sequence": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "I5": {
+      "service_green_phase_indices": [
+        0,
+        3
+      ],
+      "phase_sequence": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "I7": {
+      "service_green_phase_indices": [
+        0,
+        3
+      ],
+      "phase_sequence": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "priority_movements": {
+      "I1_westbound_public_transport": {
+        "target_phase_index": 0
+      },
+      "I1_eastbound_public_transport": {
+        "target_phase_index": 0
+      },
+      "I2_westbound_public_transport": {
+        "target_phase_index": 0
+      },
+      "I2_eastbound_public_transport": {
+        "target_phase_index": 0
+      },
+      "I3_westbound_public_transport": {
+        "target_phase_index": 0
+      },
+      "I3_eastbound_public_transport": {
+        "target_phase_index": 0
+      },
+      "I4_westbound_public_transport": {
+        "target_phase_index": 0
+      },
+      "I4_eastbound_public_transport": {
+        "target_phase_index": 0
+      },
+      "I5_westbound_public_transport": {
+        "target_phase_index": 0
+      },
+      "I5_eastbound_public_transport": {
+        "target_phase_index": 0
+      },
+      "I7_westbound_public_transport": {
+        "target_phase_index": 0
+      },
+      "I7_eastbound_public_transport": {
+        "target_phase_index": 0
+      }
+    }
+  },
+  "controller_simulation": {
+    "enabled": true,
+    "default_mode": "automatic",
+    "controller_modes": {},
+    "command_latency_s": 0.0,
+    "pending_lock_s": 0.5,
+    "min_command_interval_s": 1.0,
+    "active_pedestrian_calls_by_tls": []
+  }
+}

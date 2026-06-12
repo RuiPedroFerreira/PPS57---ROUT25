@@ -18,6 +18,12 @@ from .signal_control import (
     build_controller_contract,
     phase_sequence_clearance_problem,
 )
+from .util import (
+    controlled_links_match_request as _controlled_links_match_request,
+    lane_belongs_to_edge_set as _lane_belongs_to_edge_set,
+    non_negative_float as _non_negative_float,
+    positive_float as _positive_float,
+)
 
 
 @dataclass
@@ -35,7 +41,10 @@ class TSPDecisionEngine:
         sim_time_s: float,
         network_state: Optional[NetworkStateSnapshot] = None,
     ) -> TSPDecision:
-        score = self.priority_score(request)
+        # Breakdown calculado UMA vez por decisão: o escalar guia os portões e
+        # os componentes seguem para a decisão (antes recomputava-se em
+        # _decision para cada retorno).
+        score, score_components = self._score_breakdown(request)
         policy = self.tsp_config.decision_policy
         min_score = _positive_float(policy, "min_priority_score", 0.35)
         emergency_request = request.priority_level == OperatorPriorityClass.EMERGENCY.value
@@ -48,6 +57,7 @@ class TSPDecisionEngine:
                 action=TSPAction.REJECT.value,
                 reason=ReasonCode.PRIORITY_REQUEST_CANCELLATION.value,
                 score=score,
+                score_components=score_components,
             )
         if request.expires_at_s is not None and sim_time_s > request.expires_at_s:
             return self._decision(
@@ -57,6 +67,7 @@ class TSPDecisionEngine:
                 action=TSPAction.REJECT.value,
                 reason=ReasonCode.REQUEST_EXPIRED.value,
                 score=score,
+                score_components=score_components,
             )
 
         # --- v2.1: estado de congestão observado (afecta necessidade e score) ---
@@ -99,6 +110,7 @@ class TSPDecisionEngine:
                         f",headway_{headway_abs:.1f}<{need_headway_s:.1f}"
                     ),
                     score=score,
+                score_components=score_components,
                     notes=[
                         "Prioridade condicional: sem atraso/desvio de headway material, "
                         "o pedido não gera intervenção semafórica.",
@@ -124,6 +136,7 @@ class TSPDecisionEngine:
                 action=TSPAction.REJECT.value,
                 reason=f"{ReasonCode.PRIORITY_SCORE_BELOW_THRESHOLD.value}:{score:.3f}<{min_score:.3f}",
                 score=score,
+                score_components=score_components,
                 notes=[
                     "Pedido aceite pela RSU, mas insuficiente para intervenção semafórica.",
                     *congestion_notes,
@@ -134,9 +147,43 @@ class TSPDecisionEngine:
         remaining_s = self.remaining_phase_time_s(signal_state, sim_time_s)
         arrival_buffer_s = _non_negative_float(policy, "eta_arrival_buffer_s", 4.0)
 
+        # v2.2: ETA efetiva = ETA cinemática do OBU + tempo de descarga da
+        # fila parada à frente do autocarro na mesma lane. Sem isto as
+        # extensões ficam sistematicamente subdimensionadas exatamente em
+        # congestão (o autocarro chega depois da fila descarregar, não ao
+        # ETA de velocidade livre).
+        eta_s = request.eta_to_stopline_s
+        eta_notes: list[str] = []
+        queue_correction_s = self._queue_eta_correction_s(request, network_state)
+        if queue_correction_s > 0.0:
+            eta_s += queue_correction_s
+            eta_notes.append(
+                f"eta corrigida pela fila: {request.eta_to_stopline_s:.1f}s"
+                f"+{queue_correction_s:.1f}s descarga = {eta_s:.1f}s"
+            )
+
         if is_green:
-            required_green_s = request.eta_to_stopline_s + arrival_buffer_s
-            if remaining_s is not None and remaining_s >= required_green_s:
+            # Pré-consulta (espelho dos prechecks do early green): sem
+            # remaining/spent legíveis a Safety bloqueia SEMPRE a extensão
+            # (unknown_remaining/unknown_spent) — propor só inflaciona
+            # blocked_by_safety no funil. Defere para o ciclo seguinte.
+            if remaining_s is None or signal_state.spent_duration_s is None:
+                missing = "remaining" if remaining_s is None else "spent"
+                return self._decision(
+                    request,
+                    signal_state,
+                    sim_time_s,
+                    action=TSPAction.REEVALUATE_NEXT_CYCLE.value,
+                    reason=f"{ReasonCode.GREEN_EXTENSION_PRECHECK_DEFER.value}:unknown_{missing}",
+                    score=score,
+                    score_components=score_components,
+                    notes=[
+                        "Pré-consulta: tempo de fase ilegível torna a extensão sempre bloqueada pela Safety.",
+                        *eta_notes,
+                    ],
+                )
+            required_green_s = eta_s + arrival_buffer_s
+            if remaining_s >= required_green_s:
                 return self._decision(
                     request,
                     signal_state,
@@ -144,19 +191,28 @@ class TSPDecisionEngine:
                     action=TSPAction.NO_ACTION.value,
                     reason=ReasonCode.GREEN_WINDOW_ALREADY_SUFFICIENT.value,
                     score=score,
+                score_components=score_components,
                     notes=[
                         f"remaining_green_s={remaining_s:.1f}",
                         f"required_green_s={required_green_s:.1f}",
+                        *eta_notes,
                     ],
                 )
 
-            needed_extension = (
-                required_green_s - remaining_s
-                if remaining_s is not None
-                else _positive_float(policy, "green_extension_default_s", 8.0)
-            )
+            needed_extension = required_green_s - remaining_s
             extension_min_s = _positive_float(policy, "green_extension_min_s", 3.0)
             extension_max_s = max(extension_min_s, _positive_float(policy, "green_extension_max_s", 12.0))
+            # v2.2: com o lifecycle de eventos ativo, cada decisão concede só
+            # uma prestação (rolling extension); o refresh do SREM traz a
+            # prestação seguinte se o autocarro ainda não tiver passado, e o
+            # check-out devolve o que não for usado. Robusto a erro de ETA.
+            if bool(self.tsp_config.actuation.get("priority_event_lifecycle_enabled", False)):
+                increment_s = _positive_float(policy, "green_extension_rolling_increment_s", 4.0)
+                if increment_s < extension_max_s:
+                    extension_max_s = max(extension_min_s, increment_s)
+                    congestion_notes.append(
+                        f"rolling extension: prestação limitada a {extension_max_s:.1f}s (priority event lifecycle)"
+                    )
             # v2: sob pressão transversal o tecto da extensão encolhe — a
             # extensão continua permitida (instrumento suave), mas o verde
             # roubado às transversais carregadas fica limitado. v2.1: vítimas
@@ -188,11 +244,13 @@ class TSPDecisionEngine:
                 action=TSPAction.GREEN_EXTENSION.value,
                 reason=ReasonCode.EXTEND_CURRENT_GREEN.value,
                 score=score,
+                score_components=score_components,
                 extension_s=round(extension_s, 3),
                 notes=[
                     "Ação proposta: extensão de verde da fase atual.",
                     f"remaining_green_s={remaining_s}",
-                    f"bus_eta_s={request.eta_to_stopline_s:.1f}",
+                    f"bus_eta_s={eta_s:.1f}",
+                    *eta_notes,
                     *congestion_notes,
                 ],
             )
@@ -203,7 +261,7 @@ class TSPDecisionEngine:
             if emergency_request
             else _non_negative_float(policy, "early_green_min_eta_s", 10.0)
         )
-        if request.eta_to_stopline_s < early_green_min_eta_s:
+        if eta_s < early_green_min_eta_s:
             return self._decision(
                 request,
                 signal_state,
@@ -211,7 +269,11 @@ class TSPDecisionEngine:
                 action=TSPAction.REEVALUATE_NEXT_CYCLE.value,
                 reason=ReasonCode.BUS_TOO_CLOSE_FOR_SAFE_RED_TRUNCATION.value,
                 score=score,
-                notes=["Pedido será reavaliado no ciclo seguinte para evitar transição insegura."],
+                score_components=score_components,
+                notes=[
+                    "Pedido será reavaliado no ciclo seguinte para evitar transição insegura.",
+                    *eta_notes,
+                ],
             )
 
         target_phase = self._target_phase_for_request(request)
@@ -239,6 +301,7 @@ class TSPDecisionEngine:
                     action=TSPAction.REEVALUATE_NEXT_CYCLE.value,
                     reason=f"{ReasonCode.NETWORK_PRESSURE_DEFER.value}:{'+'.join(pressure_signals)}",
                     score=score,
+                score_components=score_components,
                     notes=["Intervenção adiada: pressão observada na rede torna a truncagem mais cara do que o benefício."],
                 )
 
@@ -265,6 +328,7 @@ class TSPDecisionEngine:
                     action=TSPAction.REEVALUATE_NEXT_CYCLE.value,
                     reason=f"{ReasonCode.EARLY_GREEN_PRECHECK_DEFER.value}:{sequence_problem}",
                     score=score,
+                score_components=score_components,
                     notes=["Pré-consulta de contratos: a transição proposta não é estruturalmente viável agora."],
                 )
             min_green_s = self._min_green_for_current_phase(contract, signal_state)
@@ -280,6 +344,7 @@ class TSPDecisionEngine:
                         f"{float(spent_s):.1f}<{min_green_s:.1f}"
                     ),
                     score=score,
+                score_components=score_components,
                     notes=["Fase conflituante ainda não serviu o verde mínimo; truncar agora seria sempre bloqueado."],
                 )
 
@@ -311,6 +376,7 @@ class TSPDecisionEngine:
                     action=TSPAction.REEVALUATE_NEXT_CYCLE.value,
                     reason=f"{ReasonCode.INTERVENTION_BENEFIT_TOO_SMALL.value}:{saving_s:.1f}<{min_useful_s:.1f}",
                     score=score,
+                score_components=score_components,
                     notes=["Poupança potencial marginal: a truncagem não recupera tempo material para o TP."],
                 )
 
@@ -327,6 +393,7 @@ class TSPDecisionEngine:
                 "Ação proposta: early green através de redução da duração da fase corrente.",
                 "Não é feito salto direto de fase; a sequência SUMO mantém amarelo/all-red se o plano os contiver.",
                 *truncation_notes,
+                *eta_notes,
                 *congestion_notes,
                 *(
                     ["Pedido emergency tratado no caminho de preempção segura: sem bypass de clearance/min-green."]
@@ -338,6 +405,40 @@ class TSPDecisionEngine:
 
     _GREEN_CHARS = ("g", "G")
     _RED_CHARS = ("r", "R")
+
+    def _queue_eta_correction_s(
+        self, request: SREMLike, network_state: Optional[NetworkStateSnapshot]
+    ) -> float:
+        """Tempo de descarga da fila à frente do autocarro (v2.2).
+
+        halted_by_lane conta TODOS os parados na lane do autocarro (o adaptador
+        não sabe quem está à frente); o clamp cinemático distance/jam_spacing
+        limita a contagem aos veículos que cabem fisicamente entre o autocarro
+        e a stopline — nunca inventa fila para além do espaço observável.
+        queue_discharge_headway_s=0 desliga a correção; sem snapshot ou sem
+        decomposição por lane devolve 0 (comportamento pré-v2.2).
+        """
+        policy = self.tsp_config.decision_policy
+        headway_s = _non_negative_float(policy, "queue_discharge_headway_s", 2.0)
+        if headway_s <= 0.0 or network_state is None or not network_state.halted_by_lane:
+            return 0.0
+        halted = int(network_state.halted_by_lane.get(request.current_lane_id) or 0)
+        # O próprio autocarro conta como halted na sua lane quando está parado
+        # na fila — descontá-lo evita sobrestimar a descarga em exatamente os
+        # casos congestionados que a correção visa. 0.1 m/s é o limiar de
+        # halting do SUMO; velocidade desconhecida não desconta (só se sabe
+        # que o autocarro está parado quando o SREM o diz).
+        bus_speed = request.requestor.speed_mps if request.requestor is not None else None
+        if halted > 0 and bus_speed is not None and float(bus_speed) <= 0.1:
+            halted -= 1
+        if halted <= 0:
+            return 0.0
+        jam_spacing_m = _positive_float(policy, "queue_jam_spacing_m", 7.5)
+        fits_ahead = int(float(request.distance_to_stopline_m) / jam_spacing_m)
+        queue_ahead = min(halted, fits_ahead)
+        if queue_ahead <= 0:
+            return 0.0
+        return queue_ahead * headway_s
 
     def _victim_pressure_halted(
         self,
@@ -371,7 +472,7 @@ class TSPDecisionEngine:
         for lane_id, halted in network_state.halted_by_lane.items():
             if lane_id.startswith(":"):
                 continue
-            if lane_id.rsplit("_", 1)[0] == bus_edge:
+            if _lane_belongs_to_edge_set(lane_id, {bus_edge}):
                 continue
             chars = chars_by_lane.get(lane_id)
             if chars is not None:
@@ -541,22 +642,20 @@ class TSPDecisionEngine:
         group = self._signal_group_for_request(request)
         if group is not None:
             return group.requires_protected_green
-        raw = self.tsp_config.controller_contract_for_tls(request.tls_id)
-        group_raw: dict = {}
-        defaults = raw.get("priority_signal_group_defaults", {})
-        if isinstance(defaults, dict):
-            group_raw.update(defaults)
-        groups = raw.get("signal_groups", {})
-        if isinstance(groups, dict):
-            specific = groups.get(request.target_signal_group_id, {})
-            if isinstance(specific, dict):
-                group_raw.update(specific)
-        return bool(group_raw.get("requires_protected_green", raw.get("requires_protected_green", True)))
+        return self._raw_group_flag(request, "requires_protected_green", default=True)
 
     def _allows_edge_state_fallback(self, request: SREMLike) -> bool:
         group = self._signal_group_for_request(request)
         if group is not None:
             return group.allow_edge_state_fallback
+        return self._raw_group_flag(request, "allow_edge_state_fallback", default=False)
+
+    def _raw_group_flag(self, request: SREMLike, key: str, *, default: bool) -> bool:
+        """Flag de signal group lida da config crua (fallback sem contrato).
+
+        Precedência: defaults do TLS -> grupo específico -> chave top-level do
+        contrato raw -> default. Era o mesmo bloco copiado em
+        _requires_protected_green e _allows_edge_state_fallback."""
         raw = self.tsp_config.controller_contract_for_tls(request.tls_id)
         group_raw: dict = {}
         defaults = raw.get("priority_signal_group_defaults", {})
@@ -567,7 +666,7 @@ class TSPDecisionEngine:
             specific = groups.get(request.target_signal_group_id, {})
             if isinstance(specific, dict):
                 group_raw.update(specific)
-        return bool(group_raw.get("allow_edge_state_fallback", raw.get("allow_edge_state_fallback", False)))
+        return bool(group_raw.get(key, raw.get(key, default)))
 
     def _target_phase_for_request(self, request: SREMLike) -> Optional[int]:
         mapping = self.tsp_config.phase_mapping_for_movement(request.priority_movement_id, request.tls_id)
@@ -598,12 +697,14 @@ class TSPDecisionEngine:
         action: str,
         reason: str,
         score: float,
+        score_components: Optional[dict] = None,
         extension_s: float = 0.0,
         phase_duration_s: Optional[float] = None,
         target_phase_index: Optional[int] = None,
         notes: Optional[list[str]] = None,
     ) -> TSPDecision:
-        _, score_components = self._score_breakdown(request)
+        if score_components is None:
+            _, score_components = self._score_breakdown(request)
         return TSPDecision(
             timestamp_s=sim_time_s,
             request_id=request.request_id,
@@ -652,40 +753,7 @@ def _component(raw: object, normalised: float, weight: float) -> dict:
     }
 
 
-def _positive_float(mapping: dict, key: str, default: float) -> float:
-    try:
-        value = float(mapping.get(key, default))
-    except (TypeError, ValueError):
-        return default
-    return value if value > 0 else default
-
-
-def _non_negative_float(mapping: dict, key: str, default: float) -> float:
-    try:
-        value = float(mapping.get(key, default))
-    except (TypeError, ValueError):
-        return default
-    return value if value >= 0 else default
-
-
 def _is_green_for_priority(char: str, protected_required: bool) -> bool:
     if protected_required:
         return char == "G"
     return char.lower() == "g"
-
-
-def _controlled_links_match_request(links_for_signal: object, lane_id: str, next_edge_id: str) -> bool:
-    if not lane_id or not isinstance(links_for_signal, list):
-        return False
-    for link in links_for_signal:
-        if not isinstance(link, (list, tuple)) or len(link) < 2:
-            continue
-        incoming_lane = str(link[0])
-        outgoing_lane = str(link[1])
-        if incoming_lane != lane_id:
-            continue
-        if not next_edge_id:
-            return True
-        if outgoing_lane == next_edge_id or outgoing_lane.startswith(f"{next_edge_id}_"):
-            return True
-    return False

@@ -225,5 +225,181 @@ class GreenCompensationTestCase(unittest.TestCase):
         self.assertEqual(control.calls, [])
 
 
+def _extension_decision(**overrides) -> TSPDecision:
+    payload = dict(
+        timestamp_s=100.0,
+        request_id="r2",
+        vehicle_id="bus_1",
+        intersection_id="I2",
+        tls_id="I2",
+        rsu_id="RSU",
+        action="green_extension",
+        status="approved",
+        reason="extend",
+        priority_score=0.5,
+        eta_to_stopline_s=12.0,
+        schedule_delay_s=60.0,
+        headway_deviation_s=0.0,
+        current_phase_index=0,
+        current_next_switch_s=110.0,
+        extension_s=9.0,
+    )
+    payload.update(overrides)
+    return TSPDecision(**payload)
+
+
+class CoordinationRecoveryTestCase(unittest.TestCase):
+    """v2.2: reclaim do verde estendido para re-alinhar o ciclo (opt-in)."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.cits = load_cits_config(ROOT / "configs/cits_v2x_config.json", root=ROOT)
+        cls.tsp = load_tsp_config(ROOT / "configs/tsp_safety_config.json", root=ROOT)
+
+    def _manager(self, **actuation_overrides) -> GreenCompensationManager:
+        actuation = {
+            **self.tsp.actuation,
+            "coordination_recovery_enabled": True,
+            **actuation_overrides,
+        }
+        tsp = TSPConfig(root=ROOT, raw={**self.tsp.raw, "actuation": actuation})
+        return GreenCompensationManager(self.cits, tsp)
+
+    def test_register_accumulates_extension_reclaim(self) -> None:
+        manager = self._manager()
+        manager.register_applied(_extension_decision())
+        self.assertAlmostEqual(manager.reclaim_s_by_tls_phase["I2"][0], 9.0)
+
+    def test_disabled_by_default_keeps_v21_behaviour(self) -> None:
+        # Sem o flag, extensões não registam reclaim — byte-idêntico ao v2.1.
+        manager = GreenCompensationManager(self.cits, self.tsp)
+        manager.register_applied(_extension_decision())
+        self.assertEqual(manager.reclaim_s_by_tls_phase, {})
+
+    def test_reclaims_on_phase_entry_capped_per_cycle(self) -> None:
+        manager = self._manager()
+        control = _RecordingSignalControl()
+        manager.register_applied(_extension_decision())  # 9s a reclamar à fase 0
+        # Passo 1: noutra fase — só memoriza.
+        results = manager.step(
+            {"I2": _state("I2", 3, next_switch_s=210.0, spent_s=5.0)},
+            control,
+            200.0,
+            apply_actuation=True,
+        )
+        self.assertEqual(results, [])
+        # Passo 2: entra na fase estendida (remaining 30, spent 0.5) -> encurta
+        # a prestação máxima (8s), comandando 22s.
+        results = manager.step(
+            {"I2": _state("I2", 0, next_switch_s=240.0, spent_s=0.5)},
+            control,
+            210.0,
+            apply_actuation=True,
+        )
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].action, "coordination_recovery")
+        self.assertAlmostEqual(results[0].parameters["reclaimed_s"], 8.0)
+        self.assertEqual(control.calls, [("I2", 22.0)])
+        self.assertAlmostEqual(manager.reclaim_s_by_tls_phase["I2"][0], 1.0)
+        # Ciclo seguinte: paga o resto (1s).
+        manager.step(
+            {"I2": _state("I2", 3, next_switch_s=300.0, spent_s=1.0)},
+            control,
+            260.0,
+            apply_actuation=True,
+        )
+        results = manager.step(
+            {"I2": _state("I2", 0, next_switch_s=330.0, spent_s=0.5)},
+            control,
+            300.0,
+            apply_actuation=True,
+        )
+        self.assertEqual(len(results), 1)
+        self.assertAlmostEqual(results[0].parameters["reclaimed_s"], 1.0)
+        self.assertAlmostEqual(manager.reclaim_s_by_tls_phase["I2"][0], 0.0)
+        self.assertAlmostEqual(manager.reclaimed_s_total, 9.0)
+
+    def test_reclaim_never_shortens_below_min_green(self) -> None:
+        # remaining 9, spent 0.5, min_green 8 -> headroom = 9 - 7.5 = 1.5s.
+        manager = self._manager()
+        control = _RecordingSignalControl()
+        manager.register_applied(_extension_decision())
+        manager.step(
+            {"I2": _state("I2", 3, next_switch_s=210.0, spent_s=5.0)},
+            control,
+            200.0,
+            apply_actuation=True,
+        )
+        results = manager.step(
+            {"I2": _state("I2", 0, next_switch_s=219.0, spent_s=0.5)},
+            control,
+            210.0,
+            apply_actuation=True,
+        )
+        self.assertEqual(len(results), 1)
+        self.assertAlmostEqual(results[0].parameters["reclaimed_s"], 1.5)
+        # spent + novo remaining = 0.5 + 7.5 = 8.0 = min_green_s exato.
+        self.assertEqual(control.calls, [("I2", 7.5)])
+
+    def test_reclaim_is_failclosed_without_min_green(self) -> None:
+        from copy import deepcopy
+
+        cits = deepcopy(self.cits)
+        del cits.raw["safety_constraints"]["min_green_s"]
+        actuation = {**self.tsp.actuation, "coordination_recovery_enabled": True}
+        tsp = TSPConfig(root=ROOT, raw={**self.tsp.raw, "actuation": actuation})
+        manager = GreenCompensationManager(cits, tsp)
+        control = _RecordingSignalControl()
+        manager.register_applied(_extension_decision())
+        manager.step(
+            {"I2": _state("I2", 3, next_switch_s=210.0, spent_s=5.0)},
+            control,
+            200.0,
+            apply_actuation=True,
+        )
+        results = manager.step(
+            {"I2": _state("I2", 0, next_switch_s=240.0, spent_s=0.5)},
+            control,
+            210.0,
+            apply_actuation=True,
+        )
+        self.assertEqual(results, [])
+        self.assertEqual(control.calls, [])
+        # O reclaim fica pendente (não é descartado), mas nunca comanda.
+        self.assertAlmostEqual(manager.reclaim_s_by_tls_phase["I2"][0], 9.0)
+
+    def test_compensation_grant_takes_precedence_over_reclaim_same_phase(self) -> None:
+        # Fase 3 com dívida de compensação (10s) E reclaim (9s): na entrada
+        # paga-se a compensação; o reclaim espera pela ativação seguinte —
+        # nunca dois comandos absolutos no mesmo passo.
+        manager = self._manager()
+        control = _RecordingSignalControl()
+        manager.register_applied(_early_green_decision())  # owed: fase 3, 10s
+        manager.register_applied(_extension_decision(current_phase_index=3))  # reclaim: fase 3, 9s
+        manager.step(
+            {"I2": _state("I2", 0, next_switch_s=210.0, spent_s=5.0)},
+            control,
+            200.0,
+            apply_actuation=True,
+        )
+        results = manager.step(
+            {"I2": _state("I2", 3, next_switch_s=240.0, spent_s=0.5)},
+            control,
+            210.0,
+            apply_actuation=True,
+        )
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].action, "green_compensation")
+        self.assertAlmostEqual(manager.reclaim_s_by_tls_phase["I2"][3], 9.0)
+
+    def test_reduce_reclaim_clamps_at_zero(self) -> None:
+        manager = self._manager()
+        manager.register_applied(_extension_decision())
+        manager.reduce_reclaim("I2", 0, 4.0)
+        self.assertAlmostEqual(manager.reclaim_s_by_tls_phase["I2"][0], 5.0)
+        manager.reduce_reclaim("I2", 0, 100.0)
+        self.assertAlmostEqual(manager.reclaim_s_by_tls_phase["I2"][0], 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()
