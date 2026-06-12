@@ -143,8 +143,10 @@ class Package4TSPTestCase(unittest.TestCase):
         self.assertEqual(decision.action, TSPAction.NO_ACTION.value)
 
     def test_engine_rejects_low_score_request(self) -> None:
+        # delay=20 passa o portão de necessidade v2 mas mantém o score baixo
+        # (0.45*20/180 + 0.15*0.45 ~= 0.12 < 0.2) -> rejeição por score.
         request = self._request(
-            schedule_delay_s=0.0,
+            schedule_delay_s=20.0,
             headway_deviation_s=0.0,
             distance_to_stopline_m=250.0,
             priority_level=OperatorPriorityClass.NOMINAL.value,
@@ -152,6 +154,19 @@ class Package4TSPTestCase(unittest.TestCase):
         decision = self.engine.decide(request, self._state(), sim_time_s=100.0)
         self.assertEqual(decision.action, TSPAction.REJECT.value)
         self.assertIn("priority_score_below_threshold", decision.reason)
+
+    def test_engine_rejects_on_time_bus_for_lack_of_need(self) -> None:
+        # v2: prioridade condicional — sem atraso nem desvio de headway, o
+        # pedido é rejeitado antes do score (proximidade nunca chega sozinha).
+        request = self._request(
+            schedule_delay_s=0.0,
+            headway_deviation_s=0.0,
+            distance_to_stopline_m=10.0,
+            priority_level=OperatorPriorityClass.NOMINAL.value,
+        )
+        decision = self.engine.decide(request, self._state(), sim_time_s=100.0)
+        self.assertEqual(decision.action, TSPAction.REJECT.value)
+        self.assertIn("priority_need_not_met", decision.reason)
 
     def test_engine_rejects_expired_request(self) -> None:
         request = self._request(expires_at_s=99.0)
@@ -190,7 +205,9 @@ class Package4TSPTestCase(unittest.TestCase):
         )
         decision = self.engine.decide(request, state, sim_time_s=100.0)
         self.assertEqual(decision.action, TSPAction.EARLY_GREEN.value)
-        self.assertEqual(decision.phase_duration_s, 2.0)
+        # v2 (truncagem proporcional): remaining 25s - max_green_removed 10s
+        # -> trunca para 15s em vez do red_truncation_to_s fixo.
+        self.assertEqual(decision.phase_duration_s, 15.0)
 
     def test_engine_reevaluates_when_bus_is_too_close_for_early_green(self) -> None:
         request = self._request(
@@ -239,7 +256,12 @@ class Package4TSPTestCase(unittest.TestCase):
             spent_duration_s=3.0,
             controlled_lanes=["I6_I7_0", "ATLANTIC_WEST_I7_0", "N_I7_I7_0", "S_I7_I7_0"],
         )
-        decision = self.engine.decide(request, state, sim_time_s=100.0)
+        # O engine v2 também difere antes do min-green (pré-consulta), por isso
+        # a decisão é construída num estado válido (spent=20) e validada contra
+        # o estado ofensivo — a Safety tem de bloquear por si (defesa em
+        # profundidade, sem confiar no pré-check do engine).
+        valid_state = replace(state, spent_duration_s=20.0)
+        decision = self.engine.decide(request, valid_state, sim_time_s=100.0)
         result = safety.validate(decision, state, sim_time_s=100.0)
         self.assertFalse(result.approved)
         self.assertEqual(result.safe_decision.status, DecisionStatus.BLOCKED_BY_SAFETY.value)
@@ -274,7 +296,9 @@ class Package4TSPTestCase(unittest.TestCase):
             "I7": {"phase_sequence": [2, 3, 1]}
         }
         tsp = TSPConfig(root=self.tsp.root, raw=raw)
-        engine = TSPDecisionEngine(self.cits, tsp)
+        # Decisão construída com o contrato VÁLIDO (self.engine): o engine v2
+        # com o contrato partido diferia na pré-consulta e a Safety nunca via a
+        # proposta — aqui valida-se que a Safety bloqueia por si.
         safety = TSPSafetyLayer(self.cits, tsp)
         request = self._request(
             destination_id="RSU_BOAVISTA_07",
@@ -298,7 +322,7 @@ class Package4TSPTestCase(unittest.TestCase):
             spent_duration_s=20.0,
             controlled_lanes=["I6_I7_0", "ATLANTIC_WEST_I7_0", "N_I7_I7_0", "S_I7_I7_0"],
         )
-        decision = engine.decide(request, state, sim_time_s=100.0)
+        decision = self.engine.decide(request, state, sim_time_s=100.0)
         result = safety.validate(decision, state, sim_time_s=100.0)
         self.assertFalse(result.approved)
         self.assertEqual(result.reason, "early_green_phase_not_in_configured_sequence")
@@ -329,7 +353,8 @@ class Package4TSPTestCase(unittest.TestCase):
             "I7": {"phase_sequence": [2, 0, 1, 3]}
         }
         tsp = TSPConfig(root=self.tsp.root, raw=raw)
-        engine = TSPDecisionEngine(self.cits, tsp)
+        # Tal como no teste de sequência: decisão do contrato válido, Safety
+        # com o contrato partido — defesa em profundidade testada isolada.
         safety = TSPSafetyLayer(self.cits, tsp)
         request = self._request(
             destination_id="RSU_BOAVISTA_07",
@@ -353,7 +378,7 @@ class Package4TSPTestCase(unittest.TestCase):
             spent_duration_s=20.0,
             controlled_lanes=["I6_I7_0", "ATLANTIC_WEST_I7_0", "N_I7_I7_0", "S_I7_I7_0"],
         )
-        decision = engine.decide(request, state, sim_time_s=100.0)
+        decision = self.engine.decide(request, state, sim_time_s=100.0)
         result = safety.validate(decision, state, sim_time_s=100.0)
         self.assertFalse(result.approved)
         self.assertEqual(result.reason, "early_green_would_skip_clearance_phase")
@@ -458,8 +483,9 @@ class Package4TSPTestCase(unittest.TestCase):
             def write(self, item) -> None:  # noqa: ANN001
                 pass
 
+        # delay=20 passa o portão de necessidade v2; score continua < 0.2.
         req = self._request(
-            schedule_delay_s=0.0,
+            schedule_delay_s=20.0,
             headway_deviation_s=0.0,
             distance_to_stopline_m=250.0,
             priority_level=OperatorPriorityClass.NOMINAL.value,
@@ -852,11 +878,12 @@ class Package4TSPTestCase(unittest.TestCase):
         safety = TSPSafetyLayer(self.cits, self.tsp)
         safety.set_signal_program_verified(True)
         safe = self._approved_early_green(safety)
-        self.assertEqual(safe.phase_duration_s, 2.0)
+        # v2 (truncagem proporcional): remaining 25s - max_green_removed 10s.
+        self.assertEqual(safe.phase_duration_s, 15.0)
         safety.mark_applied(safe, sim_time_s=100.0)
         # restante na decisão = next_switch 125 - timestamp 100 = 25s; truncado
-        # para 2s -> 23s de verde removido.
-        self.assertAlmostEqual(safety.recovery_debt_by_tls["I7"], 23.0)
+        # para 15s -> 10s de verde removido.
+        self.assertAlmostEqual(safety.recovery_debt_by_tls["I7"], 10.0)
 
     def test_early_green_recovery_debt_falls_back_without_next_switch(self) -> None:
         # Sem next_switch no snapshot o verde removido é desconhecido; a dívida
@@ -865,7 +892,8 @@ class Package4TSPTestCase(unittest.TestCase):
         safety.set_signal_program_verified(True)
         safe = self._approved_early_green(safety)
         safety.mark_applied(safe.copy_with(current_next_switch_s=None), sim_time_s=100.0)
-        self.assertAlmostEqual(safety.recovery_debt_by_tls["I7"], 2.0)
+        # Dívida mínima = duração truncada (15s com a truncagem proporcional v2).
+        self.assertAlmostEqual(safety.recovery_debt_by_tls["I7"], 15.0)
 
     def test_copy_with_does_not_alias_notes_list(self) -> None:
         # copy_with passou a usar dataclasses.replace; sem a cópia explícita

@@ -128,7 +128,7 @@ class SchedulePlanProviderTestCase(unittest.TestCase):
         )
         self.assertIsNotNone(prov)
         self.assertEqual(prov.seed, 57)
-        self.assertEqual(prov.schedule_delay_scale_s, 90.0)  # delay_threshold_s(60)*1.5
+        self.assertEqual(prov.schedule_delay_scale_s, 30.0)  # delay_threshold_s(20)*1.5
         self.assertEqual(prov.headway_deviation_fraction, 0.25)
 
     def test_from_config_clamps_negative_scale_and_fraction(self) -> None:

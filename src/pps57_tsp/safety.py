@@ -40,6 +40,7 @@ from .signal_control import (
     SignalGroupContract,
     apply_network_binding,
     build_controller_contract,
+    phase_sequence_clearance_problem,
 )
 
 
@@ -422,36 +423,14 @@ class TSPSafetyLayer:
         a fase conflituante atual e o verde-alvo, para o programa SUMO poder
         executar a clearance amarelo/all-red. Fail-closed em dados em falta.
         """
-        current = signal_state.current_phase_index
-        target = decision.target_phase_index
-        if current is None or target is None:
-            return "early_green_phase_indices_unknown"
-        if current == target:
-            return "early_green_target_phase_already_active"
-
         contract = self._controller_contract(decision)
-        sequence = list(contract.phase_sequence)
-        if current not in sequence or target not in sequence:
-            return "early_green_phase_not_in_configured_sequence"
-
         never_skip = bool(self.cits_config.safety_constraints.get("never_skip_yellow_or_all_red", True))
-        current_pos = sequence.index(current)
-        phases_until_target = []
-        pos = current_pos
-        for _ in range(1, len(sequence) + 1):
-            pos = (pos + 1) % len(sequence)
-            phase = sequence[pos]
-            if phase == target:
-                break
-            phases_until_target.append(phase)
-        else:
-            return "early_green_target_phase_not_in_remaining_sequence"
-
-        if not phases_until_target:
-            return "early_green_would_skip_clearance_phase"
-        if never_skip and not any(phase in contract.intergreen_phase_indices for phase in phases_until_target):
-            return "early_green_would_skip_clearance_phase"
-        return None
+        return phase_sequence_clearance_problem(
+            contract,
+            signal_state.current_phase_index,
+            decision.target_phase_index,
+            never_skip_yellow_or_all_red=never_skip,
+        )
 
     def _current_phase_conflict_check(
         self,

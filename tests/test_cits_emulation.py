@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace as dataclasses_replace
 import json
 from pathlib import Path
 import sys
@@ -112,8 +113,34 @@ class Package3CITSTestCase(unittest.TestCase):
         # OBU não decide manobra — só declara intenção (requestType).
         self.assertEqual(request.request_type, RequestType.PRIORITY_REQUEST.value)
 
-    def test_obu_generates_nominal_priority_request_from_sumo_bus_observation(self) -> None:
+    def test_obu_gates_on_time_bus_without_priority_need(self) -> None:
+        # v2: prioridade condicional ativa na config (allow_nominal_priority_
+        # requests=false) — um autocarro a horas e com headway nominal não
+        # gera SREM.
         obu = OBUEmulator(self.config)
+        observation = VehicleObservation(
+            vehicle_id="bus_STCP500_W_UNIT",
+            vehicle_class="bus",
+            type_id="bus_12m",
+            line_id="STCP500_PROXY_W",
+            route_id="route_boavista_east_to_west",
+            edge_id="I1_I2",
+            lane_id="I1_I2_0",
+            lane_position_m=500.0,
+            lane_length_m=650.0,
+            speed_mps=10.0,
+            schedule_delay_s=0.0,
+            headway_deviation_s=0.0,
+        )
+        self.assertIsNone(obu.generate_request(observation, sim_time_s=100.0))
+
+    def test_obu_generates_nominal_priority_request_when_policy_allows(self) -> None:
+        # O caminho "nominal" continua suportado quando a config o permite
+        # explicitamente (allow_nominal_priority_requests=true).
+        raw = deepcopy(self.config.raw)
+        raw["obu_policy"]["allow_nominal_priority_requests"] = True
+        config = dataclasses_replace(self.config, raw=raw)
+        obu = OBUEmulator(config)
         observation = VehicleObservation(
             vehicle_id="bus_STCP500_W_UNIT",
             vehicle_class="bus",

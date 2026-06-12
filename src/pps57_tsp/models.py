@@ -58,6 +58,13 @@ class ReasonCode(str, Enum):
     BUS_TOO_CLOSE_FOR_SAFE_RED_TRUNCATION = "bus_too_close_for_safe_red_truncation"
     TRUNCATE_CONFLICTING_PHASE = "truncate_conflicting_phase_to_anticipate_priority_movement_green"
 
+    # --- engine v2: prioridade condicional e decisão cost-aware ---
+    PRIORITY_NEED_NOT_MET = "priority_need_not_met"  # dinâmico: :delay/headway vs mínimos
+    NETWORK_PRESSURE_DEFER = "network_pressure_defer_intervention"  # dinâmico: :sinal observado
+    EARLY_GREEN_DEFERRED_MIN_GREEN = "early_green_deferred_until_min_green_served"  # dinâmico: :spent<min
+    EARLY_GREEN_PRECHECK_DEFER = "early_green_precheck_defer"  # dinâmico: :problema de sequência
+    INTERVENTION_BENEFIT_TOO_SMALL = "intervention_benefit_too_small"  # dinâmico: :saving<min
+
     # --- safety: cooldown / consecutivas / amarelo / recovery ---
     CURRENT_PHASE_IS_YELLOW = "current_phase_is_yellow_wait_for_next_cycle"
     COOLDOWN_AFTER_PRIORITY_ACTIVE = "cooldown_after_priority_active"

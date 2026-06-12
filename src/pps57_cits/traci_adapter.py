@@ -568,6 +568,7 @@ class TraciSimulationAdapter:
         halted_vehicle_count = 0
         queue_vehicle_count = 0
         waiting_time_s = 0.0
+        halted_by_lane: dict[str, int] = {}
         occupancy_values: list[float] = []
         weighted_speed_sum = 0.0
         speed_weight = 0
@@ -615,6 +616,7 @@ class TraciSimulationAdapter:
 
             vehicle_count += lane_vehicle_count
             halted_vehicle_count += lane_halted
+            halted_by_lane[lane_id] = lane_halted
             # queue_vehicle_count: por defeito == halted (proxy anterior). Com
             # real_back_of_queue, conta a fila contígua a partir da stopline
             # (subconjunto de halted quando queue_halt_speed_mps <= limiar de
@@ -660,6 +662,7 @@ class TraciSimulationAdapter:
             degraded=degraded,
             detector_read_failures=detector_read_failures,
             failed_lanes=failed_lanes,
+            halted_by_lane=halted_by_lane,
         )
 
     def _subscribe_lane_if_possible(self, lane_id: str) -> None:

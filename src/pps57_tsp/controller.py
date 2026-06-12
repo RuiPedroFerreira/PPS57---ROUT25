@@ -286,7 +286,12 @@ class TSPControlController:
             signal_state = signal_states.get(request.tls_id)
             if signal_state is None:
                 continue
-            baseline = self.engine.decide(request, signal_state, sim_time_s)
+            baseline = self.engine.decide(
+                request,
+                signal_state,
+                sim_time_s,
+                network_state=network_states.get(request.tls_id) if network_states else None,
+            )
             # Tempo desde a última intervenção neste TLS (None se nunca houve):
             # alimenta o eixo intervention_* do state bucket no runtime policy
             # para coerência treino<->inferência.

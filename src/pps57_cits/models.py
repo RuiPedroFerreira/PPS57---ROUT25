@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 @dataclass(frozen=True)
@@ -106,3 +106,8 @@ class NetworkStateSnapshot:
     degraded: bool = False
     detector_read_failures: int = 0
     failed_lanes: List[str] = field(default_factory=list)
+    # Halted por lane controlada (estado bruto do passo, não agregado): permite
+    # ao motor de decisão separar pressão na aproximação prioritária da pressão
+    # transversal sem inventar sinais novos — é a mesma leitura que alimenta
+    # halted_vehicle_count, apenas sem a soma.
+    halted_by_lane: Dict[str, int] = field(default_factory=dict)
