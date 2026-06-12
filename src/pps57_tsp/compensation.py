@@ -66,8 +66,15 @@ class GreenCompensationManager:
         sim_time_s: float,
         *,
         apply_actuation: bool,
+        skip_tls: Optional[set] = None,
     ) -> List[ActuationResult]:
-        """Paga prestações de compensação nas transições de fase deste passo."""
+        """Paga prestações de compensação nas transições de fase deste passo.
+
+        ``skip_tls``: TLS com atuação TSP neste passo ficam de fora — o
+        signal_state foi lido antes da atuação, e comandar com base nele
+        reinstalaria o verde que o early green acabou de cortar. A transição
+        é reavaliada no passo seguinte (a memória de fase actualiza na mesma).
+        """
         if not self.enabled:
             return []
         max_per_cycle_s = float(
@@ -78,6 +85,11 @@ class GreenCompensationManager:
         for tls_id, state in signal_states.items():
             current = state.current_phase_index
             previous = self._last_phase_by_tls.get(tls_id)
+            if skip_tls and tls_id in skip_tls:
+                # Não actualiza a memória de fase: se a entrada na fase lesada
+                # coincidiu com a atuação TSP, a transição ainda conta como
+                # pendente no próximo passo (senão perdia-se a prestação).
+                continue
             self._last_phase_by_tls[tls_id] = current
             if current is None or current == previous:
                 continue  # paga uma vez, na entrada da fase

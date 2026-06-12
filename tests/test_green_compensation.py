@@ -177,6 +177,39 @@ class GreenCompensationTestCase(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertAlmostEqual(results[0].parameters["granted_s"], 1.0)
 
+    def test_skips_tls_with_tsp_actuation_in_same_step(self) -> None:
+        # Conflito real: o signal_state foi lido antes da atuação TSP deste
+        # passo; pagar compensação com base nele reinstalaria o verde que o
+        # early green acabou de cortar. O TLS intervencionado é saltado e a
+        # transição pendente paga no passo seguinte.
+        manager = self._manager()
+        control = _RecordingSignalControl()
+        manager.register_applied(_early_green_decision())
+        manager.step(
+            {"I2": _state("I2", 0, next_switch_s=210.0, spent_s=5.0)},
+            control,
+            200.0,
+            apply_actuation=True,
+        )
+        results = manager.step(
+            {"I2": _state("I2", 3, next_switch_s=240.0, spent_s=0.5)},
+            control,
+            210.0,
+            apply_actuation=True,
+            skip_tls={"I2"},
+        )
+        self.assertEqual(results, [])
+        self.assertEqual(control.calls, [])
+        # Passo seguinte sem atuação TSP: a transição ainda conta -> paga.
+        results = manager.step(
+            {"I2": _state("I2", 3, next_switch_s=239.0, spent_s=1.5)},
+            control,
+            211.0,
+            apply_actuation=True,
+        )
+        self.assertEqual(len(results), 1)
+        self.assertAlmostEqual(results[0].parameters["granted_s"], 8.0)
+
     def test_disabled_config_is_a_noop(self) -> None:
         manager = GreenCompensationManager(self.cits, TSPConfig(root=ROOT, raw={}))
         control = _RecordingSignalControl()

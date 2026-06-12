@@ -84,6 +84,7 @@ class TSPControlController:
         # está ausente da config; corre pré-Safety e só desce decisões.
         self.corridor_arbiter = CorridorArbiter(self.cits_config, self.tsp_config)
         self.compensation = GreenCompensationManager(self.cits_config, self.tsp_config)
+        self._intervened_tls_this_step: set[str] = set()
         self.request_store = PriorityRequestStore(
             ttl_s=float(self.cits_config.obu_policy.get("request_lifecycle_ttl_s", 30.0))
         )
@@ -208,6 +209,7 @@ class TSPControlController:
                         signal_control,
                         sim_time_s,
                         apply_actuation=effective_actuation,
+                        skip_tls=self._intervened_tls_this_step,
                     ):
                         actuation_logger.write(comp_result)
                         compensations.append(comp_result)
@@ -274,6 +276,10 @@ class TSPControlController:
         # (frágil e silenciosamente quebrado em modo no-actuation/downgraded, onde
         # mark_applied não corre e a telemetria contava intervenções duplicadas).
         intervened_tls: set[str] = set()
+        # Exposto para o GreenCompensationManager saltar TLS intervencionados
+        # neste passo: pagar compensação com o signal_state pré-atuação
+        # reinstalaria o verde que o early green acabou de cortar.
+        self._intervened_tls_this_step = intervened_tls
         response_list = list(responses)
         resolved_requests_by_id = dict(requests_by_id)
         for response in response_list:
