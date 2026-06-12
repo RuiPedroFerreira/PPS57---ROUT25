@@ -185,6 +185,61 @@ class EngineV2CostAwareTestCase(unittest.TestCase):
         self.assertGreater(decision_free.extension_s, 6.0)
 
     # ------------------------------------------------------------------
+    # v2.1: dial congestionado (necessidade endurecida, score alcançável)
+    # ------------------------------------------------------------------
+    def test_congested_need_gate_requires_more_delay(self) -> None:
+        # delay=25 passa a necessidade base (20s) mas não a congestionada (35s).
+        request = self._request_i2(schedule_delay_s=25.0)
+        congested = self._snapshot(tls_id="I2", occupancy=0.6)
+        decision = self.engine.decide(
+            request, self._state_i2_green(), sim_time_s=100.0, network_state=congested
+        )
+        self.assertEqual(decision.action, TSPAction.REJECT.value)
+        self.assertIn("priority_need_not_met", decision.reason)
+
+        free_flow = self._snapshot(tls_id="I2", occupancy=0.1)
+        decision = self.engine.decide(
+            request, self._state_i2_green(), sim_time_s=100.0, network_state=free_flow
+        )
+        self.assertNotIn("priority_need_not_met", decision.reason)
+
+    def test_congested_dial_is_reachable_with_material_delay(self) -> None:
+        # Ao contrário do score-cliff 0.5 (inalcançável no regime proxy), o
+        # dial 0.4 deixa passar um autocarro com atraso material (100s).
+        request = self._request_i2(schedule_delay_s=100.0)
+        congested = self._snapshot(tls_id="I2", occupancy=0.6)
+        decision = self.engine.decide(
+            request, self._state_i2_green(), sim_time_s=100.0, network_state=congested
+        )
+        self.assertNotEqual(decision.action, TSPAction.REJECT.value)
+
+    # ------------------------------------------------------------------
+    # v2.1: vítimas por máscara RYG
+    # ------------------------------------------------------------------
+    def test_extension_ignores_pressure_on_green_sharing_lanes(self) -> None:
+        # I3_I2_0 partilha o verde (RYG "GGrr") — congestão aí não paga a
+        # extensão, por isso o tecto não encolhe.
+        request = self._request_i2(eta_to_stopline_s=40.0)
+        snapshot = self._snapshot(tls_id="I2", halted_by_lane={"I3_I2_0": 9})
+        decision = self.engine.decide(
+            request,
+            self._state_i2_green(next_switch_s=101.0),
+            sim_time_s=100.0,
+            network_state=snapshot,
+        )
+        self.assertEqual(decision.action, TSPAction.GREEN_EXTENSION.value)
+        self.assertGreater(decision.extension_s, 6.0)
+
+    def test_early_green_ignores_pressure_on_red_lanes(self) -> None:
+        # I6_I7_0 está em vermelho (RYG "rrGG") — a sua fila não é vítima da
+        # truncagem da fase verde corrente, por isso não defere o early green.
+        snapshot = self._snapshot(halted_by_lane={"I6_I7_0": 9})
+        decision = self.engine.decide(
+            self._request_i7(), self._state_i7_red(), sim_time_s=100.0, network_state=snapshot
+        )
+        self.assertEqual(decision.action, TSPAction.EARLY_GREEN.value)
+
+    # ------------------------------------------------------------------
     # Recuperabilidade: truncagem com poupança marginal não vale o custo
     # ------------------------------------------------------------------
     def test_marginal_saving_defers_early_green(self) -> None:

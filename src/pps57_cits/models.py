@@ -49,6 +49,16 @@ class VehicleObservation:
     stop_count: int = 0
     eta_params: EtaParams = field(default_factory=EtaParams)
 
+    # Bit 4 do getStopState do SUMO = parado numa busStop (docs TraCI,
+    # Vehicle Value Retrieval, "stop state"). O campo `stop_count` guarda o
+    # bitmask bruto do getStopState (nome histórico).
+    _STOP_STATE_AT_BUS_STOP = 16
+
+    @property
+    def is_at_bus_stop(self) -> bool:
+        """True enquanto o veículo está parado a servir uma busStop."""
+        return bool(int(self.stop_count) & self._STOP_STATE_AT_BUS_STOP)
+
     @property
     def distance_to_stopline_m(self) -> float:
         return max(self.lane_length_m - self.lane_position_m, 0.0)

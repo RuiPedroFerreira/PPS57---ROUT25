@@ -19,11 +19,12 @@
     "green_extension_max_s": 12,
     "early_green_min_eta_s": 10,
     "red_truncation_to_s": 2,
-    "_v2_policy_comment": "Engine v2 (prioridade condicional e decisao cost-aware). need_min_schedule_delay_s=20 esta calibrado ao regime PROXY de atraso (max(schedule_delay, waiting, accumulated_waiting) do SUMO; distribuicao v1 observada: p50=8.5s p75=15.5s p90=23.5s max=63s) - com AVL real (schedule_plan.enabled=true) subir para 60-120s, pratica comum de prioridade condicional. cross_pressure_halted_threshold=8 alinha com o limiar de spillback dos detectores E2 (intervals_above_8_veh). max_green_removed_per_event_s limita a severidade POR EVENTO da truncagem (o recovery debt da safety ja limita a frequencia). min_useful_intervention_s evita truncagens cujo teto de poupanca para o TP e marginal.",
+    "_v2_policy_comment": "Engine v2 (prioridade condicional e decisao cost-aware). need_min_schedule_delay_s=20 esta calibrado ao regime PROXY de atraso (max(schedule_delay, waiting, accumulated_waiting) do SUMO; distribuicao v1 observada: p50=8.5s p75=15.5s p90=23.5s max=63s) - com AVL real (schedule_plan.enabled=true) subir para 60-120s, pratica comum de prioridade condicional. cross_pressure_halted_threshold=8 alinha com o limiar de spillback dos detectores E2 (intervals_above_8_veh). v2.1: sob congestao (occupancy >= congested_occupancy_threshold) o dial e o portao de necessidade endurecido (need_min_schedule_delay_congested_s=35) + min_priority_score_congested=0.4 ALCANCAVEL (score max do regime proxy ~0.485; 0.5 desligava o TSP por inteiro sob saturacao). Vitimas de pressao medidas pela mascara RYG: extensao -> lanes em vermelho puro; early green -> lanes com verde corrente. max_green_removed_per_event_s limita a severidade POR EVENTO da truncagem (o recovery debt da safety ja limita a frequencia). min_useful_intervention_s evita truncagens cujo teto de poupanca para o TP e marginal.",
     "need_min_schedule_delay_s": 20,
+    "need_min_schedule_delay_congested_s": 35,
     "need_min_headway_deviation_s": 120,
     "congested_occupancy_threshold": 0.5,
-    "min_priority_score_congested": 0.5,
+    "min_priority_score_congested": 0.4,
     "cross_pressure_halted_threshold": 8,
     "green_extension_max_congested_s": 6,
     "max_green_removed_per_event_s": 10,
@@ -47,12 +48,15 @@
     "allow_green_extension": true,
     "allow_red_truncation": true,
     "allow_direct_phase_jump": false,
+    "compensation_enabled": true,
+    "compensation_max_per_cycle_s": 8,
+    "compensation_note": "v2.1 NEMA-style: a fase truncada por um early green recebe verde de compensacao na proxima activacao, em prestacoes <= compensation_max_per_cycle_s e sem exceder max_total_green_s (fail-closed sem next_switch/spent). Ataca o custo residual no trafego geral medido na geracao v1 (+20% a +44%).",
     "note": "No MVP, early_green é implementado como redução segura da duração da fase corrente via setPhaseDuration, não como salto direto de fase. Isto evita saltar amarelo/all-red."
   },
   "corridor": {
     "_comment": "Árbitro de corredor cross-TLS (P6), opt-in, corre pré-Safety e só DESCE decisões (a Safety Layer continua o portão final). Todas as features desligadas por defeito = no-op. É otimização, NÃO segurança — distinto dos safety_constraints fail-closed em cits_v2x_config.json. max_corridor_recovery_debt_s: null ou <= 0 = cap desligado (0 permite a primeira intervenção).",
-    "max_corridor_recovery_debt_s": null,
-    "respect_downstream_spillback": false,
+    "max_corridor_recovery_debt_s": 48,
+    "respect_downstream_spillback": true,
     "flag_green_wave": false
   },
   "network_profile": {

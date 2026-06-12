@@ -113,6 +113,51 @@ class Package3CITSTestCase(unittest.TestCase):
         # OBU não decide manobra — só declara intenção (requestType).
         self.assertEqual(request.request_type, RequestType.PRIORITY_REQUEST.value)
 
+    def test_obu_suppresses_requests_while_bus_at_stop(self) -> None:
+        # v2.1: bus atrasado mas a servir uma paragem (getStopState bit 4) não
+        # emite SREM — espelho do inibidor de porta-aberta dos sistemas reais.
+        obu = OBUEmulator(self.config)
+        observation = VehicleObservation(
+            vehicle_id="bus_STCP500_W_UNIT",
+            vehicle_class="bus",
+            type_id="bus_12m",
+            line_id="STCP500_PROXY_W",
+            route_id="route_boavista_east_to_west",
+            edge_id="I1_I2",
+            lane_id="I1_I2_0",
+            lane_position_m=500.0,
+            lane_length_m=650.0,
+            speed_mps=0.0,
+            schedule_delay_s=90.0,
+            stop_count=16,
+        )
+        self.assertIsNone(obu.generate_request(observation, sim_time_s=100.0))
+
+    def test_obu_cancels_active_request_when_bus_dwells_at_stop(self) -> None:
+        # Pedido activo + bus encosta na paragem -> priorityCancellation.
+        obu = OBUEmulator(self.config)
+        moving = VehicleObservation(
+            vehicle_id="bus_STCP500_W_UNIT",
+            vehicle_class="bus",
+            type_id="bus_12m",
+            line_id="STCP500_PROXY_W",
+            route_id="route_boavista_east_to_west",
+            edge_id="I1_I2",
+            lane_id="I1_I2_0",
+            lane_position_m=500.0,
+            lane_length_m=650.0,
+            speed_mps=10.0,
+            schedule_delay_s=90.0,
+        )
+        initial = obu.generate_requests([moving], sim_time_s=100.0)
+        self.assertEqual(len(initial), 1)
+        self.assertFalse(initial[0].is_cancellation)
+
+        dwelling = dataclasses_replace(moving, speed_mps=0.0, stop_count=16)
+        followup = obu.generate_requests([dwelling], sim_time_s=101.0)
+        self.assertEqual(len(followup), 1)
+        self.assertTrue(followup[0].is_cancellation)
+
     def test_obu_gates_on_time_bus_without_priority_need(self) -> None:
         # v2: prioridade condicional ativa na config (allow_nominal_priority_
         # requests=false) — um autocarro a horas e com headway nominal não

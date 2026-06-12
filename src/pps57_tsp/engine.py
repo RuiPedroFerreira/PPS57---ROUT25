@@ -59,12 +59,32 @@ class TSPDecisionEngine:
                 score=score,
             )
 
+        # --- v2.1: estado de congestão observado (afecta necessidade e score) ---
+        occupancy_threshold = _non_negative_float(policy, "congested_occupancy_threshold", 0.5)
+        congested = network_state is not None and network_state.occupancy >= occupancy_threshold
+        congestion_notes: list[str] = []
+
         # --- v2: portão de necessidade (prioridade condicional) ---
         # Prática real de TSP: só veículos com necessidade material (atraso ou
         # desvio de headway) recebem prioridade; proximidade e classe nunca
         # chegam sozinhas. Emergência tem hierarquia própria e não passa aqui.
         if not emergency_request:
             need_delay_s = _non_negative_float(policy, "need_min_schedule_delay_s", 20.0)
+            if congested:
+                # v2.1: sob congestão o atraso exigido sobe — só autocarros
+                # materialmente atrasados justificam roubar capacidade a uma
+                # rede saturada. Dial alcançável, ao contrário do score-cliff
+                # (o score máximo do regime proxy é ~0.485, pelo que um
+                # min_score congestionado de 0.5 desligava o TSP por inteiro).
+                congested_need_s = _non_negative_float(
+                    policy, "need_min_schedule_delay_congested_s", 35.0
+                )
+                if congested_need_s > need_delay_s:
+                    need_delay_s = congested_need_s
+                    congestion_notes.append(
+                        f"need_min_delay elevado para {need_delay_s:.0f}s: "
+                        f"occupancy {network_state.occupancy:.2f}>={occupancy_threshold:.2f}"
+                    )
             need_headway_s = _non_negative_float(policy, "need_min_headway_deviation_s", 120.0)
             headway_abs = abs(request.headway_deviation_s)
             if request.schedule_delay_s < need_delay_s and headway_abs < need_headway_s:
@@ -81,16 +101,15 @@ class TSPDecisionEngine:
                     score=score,
                     notes=[
                         "Prioridade condicional: sem atraso/desvio de headway material, "
-                        "o pedido não gera intervenção semafórica."
+                        "o pedido não gera intervenção semafórica.",
+                        *congestion_notes,
                     ],
                 )
 
         # --- v2: limiar de score sensível a congestão ---
-        congestion_notes: list[str] = []
-        if not emergency_request and network_state is not None:
-            occupancy_threshold = _non_negative_float(policy, "congested_occupancy_threshold", 0.5)
-            congested_min_score = _positive_float(policy, "min_priority_score_congested", 0.5)
-            if network_state.occupancy >= occupancy_threshold and congested_min_score > min_score:
+        if not emergency_request and congested:
+            congested_min_score = _positive_float(policy, "min_priority_score_congested", 0.4)
+            if congested_min_score > min_score:
                 min_score = congested_min_score
                 congestion_notes.append(
                     f"min_score elevado para {min_score:.2f}: "
@@ -140,8 +159,11 @@ class TSPDecisionEngine:
             extension_max_s = max(extension_min_s, _positive_float(policy, "green_extension_max_s", 12.0))
             # v2: sob pressão transversal o tecto da extensão encolhe — a
             # extensão continua permitida (instrumento suave), mas o verde
-            # roubado às transversais carregadas fica limitado.
-            cross_halted = self._cross_pressure_halted(request, network_state)
+            # roubado às transversais carregadas fica limitado. v2.1: vítimas
+            # = lanes em vermelho puro (o sentido oposto partilha o verde).
+            cross_halted = self._victim_pressure_halted(
+                request, signal_state, network_state, victims="red"
+            )
             cross_threshold = _non_negative_float(policy, "cross_pressure_halted_threshold", 8.0)
             if (
                 not emergency_request
@@ -201,7 +223,11 @@ class TSPDecisionEngine:
             pressure_signals: list[str] = []
             if network_state.spillback_risk:
                 pressure_signals.append("spillback_risk")
-            cross_halted = self._cross_pressure_halted(request, network_state)
+            # v2.1: vítimas do early green = lanes com verde na fase corrente
+            # (é a descarga delas que a truncagem corta).
+            cross_halted = self._victim_pressure_halted(
+                request, signal_state, network_state, victims="green"
+            )
             cross_threshold = _non_negative_float(policy, "cross_pressure_halted_threshold", 8.0)
             if cross_halted is not None and cross_halted >= cross_threshold:
                 pressure_signals.append(f"cross_halted_{int(cross_halted)}>={int(cross_threshold)}")
@@ -310,29 +336,70 @@ class TSPDecisionEngine:
             ],
         )
 
-    def _cross_pressure_halted(
-        self, request: SREMLike, network_state: Optional[NetworkStateSnapshot]
-    ) -> Optional[int]:
-        """Veículos parados nas lanes controladas que NÃO servem a aproximação do bus.
+    _GREEN_CHARS = ("g", "G")
+    _RED_CHARS = ("r", "R")
 
-        Usa o halted por lane já lido pelo adaptador (sem sinais novos). Lanes
-        internas de junção (':') ficam de fora por misturarem movimentos.
-        Devolve None quando não há snapshot/decomposição — caller trata como
-        'sem evidência de pressão' (a Safety mantém os seus próprios bounds).
+    def _victim_pressure_halted(
+        self,
+        request: SREMLike,
+        signal_state: SignalState,
+        network_state: Optional[NetworkStateSnapshot],
+        *,
+        victims: str,
+    ) -> Optional[int]:
+        """Veículos parados nas lanes realmente lesadas pela intervenção (v2.1).
+
+        victims="red" (extensão de verde): lesadas são as aproximações sem
+        qualquer link verde — o sentido oposto do corredor partilha o verde e
+        não paga a extensão, por isso não conta. victims="green" (early
+        green): lesadas são as lanes com link verde na fase corrente, cuja
+        descarga de fila seria truncada.
+
+        Usa o halted por lane do adaptador + a máscara RYG do signal_state
+        (sem sinais novos). Lanes internas (':') e a aproximação do bus ficam
+        de fora. Sem máscara alinhável (len != controlled_lanes) recai no
+        comportamento v2 — contar todas as lanes externas — que é conservador
+        (defere mais). Devolve None sem snapshot/decomposição.
         """
         if network_state is None or not network_state.halted_by_lane:
             return None
         bus_edge = str(request.current_edge_id or "")
         if not bus_edge:
             return None
+        chars_by_lane = self._link_chars_by_lane(signal_state)
         total = 0
         for lane_id, halted in network_state.halted_by_lane.items():
             if lane_id.startswith(":"):
                 continue
             if lane_id.rsplit("_", 1)[0] == bus_edge:
                 continue
+            chars = chars_by_lane.get(lane_id)
+            if chars is not None:
+                has_green = any(c in self._GREEN_CHARS for c in chars)
+                has_red = any(c in self._RED_CHARS for c in chars)
+                if victims == "red" and (has_green or not has_red):
+                    continue
+                if victims == "green" and not has_green:
+                    continue
             total += int(halted or 0)
         return total
+
+    @staticmethod
+    def _link_chars_by_lane(signal_state: SignalState) -> dict[str, str]:
+        """Mapa lane -> caracteres RYG dos seus links (concatenados).
+
+        controlled_lanes repete a lane por cada link controlado, alinhada com
+        o índice do estado RYG; um desalinhamento devolve {} (fallback do
+        caller para o comportamento sem máscara).
+        """
+        lanes = list(signal_state.controlled_lanes or [])
+        ryg = str(signal_state.red_yellow_green_state or "")
+        if not lanes or len(lanes) != len(ryg):
+            return {}
+        chars: dict[str, str] = {}
+        for lane_id, char in zip(lanes, ryg):
+            chars[lane_id] = chars.get(lane_id, "") + char
+        return chars
 
     def _min_green_for_current_phase(
         self, contract: ControllerContract, signal_state: SignalState

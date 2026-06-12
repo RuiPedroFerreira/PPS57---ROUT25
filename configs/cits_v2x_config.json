@@ -76,6 +76,7 @@
     "request_refresh_s": 5,
     "request_ttl_s": 12,
     "allow_nominal_priority_requests": false,
+    "suppress_requests_at_stop": true,
     "priority_line_ids": [
             "STCP500_PROXY_E",
             "STCP500_PROXY_W",
