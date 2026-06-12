@@ -83,15 +83,35 @@ class CorridorArbiterTestCase(unittest.TestCase):
         arbiter = CorridorArbiter(CITS, tsp_with_corridor(max_corridor_recovery_debt_s=True))
         self.assertTrue(arbiter.arbitrate(decision(), recovery_debt_by_tls={"I1": 999.0}).allow)
 
-    def test_shipped_default_config_is_a_noop(self) -> None:
-        # The real tsp_safety_config.json ships a corridor block with everything
-        # disabled (null cap, false flags) -> behaviour-neutral.
+    def test_shipped_config_enables_corridor_protections(self) -> None:
+        # v2.1: a config de fábrica liga o árbitro — cap de dívida de corredor
+        # (48s = 2x o cap por-TLS da safety) e respeito ao spillback a jusante.
         tsp = load_tsp_config(ROOT / "configs/tsp_safety_config.json", root=ROOT)
         arbiter = CorridorArbiter(CITS, tsp)
         out = arbiter.arbitrate(
             decision(),
             recovery_debt_by_tls={"I1": 999.0},
             network_states={DOWNSTREAM_TLS: snapshot(DOWNSTREAM_TLS, True)},
+        )
+        self.assertFalse(out.allow)
+        self.assertEqual(
+            out.reason_code, ReasonCode.DEFERRED_CORRIDOR_RECOVERY_DEBT_EXHAUSTED.value
+        )
+        # Abaixo do cap de dívida, o spillback a jusante continua a deferir.
+        out = arbiter.arbitrate(
+            decision(),
+            recovery_debt_by_tls={"I1": 1.0},
+            network_states={DOWNSTREAM_TLS: snapshot(DOWNSTREAM_TLS, True)},
+        )
+        self.assertFalse(out.allow)
+        self.assertEqual(
+            out.reason_code, ReasonCode.DEFERRED_DOWNSTREAM_SPILLBACK_RISK.value
+        )
+        # Sem dívida nem spillback, a config de fábrica permite a atuação.
+        out = arbiter.arbitrate(
+            decision(),
+            recovery_debt_by_tls={"I1": 1.0},
+            network_states={DOWNSTREAM_TLS: snapshot(DOWNSTREAM_TLS, False)},
         )
         self.assertTrue(out.allow)
         self.assertIsNone(out.reason_code)

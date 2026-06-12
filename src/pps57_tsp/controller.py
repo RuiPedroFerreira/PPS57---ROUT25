@@ -36,6 +36,7 @@ from pps57_sumo.network_binding import NetworkBinding, build_network_binding
 
 from .actuator import TraciTSPActuator
 from .config import TSPConfig
+from .compensation import GreenCompensationManager
 from .corridor_arbiter import CorridorArbiter
 from .engine import TSPDecisionEngine
 from .logger import TSPJsonlLogger, write_tsp_summary
@@ -82,6 +83,7 @@ class TSPControlController:
         # P6: árbitro de corredor (cross-TLS). No-op quando o bloco `corridor`
         # está ausente da config; corre pré-Safety e só desce decisões.
         self.corridor_arbiter = CorridorArbiter(self.cits_config, self.tsp_config)
+        self.compensation = GreenCompensationManager(self.cits_config, self.tsp_config)
         self.request_store = PriorityRequestStore(
             ttl_s=float(self.cits_config.obu_policy.get("request_lifecycle_ttl_s", 30.0))
         )
@@ -104,6 +106,7 @@ class TSPControlController:
         cits_summary = IncrementalCITSSummary()
         decisions: List[TSPDecision] = []
         actuations: List[ActuationResult] = []
+        compensations: List[ActuationResult] = []
 
         try:
             adapter.start()
@@ -195,6 +198,19 @@ class TSPControlController:
                         actuations=actuations,
                     )
                     self._publish_log_collect(final_responses, cits_logger, cits_summary)
+
+                    # v2.1: paga compensações nas transições de fase. Lista
+                    # separada de `actuations` para não inflacionar os KPIs de
+                    # atuação TSP (applied_events); o log JSONL partilhado
+                    # mantém a rastreabilidade completa.
+                    for comp_result in self.compensation.step(
+                        signal_states,
+                        signal_control,
+                        sim_time_s,
+                        apply_actuation=effective_actuation,
+                    ):
+                        actuation_logger.write(comp_result)
+                        compensations.append(comp_result)
             finally:
                 adapter.close()
 
@@ -231,6 +247,10 @@ class TSPControlController:
                     tls_id: round(value, 3)
                     for tls_id, value in sorted(self.safety.recovery_debt_by_tls.items())
                     if value > 0
+                },
+                "green_compensation": {
+                    **self.compensation.summary(),
+                    "events": len(compensations),
                 },
             },
         )
@@ -411,6 +431,9 @@ class TSPControlController:
                         # contrário pedidos subsequentes no mesmo TLS não seriam
                         # bloqueados e a telemetria não refletiria a atuação real.
                         self.safety.mark_applied(safe_decision, sim_time_s)
+                        # v2.1: a fase truncada por um early green ganha direito
+                        # a verde de compensação no ciclo seguinte (NEMA-style).
+                        self.compensation.register_applied(safe_decision)
                     if result.applied:
                         self.request_store.mark_granted(request, sim_time_s)
                         rsu = self.rsu_agents.get(request.rsu_id)

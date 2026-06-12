@@ -64,6 +64,7 @@ class ReasonCode(str, Enum):
     EARLY_GREEN_DEFERRED_MIN_GREEN = "early_green_deferred_until_min_green_served"  # dinâmico: :spent<min
     EARLY_GREEN_PRECHECK_DEFER = "early_green_precheck_defer"  # dinâmico: :problema de sequência
     INTERVENTION_BENEFIT_TOO_SMALL = "intervention_benefit_too_small"  # dinâmico: :saving<min
+    GREEN_COMPENSATION_PAYBACK = "green_compensation_payback"
 
     # --- safety: cooldown / consecutivas / amarelo / recovery ---
     CURRENT_PHASE_IS_YELLOW = "current_phase_is_yellow_wait_for_next_cycle"

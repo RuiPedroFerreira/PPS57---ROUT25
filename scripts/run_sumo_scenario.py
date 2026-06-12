@@ -682,6 +682,19 @@ def compare_scenario_runs(runs: dict[str, dict]) -> dict:
         )
         if significance is not None:
             comparison["bus_time_loss_replication_significance"] = significance
+        # v2.1: o trade-off precisa de IC nos dois lados — o custo no tráfego
+        # geral merece a mesma honestidade estatística que o ganho do TP.
+        # (lower_is_better=True: "melhoria" positiva = redução do time loss;
+        # um custo TSP real aparece como significant_regression.)
+        general_significance = _paired_significance(
+            baseline_run,
+            runs.get(run_type, {}),
+            "general_traffic",
+            "mean_time_loss_s",
+            lower_is_better=True,
+        )
+        if general_significance is not None:
+            comparison["general_traffic_time_loss_replication_significance"] = general_significance
         comparisons[f"baseline_vs_{run_type}"] = comparison
     return comparisons
 
@@ -855,23 +868,32 @@ def render_scenario_report(summary: dict) -> str:
         )
 
     significance_rows = [
-        (key, comparison["bus_time_loss_replication_significance"])
+        (key, comparison[sig_key])
         for key, comparison in summary.get("comparisons", {}).items()
-        if isinstance(comparison, dict) and "bus_time_loss_replication_significance" in comparison
+        if isinstance(comparison, dict)
+        for sig_key in (
+            "bus_time_loss_replication_significance",
+            "general_traffic_time_loss_replication_significance",
+        )
+        if sig_key in comparison
     ]
     if significance_rows:
         lines += [
             "",
             f"Seeds (réplicas): {summary.get('seeds', [])}",
             "",
-            "## Bus timeLoss — significância emparelhada por seed (IC95 t-Student)",
+            "## timeLoss — significância emparelhada por seed (IC95 t-Student)",
             "",
-            "| Comparação | n | Melhoria média (s) | IC95 baixo | IC95 alto | Veredito |",
-            "|---|---:|---:|---:|---:|---|",
+            "Melhoria = redução vs baseline; custo TSP real no tráfego geral",
+            "aparece como significant_regression.",
+            "",
+            "| Comparação | Métrica | n | Melhoria média (s) | IC95 baixo | IC95 alto | Veredito |",
+            "|---|---|---:|---:|---:|---:|---|",
         ]
         for key, sig in significance_rows:
             lines.append(
-                f"| {key} | {sig.get('n', '')} | {sig.get('mean_improvement', '')} | "
+                f"| {key} | {sig.get('metric', '')} | {sig.get('n', '')} | "
+                f"{sig.get('mean_improvement', '')} | "
                 f"{sig.get('ci95_low', '')} | {sig.get('ci95_high', '')} | {sig.get('verdict', '')} |"
             )
     return "\n".join(lines) + "\n"
