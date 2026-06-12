@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 @dataclass(frozen=True)
@@ -49,6 +49,16 @@ class VehicleObservation:
     stop_count: int = 0
     eta_params: EtaParams = field(default_factory=EtaParams)
 
+    # Bit 4 do getStopState do SUMO = parado numa busStop (docs TraCI,
+    # Vehicle Value Retrieval, "stop state"). O campo `stop_count` guarda o
+    # bitmask bruto do getStopState (nome histórico).
+    _STOP_STATE_AT_BUS_STOP = 16
+
+    @property
+    def is_at_bus_stop(self) -> bool:
+        """True enquanto o veículo está parado a servir uma busStop."""
+        return bool(int(self.stop_count) & self._STOP_STATE_AT_BUS_STOP)
+
     @property
     def distance_to_stopline_m(self) -> float:
         return max(self.lane_length_m - self.lane_position_m, 0.0)
@@ -63,6 +73,27 @@ class VehicleObservation:
         if self.speed_mps < params.min_speed_mps:
             return free_flow_eta + queue_penalty_s + min(self.waiting_time_s, params.waiting_cap_s)
         return min(current_speed_eta, free_flow_eta + queue_penalty_s)
+
+    @property
+    def eta_queue_delay_included_s(self) -> float:
+        """Componente de fila EFETIVAMENTE incluída em eta_to_stopline_s.
+
+        Branch-aware: no ramo em movimento o min() pode escolher o ETA por
+        velocidade actual, caso em que a penalização de fila não entrou — só
+        conta a diferença que a penalização realmente acrescentou. Vai no SREM
+        (operator_telemetry.eta_queue_delay_s) para o engine deduzir antes de
+        somar a correção queue-aware por detetor (senão a mesma fila parada
+        contava duas vezes e required_green_s inflava)."""
+        params = self.eta_params
+        distance = self.distance_to_stopline_m
+        current_speed_eta = distance / max(self.speed_mps, params.min_speed_mps)
+        free_flow_eta = distance / params.free_flow_speed_mps
+        queue_penalty_s = self.queue_ahead_vehicle_count * params.queue_penalty_s
+        if self.speed_mps < params.min_speed_mps:
+            return queue_penalty_s
+        return min(current_speed_eta, free_flow_eta + queue_penalty_s) - min(
+            current_speed_eta, free_flow_eta
+        )
 
     @property
     def is_bus_like(self) -> bool:
@@ -106,3 +137,8 @@ class NetworkStateSnapshot:
     degraded: bool = False
     detector_read_failures: int = 0
     failed_lanes: List[str] = field(default_factory=list)
+    # Halted por lane controlada (estado bruto do passo, não agregado): permite
+    # ao motor de decisão separar pressão na aproximação prioritária da pressão
+    # transversal sem inventar sinais novos — é a mesma leitura que alimenta
+    # halted_vehicle_count, apenas sem a soma.
+    halted_by_lane: Dict[str, int] = field(default_factory=dict)

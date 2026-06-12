@@ -308,6 +308,10 @@ class OperatorTelemetry:
     headway_deviation_s: float = 0.0
     distance_to_stopline_m: float = 0.0
     eta_to_stopline_s: float = 0.0
+    # Componente de fila já embutida em eta_to_stopline_s (OBU queue-aware).
+    # Permite ao engine deduzi-la antes de aplicar a correção por detetor —
+    # 0.0 (default/fontes externas) significa "ETA raw, correção integral".
+    eta_queue_delay_s: float = 0.0
     operator_priority_class: str = OperatorPriorityClass.NOMINAL.value
     line_id: str = ""
     route_id: str = ""
@@ -479,6 +483,10 @@ class SREMLike(CITSMessage):
     @property
     def eta_to_stopline_s(self) -> float:
         return self.operator_telemetry.eta_to_stopline_s if self.operator_telemetry else 0.0
+
+    @property
+    def eta_queue_delay_s(self) -> float:
+        return self.operator_telemetry.eta_queue_delay_s if self.operator_telemetry else 0.0
 
     @property
     def priority_level(self) -> str:
@@ -732,6 +740,8 @@ def _validate_srem(message: SREMLike, errors: List[str]) -> None:
             errors.append("srem.operator_telemetry.distance_negative")
         if telemetry.eta_to_stopline_s < 0:
             errors.append("srem.operator_telemetry.eta_negative")
+        if telemetry.eta_queue_delay_s < 0:
+            errors.append("srem.operator_telemetry.eta_queue_delay_negative")
         if telemetry.operator_priority_class not in _enum_values(OperatorPriorityClass):
             errors.append("srem.operator_telemetry.priority_class_unsupported")
         if not telemetry.intersection_alias:
@@ -918,6 +928,7 @@ def synth_srem(
     line_id: str = "",
     route_id: str = "",
     eta_to_stopline_s: float = 15.0,
+    eta_queue_delay_s: float = 0.0,
     distance_to_stopline_m: float = 150.0,
     speed_mps: float = 10.0,
     schedule_delay_s: float = 120.0,
@@ -976,6 +987,7 @@ def synth_srem(
         headway_deviation_s=headway_deviation_s,
         distance_to_stopline_m=distance_to_stopline_m,
         eta_to_stopline_s=eta_to_stopline_s,
+        eta_queue_delay_s=eta_queue_delay_s,
         operator_priority_class=operator_priority_class,
         line_id=line_id,
         route_id=route_id,

@@ -67,6 +67,14 @@ class PriorityRequestStore:
         state.last_seen_s = sim_time_s
         self.cleared_count += 1
 
+    def status_for(self, vehicle_id: str, tls_id: str) -> str | None:
+        """Estado do lifecycle para (veículo, TLS), ou None se nunca visto.
+
+        Usado pelo PriorityEventManager como sinal de check-out: "cleared"
+        (passou a stopline / mudou de edge) ou "expired" terminam o evento."""
+        state = self.states_by_key.get(self._key(vehicle_id, tls_id))
+        return state.status if state is not None else None
+
     def get_by_request_id(self, request_id: str) -> SREMLike | None:
         for state in self.states_by_key.values():
             if state.status in {"cleared", "expired"}:

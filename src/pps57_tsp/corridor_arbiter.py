@@ -29,6 +29,7 @@ from pps57_cits.models import NetworkStateSnapshot
 
 from .config import TSPConfig
 from .models import ReasonCode, TSPDecision
+from .util import optional_float as _optional_float
 
 
 @dataclass(frozen=True)
@@ -103,15 +104,3 @@ class CorridorArbiter:
         if intersection is None or intersection.tls_id == decision.tls_id:
             return None
         return intersection.tls_id
-
-
-def _optional_float(value: object) -> Optional[float]:
-    """float(value) ou None se ausente/inválido (semântica opcional, no-op gracioso)."""
-    # bool é subclasse de int: um `true/false` por engano não deve virar um cap
-    # numérico silencioso (true->1.0, false->0.0) — tratar como ausente.
-    if value is None or isinstance(value, bool):
-        return None
-    try:
-        return float(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        return None

@@ -101,3 +101,75 @@ class PairedSignificanceTestCase(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RelativeInsertionGateTestCase(unittest.TestCase):
+    """Gate de max_waiting_to_insert relativo ao baseline emparelhado (v2)."""
+
+    @staticmethod
+    def _kpis(max_wait: float, threshold: float = 150) -> dict:
+        return {
+            "insertion": {"max_waiting_to_insert": max_wait},
+            "scenario": {"sumo_quality_thresholds": {"max_waiting_to_insert": threshold}},
+        }
+
+    def _runs(self, base_wait: float, cand_wait: float, *, reasons=None) -> tuple[dict, dict]:
+        store = {
+            "base.json": self._kpis(base_wait),
+            "cand.json": self._kpis(cand_wait),
+        }
+        reasons = ["sumo_max_waiting_to_insert_gt_threshold"] if reasons is None else reasons
+        runs = {
+            "baseline": {"seed": 57, "kpis": "base.json", "run_verdict": {"status": "pass", "reasons": []}},
+            "tsp_actuation": {"seed": 57, "kpis": "cand.json", "run_verdict": {"status": "fail", "reasons": list(reasons)}},
+        }
+        return runs, store
+
+    def test_marginal_breach_is_relativized_to_pass(self) -> None:
+        # baseline 148s, candidato 151s: <= max(150, 148*1.1) -> pass com nota.
+        runs, store = self._runs(base_wait=148, cand_wait=151)
+        rss.apply_relative_insertion_gate(runs, load_kpis=store.get)
+        self.assertEqual(runs["tsp_actuation"]["run_verdict"], {"status": "pass", "reasons": []})
+        self.assertIn("gate relativo", runs["tsp_actuation"]["insertion_gate_note"])
+
+    def test_material_breach_still_fails(self) -> None:
+        # baseline 72s, candidato 205s: > max(150, 79.2) -> mantém fail.
+        runs, store = self._runs(base_wait=72, cand_wait=205)
+        rss.apply_relative_insertion_gate(runs, load_kpis=store.get)
+        self.assertEqual(runs["tsp_actuation"]["run_verdict"]["status"], "fail")
+
+    def test_other_fail_reasons_survive_relativization(self) -> None:
+        runs, store = self._runs(
+            base_wait=148,
+            cand_wait=151,
+            reasons=["sumo_max_waiting_to_insert_gt_threshold", "sumo_collisions_gt_threshold"],
+        )
+        rss.apply_relative_insertion_gate(runs, load_kpis=store.get)
+        self.assertEqual(runs["tsp_actuation"]["run_verdict"]["status"], "fail")
+        self.assertEqual(runs["tsp_actuation"]["run_verdict"]["reasons"], ["sumo_collisions_gt_threshold"])
+
+    def test_baseline_keeps_absolute_gate(self) -> None:
+        # O gate absoluto do baseline não é relativizado (validade material).
+        store = {"base.json": self._kpis(200)}
+        runs = {
+            "baseline": {
+                "seed": 57,
+                "kpis": "base.json",
+                "run_verdict": {"status": "fail", "reasons": ["sumo_max_waiting_to_insert_gt_threshold"]},
+            }
+        }
+        rss.apply_relative_insertion_gate(runs, load_kpis=store.get)
+        self.assertEqual(runs["baseline"]["run_verdict"]["status"], "fail")
+
+    def test_aggregate_verdict_is_worst_of_replications(self) -> None:
+        # Antes, o agregado herdava o verdict da primeira réplica.
+        run = {
+            "run_verdict": {"status": "pass", "reasons": []},
+            "replication_summaries": [
+                {"seed": 57, "run_verdict": {"status": "pass", "reasons": []}},
+                {"seed": 58, "run_verdict": {"status": "fail", "reasons": ["sumo_teleports_gt_threshold"]}},
+            ],
+        }
+        rss.apply_relative_insertion_gate({"baseline": run}, load_kpis=lambda _: None)
+        self.assertEqual(run["run_verdict"]["status"], "fail")
+        self.assertEqual(run["run_verdict"]["reasons"], ["seed_58:sumo_teleports_gt_threshold"])

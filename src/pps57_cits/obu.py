@@ -151,6 +151,17 @@ class OBUEmulator:
         distance = observation.distance_to_stopline_m
         eta = observation.eta_to_stopline_s
 
+        # v2.1: supressão at-stop — enquanto o bus serve uma paragem (porta
+        # aberta nos sistemas reais), o dwell restante é desconhecido e o ETA
+        # do proxy é optimista; um pedido agora gasta verde sem benefício.
+        # O pedido (re)nasce quando o bus retoma a marcha.
+        if (
+            not observation.is_emergency_like
+            and bool(policy.get("suppress_requests_at_stop", True))
+            and observation.is_at_bus_stop
+        ):
+            return None
+
         if distance > float(policy.get("request_distance_m", 250)):
             return None
         is_emergency = observation.is_emergency_like
@@ -240,6 +251,7 @@ class OBUEmulator:
             headway_deviation_s=round(headway_deviation_s, 3),
             distance_to_stopline_m=round(observation.distance_to_stopline_m, 3),
             eta_to_stopline_s=round(observation.eta_to_stopline_s, 3),
+            eta_queue_delay_s=round(observation.eta_queue_delay_included_s, 3),
             operator_priority_class=operator_priority_class,
             line_id=observation.line_id,
             route_id=observation.route_id,
@@ -391,6 +403,14 @@ class OBUEmulator:
             return True, "vehicle_off_corridor"
         if intersection.intersection_id != state.current_intersection_alias:
             return True, "vehicle_changed_intersection_context"
+        # v2.1: bus encostou numa paragem com pedido activo -> cancela (espelho
+        # do inibidor de porta-aberta; o pedido renasce ao retomar a marcha).
+        if (
+            bool(self.config.obu_policy.get("suppress_requests_at_stop", True))
+            and not observation.is_emergency_like
+            and observation.is_at_bus_stop
+        ):
+            return True, "vehicle_dwelling_at_stop"
         return False, None
 
     def _is_priority_vehicle(self, observation: VehicleObservation) -> bool:

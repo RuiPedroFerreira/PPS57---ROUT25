@@ -263,6 +263,7 @@ def _operator_telemetry_or_none(payload: object) -> OperatorTelemetry | None:
         headway_deviation_s=float(payload.get("headway_deviation_s", 0.0)),
         distance_to_stopline_m=float(payload.get("distance_to_stopline_m", 0.0)),
         eta_to_stopline_s=float(payload.get("eta_to_stopline_s", 0.0)),
+        eta_queue_delay_s=float(payload.get("eta_queue_delay_s", 0.0)),
         operator_priority_class=str(payload.get("operator_priority_class", "")),
         line_id=str(payload.get("line_id", "")),
         route_id=str(payload.get("route_id", "")),

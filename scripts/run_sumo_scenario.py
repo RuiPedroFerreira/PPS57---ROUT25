@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 from copy import deepcopy
 import json
-import math
 from pathlib import Path
 import shutil
 import statistics
@@ -48,7 +47,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--generate-only", action="store_true", help="Generate SUMO XMLs but do not execute SUMO.")
     parser.add_argument(
         "--run-type",
-        choices=[*RUN_TYPES, "comparison", "all"],
+        choices=[*RUN_TYPES, "pair", "comparison", "all"],
         default="baseline",
         help="Pipeline to run for each scenario.",
     )
@@ -64,6 +63,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=None,
         help="One or more random seeds to run as replications. Overrides scenario_profile.random_seeds.",
+    )
+    parser.add_argument(
+        "--tsp-config",
+        default="configs/tsp_safety_config.json",
+        type=Path,
+        help="TSP config para os braços tsp_* (permite A/B de flags, ex.: v2.2 lifecycle).",
     )
     parser.add_argument("--sumo-binary", default="sumo")
     parser.add_argument("--gui", action="store_true", help="Use sumo-gui for visual scenario execution.")
@@ -155,7 +160,9 @@ def run_scenario(args: argparse.Namespace, base_config: dict, catalog: dict, sce
     scenario_output_dir.mkdir(parents=True, exist_ok=True)
     scenario_report_dir.mkdir(parents=True, exist_ok=True)
 
-    if args.run_type == "comparison":
+    if args.run_type == "pair":
+        run_types = ["baseline", "tsp_actuation"]
+    elif args.run_type == "comparison":
         run_types = ["baseline", "tsp_no_actuation", "tsp_actuation"]
     else:
         run_types = list(RUN_TYPES) if args.run_type == "all" else [args.run_type]
@@ -187,6 +194,7 @@ def run_scenario(args: argparse.Namespace, base_config: dict, catalog: dict, sce
                 )
             scenario_runs[run_type] = _aggregate_replications(per_seed_runs)
 
+    apply_relative_insertion_gate(scenario_runs)
     summary = scenario_summary(config)
     summary["catalog"] = catalog["scenarios"][scenario_id]
     summary["outputs_dir"] = str(scenario_output_dir.relative_to(ROOT))
@@ -206,6 +214,95 @@ def run_scenario(args: argparse.Namespace, base_config: dict, catalog: dict, sce
         return summary
     summary["status"] = "completed"
     return summary
+
+
+# Margem do gate relativo de inserção: o braço candidato só falha o gate de
+# max_waiting_to_insert se exceder simultaneamente o limiar absoluto E o
+# baseline emparelhado (mesma seed) com 10% de folga. Racional: o limiar
+# absoluto protege a validade material do cenário (e mantém-se intacto para o
+# baseline); quando o próprio baseline opera encostado ao limiar (ex.: 148s
+# para um gate de 150s no envelope am_peak), +1-3s de perturbação do TSP não é
+# uma regressão material — medir o candidato contra o baseline emparelhado é
+# que distingue "margem do cenário" de "degradação causada pelo TSP".
+RELATIVE_INSERTION_GATE_FACTOR = 1.1
+_INSERTION_GATE_REASON = "sumo_max_waiting_to_insert_gt_threshold"
+
+
+def _replications_of(run: dict) -> list[dict]:
+    """Réplicas de um run agregado, ou o próprio run quando single-seed."""
+    reps = run.get("replication_summaries")
+    return list(reps) if reps else [run]
+
+
+def apply_relative_insertion_gate(scenario_runs: dict[str, dict], *, load_kpis=None) -> None:
+    """Relativiza o gate de inserção dos braços candidatos e agrega verdicts.
+
+    1) Para cada réplica de um braço candidato (tudo o que não é baseline) cujo
+       run_verdict falhou APENAS/também por max_waiting_to_insert, remove essa
+       razão se candidate <= max(limiar_absoluto, baseline_mesma_seed * 1.1).
+    2) Recalcula o run_verdict agregado de TODOS os braços multi-seed como o
+       pior das réplicas (antes herdava o da primeira réplica, escondendo
+       falhas de seeds seguintes).
+    """
+    loader = load_kpis if load_kpis is not None else _load_kpis
+    baseline = scenario_runs.get("baseline")
+    base_kpis_by_seed: dict = {}
+    if baseline:
+        for rep in _replications_of(baseline):
+            kpis = loader(rep.get("kpis"))
+            if kpis:
+                base_kpis_by_seed[rep.get("seed")] = kpis
+
+    for run_type, run in scenario_runs.items():
+        if run_type != "baseline" and base_kpis_by_seed:
+            for rep in _replications_of(run):
+                verdict = rep.get("run_verdict") or {}
+                reasons = list(verdict.get("reasons", []))
+                if _INSERTION_GATE_REASON not in reasons:
+                    continue
+                kpis = loader(rep.get("kpis"))
+                base = base_kpis_by_seed.get(rep.get("seed"))
+                if not kpis or not base:
+                    continue
+                candidate_value = float(kpis.get("insertion", {}).get("max_waiting_to_insert", 0) or 0)
+                baseline_value = float(base.get("insertion", {}).get("max_waiting_to_insert", 0) or 0)
+                threshold = float(_sumo_quality_thresholds(kpis)["max_waiting_to_insert"])
+                allowed = max(threshold, baseline_value * RELATIVE_INSERTION_GATE_FACTOR)
+                if candidate_value <= allowed:
+                    reasons.remove(_INSERTION_GATE_REASON)
+                    rep["run_verdict"] = {
+                        "status": "fail" if reasons else "pass",
+                        "reasons": reasons,
+                    }
+                    rep["insertion_gate_note"] = (
+                        f"gate relativo: candidate {candidate_value:.0f}s <= "
+                        f"max(absoluto {threshold:.0f}s, baseline {baseline_value:.0f}s x "
+                        f"{RELATIVE_INSERTION_GATE_FACTOR})"
+                    )
+        _recompute_aggregate_verdict(run)
+
+
+def _recompute_aggregate_verdict(run: dict) -> None:
+    """Verdict agregado multi-seed = pior das réplicas, com razões por seed."""
+    reps = run.get("replication_summaries")
+    if not reps:
+        return
+    statuses = []
+    reasons = []
+    for rep in reps:
+        verdict = rep.get("run_verdict") or {}
+        status = verdict.get("status", "pass")
+        statuses.append(status)
+        if status != "pass":
+            seed = rep.get("seed")
+            reasons.extend(f"seed_{seed}:{reason}" for reason in verdict.get("reasons", []))
+    if "fail" in statuses:
+        status = "fail"
+    elif "inconclusive" in statuses:
+        status = "inconclusive"
+    else:
+        status = "pass"
+    run["run_verdict"] = {"status": status, "reasons": reasons}
 
 
 def _resolve_seeds(args: argparse.Namespace, config: dict) -> list[int]:
@@ -339,6 +436,10 @@ def run_scenario_type(
     summary["reports_dir"] = str(run_report_dir.relative_to(ROOT))
     summary["max_steps"] = args.steps
     summary["requested_steps"] = args.steps
+    # Sem isto, _replication_kpis_by_seed não consegue emparelhar réplicas
+    # (rep.get("seed") era sempre None) e o teste de significância t-Student
+    # nunca aparecia nos sumários multi-seed.
+    summary["seed"] = int(seed)
     summary["step_length_s"] = float(config.get("simulation_step_length_s", 1.0))
     summary["configured_end_s"] = float(config.get("simulation_end_s", 7200))
     summary["sumo_quality_thresholds"] = dict(config.get("sumo_quality_thresholds", {}))
@@ -428,7 +529,9 @@ def run_tsp(
 ) -> None:
     clear_global_sumo_outputs()
     cits_config_path = write_cits_config(scenario_id, run_output_dir, run_report_dir, artifacts)
-    tsp_config_path = write_tsp_config(scenario_id, run_output_dir, run_report_dir)
+    tsp_config_path = write_tsp_config(
+        scenario_id, run_output_dir, run_report_dir, source=ROOT / args.tsp_config
+    )
     cits_config = load_cits_config(cits_config_path, root=ROOT)
     tsp_config = load_tsp_config(tsp_config_path, root=ROOT)
     controller = TSPControlController(cits_config, tsp_config)
@@ -471,8 +574,13 @@ def write_cits_config(scenario_id: str, run_output_dir: Path, run_report_dir: Pa
     return config_path
 
 
-def write_tsp_config(scenario_id: str, run_output_dir: Path, run_report_dir: Path) -> Path:
-    raw = json.loads((ROOT / "configs/tsp_safety_config.json").read_text(encoding="utf-8"))
+def write_tsp_config(
+    scenario_id: str,
+    run_output_dir: Path,
+    run_report_dir: Path,
+    source: Path | None = None,
+) -> Path:
+    raw = json.loads((source or ROOT / "configs/tsp_safety_config.json").read_text(encoding="utf-8"))
     raw["scenario_id"] = f"{scenario_id}_tsp"
     raw.setdefault("logging", {}).update(
         {
@@ -586,6 +694,19 @@ def compare_scenario_runs(runs: dict[str, dict]) -> dict:
         )
         if significance is not None:
             comparison["bus_time_loss_replication_significance"] = significance
+        # v2.1: o trade-off precisa de IC nos dois lados — o custo no tráfego
+        # geral merece a mesma honestidade estatística que o ganho do TP.
+        # (lower_is_better=True: "melhoria" positiva = redução do time loss;
+        # um custo TSP real aparece como significant_regression.)
+        general_significance = _paired_significance(
+            baseline_run,
+            runs.get(run_type, {}),
+            "general_traffic",
+            "mean_time_loss_s",
+            lower_is_better=True,
+        )
+        if general_significance is not None:
+            comparison["general_traffic_time_loss_replication_significance"] = general_significance
         comparisons[f"baseline_vs_{run_type}"] = comparison
     return comparisons
 
@@ -759,23 +880,32 @@ def render_scenario_report(summary: dict) -> str:
         )
 
     significance_rows = [
-        (key, comparison["bus_time_loss_replication_significance"])
+        (key, comparison[sig_key])
         for key, comparison in summary.get("comparisons", {}).items()
-        if isinstance(comparison, dict) and "bus_time_loss_replication_significance" in comparison
+        if isinstance(comparison, dict)
+        for sig_key in (
+            "bus_time_loss_replication_significance",
+            "general_traffic_time_loss_replication_significance",
+        )
+        if sig_key in comparison
     ]
     if significance_rows:
         lines += [
             "",
             f"Seeds (réplicas): {summary.get('seeds', [])}",
             "",
-            "## Bus timeLoss — significância emparelhada por seed (IC95 t-Student)",
+            "## timeLoss — significância emparelhada por seed (IC95 t-Student)",
             "",
-            "| Comparação | n | Melhoria média (s) | IC95 baixo | IC95 alto | Veredito |",
-            "|---|---:|---:|---:|---:|---|",
+            "Melhoria = redução vs baseline; custo TSP real no tráfego geral",
+            "aparece como significant_regression.",
+            "",
+            "| Comparação | Métrica | n | Melhoria média (s) | IC95 baixo | IC95 alto | Veredito |",
+            "|---|---|---:|---:|---:|---:|---|",
         ]
         for key, sig in significance_rows:
             lines.append(
-                f"| {key} | {sig.get('n', '')} | {sig.get('mean_improvement', '')} | "
+                f"| {key} | {sig.get('metric', '')} | {sig.get('n', '')} | "
+                f"{sig.get('mean_improvement', '')} | "
                 f"{sig.get('ci95_low', '')} | {sig.get('ci95_high', '')} | {sig.get('verdict', '')} |"
             )
     return "\n".join(lines) + "\n"

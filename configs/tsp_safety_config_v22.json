@@ -36,7 +36,10 @@
       "headway_recovery": 0.7,
       "nominal": 0.45
     },
-    "actuating_actions": ["green_extension", "early_green"],
+    "actuating_actions": [
+      "green_extension",
+      "early_green"
+    ],
     "weights": {
       "schedule_delay": 0.45,
       "headway_deviation": 0.2,
@@ -51,7 +54,10 @@
     "compensation_enabled": true,
     "compensation_max_per_cycle_s": 8,
     "compensation_note": "v2.1 NEMA-style: a fase truncada por um early green recebe verde de compensacao na proxima activacao, em prestacoes <= compensation_max_per_cycle_s e sem exceder max_total_green_s (fail-closed sem next_switch/spent). Ataca o custo residual no trafego geral medido na geracao v1 (+20% a +44%).",
-    "note": "No MVP, early_green é implementado como redução segura da duração da fase corrente via setPhaseDuration, não como salto direto de fase. Isto evita saltar amarelo/all-red."
+    "note": "No MVP, early_green é implementado como redução segura da duração da fase corrente via setPhaseDuration, não como salto direto de fase. Isto evita saltar amarelo/all-red.",
+    "coordination_recovery_enabled": true,
+    "priority_event_lifecycle_enabled": true,
+    "_v22_comment": "Variante A/B v2.2: identica a tsp_safety_config.json excepto os dois flags opt-in (coordination_recovery_enabled, priority_event_lifecycle_enabled). Queue-aware ETA e' decision-side e esta' activo em AMBOS os bracos."
   },
   "corridor": {
     "_comment": "Árbitro de corredor cross-TLS (P6), opt-in, corre pré-Safety e só DESCE decisões (a Safety Layer continua o portão final). Todas as features desligadas por defeito = no-op. É otimização, NÃO segurança — distinto dos safety_constraints fail-closed em cits_v2x_config.json. max_corridor_recovery_debt_s: null ou <= 0 = cap desligado (0 permite a primeira intervenção).",

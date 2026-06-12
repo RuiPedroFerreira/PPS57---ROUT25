@@ -21,7 +21,6 @@ import json
 from pathlib import Path
 from statistics import fmean, median
 import subprocess
-import sys
 import xml.etree.ElementTree as ET
 import zipfile
 

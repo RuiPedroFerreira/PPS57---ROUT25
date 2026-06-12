@@ -13,7 +13,7 @@ import argparse
 import json
 from pathlib import Path
 import sys
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 
 ROOT = Path(__file__).resolve().parents[1]

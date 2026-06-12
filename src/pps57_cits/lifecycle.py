@@ -14,14 +14,6 @@ class PriorityRequestState(str, Enum):
     EXPIRED = "expired"
 
 
-TERMINAL_STATES = {
-    PriorityRequestState.GRANTED.value,
-    PriorityRequestState.REJECTED.value,
-    PriorityRequestState.CANCELLED.value,
-    PriorityRequestState.EXPIRED.value,
-}
-
-
 ALLOWED_TRANSITIONS = {
     PriorityRequestState.CREATED.value: {
         PriorityRequestState.PROCESSING.value,

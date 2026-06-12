@@ -143,8 +143,10 @@ class Package4TSPTestCase(unittest.TestCase):
         self.assertEqual(decision.action, TSPAction.NO_ACTION.value)
 
     def test_engine_rejects_low_score_request(self) -> None:
+        # delay=20 passa o portão de necessidade v2 mas mantém o score baixo
+        # (0.45*20/180 + 0.15*0.45 ~= 0.12 < 0.2) -> rejeição por score.
         request = self._request(
-            schedule_delay_s=0.0,
+            schedule_delay_s=20.0,
             headway_deviation_s=0.0,
             distance_to_stopline_m=250.0,
             priority_level=OperatorPriorityClass.NOMINAL.value,
@@ -152,6 +154,19 @@ class Package4TSPTestCase(unittest.TestCase):
         decision = self.engine.decide(request, self._state(), sim_time_s=100.0)
         self.assertEqual(decision.action, TSPAction.REJECT.value)
         self.assertIn("priority_score_below_threshold", decision.reason)
+
+    def test_engine_rejects_on_time_bus_for_lack_of_need(self) -> None:
+        # v2: prioridade condicional — sem atraso nem desvio de headway, o
+        # pedido é rejeitado antes do score (proximidade nunca chega sozinha).
+        request = self._request(
+            schedule_delay_s=0.0,
+            headway_deviation_s=0.0,
+            distance_to_stopline_m=10.0,
+            priority_level=OperatorPriorityClass.NOMINAL.value,
+        )
+        decision = self.engine.decide(request, self._state(), sim_time_s=100.0)
+        self.assertEqual(decision.action, TSPAction.REJECT.value)
+        self.assertIn("priority_need_not_met", decision.reason)
 
     def test_engine_rejects_expired_request(self) -> None:
         request = self._request(expires_at_s=99.0)
@@ -190,7 +205,9 @@ class Package4TSPTestCase(unittest.TestCase):
         )
         decision = self.engine.decide(request, state, sim_time_s=100.0)
         self.assertEqual(decision.action, TSPAction.EARLY_GREEN.value)
-        self.assertEqual(decision.phase_duration_s, 2.0)
+        # v2 (truncagem proporcional): remaining 25s - max_green_removed 10s
+        # -> trunca para 15s em vez do red_truncation_to_s fixo.
+        self.assertEqual(decision.phase_duration_s, 15.0)
 
     def test_engine_reevaluates_when_bus_is_too_close_for_early_green(self) -> None:
         request = self._request(
@@ -239,7 +256,12 @@ class Package4TSPTestCase(unittest.TestCase):
             spent_duration_s=3.0,
             controlled_lanes=["I6_I7_0", "ATLANTIC_WEST_I7_0", "N_I7_I7_0", "S_I7_I7_0"],
         )
-        decision = self.engine.decide(request, state, sim_time_s=100.0)
+        # O engine v2 também difere antes do min-green (pré-consulta), por isso
+        # a decisão é construída num estado válido (spent=20) e validada contra
+        # o estado ofensivo — a Safety tem de bloquear por si (defesa em
+        # profundidade, sem confiar no pré-check do engine).
+        valid_state = replace(state, spent_duration_s=20.0)
+        decision = self.engine.decide(request, valid_state, sim_time_s=100.0)
         result = safety.validate(decision, state, sim_time_s=100.0)
         self.assertFalse(result.approved)
         self.assertEqual(result.safe_decision.status, DecisionStatus.BLOCKED_BY_SAFETY.value)
@@ -274,7 +296,9 @@ class Package4TSPTestCase(unittest.TestCase):
             "I7": {"phase_sequence": [2, 3, 1]}
         }
         tsp = TSPConfig(root=self.tsp.root, raw=raw)
-        engine = TSPDecisionEngine(self.cits, tsp)
+        # Decisão construída com o contrato VÁLIDO (self.engine): o engine v2
+        # com o contrato partido diferia na pré-consulta e a Safety nunca via a
+        # proposta — aqui valida-se que a Safety bloqueia por si.
         safety = TSPSafetyLayer(self.cits, tsp)
         request = self._request(
             destination_id="RSU_BOAVISTA_07",
@@ -298,7 +322,7 @@ class Package4TSPTestCase(unittest.TestCase):
             spent_duration_s=20.0,
             controlled_lanes=["I6_I7_0", "ATLANTIC_WEST_I7_0", "N_I7_I7_0", "S_I7_I7_0"],
         )
-        decision = engine.decide(request, state, sim_time_s=100.0)
+        decision = self.engine.decide(request, state, sim_time_s=100.0)
         result = safety.validate(decision, state, sim_time_s=100.0)
         self.assertFalse(result.approved)
         self.assertEqual(result.reason, "early_green_phase_not_in_configured_sequence")
@@ -329,7 +353,8 @@ class Package4TSPTestCase(unittest.TestCase):
             "I7": {"phase_sequence": [2, 0, 1, 3]}
         }
         tsp = TSPConfig(root=self.tsp.root, raw=raw)
-        engine = TSPDecisionEngine(self.cits, tsp)
+        # Tal como no teste de sequência: decisão do contrato válido, Safety
+        # com o contrato partido — defesa em profundidade testada isolada.
         safety = TSPSafetyLayer(self.cits, tsp)
         request = self._request(
             destination_id="RSU_BOAVISTA_07",
@@ -353,7 +378,7 @@ class Package4TSPTestCase(unittest.TestCase):
             spent_duration_s=20.0,
             controlled_lanes=["I6_I7_0", "ATLANTIC_WEST_I7_0", "N_I7_I7_0", "S_I7_I7_0"],
         )
-        decision = engine.decide(request, state, sim_time_s=100.0)
+        decision = self.engine.decide(request, state, sim_time_s=100.0)
         result = safety.validate(decision, state, sim_time_s=100.0)
         self.assertFalse(result.approved)
         self.assertEqual(result.reason, "early_green_would_skip_clearance_phase")
@@ -372,6 +397,160 @@ class Package4TSPTestCase(unittest.TestCase):
         result = safety.validate(decision, self._state(), sim_time_s=1000.0)
         self.assertTrue(result.approved)
         self.assertEqual(safety.consecutive_interventions_by_tls["I2"], 0)
+
+    def _run_burst_at_cooldown_pace(self, safety: TSPSafetyLayer, start_s: float = 100.0) -> float:
+        """Aplica max_consecutive intervenções ao ritmo máximo (espaçadas ao
+        cooldown), via o fluxo real validate+mark_applied. Devolve o instante
+        do pedido seguinte (um cooldown depois da última intervenção)."""
+        constraints = self.cits.safety_constraints
+        cooldown = float(constraints["cooldown_after_priority_s"])
+        max_consecutive = int(constraints["max_consecutive_priority_interventions_per_tls"])
+        state = self._state()
+        sim_time_s = start_s
+        for _ in range(max_consecutive):
+            request = self._request(expires_at_s=sim_time_s + 30.0)
+            decision = self.engine.decide(request, state, sim_time_s=sim_time_s)
+            result = safety.validate(decision, state, sim_time_s=sim_time_s)
+            self.assertTrue(result.approved, result.reason)
+            safety.mark_applied(result.safe_decision, sim_time_s)
+            sim_time_s += cooldown
+        return sim_time_s
+
+    def test_max_consecutive_blocks_burst_at_cooldown_pace(self) -> None:
+        # Regressão (constraint morta): o reset do contador usava o MESMO
+        # limiar do gate de cooldown, pelo que qualquer pedido que sobrevivesse
+        # ao gate já tinha ganho o reset — max_consecutive nunca disparava no
+        # fluxo real (mark_applied define sempre last_intervention_time). Após
+        # esgotar o orçamento ao ritmo máximo, o pedido seguinte tem de ser
+        # bloqueado por max_consecutive, não aprovado.
+        safety = TSPSafetyLayer(self.cits, self.tsp)
+        sim_time_s = self._run_burst_at_cooldown_pace(safety)
+        state = self._state()
+        request = self._request(expires_at_s=sim_time_s + 30.0)
+        decision = self.engine.decide(request, state, sim_time_s=sim_time_s)
+        result = safety.validate(decision, state, sim_time_s=sim_time_s)
+        self.assertFalse(result.approved)
+        self.assertEqual(result.reason, "max_consecutive_priority_interventions_reached")
+
+    def test_max_consecutive_budget_recovers_after_reset_window(self) -> None:
+        # Depois da janela de recuperação (default 2x cooldown) sem novas
+        # intervenções, o contador reseta e o TLS volta a receber prioridade.
+        safety = TSPSafetyLayer(self.cits, self.tsp)
+        cooldown = float(self.cits.safety_constraints["cooldown_after_priority_s"])
+        sim_time_s = self._run_burst_at_cooldown_pace(safety)
+        last_intervention_s = sim_time_s - cooldown
+        recovered_s = last_intervention_s + 2.0 * cooldown
+        state = self._state()
+        request = self._request(expires_at_s=recovered_s + 30.0)
+        decision = self.engine.decide(request, state, sim_time_s=recovered_s)
+        result = safety.validate(decision, state, sim_time_s=recovered_s)
+        self.assertTrue(result.approved, result.reason)
+        self.assertEqual(safety.consecutive_interventions_by_tls[request.tls_id], 0)
+
+    def test_consecutive_reset_window_below_cooldown_does_not_revive_dead_bound(self) -> None:
+        # Um valor explícito <= cooldown recriaria exactamente a constraint
+        # morta (reset ganho por qualquer pedido que passe o gate); a safety
+        # tem de o ignorar e manter a janela default de 2x cooldown.
+        cits = deepcopy(self.cits)
+        cooldown = float(cits.safety_constraints["cooldown_after_priority_s"])
+        cits.raw["safety_constraints"]["consecutive_interventions_reset_after_s"] = cooldown
+        safety = TSPSafetyLayer(cits, self.tsp)
+        sim_time_s = self._run_burst_at_cooldown_pace(safety)
+        state = self._state()
+        request = self._request(expires_at_s=sim_time_s + 30.0)
+        decision = self.engine.decide(request, state, sim_time_s=sim_time_s)
+        result = safety.validate(decision, state, sim_time_s=sim_time_s)
+        self.assertFalse(result.approved)
+        self.assertEqual(result.reason, "max_consecutive_priority_interventions_reached")
+
+    def test_priority_event_rolling_extension_continuations_and_budget(self) -> None:
+        # v2.2 lifecycle: a abertura concede uma prestação rolling (4s, não os
+        # 12 one-shot); prestações seguintes do MESMO evento não pagam cooldown
+        # nem contam como novas intervenções; o orçamento CUMULATIVO do evento
+        # (max_green_extension_s=12) bloqueia a 4.ª prestação.
+        from pps57_tsp.events import PriorityEventManager
+
+        tsp = replace(
+            self.tsp,
+            raw={
+                **self.tsp.raw,
+                "actuation": {
+                    **self.tsp.raw.get("actuation", {}),
+                    "priority_event_lifecycle_enabled": True,
+                },
+            },
+        )
+        engine = TSPDecisionEngine(self.cits, tsp)
+        safety = TSPSafetyLayer(self.cits, tsp)
+        events = PriorityEventManager(self.cits, tsp)
+        safety.set_event_lifecycle(events)
+
+        def grant(sim_s: float, next_switch_s: float, spent_s: float):
+            request = self._request(expires_at_s=sim_s + 30.0)
+            state = self._state(next_switch_s=next_switch_s, spent_duration_s=spent_s)
+            decision = engine.decide(request, state, sim_time_s=sim_s)
+            result = safety.validate(decision, state, sim_time_s=sim_s)
+            if result.approved:
+                # Ordem do controller: mark_applied antes de register_applied
+                # (mark consulta o evento para distinguir abertura/prestação).
+                safety.mark_applied(result.safe_decision, sim_s)
+                events.register_applied(result.safe_decision)
+            return decision, result
+
+        decision, result = grant(100.0, 102.0, 33.0)
+        self.assertEqual(decision.action, TSPAction.GREEN_EXTENSION.value)
+        self.assertTrue(result.approved, result.reason)
+        self.assertAlmostEqual(result.safe_decision.extension_s, 4.0)
+        self.assertEqual(safety.consecutive_interventions_by_tls["I2"], 1)
+
+        # Outro veículo no mesmo TLS durante o cooldown: bloqueado — o bypass
+        # é do evento (tls, veículo, fase), não do TLS.
+        other = self._request(vehicle_id="bus_2", expires_at_s=200.0)
+        other_state = self._state(next_switch_s=106.0, spent_duration_s=38.0)
+        other_decision = engine.decide(other, other_state, sim_time_s=105.0)
+        other_result = safety.validate(other_decision, other_state, sim_time_s=105.0)
+        self.assertFalse(other_result.approved)
+        self.assertEqual(other_result.reason, "cooldown_after_priority_active")
+
+        # Prestações 2 e 3 do evento: aprovadas dentro do cooldown, contador
+        # consecutivo continua em 1 (é a mesma intervenção).
+        _, result = grant(105.0, 106.0, 38.0)
+        self.assertTrue(result.approved, result.reason)
+        self.assertAlmostEqual(result.safe_decision.extension_s, 4.0)
+        self.assertEqual(safety.consecutive_interventions_by_tls["I2"], 1)
+        _, result = grant(110.0, 110.5, 43.0)
+        self.assertTrue(result.approved, result.reason)
+        self.assertAlmostEqual(events.active_event("I2", "bus_1", 0).granted_total_s, 12.0)
+
+        # Prestação 4: orçamento cumulativo de 12s esgotado.
+        _, result = grant(115.0, 115.5, 47.0)
+        self.assertFalse(result.approved)
+        self.assertEqual(result.reason, "green_extension_event_budget_exhausted")
+
+    def test_consecutive_reset_window_honours_explicit_config_above_cooldown(self) -> None:
+        # Janela explícita > cooldown é honrada: ao fim de 2x cooldown (que no
+        # default já resetava) o orçamento continua esgotado; só depois da
+        # janela explícita é que o TLS recupera.
+        cits = deepcopy(self.cits)
+        cooldown = float(cits.safety_constraints["cooldown_after_priority_s"])
+        cits.raw["safety_constraints"]["consecutive_interventions_reset_after_s"] = 5.0 * cooldown
+        safety = TSPSafetyLayer(cits, self.tsp)
+        sim_time_s = self._run_burst_at_cooldown_pace(safety)
+        last_intervention_s = sim_time_s - cooldown
+        state = self._state()
+
+        still_blocked_s = last_intervention_s + 2.0 * cooldown
+        request = self._request(expires_at_s=still_blocked_s + 30.0)
+        decision = self.engine.decide(request, state, sim_time_s=still_blocked_s)
+        result = safety.validate(decision, state, sim_time_s=still_blocked_s)
+        self.assertFalse(result.approved)
+        self.assertEqual(result.reason, "max_consecutive_priority_interventions_reached")
+
+        recovered_s = last_intervention_s + 5.0 * cooldown
+        request = self._request(expires_at_s=recovered_s + 30.0)
+        decision = self.engine.decide(request, state, sim_time_s=recovered_s)
+        result = safety.validate(decision, state, sim_time_s=recovered_s)
+        self.assertTrue(result.approved, result.reason)
 
     def test_engine_lane_match_is_not_fooled_by_edge_prefix_collision(self) -> None:
         # M1: "I1_I20_0" não pode ser tratada como pertencente à edge "I1_I2".
@@ -458,8 +637,9 @@ class Package4TSPTestCase(unittest.TestCase):
             def write(self, item) -> None:  # noqa: ANN001
                 pass
 
+        # delay=20 passa o portão de necessidade v2; score continua < 0.2.
         req = self._request(
-            schedule_delay_s=0.0,
+            schedule_delay_s=20.0,
             headway_deviation_s=0.0,
             distance_to_stopline_m=250.0,
             priority_level=OperatorPriorityClass.NOMINAL.value,
@@ -852,11 +1032,12 @@ class Package4TSPTestCase(unittest.TestCase):
         safety = TSPSafetyLayer(self.cits, self.tsp)
         safety.set_signal_program_verified(True)
         safe = self._approved_early_green(safety)
-        self.assertEqual(safe.phase_duration_s, 2.0)
+        # v2 (truncagem proporcional): remaining 25s - max_green_removed 10s.
+        self.assertEqual(safe.phase_duration_s, 15.0)
         safety.mark_applied(safe, sim_time_s=100.0)
         # restante na decisão = next_switch 125 - timestamp 100 = 25s; truncado
-        # para 2s -> 23s de verde removido.
-        self.assertAlmostEqual(safety.recovery_debt_by_tls["I7"], 23.0)
+        # para 15s -> 10s de verde removido.
+        self.assertAlmostEqual(safety.recovery_debt_by_tls["I7"], 10.0)
 
     def test_early_green_recovery_debt_falls_back_without_next_switch(self) -> None:
         # Sem next_switch no snapshot o verde removido é desconhecido; a dívida
@@ -865,7 +1046,8 @@ class Package4TSPTestCase(unittest.TestCase):
         safety.set_signal_program_verified(True)
         safe = self._approved_early_green(safety)
         safety.mark_applied(safe.copy_with(current_next_switch_s=None), sim_time_s=100.0)
-        self.assertAlmostEqual(safety.recovery_debt_by_tls["I7"], 2.0)
+        # Dívida mínima = duração truncada (15s com a truncagem proporcional v2).
+        self.assertAlmostEqual(safety.recovery_debt_by_tls["I7"], 15.0)
 
     def test_copy_with_does_not_alias_notes_list(self) -> None:
         # copy_with passou a usar dataclasses.replace; sem a cópia explícita

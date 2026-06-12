@@ -90,6 +90,58 @@ class ControllerContract:
         return max(values) if values else None
 
 
+def phase_sequence_clearance_problem(
+    contract: ControllerContract,
+    current_phase_index: Optional[int],
+    target_phase_index: Optional[int],
+    *,
+    never_skip_yellow_or_all_red: bool,
+) -> Optional[str]:
+    """Devolve None se a transição early-green é estruturalmente segura.
+
+    Verifica (a) que o verde-alvo é alcançável a partir da fase atual segundo
+    a sequência configurada e (b) — quando never_skip_yellow_or_all_red está
+    ativo (default estrito) — que existe pelo menos uma fase intermédia entre
+    a fase conflituante atual e o verde-alvo, para o programa SUMO poder
+    executar a clearance amarelo/all-red. Fail-closed em dados em falta.
+
+    Partilhada entre a Safety Layer (bloqueio autoritativo) e o motor de
+    decisão (pré-consulta para não propor o que seria sempre bloqueado);
+    extraída de SafetyLayer._phase_sequence_clearance_check sem alterar os
+    literais de motivo.
+    """
+    current = current_phase_index
+    target = target_phase_index
+    if current is None or target is None:
+        return "early_green_phase_indices_unknown"
+    if current == target:
+        return "early_green_target_phase_already_active"
+
+    sequence = list(contract.phase_sequence)
+    if current not in sequence or target not in sequence:
+        return "early_green_phase_not_in_configured_sequence"
+
+    current_pos = sequence.index(current)
+    phases_until_target = []
+    pos = current_pos
+    for _ in range(1, len(sequence) + 1):
+        pos = (pos + 1) % len(sequence)
+        phase = sequence[pos]
+        if phase == target:
+            break
+        phases_until_target.append(phase)
+    else:
+        return "early_green_target_phase_not_in_remaining_sequence"
+
+    if not phases_until_target:
+        return "early_green_would_skip_clearance_phase"
+    if never_skip_yellow_or_all_red and not any(
+        phase in contract.intergreen_phase_indices for phase in phases_until_target
+    ):
+        return "early_green_would_skip_clearance_phase"
+    return None
+
+
 @dataclass(frozen=True)
 class ControllerCommandValidation:
     accepted: bool
@@ -210,7 +262,7 @@ class TraciSignalControlAdapter:
                     problems.append(f"{tls_id}: controller_contract phase index {idx} fora do programa (fases={phase_count})")
 
             states = self.read_program_phase_states(tls_id)
-            durations = self._read_phase_durations_if_available(tls_id)
+            durations = self.read_program_phase_durations(tls_id)
             if states is None:
                 problems.append(f"{tls_id}: estados de fase ilegíveis (fail-closed)")
             else:
@@ -295,11 +347,6 @@ class TraciSignalControlAdapter:
                         "o contrato TSP assume controlo de tempo fixo"
                     )
         return problems
-
-    def _read_phase_durations_if_available(self, tls_id: str) -> Optional[List[float]]:
-        if hasattr(self, "read_program_phase_durations"):
-            return self.read_program_phase_durations(tls_id)
-        return None
 
 
 @dataclass
