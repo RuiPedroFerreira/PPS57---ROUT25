@@ -143,6 +143,12 @@ class GreenCompensationManager:
                 # Não actualiza a memória de fase: se a entrada na fase lesada
                 # coincidiu com a atuação TSP, a transição ainda conta como
                 # pendente no próximo passo (senão perdia-se a prestação).
+                # Excepção: sem memória prévia não há transição pendente a
+                # preservar — semear com a fase actual, senão o próximo passo
+                # trata a MESMA fase como entrada e paga/reclama na fase que a
+                # atuação TSP acabou de truncar/estender, anulando-a.
+                if tls_id not in self._last_phase_by_tls:
+                    self._last_phase_by_tls[tls_id] = current
                 continue
             self._last_phase_by_tls[tls_id] = current
             if current is None or current == previous:

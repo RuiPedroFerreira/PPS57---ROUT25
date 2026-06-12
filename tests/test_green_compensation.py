@@ -210,6 +210,50 @@ class GreenCompensationTestCase(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertAlmostEqual(results[0].parameters["granted_s"], 8.0)
 
+    def test_first_tick_skip_seeds_phase_memory_and_blocks_same_phase_payback(self) -> None:
+        # Codex P2 (PR #46): se a PRIMEIRA observação do TLS coincide com
+        # atuação TSP (skip), a memória de fase ficava por semear; no passo
+        # seguinte a MESMA fase parecia uma entrada e a compensação pagava na
+        # fase que o early green acabou de truncar, anulando a intervenção.
+        manager = self._manager()
+        control = _RecordingSignalControl()
+        # Early green aplicado no primeiro passo de simulação: trunca a fase 3
+        # (deixa 10s devidos) e o TLS é saltado nesse mesmo passo.
+        manager.register_applied(_early_green_decision())
+        results = manager.step(
+            {"I2": _state("I2", 3, next_switch_s=115.0, spent_s=10.0)},
+            control,
+            100.0,
+            apply_actuation=True,
+            skip_tls={"I2"},
+        )
+        self.assertEqual(results, [])
+        # Passo seguinte, ainda na fase truncada: NÃO é uma entrada de fase ->
+        # nada a pagar (senão re-instalava o verde cortado).
+        results = manager.step(
+            {"I2": _state("I2", 3, next_switch_s=114.0, spent_s=11.0)},
+            control,
+            101.0,
+            apply_actuation=True,
+        )
+        self.assertEqual(results, [])
+        self.assertEqual(control.calls, [])
+        # A dívida só paga na PRÓXIMA activação real da fase 3.
+        manager.step(
+            {"I2": _state("I2", 0, next_switch_s=150.0, spent_s=1.0)},
+            control,
+            120.0,
+            apply_actuation=True,
+        )
+        results = manager.step(
+            {"I2": _state("I2", 3, next_switch_s=180.0, spent_s=0.5)},
+            control,
+            150.0,
+            apply_actuation=True,
+        )
+        self.assertEqual(len(results), 1)
+        self.assertAlmostEqual(results[0].parameters["granted_s"], 8.0)
+
     def test_disabled_config_is_a_noop(self) -> None:
         manager = GreenCompensationManager(self.cits, TSPConfig(root=ROOT, raw={}))
         control = _RecordingSignalControl()
