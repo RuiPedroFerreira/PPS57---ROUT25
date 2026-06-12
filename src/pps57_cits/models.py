@@ -75,6 +75,27 @@ class VehicleObservation:
         return min(current_speed_eta, free_flow_eta + queue_penalty_s)
 
     @property
+    def eta_queue_delay_included_s(self) -> float:
+        """Componente de fila EFETIVAMENTE incluída em eta_to_stopline_s.
+
+        Branch-aware: no ramo em movimento o min() pode escolher o ETA por
+        velocidade actual, caso em que a penalização de fila não entrou — só
+        conta a diferença que a penalização realmente acrescentou. Vai no SREM
+        (operator_telemetry.eta_queue_delay_s) para o engine deduzir antes de
+        somar a correção queue-aware por detetor (senão a mesma fila parada
+        contava duas vezes e required_green_s inflava)."""
+        params = self.eta_params
+        distance = self.distance_to_stopline_m
+        current_speed_eta = distance / max(self.speed_mps, params.min_speed_mps)
+        free_flow_eta = distance / params.free_flow_speed_mps
+        queue_penalty_s = self.queue_ahead_vehicle_count * params.queue_penalty_s
+        if self.speed_mps < params.min_speed_mps:
+            return queue_penalty_s
+        return min(current_speed_eta, free_flow_eta + queue_penalty_s) - min(
+            current_speed_eta, free_flow_eta
+        )
+
+    @property
     def is_bus_like(self) -> bool:
         lower = " ".join([self.vehicle_id, self.vehicle_class, self.type_id, self.line_id]).lower()
         return "bus" in lower or "stcp" in lower

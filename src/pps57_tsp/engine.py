@@ -155,6 +155,14 @@ class TSPDecisionEngine:
         eta_s = request.eta_to_stopline_s
         eta_notes: list[str] = []
         queue_correction_s = self._queue_eta_correction_s(request, network_state)
+        # O ETA do OBU pode já embutir penalização de fila (queue_ahead *
+        # eta_queue_penalty_s, declarada em eta_queue_delay_s); deduzi-la
+        # antes de somar a correção por detetor, senão a MESMA fila parada
+        # conta duas vezes e required_green_s infla — extensões
+        # sobredimensionadas exatamente nos cenários congestionados. ETAs
+        # externos/raw (campo 0.0) mantêm a correção integral.
+        obu_queue_delay_s = max(0.0, float(request.eta_queue_delay_s or 0.0))
+        queue_correction_s = max(0.0, queue_correction_s - obu_queue_delay_s)
         if queue_correction_s > 0.0:
             eta_s += queue_correction_s
             eta_notes.append(

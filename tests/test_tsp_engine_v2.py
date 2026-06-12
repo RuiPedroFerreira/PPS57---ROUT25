@@ -285,6 +285,25 @@ class EngineV2CostAwareTestCase(unittest.TestCase):
         self.assertAlmostEqual(with_queue.extension_s, 12.0)
         self.assertTrue(any("eta corrigida pela fila" in note for note in with_queue.notes))
 
+    def test_queue_correction_deducts_obu_declared_queue_component(self) -> None:
+        # Codex P2 (PR #46): o ETA do OBU já traz 4s de fila embutidos
+        # (eta_queue_delay_s); o detetor vê 3 parados (6s de descarga). Sem
+        # dedução a MESMA fila contava duas vezes (needed = 4+6+4-2 = 12s);
+        # com dedução só entram os 2s ainda não contados: needed = 4+2+4-2 = 8s.
+        request = self._request_i2(eta_to_stopline_s=4.0, eta_queue_delay_s=4.0)
+        state = self._state_i2_green(next_switch_s=102.0)
+        snapshot = self._snapshot(tls_id="I2", halted_by_lane={"I1_I2_0": 3})
+        decision = self.engine.decide(request, state, sim_time_s=100.0, network_state=snapshot)
+        self.assertEqual(decision.action, TSPAction.GREEN_EXTENSION.value)
+        self.assertAlmostEqual(decision.extension_s, 8.0)
+
+        # OBU declara >= correção do detetor -> nada extra a somar; fica o
+        # needed sem fila (4+4-2 = 6s), como se o snapshot não existisse.
+        request = self._request_i2(eta_to_stopline_s=4.0, eta_queue_delay_s=6.0)
+        decision = self.engine.decide(request, state, sim_time_s=100.0, network_state=snapshot)
+        self.assertEqual(decision.action, TSPAction.GREEN_EXTENSION.value)
+        self.assertAlmostEqual(decision.extension_s, 6.0)
+
     def test_queue_ahead_flips_no_action_to_extension(self) -> None:
         # remaining 12s cobre eta 4+4=8 (no_action), mas não cobre a chegada
         # real atrás de 4 veículos parados (eta efetiva 12 -> required 16).

@@ -251,6 +251,7 @@ class OBUEmulator:
             headway_deviation_s=round(headway_deviation_s, 3),
             distance_to_stopline_m=round(observation.distance_to_stopline_m, 3),
             eta_to_stopline_s=round(observation.eta_to_stopline_s, 3),
+            eta_queue_delay_s=round(observation.eta_queue_delay_included_s, 3),
             operator_priority_class=operator_priority_class,
             line_id=observation.line_id,
             route_id=observation.route_id,
