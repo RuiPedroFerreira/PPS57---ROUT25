@@ -249,7 +249,17 @@ def main() -> None:
     rt = _run([sys.executable, str(_tool(sumo_home, "randomTrips.py")), "-n", _rel(args.net),
                "-o", _rel(car_trips), "-r", _rel(car_routes), "-b", "0", "-e", str(SIM_END_S),
                "-p", str(args.car_period), "--fringe-factor", "5", "--vehicle-class", "passenger"], sumo_home)
-    n_cars = len(_parse_sumo_xml(car_trips).findall("trip")) if car_trips.exists() else 0
+    # randomTrips is not part of any downstream verdict gate, so a silent failure here would
+    # degrade to zero background demand (car_trips was unlinked above) and still produce a
+    # misleading report. Fail loudly instead — refusing to build a reference corridor on
+    # partial/empty background traffic.
+    if rt.returncode != 0 or not car_trips.exists():
+        tail = "\n".join((rt.stderr.strip().splitlines() or [""])[-10:])
+        raise SystemExit(
+            f"randomTrips failed (returncode {rt.returncode}); background demand was not generated "
+            f"— refusing to build a reference corridor with zero/partial background traffic.\n{tail}"
+        )
+    n_cars = len(_parse_sumo_xml(car_trips).findall("trip"))
 
     # 2) explicit arterial through-flows (HCM/Madrid target) + real STCP bus flows
     n_art, art_period = build_arterial_car_flows(args.v4b_report, arterial_flows, args.arterial_veh_h)
