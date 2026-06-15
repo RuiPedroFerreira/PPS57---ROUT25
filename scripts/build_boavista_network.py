@@ -67,7 +67,8 @@ def build(osm_path: Path, out_dir: Path) -> Path:
 
     net_path = out_dir / "boavista.net.xml"
     typemap = _find_typemap()
-    version_lines = subprocess.run(["netconvert", "--version"], capture_output=True, text=True).stdout.splitlines()
+    _nc_ver = subprocess.run(["netconvert", "--version"], capture_output=True, text=True)
+    version_lines = _nc_ver.stdout.splitlines() or _nc_ver.stderr.splitlines()
     version = version_lines[0] if version_lines else "netconvert (version unknown)"
     cmd = ["netconvert", "--osm-files", str(osm_path), "-t", str(typemap),
            "-o", str(net_path), *NETCONVERT_OPTIONS]
