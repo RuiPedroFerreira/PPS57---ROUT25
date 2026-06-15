@@ -165,9 +165,13 @@ class OfflineOptimizationController:
         remaining = TSPDecisionEngine.remaining_phase_time_s(scenario.signal_state, scenario.sim_time_s)
         remaining_s = float(remaining or 0.0)
         required_green_s = request.eta_to_stopline_s + float(self.tsp_config.decision_policy.get("eta_arrival_buffer_s", 4))
+        # Floor the schedule delay at 0: an early bus (negative schedule_delay_s)
+        # must not manufacture positive benefit, which would flip the NO_ACTION
+        # insufficient-green penalty (-benefit * factor) into a reward and
+        # corrupt the learned-rule reward magnitudes.
         delay_component = (
             float(reward_cfg.get("bus_delay_weight", 1.0))
-            * request.schedule_delay_s
+            * max(0.0, request.schedule_delay_s)
             / float(reward_cfg.get("schedule_delay_divisor", 10.0))
         )
         headway_component = (
