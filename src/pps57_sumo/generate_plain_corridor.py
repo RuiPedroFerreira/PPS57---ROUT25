@@ -1020,10 +1020,17 @@ def _service_departures(service: dict, config: dict, *, rng: random.Random | Non
         intervals = [(float(item["begin_s"]), float(item["end_s"]), float(item["headway_s"])) for item in schedule]
         while current < end:
             applied = _headway_at(intervals, current, float(service.get("headway_s", intervals[0][2])))
+            # A non-positive headway would never advance `current` -> infinite
+            # departures. Fail loud: this path can run on configs that did not
+            # pass validate_scenario_config.
+            if applied <= 0:
+                raise ValueError(f"Service headway must be > 0s to schedule departures; got {applied}.")
             yield _apply_jitter(current, jitter, rng)
             current += applied
     else:
         headway = float(service["headway_s"])
+        if headway <= 0:
+            raise ValueError(f"Service headway_s must be > 0s to schedule departures; got {headway}.")
         while current < end:
             yield _apply_jitter(current, jitter, rng)
             current += headway

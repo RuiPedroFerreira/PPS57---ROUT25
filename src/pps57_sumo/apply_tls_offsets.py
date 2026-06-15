@@ -44,6 +44,15 @@ from pathlib import Path
 from typing import Iterable
 from xml.etree import ElementTree as ET
 
+# M4: net.xml/overrides podem vir de fontes externas (OSM) -> endurece o parsing
+# de input não-confiável contra XXE/expansão de entidades. A construção de
+# elementos (`ET.Element`/`ET.SubElement`) mantém-se do stdlib (defusedxml não a
+# expõe e não processa input externo).
+try:
+    from defusedxml.ElementTree import parse as _safe_parse
+except ImportError:  # pragma: no cover - exercised in minimal CI images.
+    _safe_parse = ET.parse
+
 
 _MAIN_EDGE_RE = re.compile(r"^I\d+_I\d+$")
 _ALL_RED_INSERT_ROLES = ("all_red_main_to_cross", "all_red_cross_to_main")
@@ -65,7 +74,7 @@ def apply_tls_offsets(net_path: Path, overrides_path: Path) -> int:
     if not Path(overrides_path).exists():
         return 0
 
-    overrides_tree = ET.parse(str(overrides_path))
+    overrides_tree = _safe_parse(str(overrides_path))
     overrides_by_tls: dict[str, dict] = {}
     for elem in overrides_tree.getroot().findall("tls"):
         tls_id = elem.attrib.get("id")
@@ -86,7 +95,7 @@ def apply_tls_offsets(net_path: Path, overrides_path: Path) -> int:
     if not overrides_by_tls:
         return 0
 
-    net_tree = ET.parse(str(net_path))
+    net_tree = _safe_parse(str(net_path))
     net_root = net_tree.getroot()
     connections_by_tls = _index_connections_by_tls(net_root)
 

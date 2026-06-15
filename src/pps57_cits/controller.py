@@ -14,7 +14,7 @@ from .messages import CITSMessage, SSEMLike
 from .obu import OBUEmulator
 from .protocol_codec import ProtocolCodecError
 from .rsu import build_rsu_agents
-from .traci_adapter import TraciSimulationAdapter, TraciUnavailableError
+from .traci_adapter import TraciSimulationAdapter
 
 
 @dataclass
@@ -38,19 +38,19 @@ class CITSEmulationController:
         summary = IncrementalCITSSummary()
         log_path = self.config.path_from_root(self.config.logging.get("message_log", "outputs/cits_messages.jsonl"))
 
+        adapter.start()  # propaga TraciUnavailableError
+
+        # Fecha o SUMO mesmo que algo entre o arranque e o loop (abertura do
+        # logger, MAPEM, snapshots) falhe — caso contrário o processo ficava
+        # órfão a segurar a porta TraCI e colidia com a run seguinte.
         try:
-            adapter.start()
-        except TraciUnavailableError:
-            raise
+            with CITSJsonlLogger(log_path) as logger:
+                mapem = build_mapem_messages(self.config, sim_time_s=0.0)
+                self._publish_log_collect(mapem, logger, summary)
+                self._write_snapshots(mapem, [])
+                latest_spatem: List[CITSMessage] = []
 
-        with CITSJsonlLogger(log_path) as logger:
-            mapem = build_mapem_messages(self.config, sim_time_s=0.0)
-            self._publish_log_collect(mapem, logger, summary)
-            self._write_snapshots(mapem, [])
-            latest_spatem: List[CITSMessage] = []
-
-            step_count = 0
-            try:
+                step_count = 0
                 while adapter.min_expected_number() > 0:
                     if steps is not None and step_count >= steps:
                         break
@@ -80,9 +80,9 @@ class CITSEmulationController:
 
                     responses = self._process_rsu_queues(sim_time_s)
                     self._publish_log_collect(responses, logger, summary)
-            finally:
-                adapter.close()
-            self._write_snapshots(mapem, latest_spatem)
+                self._write_snapshots(mapem, latest_spatem)
+        finally:
+            adapter.close()
 
         summary_path = self.config.path_from_root(self.config.logging.get("summary_report", "reports/cits_emulation_summary.json"))
         return write_summary_dict(

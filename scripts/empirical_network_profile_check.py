@@ -41,11 +41,21 @@ def main() -> None:
     parser.add_argument("--from-edge", default="")
     parser.add_argument("--to-edge", default="")
     parser.add_argument("--sim-time", type=float, default=10.0)
-    parser.add_argument("--traci-port", type=int, default=8815)
+    parser.add_argument("--traci-port", type=int, default=None,
+                        help="TraCI port; default: a free port via the shared resolver "
+                             "(TRACI_PORT, else an OS-assigned free port, else a fixed fallback port).")
     parser.add_argument("--sumo-binary", default="sumo")
     parser.add_argument("--apply-actuation", action="store_true")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
+
+    traci_port = args.traci_port
+    if traci_port is None:
+        # Reuse the shared adapter resolver: it tries getFreeSocketPort() and,
+        # when ephemeral-port probing is unavailable (restricted environments),
+        # falls back to scanning fixed ports instead of returning None/raising.
+        from pps57_cits.traci_adapter import _resolve_traci_port
+        traci_port = _resolve_traci_port()
 
     network = args.network if args.network.is_absolute() else ROOT / args.network
     report = run_check(
@@ -54,7 +64,7 @@ def main() -> None:
         from_edge=args.from_edge,
         to_edge=args.to_edge,
         sim_time_s=args.sim_time,
-        traci_port=args.traci_port,
+        traci_port=traci_port,
         sumo_binary=args.sumo_binary,
         apply_actuation=args.apply_actuation,
     )

@@ -37,9 +37,23 @@ def _gtfs_rows(zip_path: Path, name: str):
         return list(csv.DictReader(io.TextIOWrapper(handle, "utf-8-sig")))
 
 
-def _secs(value: str) -> int:
-    h, m, s = (int(p) for p in value.split(":"))
+def _secs(value: str) -> int | None:
+    """GTFS HH:MM:SS -> seconds. Returns None for an absent/empty time:
+    departure_time is only conditionally required in stop_times.txt."""
+    if not value or not value.strip():
+        return None
+    h, m, s = (int(p) for p in value.strip().split(":"))
     return h * 3600 + m * 60 + s
+
+
+def _coords(stop: dict) -> tuple[float | None, float | None]:
+    """(lat, lon) from a GTFS stop row, or (None, None) when absent/invalid.
+    stop_lat/stop_lon are not present for every location_type (e.g. stations,
+    entrances, generic nodes)."""
+    try:
+        return float(stop["stop_lat"]), float(stop["stop_lon"])
+    except (KeyError, ValueError, TypeError):
+        return None, None
 
 
 def affine_projector(orig_boundary, conv_boundary):
@@ -72,8 +86,8 @@ def _headways_min(departures_s, window):
 def corridor_lines(zip_path: Path, bbox):
     """Per line+direction: ordered in-bbox real stops and real weekday headways."""
     south, west, north, east = bbox
-    routes = {r["route_id"]: r for r in _gtfs_rows(zip_path, "routes.txt") if r["route_short_name"] in CORRIDOR_LINES}
-    rid_to_short = {rid: r["route_short_name"] for rid, r in routes.items()}
+    routes = {r["route_id"]: r for r in _gtfs_rows(zip_path, "routes.txt") if r.get("route_short_name", "") in CORRIDOR_LINES}
+    rid_to_short = {rid: r.get("route_short_name", "") for rid, r in routes.items()}
     trips = [t for t in _gtfs_rows(zip_path, "trips.txt")
              if t["route_id"] in rid_to_short and t["service_id"] == WEEKDAY_SERVICE]
     trips_by_key = {}
@@ -94,8 +108,9 @@ def corridor_lines(zip_path: Path, bbox):
             continue
         seq = int(row["stop_sequence"])
         trip_seq.setdefault(tid, []).append((seq, row["stop_id"]))
-        if tid not in trip_first or seq < trip_first[tid][0]:
-            trip_first[tid] = (seq, _secs(row["departure_time"]))
+        dep = _secs(row.get("departure_time", ""))
+        if dep is not None and (tid not in trip_first or seq < trip_first[tid][0]):
+            trip_first[tid] = (seq, dep)
     first_dep = {}
     for tid, (_seq, dep_s) in trip_first.items():
         first_dep.setdefault(trip_to_key[tid], []).append(dep_s)
@@ -106,15 +121,24 @@ def corridor_lines(zip_path: Path, bbox):
         def in_bbox_count(tid):
             n = 0
             for _, sid in trip_seq.get(tid, []):
-                s = stops[sid]
-                if south <= float(s["stop_lat"]) <= north and west <= float(s["stop_lon"]) <= east:
+                s = stops.get(sid)
+                if s is None:
+                    continue
+                lat, lon = _coords(s)
+                if lat is None or lon is None:
+                    continue
+                if south <= lat <= north and west <= lon <= east:
                     n += 1
             return n
         rep = max(trip_ids, key=in_bbox_count)
         ordered = []
         for seq, sid in sorted(trip_seq.get(rep, [])):
-            s = stops[sid]
-            lat, lon = float(s["stop_lat"]), float(s["stop_lon"])
+            s = stops.get(sid)
+            if s is None:
+                continue
+            lat, lon = _coords(s)
+            if lat is None or lon is None:
+                continue
             if south <= lat <= north and west <= lon <= east:
                 ordered.append({"stop_id": sid, "stop_name": s.get("stop_name", ""), "lat": lat, "lon": lon})
         deps = first_dep.get((short, direction), [])
