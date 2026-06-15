@@ -223,8 +223,14 @@ class EventDatasetLoadTests(unittest.TestCase):
 
 
 class OutcomePairingTests(unittest.TestCase):
-    def _decision(self, decision_id: str, action: str, status: str = "approved") -> dict:
-        return {
+    def _decision(
+        self,
+        decision_id: str,
+        action: str,
+        status: str = "approved",
+        request_id: str | None = None,
+    ) -> dict:
+        decision = {
             "decision_id": decision_id,
             "timestamp_s": 10.0,
             "vehicle_id": "bus_a",
@@ -233,6 +239,9 @@ class OutcomePairingTests(unittest.TestCase):
             "status": status,
             "reason": status,
         }
+        if request_id is not None:
+            decision["request_id"] = request_id
+        return decision
 
     def test_duplicate_pairing_keys_are_kept_and_counted(self) -> None:
         baseline = [
@@ -277,6 +286,52 @@ class OutcomePairingTests(unittest.TestCase):
         self.assertEqual(payload["pairing_key_collisions"], {"baseline": 1, "rl": 0})
         verdicts = sorted(str(row["verdict"]) for row in payload["rows"])
         self.assertIn("missing_rl", verdicts)
+
+    def test_collision_pairs_by_request_id_regardless_of_log_order(self) -> None:
+        # Issue #48: a mesma chave (timestamp, veículo, TLS) tem duas decisões;
+        # o RL regista-as por ordem inversa do baseline. O emparelhamento tem de
+        # seguir o request_id estável, não a posição no log.
+        baseline = [
+            self._decision("b1", "green_extension", request_id="sta:1:7"),
+            self._decision("b2", "reevaluate_next_cycle", request_id="sta:2:9"),
+        ]
+        rl = [
+            self._decision("r2", "reevaluate_next_cycle", request_id="sta:2:9"),
+            self._decision("r1", "green_extension", request_id="sta:1:7"),
+        ]
+        payload = evaluate_decision_outcomes(
+            baseline_summary={},
+            rl_summary={},
+            baseline_decisions=baseline,
+            baseline_actuations=[],
+            rl_decisions=rl,
+            rl_actuations=[],
+        )
+        self.assertEqual(payload["matched_decision_count"], 2)
+        self.assertEqual(payload["missing_baseline_count"], 0)
+        self.assertEqual(payload["missing_rl_count"], 0)
+        pairs = {(row["baseline_decision_id"], row["rl_decision_id"]) for row in payload["rows"]}
+        # Posicional emparelharia (b1,r2)/(b2,r1) — errado. Por request_id: (b1,r1)/(b2,r2).
+        self.assertEqual(pairs, {("b1", "r1"), ("b2", "r2")})
+
+    def test_collision_with_disjoint_request_ids_is_reported_as_missing(self) -> None:
+        # Decisões na mesma chave mas com request_ids diferentes são pedidos
+        # lógicos distintos: não devem ser falsamente emparelhados.
+        baseline = [self._decision("b1", "green_extension", request_id="sta:1:7")]
+        rl = [self._decision("r1", "green_extension", request_id="sta:9:3")]
+        payload = evaluate_decision_outcomes(
+            baseline_summary={},
+            rl_summary={},
+            baseline_decisions=baseline,
+            baseline_actuations=[],
+            rl_decisions=rl,
+            rl_actuations=[],
+        )
+        self.assertEqual(payload["matched_decision_count"], 0)
+        self.assertEqual(payload["missing_baseline_count"], 1)
+        self.assertEqual(payload["missing_rl_count"], 1)
+        verdicts = sorted(str(row["verdict"]) for row in payload["rows"])
+        self.assertEqual(verdicts, ["missing_baseline", "missing_rl"])
 
 
 if __name__ == "__main__":
