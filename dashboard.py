@@ -419,6 +419,7 @@ with st.sidebar:
         "Classe de veículo",
         options=list(cls_label_map.keys()),
         index=0,
+        key="veh_cls_select",
         help="Filtra todos os KPIs e gráficos por classe. O número é a contagem de veículos. "
              "Taxonomia: Prioritários = Autocarros + Emergência (a união); "
              "Tráfego geral = todos os não-prioritários. As classes podem sobrepor-se.",
@@ -581,6 +582,24 @@ with tab_kpi:
     if not cls_data:
         st.info("Sem dados de KPI disponíveis.")
     else:
+        # ── contextual hint: TSP gains live in the bus class ──────────────────
+        bus_n = cls_counts.get("buses", 0)
+        if vehicle_cls in ("all_vehicles", "general_traffic", "non_priority_vehicles") and bus_n:
+            hint_col, btn_col = st.columns([4, 1])
+            with hint_col:
+                insight("O TSP é <strong>prioridade ao transporte público</strong>: melhora os "
+                        f"<strong>{bus_n} autocarros</strong>, não o tráfego geral. Nesta vista "
+                        f"(<strong>{vehicle_cls_label.lower()}</strong>) o ganho dos autocarros dilui-se "
+                        "na média e sobra um pequeno custo no tráfego geral — por desenho. "
+                        "Para ver os ganhos da prioridade, filtra por <strong>Autocarros</strong>.")
+            with btn_col:
+                bus_display = f"Autocarros ({bus_n})"
+                if bus_display in cls_label_map:
+                    def _focus_buses(target=bus_display):
+                        st.session_state["veh_cls_select"] = target
+                    st.button("Ver autocarros", use_container_width=True,
+                              on_click=_focus_buses, help="Muda o filtro para a classe Autocarros.")
+
         # ── interactive A/B selector ──────────────────────────────────────────
         section("Comparação interactiva entre dois cenários")
         opts = list(run_kpis.keys())
