@@ -528,6 +528,29 @@ class RSUActiveRequestCapTestCase(unittest.TestCase):
         response = rsu.handle_messages([late], sim_time_s=200.0)[0]
         self.assertEqual(response.status, ResponseStatus.PROCESSING.value)
 
+    def test_rejected_update_does_not_free_active_slot(self) -> None:
+        """Rejected *update* of a PROCESSING request must not pop the quota slot (issue #47)."""
+        rsu = self._rsu()
+        self._fill_cap(rsu, sim_time_s=101.0)
+        # Update for request_id=1 with ETA below the window → REJECTED
+        rejected_update = _eligible_srem(
+            vehicle_id="bus_active_0",
+            request_id=1,
+            sequence_number=2,
+            request_type=RequestType.PRIORITY_REQUEST_UPDATE.value,
+            eta_to_stopline_s=2.0,
+            sim_time_s=102.0,
+        )
+        update_response = rsu.handle_messages([rejected_update], sim_time_s=102.0)[0]
+        self.assertEqual(update_response.status, ResponseStatus.REJECTED.value)
+        # Slot must still be held — newcomer must be turned away
+        newcomer = _eligible_srem(
+            vehicle_id="bus_newcomer", request_id=60, sequence_number=1, sim_time_s=103.0
+        )
+        newcomer_response = rsu.handle_messages([newcomer], sim_time_s=103.0)[0]
+        self.assertEqual(newcomer_response.status, ResponseStatus.REJECTED.value)
+        self.assertEqual(newcomer_response.reason, "rsu_active_request_limit_exceeded")
+
     def test_downstream_grant_frees_a_slot(self) -> None:
         rsu = self._rsu()
         self._fill_cap(rsu, sim_time_s=101.0)

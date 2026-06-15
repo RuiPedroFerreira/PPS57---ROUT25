@@ -441,8 +441,14 @@ class RSUAgent:
                 self._request_expiry(request, sim_time_s),
                 request.vehicle_id,
             )
-        elif request.is_cancellation or decision.response_status == ResponseStatus.REJECTED.value:
-            # SSEM final (rejected/cancelled) fecha a cadeia deste pedido.
+        elif request.is_cancellation or (
+            decision.response_status == ResponseStatus.REJECTED.value
+            and key not in self.processing_request_expiry
+        ):
+            # Cancellations always free the slot. Rejected *updates* of an
+            # already-PROCESSING request must not pop — the TSP engine may still
+            # be actuating the earlier grant. Only the initial rejection (key
+            # never held a slot) reaches here.
             self.processing_request_expiry.pop(key, None)
 
     def _request_expiry(self, request: SREMLike, sim_time_s: float) -> float:
