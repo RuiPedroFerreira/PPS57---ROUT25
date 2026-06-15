@@ -214,5 +214,33 @@ class ProtocolCodecTests(unittest.TestCase):
         self.assertEqual(rows[0]["signal_state"]["message_id"], spatem.message_id)
 
 
+    def test_spatem_with_more_than_255_links_is_capped_and_valid(self) -> None:
+        # A TLS with 260 links would produce signal_group_id=256 for the 256th link,
+        # which the ASN.1 codec rejects (valid range 1–255). The fix silently drops
+        # links beyond index 254 so the SPATEM stays encodable.
+        ryg_260 = "G" * 260
+        spatem = build_spatem_message_from_state(
+            SignalState(
+                intersection_id="I_big",
+                tls_id="I_big",
+                rsu_id="RSU_BIG",
+                timestamp_s=10.0,
+                current_phase_index=0,
+                current_program_id="default",
+                red_yellow_green_state=ryg_260,
+                next_switch_s=20.0,
+                spent_duration_s=1.0,
+            )
+        )
+
+        self.assertEqual(len(spatem.movement_events), 255)
+        self.assertEqual(spatem.movement_events[0].signal_group_id, 1)
+        self.assertEqual(spatem.movement_events[-1].signal_group_id, 255)
+
+        codec = JsonSimulationCodec()
+        encoded = codec.encode(spatem)
+        self.assertIsNotNone(encoded)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -132,6 +132,11 @@ def build_spatem_message_from_state(state: SignalState) -> SPATEMLike:
     movement_events: List[MovementEvent] = []
     intersection_status: dict[str, bool] = {}
     for link_index, char in enumerate(ryg):
+        if link_index >= 255:
+            # signal_group_id = link_index + 1; ASN.1 signalGroupID range is 1–255.
+            # Links beyond index 254 are silently dropped so the SPATEM remains valid
+            # for all reachable junction sizes (max observed: ~25 links/TLS).
+            break
         movement_events.append(
             MovementEvent(
                 signal_group_id=link_index + 1,
