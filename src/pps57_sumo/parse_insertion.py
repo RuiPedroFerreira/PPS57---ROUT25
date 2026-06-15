@@ -14,8 +14,12 @@ from typing import Any, Dict
 # externas e podem conter DTD/entidades maliciosas (XXE/billion-laughs).
 try:
     from defusedxml import ElementTree as ET  # type: ignore[import-untyped]
+    from defusedxml.common import DefusedXmlException  # type: ignore[import-untyped]
 except ImportError:  # pragma: no cover - exercised in minimal CI images.
     from xml.etree import ElementTree as ET  # type: ignore[no-redef]
+
+    class DefusedXmlException(Exception):  # type: ignore[no-redef]
+        """Unreachable stub — defusedxml not installed, so its exceptions cannot fire."""
 
 
 def parse_insertion_kpis(summary_path: Path | None, statistics_path: Path | None) -> Dict[str, Any]:
@@ -52,7 +56,7 @@ def parse_insertion_kpis(summary_path: Path | None, statistics_path: Path | None
                 last_running = int(float(elem.attrib.get("running", "0")))
                 last_step = float(elem.attrib.get("time", last_step))
                 elem.clear()
-        except ET.ParseError:
+        except (ET.ParseError, DefusedXmlException):
             out["parse_error"] = True
             return out
         out["max_waiting_to_insert"] = max_waiting
@@ -95,7 +99,7 @@ def parse_insertion_kpis(summary_path: Path | None, statistics_path: Path | None
                 out["collisions"] = int(safety.attrib.get("collisions", "0"))
                 out["emergency_stops"] = int(safety.attrib.get("emergencyStops", "0"))
                 out["emergency_braking"] = int(safety.attrib.get("emergencyBraking", "0"))
-        except ET.ParseError:
+        except (ET.ParseError, DefusedXmlException):
             out["statistics_parse_error"] = True
 
     return out
