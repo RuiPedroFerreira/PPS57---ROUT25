@@ -17,6 +17,16 @@ import re
 import xml.etree.ElementTree as ET
 from typing import Dict, Iterable, List, Optional, Tuple
 
+# M4: net.xml/additional podem vir de fontes externas (OSM) -> endurece o
+# parsing de input não-confiável contra XXE/expansão de entidades. A
+# anotação/construção com `ET.Element` mantém-se do stdlib (defusedxml não a
+# expõe e não processa input).
+try:
+    from defusedxml.ElementTree import fromstring as _safe_fromstring, parse as _safe_parse
+except ImportError:  # pragma: no cover - exercised in minimal CI images.
+    _safe_fromstring = ET.fromstring
+    _safe_parse = ET.parse
+
 
 @dataclass(frozen=True)
 class PhaseProfile:
@@ -162,7 +172,7 @@ class NetworkProfileBuilder:
         if not self.network_file.exists():
             raise FileNotFoundError(f"SUMO network file not found: {self.network_file}")
         xml_bytes = self.network_file.read_bytes()
-        root = ET.fromstring(xml_bytes)
+        root = _safe_fromstring(xml_bytes)
         fingerprint = hashlib.sha256(xml_bytes).hexdigest()
 
         junction_types = {
@@ -250,7 +260,7 @@ class NetworkProfileBuilder:
         for path in self.additional_files:
             if not path.exists():
                 continue
-            root = ET.parse(path).getroot()
+            root = _safe_parse(path).getroot()
             for tag, detector_type in (("inductionLoop", "e1"), ("laneAreaDetector", "e2")):
                 for item in root.iter(tag):
                     detector_id = str(item.get("id", ""))

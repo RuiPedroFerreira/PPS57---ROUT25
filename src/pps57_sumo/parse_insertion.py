@@ -9,7 +9,13 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Dict
-from xml.etree import ElementTree as ET
+
+# M4: defusedxml em vez do stdlib — summary/statistics vêm de simulações
+# externas e podem conter DTD/entidades maliciosas (XXE/billion-laughs).
+try:
+    from defusedxml import ElementTree as ET  # type: ignore[import-untyped]
+except ImportError:  # pragma: no cover - exercised in minimal CI images.
+    from xml.etree import ElementTree as ET  # type: ignore[no-redef]
 
 
 def parse_insertion_kpis(summary_path: Path | None, statistics_path: Path | None) -> Dict[str, Any]:
@@ -55,7 +61,11 @@ def parse_insertion_kpis(summary_path: Path | None, statistics_path: Path | None
         out["final_inserted"] = last_inserted
         out["final_running"] = last_running
         out["final_time_s"] = last_step
-        out["insertion_gap_at_end"] = max(0, last_loaded - last_inserted - last_running)
+        # Backlog never inserted = loaded - inserted. `running` is already a
+        # subset of `inserted` (a vehicle must be inserted to be running), so
+        # subtracting it here double-counts and understates the gap, letting the
+        # insertion quality gate pass with vehicles still stuck at the depot.
+        out["insertion_gap_at_end"] = max(0, last_loaded - last_inserted)
 
     if statistics_path is not None and Path(statistics_path).exists():
         out["statistics_available"] = True
