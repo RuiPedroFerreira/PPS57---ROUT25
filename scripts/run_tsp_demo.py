@@ -219,13 +219,17 @@ def main() -> None:
     parser.add_argument("--busstops", type=Path, default=WORK / "boavista_pt_stops.add.xml")
     parser.add_argument("--end", type=int, default=3600)
     parser.add_argument("--port", type=int, default=None,
-                        help="TraCI port; default: an OS-assigned free port (avoids collisions between concurrent runs).")
+                        help="TraCI port; default: a free port via the shared resolver "
+                             "(TRACI_PORT, else an OS-assigned free port, else a fixed fallback port).")
     parser.add_argument("--out", type=Path, default=ROOT / "docs" / "validation" / "demo_baseline_vs_tsp.json")
     parser.add_argument("--validation-config", type=Path, default=ROOT / "configs" / "validation_config.json")
     args = parser.parse_args()
     if args.port is None:
-        from sumolib.miscutils import getFreeSocketPort  # type: ignore
-        args.port = getFreeSocketPort()
+        # Reuse the shared adapter resolver: it tries getFreeSocketPort() and,
+        # when ephemeral-port probing is unavailable (restricted environments),
+        # falls back to scanning fixed ports instead of returning None/raising.
+        from pps57_cits.traci_adapter import _resolve_traci_port
+        args.port = _resolve_traci_port()
     envelope_pct, envelope_source = running_time_envelope(load_validation_config(args.validation_config))
     for p in (args.net, args.routes, args.busstops):
         if not p.exists():
