@@ -742,12 +742,23 @@ with tab_decisions:
         )
         runtime = demo["runs"][sel_run].get("runtime", {})
 
-        section("Pipeline de decisão — do pedido à actuação")
+        section("Pipeline de decisão — do seguimento à actuação")
         total    = runtime.get("total_decisions", 0)
         applied  = runtime.get("applied_events", 0)
         blocked  = runtime.get("blocked_by_safety", 0)
         rejected = runtime.get("controller_rejections", 0)
-        actuable = total - blocked - rejected
+        by_action = runtime.get("by_action", {})
+
+        # Só estas duas acções propõem uma mudança real ao semáforo. As restantes
+        # (reavaliar / rejeitar / sem acção) são não-actuações deliberadas, não
+        # "aplicações falhadas" — por isso o denominador honesto da taxa de
+        # aplicação é o nº de decisões ACCIONÁVEIS, não o total de avaliações.
+        actionable = by_action.get("green_extension", 0) + by_action.get("early_green", 0)
+        non_actionable = {
+            "Reavaliar no ciclo seguinte": by_action.get("reevaluate_next_cycle", 0),
+            "Rejeitadas (score abaixo do limiar)": by_action.get("reject", 0),
+            "Sem acção necessária (verde já chega)": by_action.get("no_action", 0),
+        }
 
         if total == 0:
             warn("Esta run não gerou decisões TSP. Selecciona uma run TSP "
@@ -756,35 +767,54 @@ with tab_decisions:
             col_f, col_m = st.columns([1, 1])
             with col_f:
                 fig_funnel = go.Figure(go.Funnel(
-                    y=["Decisões totais", "Elegíveis (safety OK)", "Aplicadas em rede"],
-                    x=[total, actuable, applied],
+                    y=["Decisões avaliadas", "Accionáveis (propõem mudança)", "Aplicadas em rede"],
+                    x=[total, actionable, applied],
                     textinfo="value+percent initial",
-                    marker_color=["#1d6ef5", "#7c3aed", "#22c55e"],
+                    marker_color=["#94a3b8", "#1d6ef5", "#22c55e"],
+                    hovertemplate="%{y}: %{x}<extra></extra>",
                 ))
                 chart_layout(fig_funnel, "Funil de decisão TSP", height=300)
                 st.plotly_chart(fig_funnel, use_container_width=True)
             with col_m:
                 st.markdown("&nbsp;")
                 mm1, mm2 = st.columns(2)
-                mm1.metric("Decisões totais", total, border=True,
-                           help="Número total de decisões avaliadas pelo motor TSP.")
-                mm2.metric("Bloqueadas (safety)", blocked, border=True,
-                           help="Decisões barradas pela Safety Layer por risco de segurança.")
+                mm1.metric("Decisões avaliadas", total, border=True,
+                           help="Total de avaliações do motor. Cada autocarro é reavaliado "
+                                "várias vezes ao longo da aproximação, por isso este número é "
+                                "muito maior que o nº de autocarros.")
+                mm2.metric("Accionáveis", actionable, border=True,
+                           help="Decisões que propuseram uma mudança real ao semáforo "
+                                "(extensão de verde + verde antecipado).")
                 mm3, mm4 = st.columns(2)
-                mm3.metric("Rejeitadas (controller)", rejected, border=True,
-                           help="Decisões recusadas pelo controlador simulado.")
-                mm4.metric("Aplicadas em rede", applied, border=True,
-                           help="Decisões efectivamente aplicadas aos semáforos via TraCI.")
-                ar = f"{applied/total*100:.0f}%" if total else "—"
-                br = f"{blocked/total*100:.0f}%" if total else "—"
-                st.caption(f"Taxa de aplicação: **{ar}** · Taxa de bloqueio: **{br}**")
+                mm3.metric("Aplicadas em rede", applied, border=True,
+                           help="Accionáveis que passaram a Safety Layer e foram aplicadas via TraCI.")
+                mm4.metric("Bloqueadas (safety)", blocked, border=True,
+                           help="Accionáveis barradas pela Safety Layer por risco de segurança.")
+                ar = f"{applied/actionable*100:.0f}%" if actionable else "—"
+                st.caption(f"Taxa de aplicação: **{ar}** ({applied}/{actionable} accionáveis aplicadas)"
+                           + (f" · {rejected} rejeições do controller" if rejected else ""))
 
-            insight("O funil mostra quantas decisões passaram pela Safety Layer e foram aplicadas via "
-                    "TraCI. Taxa de aplicação baixa = pedidos chegam em janelas não elegíveis ou "
-                    "bloqueados por segurança.")
+            insight("As <strong>decisões avaliadas</strong> incluem cada vez que um autocarro em "
+                    "aproximação é reavaliado. Só uma fracção propõe mudar o semáforo "
+                    "(<strong>accionáveis</strong>); destas, a Safety Layer só barra as inseguras. "
+                    "A taxa correcta é aplicadas/accionáveis — não aplicadas/avaliadas.")
+
+            # explain the non-actionable bulk so the total→actionable drop is clear
+            na_total = sum(non_actionable.values())
+            if na_total:
+                with st.expander(f"Porque é que {na_total} decisões não actuaram? (não-actuações deliberadas)"):
+                    df_na = pd.DataFrame(
+                        [{"Categoria": k, "Decisões": v} for k, v in non_actionable.items() if v]
+                    ).sort_values("Decisões", ascending=False)
+                    st.dataframe(df_na, use_container_width=True, hide_index=True)
+                    st.caption(
+                        "**Reavaliar** = o autocarro ainda está a ser seguido mas não é o momento "
+                        "de actuar (fase ainda não pronta, verde mínimo por servir, benefício pequeno "
+                        "ou pressão de rede). **Rejeitar** = o autocarro não precisa de prioridade "
+                        "(pontual / desvio baixo). **Sem acção** = o verde actual já é suficiente."
+                    )
 
         section("Distribuição de acções decididas")
-        by_action = runtime.get("by_action", {})
         col_pie, col_legend = st.columns([1, 1])
         with col_pie:
             if by_action:
