@@ -1012,54 +1012,115 @@ with tab_rl:
 
 with tab_scenarios:
     scenario_dir = REPORTS / "scenarios"
-    has_scenarios = scenario_dir.exists() and any(scenario_dir.iterdir())
-    if not has_scenarios:
-        warn("Sem resultados de cenários multi-seed. Corre <code>make scenario-suite</code> para gerar "
-             "runs com múltiplas seeds e análise estatística com intervalos de confiança.")
+    scen_names = sorted(p.name for p in scenario_dir.iterdir() if p.is_dir()) if scenario_dir.exists() else []
+    if not scen_names:
+        warn("Sem resultados de cenários. Corre <code>make scenario-suite</code> (ou o separador "
+             "Simulação) para gerar runs por cenário com baseline vs TSP emparelhados.")
     else:
-        scenarios = sorted(p.name for p in scenario_dir.iterdir() if p.is_dir())
-        col_s1, col_s2 = st.columns([1, 2])
-        with col_s1:
-            sel_scen = st.selectbox("Cenário", scenarios)
-        scen_path = scenario_dir / sel_scen
-        run_types = sorted(p.name for p in scen_path.iterdir() if p.is_dir())
-
-        if not run_types:
-            st.info("Sem run types neste cenário.")
-        else:
-            all_rows = []
-            for rt in run_types:
-                for seed_dir in (scen_path / rt).iterdir():
+        # ── load every scenario/run-type/seed into one long dataframe ─────────
+        rows = []
+        for scen in scen_names:
+            for rt_dir in (scenario_dir / scen).iterdir():
+                if not rt_dir.is_dir():
+                    continue
+                for seed_dir in rt_dir.iterdir():
+                    if not seed_dir.is_dir():
+                        continue
                     kpis = load_json(seed_dir / "kpis.json")
-                    if kpis:
-                        data = get_kpi(kpis, vehicle_cls)
-                        for m, (lab, _, _) in KPI_META.items():
-                            val = data.get(m)
-                            if val is not None:
-                                all_rows.append({"Run type": rt, "Seed": seed_dir.name,
-                                                 "Métrica": lab, "Valor": val})
-            if all_rows:
-                df_sc = pd.DataFrame(all_rows)
-                with col_s2:
-                    sel_metric = st.selectbox("Métrica", df_sc["Métrica"].unique().tolist())
-                df_plot = df_sc[df_sc["Métrica"] == sel_metric]
+                    if not kpis:
+                        continue
+                    data = get_kpi(kpis, vehicle_cls)
+                    for m, (lab, _, _) in KPI_META.items():
+                        v = data.get(m)
+                        if v is not None:
+                            rows.append({"Cenário": scen, "Run type": rt_dir.name,
+                                         "Seed": seed_dir.name, "metric_key": m,
+                                         "Métrica": lab, "Valor": v})
 
-                section("Distribuição por seed — boxplot")
-                fig_box = px.box(df_plot, x="Run type", y="Valor", color="Run type",
-                                 points="all", height=400, color_discrete_sequence=list(PALETTE.values()))
-                fig_box.update_layout(showlegend=False)
-                chart_layout(fig_box, f"{sel_metric} — {sel_scen} ({vehicle_cls_label})")
-                st.plotly_chart(fig_box, use_container_width=True)
-                insight("Cada ponto = uma seed de aleatoriedade. A caixa mostra Q1–Q3; a linha central é "
-                        "a mediana. Pouca sobreposição entre cenários sugere diferença significativa.")
+        if not rows:
+            st.info(f"Cenários presentes mas sem KPIs para a classe '{vehicle_cls_label}'. "
+                    "Experimenta 'Todos os veículos' ou 'Autocarros'.")
+        else:
+            df_all = pd.DataFrame(rows)
+            run_types_all = sorted(df_all["Run type"].unique())
+            color_map = {rt: run_color(rt) for rt in run_types_all}
+            baseline_rt = next((r for r in run_types_all if "baseline" in r), None)
+            tsp_rt = next((r for r in run_types_all if "tsp" in r), None)
+            n_scen = df_all["Cenário"].nunique()
 
-                section("Estatísticas descritivas")
-                summary = (df_plot.groupby("Run type")["Valor"]
-                           .agg(["mean", "std", "min", "max", "count"])
-                           .rename(columns={"mean": "Média", "std": "Desvio-padrão",
-                                            "min": "Mín", "max": "Máx", "count": "Seeds"}).round(2))
-                st.dataframe(summary, use_container_width=True)
-                download_csv(summary.reset_index(), f"scenario_{sel_scen}.csv", key="dl_scen")
+            # ── cross-scenario overview ───────────────────────────────────────
+            section(f"Visão geral — {n_scen} cenários · {vehicle_cls_label}")
+            ov_keys = ["mean_time_loss_s", "mean_waiting_time_s", "mean_duration_s", "mean_speed_mps"]
+            ov_keys = [k for k in ov_keys if k in df_all["metric_key"].values]
+            ov_label = st.selectbox("Métrica", [KPI_META[k][0] for k in ov_keys], key="ov_metric")
+            ov_key = next(k for k in ov_keys if KPI_META[k][0] == ov_label)
+
+            dfm = df_all[df_all["metric_key"] == ov_key]
+            piv = dfm.groupby(["Cenário", "Run type"])["Valor"].mean().reset_index()
+            fig_ov = px.bar(piv, x="Cenário", y="Valor", color="Run type", barmode="group",
+                            color_discrete_map=color_map, height=420)
+            fig_ov.update_layout(legend_title_text="", xaxis_tickangle=-30)
+            chart_layout(fig_ov, f"{ov_label} por cenário — baseline vs TSP")
+            st.plotly_chart(fig_ov, use_container_width=True)
+
+            # per-scenario delta (TSP vs baseline), correctly coloured by improvement
+            if baseline_rt and tsp_rt:
+                wide = piv.pivot(index="Cenário", columns="Run type", values="Valor")
+                higher_better = ov_key in HIGHER_IS_BETTER
+                drows = []
+                for scen, r in wide.iterrows():
+                    b, t = r.get(baseline_rt), r.get(tsp_rt)
+                    if b and t is not None and b != 0:
+                        d = (t - b) / abs(b) * 100
+                        improved = (d > 0) if higher_better else (d < 0)
+                        drows.append({"Cenário": scen, "Delta %": round(d, 1), "improved": improved})
+                if drows:
+                    ddf = pd.DataFrame(drows).sort_values("Delta %")
+                    fig_d = go.Figure(go.Bar(
+                        x=ddf["Delta %"], y=ddf["Cenário"], orientation="h",
+                        marker_color=["#22c55e" if i else "#ef4444" for i in ddf["improved"]],
+                        text=[f"{d:+.1f}%" for d in ddf["Delta %"]], textposition="outside",
+                        hovertemplate="%{y}: %{x:+.1f}%<extra></extra>",
+                    ))
+                    fig_d.add_vline(x=0, line_width=2, line_color="#334155")
+                    chart_layout(fig_d, f"Impacto do TSP por cenário (Δ% {ov_label})",
+                                 height=max(280, n_scen * 42 + 80))
+                    st.plotly_chart(fig_d, use_container_width=True)
+                    insight("Verde = o TSP melhora o cenário; vermelho = piora. "
+                            "Permite ver em que cenários a prioridade semafórica traz mais valor "
+                            "(ex. autocarros atrasados ou bunching) e onde tem custo.")
+
+            # ── per-scenario detail ───────────────────────────────────────────
+            section("Detalhe por cenário")
+            cc1, cc2 = st.columns([1, 2])
+            with cc1:
+                sel_scen = st.selectbox("Cenário", scen_names, key="detail_scen")
+            df_scen = df_all[df_all["Cenário"] == sel_scen]
+            with cc2:
+                sel_metric = st.selectbox("Métrica", df_scen["Métrica"].unique().tolist(), key="detail_metric")
+            df_plot = df_scen[df_scen["Métrica"] == sel_metric]
+
+            n_seeds = df_plot.groupby("Run type")["Seed"].nunique().max() if not df_plot.empty else 0
+            fig_box = px.box(df_plot, x="Run type", y="Valor", color="Run type",
+                             points="all", height=400, color_discrete_map=color_map)
+            fig_box.update_layout(showlegend=False)
+            chart_layout(fig_box, f"{sel_metric} — {sel_scen} ({vehicle_cls_label})")
+            st.plotly_chart(fig_box, use_container_width=True)
+            if n_seeds and n_seeds > 1:
+                insight("Cada ponto = uma seed. A caixa mostra Q1–Q3; a linha central é a mediana. "
+                        "Pouca sobreposição entre arms sugere diferença significativa.")
+            else:
+                insight("Apenas <strong>1 seed</strong> por arm — sem dispersão estatística. "
+                        "Corre mais seeds (ex. <code>--seeds 57 58 59</code>) para boxplots com "
+                        "variabilidade e intervalos de confiança.")
+
+            section("Estatísticas descritivas")
+            summary = (df_plot.groupby("Run type")["Valor"]
+                       .agg(["mean", "std", "min", "max", "count"])
+                       .rename(columns={"mean": "Média", "std": "Desvio-padrão",
+                                        "min": "Mín", "max": "Máx", "count": "Seeds"}).round(2))
+            st.dataframe(summary, use_container_width=True)
+            download_csv(summary.reset_index(), f"scenario_{sel_scen}.csv", key="dl_scen")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 6 — Metodologia
