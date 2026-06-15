@@ -30,7 +30,7 @@ from pps57_cits.messages import (
 from pps57_cits.models import NetworkStateSnapshot, SignalState
 from pps57_cits.obu import OBUEmulator
 from pps57_cits.rsu import build_rsu_agents
-from pps57_cits.traci_adapter import TraciSimulationAdapter, TraciUnavailableError
+from pps57_cits.traci_adapter import TraciSimulationAdapter
 from pps57_opt.policy_runtime import RuntimePolicy
 from pps57_sumo.network_binding import NetworkBinding, build_network_binding
 
@@ -114,44 +114,45 @@ class TSPControlController:
         actuations: List[ActuationResult] = []
         compensations: List[ActuationResult] = []
 
+        adapter.start()  # propaga TraciUnavailableError
+
+        # Fecha o SUMO mesmo que algo entre o arranque e o loop falhe — em
+        # particular `_verify_signal_programs`, que fala com TraCI, ou a
+        # abertura dos loggers. Caso contrário o processo ficava órfão a segurar
+        # a porta TraCI e colidia com a run seguinte.
         try:
-            adapter.start()
-        except TraciUnavailableError:
-            raise
+            cits_log_path = self.cits_config.path_from_root(self.cits_config.logging.get("message_log", "outputs/cits_messages.jsonl"))
+            decision_log_path = self.tsp_config.path_from_root(self.tsp_config.logging.get("decision_log", "outputs/tsp_decisions.jsonl"))
+            actuation_log_path = self.tsp_config.path_from_root(self.tsp_config.logging.get("actuation_log", "outputs/tsp_actuation.jsonl"))
 
-        cits_log_path = self.cits_config.path_from_root(self.cits_config.logging.get("message_log", "outputs/cits_messages.jsonl"))
-        decision_log_path = self.tsp_config.path_from_root(self.tsp_config.logging.get("decision_log", "outputs/tsp_decisions.jsonl"))
-        actuation_log_path = self.tsp_config.path_from_root(self.tsp_config.logging.get("actuation_log", "outputs/tsp_actuation.jsonl"))
+            # C3/C4: reconciliar o mapeamento de fases configurado com o programa
+            # semafórico realmente carregado e detetar TLS atuados (o motor assume
+            # controlo de tempo fixo). Em qualquer divergência, fail-closed:
+            # desativa a atuação mas mantém a observação/decisão.
+            contracts = self._signal_controlled_contracts()
+            signal_control: SignalControlAdapter = TraciSignalControlAdapter(adapter)
+            controller_simulation_cfg = self.tsp_config.raw.get("controller_simulation", {})
+            if bool(controller_simulation_cfg.get("enabled", False)):
+                signal_control = SimulatedControllerAdapter(
+                    base=signal_control,
+                    contracts=contracts,
+                    config=controller_simulation_cfg,
+                )
+            verification_problems = self._verify_signal_programs(signal_control)
+            effective_actuation = apply_actuation and not verification_problems
+            if verification_problems and apply_actuation:
+                print("[SAFETY] Atuação TraCI desativada: verificação do programa semafórico falhou:")
+                for problem in verification_problems:
+                    print(f"  - {problem}")
+            # Propaga o resultado da verificação para a Safety Layer poder enforçar
+            # `pedestrian_clearance_must_not_be_shortened` (fail-closed em falhas).
+            self.safety.set_signal_program_verified(not verification_problems)
+            actuator = TraciTSPActuator(adapter=signal_control, apply_actuation=effective_actuation)
 
-        # C3/C4: reconciliar o mapeamento de fases configurado com o programa
-        # semafórico realmente carregado e detetar TLS atuados (o motor assume
-        # controlo de tempo fixo). Em qualquer divergência, fail-closed:
-        # desativa a atuação mas mantém a observação/decisão.
-        contracts = self._signal_controlled_contracts()
-        signal_control: SignalControlAdapter = TraciSignalControlAdapter(adapter)
-        controller_simulation_cfg = self.tsp_config.raw.get("controller_simulation", {})
-        if bool(controller_simulation_cfg.get("enabled", False)):
-            signal_control = SimulatedControllerAdapter(
-                base=signal_control,
-                contracts=contracts,
-                config=controller_simulation_cfg,
-            )
-        verification_problems = self._verify_signal_programs(signal_control)
-        effective_actuation = apply_actuation and not verification_problems
-        if verification_problems and apply_actuation:
-            print("[SAFETY] Atuação TraCI desativada: verificação do programa semafórico falhou:")
-            for problem in verification_problems:
-                print(f"  - {problem}")
-        # Propaga o resultado da verificação para a Safety Layer poder enforçar
-        # `pedestrian_clearance_must_not_be_shortened` (fail-closed em falhas).
-        self.safety.set_signal_program_verified(not verification_problems)
-        actuator = TraciTSPActuator(adapter=signal_control, apply_actuation=effective_actuation)
-
-        step_count = 0
-        with CITSJsonlLogger(cits_log_path) as cits_logger, TSPJsonlLogger(decision_log_path) as decision_logger, TSPJsonlLogger(actuation_log_path) as actuation_logger:
-            mapem = build_mapem_messages(self.cits_config, sim_time_s=0.0)
-            self._publish_log_collect(mapem, cits_logger, cits_summary)
-            try:
+            step_count = 0
+            with CITSJsonlLogger(cits_log_path) as cits_logger, TSPJsonlLogger(decision_log_path) as decision_logger, TSPJsonlLogger(actuation_log_path) as actuation_logger:
+                mapem = build_mapem_messages(self.cits_config, sim_time_s=0.0)
+                self._publish_log_collect(mapem, cits_logger, cits_summary)
                 while adapter.min_expected_number() > 0:
                     if steps is not None and step_count >= steps:
                         break
@@ -236,8 +237,8 @@ class TSPControlController:
                     ):
                         actuation_logger.write(event_result)
                         compensations.append(event_result)
-            finally:
-                adapter.close()
+        finally:
+            adapter.close()
 
         summary_path = self.tsp_config.path_from_root(self.tsp_config.logging.get("summary_report", "reports/tsp_emulation_summary.json"))
         cits_summary_dict = cits_summary.to_dict()
