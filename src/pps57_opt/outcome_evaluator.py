@@ -26,8 +26,10 @@ def evaluate_decision_outcomes(
     baseline_decision_list = list(baseline_decisions)
     rl_decision_list = list(rl_decisions)
     # Cada chave guarda a LISTA de decisões: múltiplas decisões para o mesmo
-    # (timestamp, veículo, TLS) são emparelhadas por ordem de log em vez de
-    # colapsadas silenciosamente em last-wins.
+    # (timestamp, veículo, TLS) são emparelhadas pelo request_id estável (ver
+    # _pair_within_key) em vez de por ordem de log, evitando comparar decisões
+    # logicamente diferentes quando as duas corridas registam a colisão por
+    # ordens distintas. Não são colapsadas silenciosamente em last-wins.
     baseline_by_key = _decisions_by_key(baseline_decision_list)
     rl_by_key = _decisions_by_key(rl_decision_list)
     baseline_actuation_by_decision = _actuations_by_decision_id(baseline_actuations)
@@ -39,7 +41,8 @@ def evaluate_decision_outcomes(
     for key in sorted(set(baseline_by_key) | set(rl_by_key)):
         baseline_items = baseline_by_key.get(key, [])
         rl_items = rl_by_key.get(key, [])
-        for baseline, rl in zip(baseline_items, rl_items):
+        paired, baseline_unpaired, rl_unpaired = _pair_within_key(baseline_items, rl_items)
+        for baseline, rl in paired:
             rows.append(
                 _evaluate_pair(
                     key,
@@ -49,10 +52,10 @@ def evaluate_decision_outcomes(
                     rl_actuation_by_decision.get(str(rl.get("decision_id")), {}),
                 )
             )
-        for rl in rl_items[len(baseline_items):]:
+        for rl in rl_unpaired:
             missing_baseline += 1
             rows.append(_missing_row(key, "missing_baseline", rl))
-        for baseline in baseline_items[len(rl_items):]:
+        for baseline in baseline_unpaired:
             missing_rl += 1
             rows.append(_missing_row(key, "missing_rl", baseline))
 
@@ -275,6 +278,77 @@ def _decisions_by_key(items: Iterable[Dict[str, Any]]) -> Dict[Tuple[float, str,
 
 def _collision_count(grouped: Dict[Tuple[float, str, str], List[Dict[str, Any]]]) -> int:
     return sum(len(items) - 1 for items in grouped.values() if len(items) > 1)
+
+
+def _stable_subkey(item: Dict[str, Any]) -> Optional[str]:
+    """Identificador estável entre corridas para alinhar decisões dentro de uma
+    chave colidida. Usa-se `request_id` (correlation_token determinístico). O
+    `decision_id` é um uuid4 gerado por decisão — único por corrida e portanto
+    inútil para emparelhar baseline↔RL — pelo que NÃO é usado aqui."""
+    raw = item.get("request_id")
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    return text or None
+
+
+def _pair_within_key(
+    baseline_items: List[Dict[str, Any]],
+    rl_items: List[Dict[str, Any]],
+) -> Tuple[
+    List[Tuple[Dict[str, Any], Dict[str, Any]]],
+    List[Dict[str, Any]],
+    List[Dict[str, Any]],
+]:
+    """Empareja as decisões de uma chave (timestamp, veículo, TLS) pelo request_id
+    estável, devolvendo (pares, baseline_sem_par, rl_sem_par).
+
+    Decisões sem request_id caem para emparelhamento posicional (comportamento
+    legado), mas apenas entre si — nunca se mistura uma decisão com request_id
+    conhecido com outra sem ele. Quando duas decisões partilham timestamp, veículo,
+    TLS *e* request_id (colisão dupla, rara) o posicional dentro desse sub-grupo é
+    o melhor disponível, pois trata-se do mesmo pedido lógico."""
+    baseline_keyed: Dict[str, List[Dict[str, Any]]] = {}
+    baseline_unkeyed: List[Dict[str, Any]] = []
+    for item in baseline_items:
+        sub = _stable_subkey(item)
+        if sub is None:
+            baseline_unkeyed.append(item)
+        else:
+            baseline_keyed.setdefault(sub, []).append(item)
+
+    rl_keyed: Dict[str, List[Dict[str, Any]]] = {}
+    rl_unkeyed: List[Dict[str, Any]] = []
+    for item in rl_items:
+        sub = _stable_subkey(item)
+        if sub is None:
+            rl_unkeyed.append(item)
+        else:
+            rl_keyed.setdefault(sub, []).append(item)
+
+    pairs: List[Tuple[Dict[str, Any], Dict[str, Any]]] = []
+    baseline_unpaired: List[Dict[str, Any]] = []
+    rl_unpaired: List[Dict[str, Any]] = []
+
+    # Ordem determinística: sub-keys pela ordem de aparição no baseline, depois
+    # as que só existem no RL.
+    ordered_subs = list(baseline_keyed.keys())
+    ordered_subs.extend(sub for sub in rl_keyed if sub not in baseline_keyed)
+    for sub in ordered_subs:
+        b_list = baseline_keyed.get(sub, [])
+        r_list = rl_keyed.get(sub, [])
+        for baseline, rl in zip(b_list, r_list):
+            pairs.append((baseline, rl))
+        baseline_unpaired.extend(b_list[len(r_list):])
+        rl_unpaired.extend(r_list[len(b_list):])
+
+    # Fallback posicional para decisões sem identificador estável.
+    for baseline, rl in zip(baseline_unkeyed, rl_unkeyed):
+        pairs.append((baseline, rl))
+    baseline_unpaired.extend(baseline_unkeyed[len(rl_unkeyed):])
+    rl_unpaired.extend(rl_unkeyed[len(baseline_unkeyed):])
+
+    return pairs, baseline_unpaired, rl_unpaired
 
 
 def _actuations_by_decision_id(rows: Iterable[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
