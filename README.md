@@ -16,27 +16,32 @@ The repository is designed for technical demonstration and validation. It is not
 - Screens approved TSP actions through a simulated controller layer that can
   ACK/NACK commands before they reach SUMO/TraCI.
 - Supports SUMO/TraCI actuation and SUMO/TraCI no-actuation observation mode.
+- Optionally activates v2.2 priority event lifecycle (check-in/check-out with
+  rolling green extensions and green compensation).
 - Exports JSONL logs and JSON reports for auditability.
 - Generates a demonstrator report comparing SUMO baseline, direct TSP and TSP
   through the simulated controller, using only SUMO/TraCI artifacts.
 - Compares offline policy candidates against the baseline TSP engine.
 - Trains a tabular Q-learning policy from SUMO/TraCI event-derived scenarios.
 - Loads exported policies for runtime inference in semi-live TSP runs.
+- Provides a sim-to-real validation ladder (V0–V4d) for grounding the simulation
+  in real-world references without fabricating data.
 
 ## Repository Layout
 
 ```text
 configs/                 Runtime configuration for C-ITS, TSP and policy training
-docs/                    Protocol ICD and design notes
-outputs/                 Generated JSONL/XML/log artifacts
+outputs/                 Generated JSONL/XML/log artifacts (git-ignored)
 reports/                 Generated summaries, KPIs and policy reports
 scripts/                 User-facing command-line entry points
 src/pps57_cits/          C-ITS/V2X emulation layer
 src/pps57_opt/           Policy optimization, runtime policy loading and RL training
-src/pps57_sumo/          SUMO network generation and KPI parsing
+src/pps57_sumo/          SUMO network generation, KPI parsing and sim-to-real metrics
 src/pps57_tsp/           TSP engine, Safety Layer and actuation
 sumo/                    SUMO network, routes, additional files and run config
 tests/                   Unit and integration tests
+.tools/                  Git-ignored validation artifacts (OSM extracts, GTFS feeds,
+                         reference counts — fetched by scripts, never vendored)
 ```
 
 ## Documentation Map
@@ -49,6 +54,8 @@ tests/                   Unit and integration tests
   common project workflows.
 - [Command-Line Workflows](#command-line-workflows) describes each pipeline and
   its generated artifacts.
+- [Sim-to-Real Validation Ladder](#sim-to-real-validation-ladder) describes the
+  V0–V4d evidence chain.
 - [Output Artifacts](#output-artifacts), [Safety Layer Rules](#safety-layer-rules)
   and [Runtime Policy Modes](#runtime-policy-modes) explain the runtime evidence
   model.
@@ -143,6 +150,7 @@ external SUMO installation to `PATH`.
 |---|---|---|
 | `make validate` | Validate project structure and JSON configs | No |
 | `make test` | Run all unit tests | No |
+| `make sumo-smoke` | Quick SUMO binary smoke test | Yes |
 | `make build` | Generate SUMO plain files and compile the network | Yes |
 | `make run` | Build and run the SUMO baseline | Yes |
 | `make gui` | Build and open the SUMO GUI baseline | Yes |
@@ -156,6 +164,8 @@ external SUMO installation to `PATH`.
 | `make tsp-sumo-no-actuation` | Run TSP with SUMO observation only | Yes |
 | `make tsp-gui` | Run TSP with SUMO GUI and TraCI actuation | Yes |
 | `make tsp-gui-no-actuation` | Run TSP with SUMO GUI observation only | Yes |
+| `make compare-tsp-rl` | Run baseline and RL TSP back-to-back and write a comparison table | Yes |
+| `make compare-sumo-kpis BASELINE_KPIS=... RL_KPIS=...` | Diff two pre-generated KPI JSON files | No |
 | `make optimize-offline` | Compare safe offline policy candidates | No |
 | `make train-rl-policy` | Train tabular Q-learning policy offline | No |
 | `make sort-routes` | Sort SUMO route definitions by departure time | No |
@@ -174,6 +184,7 @@ external SUMO installation to `PATH`.
 | Run TSP with TraCI signal actuation | `make tsp-sumo` |
 | Compare baseline, direct TSP and controller-mediated TSP | `make tsp-demonstrator` |
 | Train or refresh runtime policies | `make build-event-training-dataset`, then `make optimize-offline` or `make train-rl-policy` |
+| Ground the simulation in real references | See [Sim-to-Real Validation Ladder](#sim-to-real-validation-ladder) |
 
 ## Command-Line Workflows
 
@@ -219,19 +230,13 @@ make build
 Direct equivalent:
 
 ```bash
-.venv/bin/python src/pps57_sumo/generate_plain_corridor.py \
+.venv/bin/python src/pps57_sumo/build_network.py \
   --config configs/sumo_scenario_base.json \
-  --output sumo/plain
-
-netconvert \
-  --node-files sumo/plain/corredor.nod.xml \
-  --edge-files sumo/plain/corredor.edg.xml \
-  --output-file sumo/network/corredor.net.xml \
-  --no-turnarounds true \
-  --tls.default-type static \
-  --tls.cycle.time 90 \
-  --tls.yellow.time 3
+  --base-dir sumo
 ```
+
+`make build` runs `make validate` first, so the gate that checks well-formed XML
+and sorted routes fires before any network compilation.
 
 ### Run SUMO Baseline
 
@@ -368,6 +373,34 @@ the TraCI/libsumo modules), so a future real-controller adapter (e.g. NTCIP
 1202/1211) is a clean drop-in. **NTCIP is a planned adapter, not a built
 component** — this platform is SUMO-only and not an operational deployment.
 
+#### Priority Event Lifecycle (v2.2, opt-in)
+
+The v2.2 priority event lifecycle replaces single-shot TSP decisions with a
+check-in/check-out model:
+
+- **Check-in** is implicit: the first green extension applied for a (TLS, vehicle)
+  pair opens a priority event and records the original phase end.
+- **Rolling extensions** use the normal decision loop. The OBU refreshes its SREM
+  at `request_refresh_s` intervals; each increment is bounded by
+  `green_extension_rolling_increment_s` and validated by the Safety Layer. Continued
+  extensions of the same event do not consume cooldown budget or count as new
+  interventions, but the cumulative event budget never exceeds `max_green_extension_s`.
+- **Check-out** fires when the request store marks the request cleared or expired:
+  the event restores the original phase end, returning unused green to the cross
+  movement. Green compensation (`src/pps57_tsp/compensation.py`) shortens the next
+  occurrence of the same phase to reclaim time donated by extensions.
+
+Enable v2.2 by using `configs/tsp_safety_config_v22.json` instead of the default:
+
+```bash
+.venv/bin/python scripts/run_tsp_control.py \
+  --mode sumo \
+  --steps 7200 \
+  --config configs/tsp_safety_config_v22.json
+```
+
+#### Runtime Policy Inference
+
 Runtime inference from an exported policy:
 
 ```bash
@@ -388,7 +421,7 @@ make train-rl-policy
   --policy-mode rl
 ```
 
-Baseline vs RL comparison table:
+### Baseline vs RL Comparison
 
 ```bash
 make compare-tsp-rl
@@ -401,7 +434,13 @@ reports/tsp_baseline_vs_rl_comparison.md
 reports/tsp_baseline_vs_rl_comparison.json
 ```
 
-Realistic demonstrator:
+To diff two pre-generated KPI files without re-running SUMO:
+
+```bash
+make compare-sumo-kpis BASELINE_KPIS=reports/baseline_kpis.json RL_KPIS=reports/rl_kpis.json
+```
+
+### Realistic Demonstrator
 
 ```bash
 make tsp-demonstrator
@@ -427,7 +466,7 @@ The report checks public-transport KPIs, general-traffic cost, Safety Layer
 blocks, controller ACK/NACK evidence and per-TLS runtime counts. It consumes only
 SUMO/TraCI artifacts generated by those runs.
 
-Decision outcome evaluation:
+### Decision Outcome Evaluation
 
 ```bash
 make evaluate-decision-outcomes
@@ -444,11 +483,21 @@ The evaluator is intentionally conservative. Without paired SUMO KPI reports it
 can classify decisions as same, blocked/unsafe, or less intrusive, but it keeps
 network impact as `inconclusive_without_kpis`.
 
-In `--mode sumo`, runtime RL decisions receive instantaneous TraCI network
-features per TLS: queue/halting counts, lane vehicle count, mean speed, waiting
-time, occupancy, spillback risk and active TSP request count.
+### Protocol Lifecycle Audit
 
-Event-log training dataset seed:
+Replays SREM/SSEM/TSP/actuation logs and checks the per-request lifecycle chain:
+
+```bash
+.venv/bin/python scripts/audit_protocol_lifecycle.py \
+  --cits outputs/cits_messages.jsonl \
+  --decisions outputs/tsp_decisions.jsonl \
+  --actuations outputs/tsp_actuation.jsonl \
+  --output reports/protocol_lifecycle_audit.json
+```
+
+Run a TSP SUMO workflow first to produce the input logs.
+
+### Event-Log Training Dataset
 
 ```bash
 make build-event-training-dataset
@@ -459,7 +508,7 @@ TSP decisions and actuation logs produced by SUMO/TraCI.
 Run a TSP SUMO workflow first; an empty or missing event dataset is rejected by
 policy optimization and RL training.
 
-Generated outputs:
+Generated outputs from a TSP run:
 
 ```text
 outputs/tsp_decisions.jsonl
@@ -467,16 +516,20 @@ outputs/tsp_actuation.jsonl
 reports/tsp_emulation_summary.json
 ```
 
+In `--mode sumo`, runtime RL decisions receive instantaneous TraCI network
+features per TLS: queue/halting counts, lane vehicle count, mean speed, waiting
+time, occupancy, spillback risk and active TSP request count.
+
 ### Run Offline Policy Optimization
 
 ```bash
-.venv/bin/python scripts/run_policy_optimization.py
+make optimize-offline
 ```
 
-Or:
+Direct equivalent:
 
 ```bash
-make optimize-offline
+.venv/bin/python scripts/run_policy_optimization.py
 ```
 
 What it does:
@@ -501,13 +554,13 @@ reports/policy_optimization_summary.json
 ### Train Tabular Reinforcement Learning Policy
 
 ```bash
-.venv/bin/python scripts/run_rl_training.py
+make train-rl-policy
 ```
 
-Or:
+Direct equivalent:
 
 ```bash
-make train-rl-policy
+.venv/bin/python scripts/run_rl_training.py
 ```
 
 What it does:
@@ -525,6 +578,95 @@ reports/tabular_q_policy_report.json
 reports/rl_training_summary.json
 ```
 
+### NetworkBinding Check
+
+Demonstrates that the authoritative conflict matrix (from SUMO junction `<request
+foes>`) resolves the fail-close gate on the real Boavista OSM network. Requires the
+OSM-derived network to be present (run `scripts/build_boavista_network.py` first):
+
+```bash
+.venv/bin/python scripts/run_network_binding_check.py
+```
+
+Counts signal groups that trip the fail-close predicate before and after the
+NetworkBinding is applied. Evidence is written to
+`docs/validation/networkbinding_boavista_check.json`.
+
+### Empirical Network Profile Check
+
+Starts SUMO via TraCI, compares the extracted `NetworkProfile` against the
+traffic-light programs actually loaded by SUMO, and optionally applies one
+approved TSP actuation to observe the real phase sequence:
+
+```bash
+.venv/bin/python scripts/empirical_network_profile_check.py
+.venv/bin/python scripts/empirical_network_profile_check.py --apply-actuation
+```
+
+## Sim-to-Real Validation Ladder
+
+The platform uses a V0–V4d evidence chain to ground the synthetic simulation in
+traceable real-world references. No data is fabricated: each level either fetches
+a public dataset or applies an industry-standard methodology, and the validation
+report records the source, SHA-256 and fetch timestamp. The instrument itself
+(`configs/validation_config.json`) is independent of SUMO so the oracle is not
+the system under test.
+
+| Level | What it checks | Source of truth | Status |
+|---|---|---|---|
+| V0 | GEH / flow-band instrument exists and parses | `configs/validation_config.json` (DMRB, FHWA Vol. III thresholds) | Shipped |
+| V1 | SUMO output format acceptance | SUMO tripinfo/detector schemas | Covered by tests |
+| V2 | Modelled demand plausibility (face-validity transfer) | Madrid open data (Ayuntamiento de Madrid) + UK DfT AADF; Porto has no open counts | Runnable (Porto counts unavailable) |
+| V3 | Public-transport headways vs real STCP timetable | STCP GTFS CC0 feed (Porto Open Data portal) | Runnable |
+| V4 | Real Boavista geometry from OSM | OpenStreetMap / Overpass (ODbL) | Runnable |
+| V4b | Real STCP stops and services on the real OSM net | V3 GTFS + V4 net | Runnable |
+| V4d | Reference-aligned background demand + Webster signals on real net | Madrid open-data intensity band + HCM practical capacity + Webster (1958) | Runnable |
+
+**V2 honest note:** Porto publishes no open traffic counts (CMP request declined).
+V2 therefore transfers a reference envelope from real Madrid urban detectors
+(median 397 veh/h, P75 819 veh/h, P90 1329 veh/h) and UK DfT AADF data,
+and checks that the modelled arterial intensity falls inside that spread. This is
+a face-validity gate (plausibility transfer), not a Porto calibration.
+
+### Fetching Reference Data
+
+These scripts populate `.tools/` (git-ignored) and must run before the
+corresponding validation scripts:
+
+```bash
+# Real European traffic counts (V2)
+.venv/bin/python scripts/fetch_reference_counts.py
+
+# STCP GTFS feed (V3)
+.venv/bin/python scripts/fetch_stcp_gtfs.py
+
+# Real Boavista OSM extract (V4)
+.venv/bin/python scripts/fetch_boavista_osm.py
+```
+
+### Building the Real Boavista Network
+
+```bash
+# Convert the OSM extract to a SUMO network (V4)
+.venv/bin/python scripts/build_boavista_network.py
+
+# Map real STCP stops and services onto the real net (V4b)
+.venv/bin/python scripts/build_stcp_pt_on_boavista.py
+
+# Calibrated background demand + Webster signals, run corridor, export KPIs (V4d)
+.venv/bin/python scripts/build_reference_corridor.py
+```
+
+### Running Validation Reports
+
+```bash
+# V2: demand reference envelope vs real European counts
+.venv/bin/python scripts/run_v2_demand_validation.py
+
+# NetworkBinding: conflict matrix removes OSM fail-close (requires V4 net)
+.venv/bin/python scripts/run_network_binding_check.py
+```
+
 ## C-ITS/V2X Message Flow
 
 The emulated message flow is:
@@ -540,14 +682,18 @@ Messages are JSON/Python-native for functional validation in SUMO. The v0.4
 shape follows ETSI MAPEM/SPATEM/SREM/SSEM concepts, but it is not ASN.1/OER/UPER
 encoding, does not use operational PKI, and remains a simulation profile.
 
-The simulation interface contract is documented in `docs/protocol_icd.md`. It
-separates standard-like fields, operator extensions, SUMO artifacts, synthetic
-geometry, trust assumptions and lifecycle audit expectations.
+The simulation interface contract separates standard-like fields, operator
+extensions, SUMO artifacts, synthetic geometry, trust assumptions and lifecycle
+audit expectations.
 
 Optional broker transport effects are configured in
 `configs/cits_v2x_config.json` under `message_transport`. They can inject
 seeded latency, jitter, loss, duplicate delivery and reordering while keeping
 the default run ideal and deterministic.
+
+SPATEM `signal_group_id` values map to ASN.1 `signalGroupID` (valid range 1–255).
+Junctions with more than 255 SUMO links have their excess links silently dropped
+per MovementEvent rather than invalidating the whole message.
 
 ## Message Examples
 
@@ -804,6 +950,7 @@ Example SUMO/TraCI actuation result:
 | `outputs/tsp_actuation.jsonl` | TSP runs | SUMO/TraCI actuation or no-actuation observation events |
 | `outputs/offline_policy_samples.jsonl` | Policy optimization | Offline training/evaluation scenarios |
 | `outputs/policy_candidates.jsonl` | Policy optimization | Candidate action evaluations |
+| `outputs/event_training_dataset.jsonl` | `build-event-training-dataset` | Joined C-ITS/TSP/actuation scenarios for policy training |
 | `outputs/tripinfo.xml` | SUMO baseline | Per-vehicle SUMO trip information |
 | `outputs/scenarios/<scenario>/<run_type>/seed_<seed>/` | Scenario runner | Per-scenario SUMO, C-ITS and TSP run artifacts |
 | `reports/cits_emulation_summary.json` | C-ITS runs | Message counts and request summary |
@@ -815,7 +962,9 @@ Example SUMO/TraCI actuation result:
 | `reports/policy_optimization_summary.json` | Policy optimization | Offline comparison summary |
 | `reports/tabular_q_policy_report.json` | RL training | Exported tabular Q-learning policy |
 | `reports/rl_training_summary.json` | RL training | RL training metrics |
-| `reports/platform_snapshot.json` | Platform check/API | Aggregated artifact snapshot |
+| `reports/tsp_demonstrator_report.md/.json` | `make tsp-demonstrator` | Three-arm demonstrator evidence |
+| `reports/tsp_baseline_vs_rl_comparison.md/.json` | `make compare-tsp-rl` | Baseline vs RL KPI comparison |
+| `reports/decision_outcome_evaluation.md/.json` | `make evaluate-decision-outcomes` | Per-decision outcome classification |
 
 ## Safety Layer Rules
 
@@ -829,6 +978,10 @@ The Safety Layer is mandatory for baseline decisions, optimized runtime decision
 - cooldown after previous priority intervention;
 - maximum consecutive priority interventions per signal;
 - expired or non-actuable requests.
+
+In v2.2 event lifecycle mode, continued rolling extensions of the same event do not
+consume cooldown budget or count as new interventions, but the cumulative event
+budget is still bounded by `max_green_extension_s`.
 
 The current runtime-policy path only proposes a decision. It does not bypass safety validation.
 
@@ -862,10 +1015,12 @@ SUMO/TraCI event logs -> event training dataset -> RL training -> exported polic
 | Config | Purpose |
 |---|---|
 | `configs/sumo_scenario_base.json` | Corridor geometry, demand, PT services, stops and SUMO generation inputs |
+| `configs/scenario_catalog.yaml` | Scenario descriptors, demand profiles and KPI focus per scenario |
 | `configs/cits_v2x_config.json` | OBU, RSU, C-ITS logging and safety constraints |
-| `configs/tsp_safety_config.json` | TSP scoring, actuation and runtime policy settings |
+| `configs/tsp_safety_config.json` | TSP scoring, actuation and runtime policy settings (v2.1, default) |
+| `configs/tsp_safety_config_v22.json` | TSP safety settings with v2.2 priority event lifecycle enabled |
 | `configs/policy_training_config.json` | Candidate actions, reward and RL training settings |
-| `configs/scenario_catalog.yaml` | Scenario descriptors |
+| `configs/validation_config.json` | Sim-to-real validation instrument (GEH thresholds, flow bands, demand envelope) |
 
 ## Development Checks
 
@@ -922,3 +1077,11 @@ Regenerate the policy report, then pass it explicitly:
 make optimize-offline
 .venv/bin/python scripts/run_tsp_control.py --mode sumo --policy-mode optimized --policy-report reports/policy_report.json
 ```
+
+### Sim-to-real scripts fail to fetch data
+
+The fetch scripts (`fetch_reference_counts.py`, `fetch_stcp_gtfs.py`,
+`fetch_boavista_osm.py`) require network access and fail loudly if a source is
+unreachable or returns no usable data. They never substitute defaults. Raw
+fetched data lands in `.tools/` (git-ignored); only derived validation reports
+are committed.
