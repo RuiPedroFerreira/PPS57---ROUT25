@@ -125,6 +125,14 @@ html, body, [class*="css"] { font-family: "Inter", "Segoe UI", system-ui, sans-s
 /* tighten metric cards */
 [data-testid="stMetricValue"] { font-size:1.45rem !important; font-weight:700; }
 [data-testid="stMetricLabel"] { font-size:0.78rem; }
+
+/* C-ITS conversation flow */
+.flow { display:flex; align-items:stretch; gap:6px; flex-wrap:wrap; margin:6px 0 4px; }
+.flow-step { flex:1 1 0; min-width:150px; background:#f8fafc; border:1px solid #e2e8f0;
+             border-left:3px solid #1d6ef5; border-radius:8px; padding:10px 12px; }
+.flow-step .ft { font-weight:700; font-size:0.8rem; color:#0f172a; }
+.flow-step .fd { font-size:0.74rem; color:#64748b; line-height:1.35; margin-top:2px; }
+.flow-arrow { align-self:center; color:#94a3b8; font-size:1.1rem; font-weight:700; }
 </style>
 """
 
@@ -846,7 +854,6 @@ with tab_decisions:
         )
         runtime = demo["runs"][sel_run].get("runtime", {})
 
-        section("Pipeline de decisão — do seguimento à actuação")
         total    = runtime.get("total_decisions", 0)
         applied  = runtime.get("applied_events", 0)
         blocked  = runtime.get("blocked_by_safety", 0)
@@ -864,6 +871,19 @@ with tab_decisions:
             "Sem acção necessária (verde já chega)": by_action.get("no_action", 0),
         }
 
+        # ── plain-language headline (lead with the story) ─────────────────────
+        if total > 0:
+            ar_txt = f"{applied/actionable*100:.0f}%" if actionable else "—"
+            block_txt = (f" A Safety Layer bloqueou **{blocked}** por segurança."
+                         if blocked else " Nenhuma foi bloqueada pela Safety Layer.")
+            st.markdown(
+                f"#### De **{total}** decisões avaliadas, **{actionable}** propuseram mudar o "
+                f"semáforo e **{applied}** foram aplicadas ({ar_txt}).{block_txt}"
+            )
+            st.caption("O motor reavalia cada autocarro várias vezes na aproximação; a maioria das "
+                       "avaliações conclui, correctamente, que não há nada a fazer naquele instante.")
+
+        section("Pipeline de decisão — do seguimento à actuação")
         if total == 0:
             warn("Esta run não gerou decisões TSP. Selecciona uma run TSP "
                  "(ex. <code>tsp</code> ou <code>tsp_controller</code>) para ver a análise.")
@@ -993,9 +1013,36 @@ with tab_cits:
             sel_cits_run = st.selectbox("Run", tsp_run_keys, key="cits_run",
                                         help="Run cujo tráfego C-ITS (V2X) queres inspeccionar.")
             summ = demo["runs"][sel_cits_run].get("summary", {})
+            by_type = summ.get("cits_by_type", {})
+            prl = summ.get("priority_request_lifecycle", {})
+
+            # ── plain-language intro: the V2X conversation ────────────────────
+            srem_n = by_type.get("SREM", 0)
+            ssem_n = by_type.get("SSEM", 0)
+            granted_n = prl.get("granted_requests", 0)
+            tracked_n = prl.get("tracked_requests", 0)
+            if srem_n or ssem_n:
+                grant_txt = (f", e **{granted_n}** dos **{tracked_n}** pedidos foram concedidos"
+                             if tracked_n else "")
+                st.markdown(
+                    f"#### Os veículos prioritários e os semáforos trocaram **{srem_n + ssem_n:,}** "
+                    f"mensagens de prioridade — **{srem_n:,}** pedidos (SREM) e **{ssem_n:,}** "
+                    f"respostas (SSEM){grant_txt}."
+                )
+            st.markdown("""
+<div class="flow">
+  <div class="flow-step"><div class="ft">1 · MAPEM</div><div class="fd">O semáforo anuncia o mapa das aproximações</div></div>
+  <span class="flow-arrow">›</span>
+  <div class="flow-step"><div class="ft">2 · SPATEM</div><div class="fd">Difunde o estado das fases em tempo real</div></div>
+  <span class="flow-arrow">›</span>
+  <div class="flow-step"><div class="ft">3 · SREM</div><div class="fd">O veículo pede prioridade ao aproximar-se</div></div>
+  <span class="flow-arrow">›</span>
+  <div class="flow-step"><div class="ft">4 · SSEM</div><div class="fd">O RSU responde: concede ou recusa</div></div>
+</div>
+""", unsafe_allow_html=True)
+            st.caption("É esta conversa V2X (vehicle-to-everything) que alimenta o motor de decisão TSP.")
 
             section("Volume de mensagens C-ITS por tipo")
-            by_type = summ.get("cits_by_type", {})
             if by_type:
                 cits_descs = {
                     "MAPEM":  "Informação topológica da rede semafórica",
