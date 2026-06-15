@@ -58,6 +58,11 @@ PALETTE = {
     "tsp_controller":"#7c3aed",
 }
 
+# semantic colours (consistent across the whole dashboard)
+COLOR_GOOD = "#16a34a"   # improvement
+COLOR_BAD  = "#dc2626"   # degradation / cost
+COLOR_EMERGENCY = "#dc2626"
+
 # ── CSS ───────────────────────────────────────────────────────────────────────
 
 CSS = """
@@ -525,54 +530,134 @@ if nonzero and (max(nonzero) - min(nonzero)) / max(nonzero) > 0.10:
         "<code>--steps N</code> = N/2 segundos)."
     )
 
-# ── verdict banner ────────────────────────────────────────────────────────────
+# ── verdict status map (used by the Resumo tab) ───────────────────────────────
 
-if demo and "verdict" in demo:
-    v      = demo["verdict"]
-    status = v.get("status", "")
-    cls_map = {
-        "value_demonstrated":             ("verdict-pass",   "Evidência positiva"),
-        "passes_primary_demonstrator_goal":("verdict-pass",  "Objectivo primário demonstrado"),
-        "passes_with_general_traffic_cost":("verdict-review", "Ganho nos autocarros com custo no tráfego geral"),
-        "review":                         ("verdict-review", "Em revisão"),
-        "inconclusive_missing_bus_kpi":   ("verdict-unknown","Inconclusivo — KPI de autocarros em falta"),
-        "does_not_demonstrate_actuation": ("verdict-fail",   "Sem actuação TSP"),
-    }
-    vcls, vtitle = cls_map.get(status, ("verdict-unknown", "Estado desconhecido"))
-    st.markdown(
-        f'<div class="{vcls}"><p class="verdict-title">{vtitle}</p>'
-        f'<p class="verdict-body">{v.get("reason", status)}</p></div>',
-        unsafe_allow_html=True,
-    )
-
-# ── executive summary — lead with the answer ──────────────────────────────────
-
-if baseline_key and primary_tsp:
-    bdata = cls_data.get(baseline_key, {})
-    tdata = cls_data.get(primary_tsp, {})
-    section(f"Resultado principal — {primary_tsp} vs {baseline_key} · {vehicle_cls_label}")
-    headline_metrics = ["mean_time_loss_s", "mean_waiting_time_s", "mean_duration_s", "mean_speed_mps"]
-    hcols = st.columns(len(headline_metrics))
-    for col, m in zip(hcols, headline_metrics):
-        render_kpi_metric(col, m, tdata.get(m), bdata.get(m))
-    st.caption(
-        "Os valores são do cenário TSP primário; o delta compara com o baseline para a classe de "
-        "veículo seleccionada. Verde = melhoria, vermelho = degradação."
-    )
-
-st.markdown("")
+VERDICT_MAP = {
+    "value_demonstrated":              ("verdict-pass",   "Evidência positiva"),
+    "passes_primary_demonstrator_goal":("verdict-pass",   "Objectivo primário demonstrado"),
+    "passes_with_general_traffic_cost":("verdict-review",  "Ganho no transporte público com custo no tráfego geral"),
+    "review":                          ("verdict-review",  "Em revisão"),
+    "inconclusive_missing_bus_kpi":    ("verdict-unknown", "Inconclusivo — KPI de autocarros em falta"),
+    "does_not_demonstrate_actuation":  ("verdict-fail",    "Sem actuação TSP"),
+}
 
 # ── tabs ──────────────────────────────────────────────────────────────────────
 
-tab_kpi, tab_decisions, tab_cits, tab_rl, tab_scenarios, tab_meta, tab_sim = st.tabs([
-    "Comparação de KPIs",
-    "Motor de Decisão TSP",
-    "Pipeline C-ITS",
+tab_resumo, tab_kpi, tab_decisions, tab_cits, tab_rl, tab_scenarios, tab_meta, tab_sim = st.tabs([
+    "Resumo",
+    "KPIs",
+    "Motor de Decisão",
+    "C-ITS",
     "Baseline vs RL",
     "Cenários",
     "Metodologia",
     "Simulação",
 ])
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 0 — Resumo (narrativa guiada: a resposta primeiro)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+HERO_CLASSES = [
+    ("emergency_vehicles", "Emergência"),
+    ("buses",              "Autocarros"),
+    ("priority_vehicles",  "Prioritários"),
+    ("general_traffic",    "Tráfego geral"),
+    ("all_vehicles",       "Todos os veículos"),
+]
+
+with tab_resumo:
+    # ── verdict ───────────────────────────────────────────────────────────────
+    if demo and "verdict" in demo:
+        v = demo["verdict"]
+        vcls, vtitle = VERDICT_MAP.get(v.get("status", ""), ("verdict-unknown", "Estado desconhecido"))
+        st.markdown(
+            f'<div class="{vcls}"><p class="verdict-title">Veredicto · {vtitle}</p>'
+            f'<p class="verdict-body">{v.get("reason", v.get("status", ""))}</p></div>',
+            unsafe_allow_html=True,
+        )
+
+    if not (baseline_key and primary_tsp):
+        st.info("Sem um par baseline + TSP para resumir. Corre o demonstrador no separador Simulação.")
+    else:
+        bk = run_kpis[baseline_key]
+        tk = run_kpis[primary_tsp]
+
+        # per-class time-loss delta for the hero chart
+        hero = []
+        for key, label in HERO_CLASSES:
+            bv = bk.get(key, {}).get("mean_time_loss_s")
+            tv = tk.get(key, {}).get("mean_time_loss_s")
+            n = tk.get(key, {}).get("vehicles") or 0
+            if bv and tv and n:
+                hero.append({"Classe": label, "key": key, "pct": (tv - bv) / bv * 100,
+                             "n": n, "baseline": bv, "tsp": tv})
+
+        bus = next((r for r in hero if r["key"] in ("buses", "priority_vehicles")), None)
+        gen = next((r for r in hero if r["key"] == "general_traffic"), None)
+
+        # ── plain-language headline ───────────────────────────────────────────
+        if bus:
+            verb = "reduz" if bus["pct"] < 0 else "aumenta"
+            gen_txt = ""
+            if gen:
+                if abs(gen["pct"]) < 2:
+                    gen_txt = " com impacto praticamente nulo no tráfego geral"
+                elif gen["pct"] < 0:
+                    gen_txt = f" e ainda melhora o tráfego geral em {abs(gen['pct']):.0f}%"
+                else:
+                    gen_txt = f" a um custo de {gen['pct']:.0f}% no tráfego geral"
+            st.markdown(
+                f"#### O TSP {verb} a perda de tempo do transporte público em "
+                f"**{abs(bus['pct']):.0f}%**{gen_txt}."
+            )
+
+        # ── headline metrics (the win, in the priority class) ─────────────────
+        if bus:
+            bcls = bus["key"]
+            m1, m2, m3 = st.columns(3)
+            render_kpi_metric(m1, "mean_time_loss_s",
+                              tk.get(bcls, {}).get("mean_time_loss_s"),
+                              bk.get(bcls, {}).get("mean_time_loss_s"))
+            render_kpi_metric(m2, "mean_waiting_time_s",
+                              tk.get(bcls, {}).get("mean_waiting_time_s"),
+                              bk.get(bcls, {}).get("mean_waiting_time_s"))
+            render_kpi_metric(m3, "mean_speed_mps",
+                              tk.get(bcls, {}).get("mean_speed_mps"),
+                              bk.get(bcls, {}).get("mean_speed_mps"))
+            st.caption(f"Classe {bus['Classe'].lower()} ({bus['n']} veículos) · "
+                       f"{primary_tsp} vs {baseline_key}. Verde = melhoria, vermelho = custo.")
+
+        # ── hero chart: who benefits ──────────────────────────────────────────
+        section("Quem ganha com o TSP — variação da perda de tempo por classe")
+        if hero:
+            dfh = pd.DataFrame(hero)
+            fig_hero = go.Figure(go.Bar(
+                x=dfh["pct"], y=dfh["Classe"], orientation="h",
+                marker_color=[COLOR_GOOD if p < 0 else COLOR_BAD for p in dfh["pct"]],
+                text=[f"{p:+.1f}%" for p in dfh["pct"]], textposition="outside",
+                customdata=dfh[["baseline", "tsp", "n"]].values,
+                hovertemplate="%{y}: %{x:+.1f}%<br>%{customdata[0]:.0f}s → %{customdata[1]:.0f}s "
+                              "(n=%{customdata[2]})<extra></extra>",
+            ))
+            fig_hero.add_vline(x=0, line_width=2, line_color="#334155")
+            chart_layout(fig_hero, "Δ perda de tempo · TSP vs baseline (barras à esquerda = melhoria)",
+                         height=max(260, len(hero) * 56 + 90))
+            st.plotly_chart(fig_hero, use_container_width=True)
+            insight("Barras <strong>verdes à esquerda</strong> = o TSP melhora essa classe; "
+                    "<strong>vermelhas à direita</strong> = custo. O padrão esperado de um sistema de "
+                    "prioridade: classes prioritárias (autocarros, emergência) ganham, o tráfego geral "
+                    "fica perto de zero. Passa o rato numa barra para ver os valores absolutos.")
+            if not any(r["key"] == "emergency_vehicles" for r in hero):
+                st.caption("Emergência não aparece aqui (o cenário base não tem veículos de emergência). "
+                           "Vê o separador **Cenários → emergency_vehicle_conflict** para o caso de emergência.")
+
+        # ── navigation hint ───────────────────────────────────────────────────
+        section("Explorar em detalhe")
+        n1, n2, n3 = st.columns(3)
+        n1.markdown("**KPIs** — comparação detalhada entre cenários, por classe e métrica.")
+        n2.markdown("**Motor de Decisão** — o que o algoritmo decidiu e porquê.")
+        n3.markdown("**Cenários** — impacto do TSP nas 8 situações operacionais.")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 1 — KPI comparison
