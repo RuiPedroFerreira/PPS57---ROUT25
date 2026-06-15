@@ -126,7 +126,10 @@ html, body, [class*="css"] { font-family: "Inter", "Segoe UI", system-ui, sans-s
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 @st.cache_data(show_spinner=False)
-def _read_json(path_str: str, _mtime: float) -> dict | None:
+def _read_json(path_str: str, mtime: float) -> dict | None:
+    # `mtime` participates in the cache key so the entry invalidates whenever the
+    # file changes. It must NOT be named with a leading underscore — Streamlit
+    # excludes underscore-prefixed args from the cache key.
     try:
         return json.loads(Path(path_str).read_text())
     except (json.JSONDecodeError, OSError):
@@ -380,6 +383,27 @@ demo          = load_json(REPORTS / "tsp_demonstrator_report.json")
 baseline_kpis = load_json(REPORTS / "baseline_kpis.json")
 rl_comparison = load_json(REPORTS / "tsp_baseline_vs_rl_comparison.json")
 
+# ── collect run KPIs (needed before the sidebar to annotate class counts) ──────
+
+run_kpis: dict[str, dict] = {}
+if demo:
+    for label, run in demo.get("runs", {}).items():
+        if "kpis" in run:
+            run_kpis[label] = run["kpis"]
+if baseline_kpis and not any("baseline" in k.lower() for k in run_kpis):
+    run_kpis["baseline"] = baseline_kpis
+
+baseline_key = next((k for k in run_kpis if "baseline" in k.lower()), None)
+tsp_keys     = [k for k in run_kpis if k != baseline_key]
+primary_tsp  = tsp_keys[0] if tsp_keys else None
+
+
+def class_vehicle_count(cls_key: str) -> int:
+    """Max vehicles of a class across all runs (0 if the class never appears)."""
+    return max((kp.get(cls_key, {}).get("vehicles", 0) or 0 for kp in run_kpis.values()),
+               default=0)
+
+
 # ── sidebar ───────────────────────────────────────────────────────────────────
 
 with st.sidebar:
@@ -387,14 +411,26 @@ with st.sidebar:
     st.markdown('<div class="sb-sub">Traffic Signal Priority — Linha 25, Porto</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="sb-label">Filtro global</div>', unsafe_allow_html=True)
-    vehicle_cls_label = st.selectbox(
+    # annotate each class with its vehicle count so empty/overlapping classes
+    # are obvious (e.g. "Veículos de emergência (0)").
+    cls_counts = {key: class_vehicle_count(key) for key, _ in VEHICLE_CLASSES}
+    cls_label_map = {f"{label} ({cls_counts[key]})": key for key, label in VEHICLE_CLASSES}
+    sel_display = st.selectbox(
         "Classe de veículo",
-        options=[l for _, l in VEHICLE_CLASSES],
+        options=list(cls_label_map.keys()),
         index=0,
-        help="Filtra todos os KPIs e gráficos por classe de veículo. "
-             "Aplica-se a todos os separadores.",
+        help="Filtra todos os KPIs e gráficos por classe. O número é a contagem de veículos. "
+             "Taxonomia: Prioritários = Autocarros + Emergência (a união); "
+             "Tráfego geral = todos os não-prioritários. As classes podem sobrepor-se.",
     )
-    vehicle_cls = next(k for k, l in VEHICLE_CLASSES if l == vehicle_cls_label)
+    vehicle_cls = cls_label_map[sel_display]
+    vehicle_cls_label = next(l for k, l in VEHICLE_CLASSES if k == vehicle_cls)
+
+    if vehicle_cls == "priority_vehicles" and cls_counts.get("emergency_vehicles", 0) == 0:
+        st.caption("Sem veículos de emergência nesta simulação, por isso "
+                   "**Prioritários = Autocarros**.")
+    elif vehicle_cls == "emergency_vehicles" and cls_counts.get("emergency_vehicles", 0) == 0:
+        st.caption("Sem veículos de emergência nesta simulação — métricas vazias.")
 
     st.markdown('<div class="sb-label">Reports detectados</div>', unsafe_allow_html=True)
     report_files = {
@@ -466,32 +502,26 @@ if demo is None and baseline_kpis is None:
     render_simulation_panel()
     st.stop()
 
-# ── collect run KPIs ──────────────────────────────────────────────────────────
+# ── per-class data for the selected vehicle filter ────────────────────────────
 
-run_kpis: dict[str, dict] = {}
-if demo:
-    for label, run in demo.get("runs", {}).items():
-        if "kpis" in run:
-            run_kpis[label] = run["kpis"]
-if baseline_kpis and not any("baseline" in k.lower() for k in run_kpis):
-    run_kpis["baseline"] = baseline_kpis
-
-baseline_key = next((k for k in run_kpis if "baseline" in k.lower()), None)
-tsp_keys     = [k for k in run_kpis if k != baseline_key]
-primary_tsp  = tsp_keys[0] if tsp_keys else None
-cls_data     = {label: get_kpi(kpis, vehicle_cls) for label, kpis in run_kpis.items()}
+cls_data = {label: get_kpi(kpis, vehicle_cls) for label, kpis in run_kpis.items()}
 
 # ── vehicle count warning ─────────────────────────────────────────────────────
+# Fire only on a MEANINGFUL spread (>10%). Signal-timing changes naturally cause
+# small throughput differences between runs of equal duration — that is valid,
+# not a methodological problem. A large spread signals mismatched durations.
 
-counts = {k: get_kpi(v, vehicle_cls).get("vehicles", 0) or 0 for k, v in run_kpis.items()}
-if len(set(counts.values())) > 1:
+counts = {k: get_kpi(v, "all_vehicles").get("vehicles", 0) or 0 for k, v in run_kpis.items()}
+nonzero = [c for c in counts.values() if c]
+if nonzero and (max(nonzero) - min(nonzero)) / max(nonzero) > 0.10:
     count_str = " · ".join(f"{k}: {v}" for k, v in counts.items())
     warn(
-        "<strong>Aviso metodológico:</strong> as runs não apresentam o mesmo número de veículos "
-        f"concluídos ({count_str}). Isto indica durações de simulação distintas — as comparações "
-        "de KPI devem ser interpretadas com cautela. Para resultados válidos, todas as runs devem "
-        "correr pela mesma duração simulada (ex. <code>make tsp-demonstrator</code> sem reduzir "
-        "<code>--steps</code>)."
+        "<strong>Aviso metodológico:</strong> as runs diferem significativamente no número de "
+        f"veículos concluídos ({count_str}). Isto sugere durações de simulação distintas — as "
+        "comparações de KPI devem ser interpretadas com cautela. Para resultados válidos, todas as "
+        "runs devem cobrir a mesma duração simulada (lembrar: o baseline usa <code>--end</code> em "
+        "segundos enquanto o TSP/TraCI usa passos com <code>step-length=0.5</code>, pelo que "
+        "<code>--steps N</code> = N/2 segundos)."
     )
 
 # ── verdict banner ────────────────────────────────────────────────────────────
@@ -500,9 +530,12 @@ if demo and "verdict" in demo:
     v      = demo["verdict"]
     status = v.get("status", "")
     cls_map = {
-        "value_demonstrated":            ("verdict-pass",   "Evidência positiva"),
-        "review":                        ("verdict-review", "Em revisão"),
-        "does_not_demonstrate_actuation":("verdict-fail",   "Sem actuação TSP"),
+        "value_demonstrated":             ("verdict-pass",   "Evidência positiva"),
+        "passes_primary_demonstrator_goal":("verdict-pass",  "Objectivo primário demonstrado"),
+        "passes_with_general_traffic_cost":("verdict-review", "Ganho nos autocarros com custo no tráfego geral"),
+        "review":                         ("verdict-review", "Em revisão"),
+        "inconclusive_missing_bus_kpi":   ("verdict-unknown","Inconclusivo — KPI de autocarros em falta"),
+        "does_not_demonstrate_actuation": ("verdict-fail",   "Sem actuação TSP"),
     }
     vcls, vtitle = cls_map.get(status, ("verdict-unknown", "Estado desconhecido"))
     st.markdown(
