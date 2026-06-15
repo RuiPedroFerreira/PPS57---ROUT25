@@ -219,9 +219,11 @@ def get_kpi(data: dict, cls: str) -> dict:
 
 
 def run_color(label: str) -> str:
-    for k, c in PALETTE.items():
+    # check most-specific (longest) keys first so "tsp_controller" matches
+    # its own colour rather than the "tsp" substring.
+    for k in sorted(PALETTE, key=len, reverse=True):
         if k in label.lower():
-            return c
+            return PALETTE[k]
     return "#94a3b8"
 
 
