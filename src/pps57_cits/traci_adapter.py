@@ -132,7 +132,12 @@ class TraciSimulationAdapter:
 
     def read_vehicle_observations(self) -> List[VehicleObservation]:
         traci = self._require_traci()
-        sim_time_s = float(_safe_call(lambda: traci.simulation.getTime()) or 0.0)
+        sim_time_s_raw = _safe_call(lambda: traci.simulation.getTime())
+        if sim_time_s_raw is None:
+            # Transient TraCI failure — skip this tick rather than corrupt all
+            # observations with sim_time_s=0 (which would produce wrong headway windows).
+            return []
+        sim_time_s = float(sim_time_s_raw)
         vehicle_ids = list(traci.vehicle.getIDList())
         snapshot = self._vehicle_subscription_snapshot(vehicle_ids)
         lane_samples = self._lane_samples_from_snapshot(snapshot)
@@ -361,7 +366,11 @@ class TraciSimulationAdapter:
     def _lane_length(self, lane_id: str) -> float:
         if lane_id not in self._lane_length_cache:
             traci = self._require_traci()
-            self._lane_length_cache[lane_id] = float(_safe_call(lambda: traci.lane.getLength(lane_id)) or 0.0)
+            result = _safe_call(lambda: traci.lane.getLength(lane_id))
+            if result is None:
+                # Transient TraCI failure — do not cache so the next call retries.
+                return 0.0
+            self._lane_length_cache[lane_id] = float(result)
         return self._lane_length_cache[lane_id]
 
     def _queue_ahead_vehicle_count(self, lane_id: str, lane_position_m: float) -> int:

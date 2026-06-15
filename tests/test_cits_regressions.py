@@ -283,9 +283,15 @@ class _FakeVehicleDomain:
         return f"{self._road_by_vehicle[vehicle_id]}_0"
 
 
+class _FakeSimulationDomain:
+    def getTime(self) -> float:
+        return 100.0
+
+
 class _FakeVehicleTraci:
     def __init__(self, road_by_vehicle: dict, failing: set) -> None:
         self.vehicle = _FakeVehicleDomain(road_by_vehicle, failing)
+        self.simulation = _FakeSimulationDomain()
 
 
 class VehicleReadFailureTestCase(unittest.TestCase):

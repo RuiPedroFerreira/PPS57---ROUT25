@@ -901,14 +901,17 @@ def _missing_all_red_transitions(
     service_green_phase_indices: List[int],
     min_all_red_s: float,
 ) -> List[tuple[int, int]]:
-    service_in_sequence = [idx for idx in phase_sequence if idx in set(service_green_phase_indices)]
-    if len(service_in_sequence) < 2:
+    service_set = set(service_green_phase_indices)
+    # Iterate over (position, phase_index) pairs so that duplicate phase indices
+    # in the sequence each get their own from_pos — using list.index() would
+    # always return the first occurrence and silently skip later ones.
+    service_positions = [(pos, phase) for pos, phase in enumerate(phase_sequence) if phase in service_set]
+    if len(service_positions) < 2:
         return []
 
     missing: List[tuple[int, int]] = []
     sequence_len = len(phase_sequence)
-    for from_phase in service_in_sequence:
-        from_pos = phase_sequence.index(from_phase)
+    for from_pos, from_phase in service_positions:
         between: List[int] = []
         pos = from_pos
         to_phase: Optional[int] = None

@@ -36,7 +36,10 @@ def _percentile(values: list[float | None], percentile: float) -> float | None:
 
 
 def parse_tripinfo(path: Path) -> dict:
-    tree = ET.parse(path)
+    try:
+        tree = ET.parse(path)
+    except Exception as exc:
+        return {"source": str(path), "error": str(exc)}
     rows = []
     for node in tree.getroot().iter("tripinfo"):
         vehicle_id = node.attrib.get("id", "")
@@ -83,7 +86,7 @@ def parse_tripinfo(path: Path) -> dict:
             "mean_route_length_m": _mean([r["routeLength"] for r in items]),
             "mean_speed_mps": _mean([
                 (r["routeLength"] / r["duration"])
-                if r["routeLength"] is not None and r["duration"] not in (None, 0)
+                if r["routeLength"] is not None and r["duration"] is not None and r["duration"] > 0
                 else None
                 for r in items
             ]),

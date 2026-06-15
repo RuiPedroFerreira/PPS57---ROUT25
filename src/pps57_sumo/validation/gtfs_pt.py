@@ -28,7 +28,10 @@ DEFAULT_WINDOWS: Dict[str, Tuple[int, int]] = {
 
 def gtfs_time_to_seconds(value: str) -> int:
     """Parse a GTFS HH:MM:SS time to seconds since midnight (hours may exceed 24)."""
-    hours, minutes, seconds = (int(part) for part in value.split(":"))
+    try:
+        hours, minutes, seconds = (int(part) for part in value.split(":"))
+    except (ValueError, TypeError) as exc:
+        raise ValueError(f"Malformed GTFS time string {value!r}") from exc
     return hours * 3600 + minutes * 60 + seconds
 
 
@@ -141,7 +144,11 @@ def extract_corridor_headways(
                 dwell_nonzero += 1
             seq = int(row["stop_sequence"])
             if tid not in trip_first or seq < trip_first[tid][0]:
-                trip_first[tid] = (seq, gtfs_time_to_seconds(departure))
+                try:
+                    dep_s = gtfs_time_to_seconds(departure)
+                except ValueError:
+                    continue
+                trip_first[tid] = (seq, dep_s)
         first_departures: Dict[Tuple[str, str], List[int]] = {}
         for tid, (_seq, dep_s) in trip_first.items():
             first_departures.setdefault(trip_key[tid], []).append(dep_s)

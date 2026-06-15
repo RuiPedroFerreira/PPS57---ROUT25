@@ -103,9 +103,9 @@ class Package3CITSTestCase(unittest.TestCase):
             speed_mps=10.0,
             schedule_delay_s=90.0,
         )
-        request = obu.generate_request(observation, sim_time_s=100.0)
-        self.assertIsNotNone(request)
-        assert request is not None
+        results = obu.generate_request(observation, sim_time_s=100.0)
+        self.assertEqual(len(results), 1)
+        request = results[0]
         self.assertIsInstance(request, SREMLike)
         self.assertEqual(request.destination_id, "RSU_BOAVISTA_02")
         self.assertEqual(request.intersection_id, "I2")
@@ -131,7 +131,7 @@ class Package3CITSTestCase(unittest.TestCase):
             schedule_delay_s=90.0,
             stop_count=16,
         )
-        self.assertIsNone(obu.generate_request(observation, sim_time_s=100.0))
+        self.assertEqual(obu.generate_request(observation, sim_time_s=100.0), [])
 
     def test_obu_cancels_active_request_when_bus_dwells_at_stop(self) -> None:
         # Pedido activo + bus encosta na paragem -> priorityCancellation.
@@ -177,7 +177,7 @@ class Package3CITSTestCase(unittest.TestCase):
             schedule_delay_s=0.0,
             headway_deviation_s=0.0,
         )
-        self.assertIsNone(obu.generate_request(observation, sim_time_s=100.0))
+        self.assertEqual(obu.generate_request(observation, sim_time_s=100.0), [])
 
     def test_obu_generates_nominal_priority_request_when_policy_allows(self) -> None:
         # O caminho "nominal" continua suportado quando a config o permite
@@ -200,9 +200,9 @@ class Package3CITSTestCase(unittest.TestCase):
             schedule_delay_s=0.0,
             headway_deviation_s=0.0,
         )
-        request = obu.generate_request(observation, sim_time_s=100.0)
-        self.assertIsNotNone(request)
-        assert request is not None
+        results = obu.generate_request(observation, sim_time_s=100.0)
+        self.assertEqual(len(results), 1)
+        request = results[0]
         # `priority_level` no novo modelo é a OperatorPriorityClass — não-standard,
         # carregada na operator_telemetry. Para um pedido nominal devolve "nominal".
         self.assertEqual(request.priority_level, OperatorPriorityClass.NOMINAL.value)
@@ -223,7 +223,7 @@ class Package3CITSTestCase(unittest.TestCase):
             speed_mps=10.0,
             schedule_delay_s=120.0,
         )
-        self.assertIsNone(obu.generate_request(observation, sim_time_s=100.0))
+        self.assertEqual(obu.generate_request(observation, sim_time_s=100.0), [])
 
     def test_obu_suppresses_repeated_request_inside_refresh_window(self) -> None:
         obu = OBUEmulator(self.config)
@@ -242,8 +242,8 @@ class Package3CITSTestCase(unittest.TestCase):
         )
         first = obu.generate_request(observation, sim_time_s=10.0)
         second = obu.generate_request(observation, sim_time_s=12.0)
-        self.assertIsNotNone(first)
-        self.assertIsNone(second)
+        self.assertEqual(len(first), 1)
+        self.assertEqual(len(second), 0)
 
     def test_obu_emits_cancellation_when_vehicle_leaves_observation_window(self) -> None:
         """Novo no v0.4: a OBU emite priorityCancellation quando o veículo sai

@@ -118,15 +118,18 @@ class OBUEmulator:
 
     def generate_request(
         self, observation: VehicleObservation, sim_time_s: float
-    ) -> Optional[SREMLike]:
+    ) -> List[SREMLike]:
         """Entry-point por observação (testabilidade).
 
         Equivalente a uma iteração de `generate_requests` para esta observação,
-        sem o passe de cancelamento para veículos desaparecidos. Em runtime,
-        prefira `generate_requests(observations, sim_time_s)` que faz ambas as
-        coisas e gere o ciclo de vida dos pedidos.
+        incluindo o passe de cancelamento se o veículo mudou de contexto.
+        Em runtime, prefira `generate_requests(observations, sim_time_s)` para
+        processar múltiplos veículos num só batch.
+
+        Devolve uma lista: vazia (sem ação), um elemento (pedido ou cancelamento),
+        ou dois elementos (cancelamento + novo pedido) quando há mudança de interseção.
         """
-        return self._generate_request_or_update(observation, sim_time_s)
+        return self.generate_requests([observation], sim_time_s)
 
     def _generate_request_or_update(
         self, observation: VehicleObservation, sim_time_s: float

@@ -194,8 +194,9 @@ class OfflineOptimizationController:
             # verde: uma extensão curta demais deixa o bus chegar já depois do
             # fim do verde estendido, logo escala proporcionalmente.
             service_ratio = min(1.0, decision.extension_s / needed)
-            overserve_penalty = max(0.0, decision.extension_s - needed) * traffic_penalty
-            return benefit * service_ratio - decision.extension_s * traffic_penalty - overserve_penalty
+            # Penalise ALL extension seconds uniformly at traffic_penalty; a separate
+            # overserve term would double-charge the excess (already included above).
+            return benefit * service_ratio - decision.extension_s * traffic_penalty
 
         if decision.action == TSPAction.EARLY_GREEN.value:
             min_eta = float(self.tsp_config.decision_policy.get("early_green_min_eta_s", 10))
@@ -233,7 +234,7 @@ class OfflineOptimizationController:
         if decision.action == TSPAction.REJECT.value:
             if decision.priority_score < min_score:
                 return float(reward_cfg.get("reject_below_min_score_bonus", 6.0))
-            return -float(reward_cfg.get("reject_penalty", 20.0)) - request.schedule_delay_s / float(
+            return -float(reward_cfg.get("reject_penalty", 20.0)) - max(0.0, request.schedule_delay_s) / float(
                 reward_cfg.get("reject_schedule_delay_divisor", 20.0)
             )
 

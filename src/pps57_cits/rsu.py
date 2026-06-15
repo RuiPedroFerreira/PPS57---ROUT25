@@ -103,7 +103,7 @@ class RSUAgent:
                 and len(self.processing_request_expiry) >= max_active
             )
             decision = self._evaluate_request(request, sim_time_s, too_many_active=too_many_active)
-            self._remember_request(request, sim_time_s)
+            self._remember_request(request, sim_time_s, accepted=decision.response_status == ResponseStatus.PROCESSING.value)
             self._track_processing_request(request, decision, sim_time_s)
             responses.append(self._wrap_response(request, decision, sim_time_s))
         return responses
@@ -409,12 +409,17 @@ class RSUAgent:
             return "out_of_order_request_sequence"
         return None
 
-    def _remember_request(self, request: SREMLike, sim_time_s: float) -> None:
+    def _remember_request(self, request: SREMLike, sim_time_s: float, *, accepted: bool = True) -> None:
         key = self._request_key(request)
         if key is None:
             return
         station_id, request_id, sequence_number = key
-        self.processed_request_keys[key] = sim_time_s
+        # Only add to the replay-dedupe cache for accepted requests.  Rejected
+        # requests should NOT be cached: a retransmission should be re-evaluated
+        # with the real rejection reason (cooldown, ETA out-of-window, …) rather
+        # than being masked as "duplicate_request_replayed".
+        if accepted:
+            self.processed_request_keys[key] = sim_time_s
         self.last_sequence_by_request[(station_id, request_id)] = (sequence_number, sim_time_s)
 
     def _request_key(self, request: SREMLike) -> Optional[tuple[int, int, int]]:
