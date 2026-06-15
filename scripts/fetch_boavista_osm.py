@@ -55,6 +55,18 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _is_valid_osm(data: bytes) -> bool:
+    """True only for a COMPLETE Overpass response that carries real road data.
+
+    The tail `</osm>` confirms the download finished, but Overpass delivers
+    runtime/timeout errors (HTTP 200, body `<remark>...</remark>`) and empty
+    result sets (`<osm></osm>`) as well-formed XML that still ends in `</osm>`.
+    Require at least one `<way ` and reject the `<remark>` error marker, so an
+    error/empty body is never published nor reused as a valid cache.
+    """
+    return b"</osm>" in data[-512:] and b"<way " in data and b"<remark>" not in data
+
+
 def _download(out: Path) -> None:
     if shutil.which("curl") is None:
         raise SystemExit("curl is required to fetch OSM data")
@@ -70,7 +82,7 @@ def _download(out: Path) -> None:
              "-A", USER_AGENT, "-o", str(tmp), endpoint, "--data-urlencode", f"data={OVERPASS_QUERY}"],
             capture_output=True, text=True,
         )
-        if result.returncode == 0 and tmp.exists() and b"</osm>" in tmp.read_bytes()[-512:]:
+        if result.returncode == 0 and tmp.exists() and _is_valid_osm(tmp.read_bytes()):
             tmp.replace(out)
             return
     tmp.unlink(missing_ok=True)
@@ -82,7 +94,7 @@ def fetch(out_dir: Path, allow_drift: bool = False) -> Path:
     osm_path = out_dir / "boavista.osm.xml"
     # Re-download if the cache is missing OR not a complete OSM response: a previous
     # transient failure must not be reused as a valid extract.
-    if not osm_path.exists() or b"</osm>" not in osm_path.read_bytes()[-512:]:
+    if not osm_path.exists() or not _is_valid_osm(osm_path.read_bytes()):
         _download(osm_path)
     else:
         print(f"Reusing cached {osm_path}")
