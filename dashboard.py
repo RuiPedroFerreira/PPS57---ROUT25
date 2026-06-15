@@ -1124,9 +1124,18 @@ with tab_rl:
         warn("Report de comparação Baseline vs RL não disponível. "
              "Corre <code>make compare-tsp-rl</code> para gerar este relatório.")
     else:
+        matched = rl_comparison.get("matched_decision_count", 0) or 0
+        net_verdict = rl_comparison.get("network_impact_verdict", "—")
+        st.markdown(
+            f"#### Comparámos **{matched}** decisões da política RL com a baseline rule-based. "
+            f"Veredicto de impacto na rede: **{net_verdict}**."
+        )
+        st.caption("A política RL é treinada offline e avaliada contra a regra heurística; aqui vê-se "
+                   "onde diverge e se as divergências melhoram o resultado.")
+
         rc1, rc2, rc3 = st.columns(3)
-        rc1.metric("Decisões comparadas", rl_comparison.get("matched_decision_count", "—"), border=True)
-        rc2.metric("Veredicto de rede", rl_comparison.get("network_impact_verdict", "—"), border=True)
+        rc1.metric("Decisões comparadas", matched, border=True)
+        rc2.metric("Veredicto de rede", net_verdict, border=True)
         rc3.metric("Tipo de avaliação", rl_comparison.get("evaluation", "—").replace("_", " "), border=True)
 
         section("Distribuição de veredictos por decisão")
@@ -1198,6 +1207,28 @@ with tab_scenarios:
             baseline_rt = next((r for r in run_types_all if "baseline" in r), None)
             tsp_rt = next((r for r in run_types_all if "tsp" in r), None)
             n_scen = df_all["Cenário"].nunique()
+
+            # ── plain-language headline: cross-scenario TSP impact ────────────
+            if baseline_rt and tsp_rt:
+                tl = df_all[df_all["metric_key"] == "mean_time_loss_s"]
+                pv0 = (tl.groupby(["Cenário", "Run type"])["Valor"].mean().reset_index()
+                       .pivot(index="Cenário", columns="Run type", values="Valor"))
+                deltas = {}
+                for scen, r in pv0.iterrows():
+                    bvv, tvv = r.get(baseline_rt), r.get(tsp_rt)
+                    if bvv and tvv:
+                        deltas[scen] = (tvv - bvv) / bvv * 100
+                if deltas:
+                    improved = sum(1 for d in deltas.values() if d < 0)
+                    best = min(deltas, key=deltas.get)
+                    worst = max(deltas, key=deltas.get)
+                    st.markdown(
+                        f"#### Em **{len(deltas)}** cenários, o TSP melhora a perda de tempo de "
+                        f"{vehicle_cls_label.lower()} em **{improved}**. Maior ganho: "
+                        f"**{best}** ({deltas[best]:+.0f}%); pior caso: **{worst}** ({deltas[worst]:+.0f}%)."
+                    )
+                    st.caption("Cada cenário é uma situação operacional distinta; o impacto mede-se "
+                               "dentro do cenário (baseline vs TSP com seeds emparelhadas).")
 
             # ── cross-scenario overview ───────────────────────────────────────
             section(f"Visão geral — {n_scen} cenários · {vehicle_cls_label}")
@@ -1278,6 +1309,12 @@ with tab_scenarios:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 with tab_meta:
+    st.markdown(
+        "#### Como ler estes resultados — fontes, parâmetros e limites da simulação."
+    )
+    st.caption("Tudo nesta dashboard vem de runs SUMO/TraCI reais (não há números inventados). "
+               "Esta página documenta a configuração, o que está calibrado e o que não está, e as "
+               "limitações a ter em conta na interpretação.")
     section("Configuração da simulação")
     if demo:
         sel_run_meta = st.selectbox("Run", list(demo.get("runs", {}).keys()), key="meta_run")
