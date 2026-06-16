@@ -9,3 +9,8 @@ defusedxml>=0.7,<1.0
 
 # YAML-based configs (configs/scenario_catalog.yaml).
 PyYAML>=6.0,<7.0
+
+# Dashboard de comparação de resultados (dashboard.py).
+streamlit>=1.35,<2.0
+plotly>=5.22,<7.0
+pandas>=2.0,<4.0
