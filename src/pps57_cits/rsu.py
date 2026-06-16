@@ -21,6 +21,7 @@ from typing import Dict, Iterable, List, Optional, Set
 
 from .config import CITSConfig, IntersectionConfig
 from .messages import (
+    BasicVehicleRole,
     CITSMessage,
     GrantedStrategy,
     MessageType,
@@ -140,6 +141,20 @@ class RSUAgent:
         if signal_request.request_type == RequestType.PRIORITY_CANCELLATION.value:
             return _DecisionPair.cancelled()
 
+        # 3b. Coerência da classe de emergência com a classificação do veículo.
+        # A classe `emergency` desbloqueia tratamento de preempção (janela ETA
+        # alargada em `_eta_in_window`, bypass da condição de delay/headway em
+        # `_priority_condition_met`, e bypass dos caps de racionamento na Safety
+        # layer a jusante). Como `operator_priority_class` é auto-declarada na
+        # telemetria, um emissor autorizado mas comprometido (ex.: OBU_bus_*)
+        # poderia escalar para emergência sem o ser. Exige-se que a
+        # classificação estrutural do veículo (BasicVehicleRole) confirme a
+        # emergência; caso contrário a mensagem é incoerente e rejeitada na
+        # fronteira, antes de qualquer tratamento específico de emergência.
+        classification_problem = self._emergency_classification_problem(request)
+        if classification_problem is not None:
+            return _DecisionPair.reject(classification_problem)
+
         # 4. Endereçamento da interseção.
         expected_ref_id = parse_intersection_ref_id(self.intersection.intersection_id)
         if signal_request.intersection_ref_id != expected_ref_id:
@@ -241,6 +256,24 @@ class RSUAgent:
         telemetry_rsu = request.operator_telemetry.rsu_id if request.operator_telemetry else ""
         if telemetry_rsu and telemetry_rsu != self.intersection.rsu_id:
             return "request_rsu_id_mismatch"
+        return None
+
+    def _emergency_classification_problem(self, request: SREMLike) -> Optional[str]:
+        """Rejeita pedidos que reclamam classe `emergency` sem o serem.
+
+        `operator_priority_class` (auto-declarada na telemetria) não pode, por
+        si só, desbloquear o tratamento de preempção: exige-se que o
+        `BasicVehicleRole` do requestor — a classificação estrutural do veículo
+        no SREM — confirme a emergência. Em produção o OBU move os dois campos
+        em conjunto (ambos derivam de `is_emergency_like`), pelo que tráfego
+        legítimo nunca é afetado; só uma combinação incoerente (escalada) é
+        bloqueada. A direção inversa não desbloqueia preempção e não é gated.
+        """
+        if request.priority_level != OperatorPriorityClass.EMERGENCY.value:
+            return None
+        role = request.requestor.basic_vehicle_role if request.requestor else ""
+        if role != BasicVehicleRole.EMERGENCY.value:
+            return "emergency_priority_class_without_emergency_role"
         return None
 
     def _validate_simulated_trust(self, security: SecurityEnvelope) -> Optional[str]:
