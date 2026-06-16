@@ -180,6 +180,38 @@ def request(**overrides):
     return synth_srem(**params)
 
 
+def early_green_decision(*, priority_level: str, current_phase_index: int = 3) -> TSPDecision:
+    """EARLY_GREEN proposto, parametrizado pela classe de prioridade.
+
+    Usado pelos testes que caracterizam a divisão racionamento-vs-clearance da
+    preempção de emergência na Safety layer.
+    """
+    return TSPDecision(
+        timestamp_s=10.0,
+        request_id="req",
+        vehicle_id="ev",
+        intersection_id="I1",
+        tls_id="I1",
+        rsu_id="RSU_BOAVISTA_01",
+        action=TSPAction.EARLY_GREEN.value,
+        status=DecisionStatus.PROPOSED.value,
+        reason="test",
+        priority_score=1.0,
+        eta_to_stopline_s=5.0,
+        schedule_delay_s=0.0,
+        headway_deviation_s=0.0,
+        priority_level=priority_level,
+        current_edge_id="N_I1_I1",
+        current_lane_id="N_I1_I1_0",
+        next_edge_id="I1_I2",
+        priority_movement_id="I1_westbound_public_transport",
+        target_signal_group_id="I1_priority_westbound",
+        phase_duration_s=2.0,
+        target_phase_index=0,
+        current_phase_index=current_phase_index,
+    )
+
+
 def processing_ssem(srem) -> SSEMLike:
     primary = srem.requests[0]
     moy, timestamp_ms, generation_delta = sim_time_to_cdd(0.0)
@@ -613,6 +645,54 @@ class TSPPlatformTests(unittest.TestCase):
         result = safety.validate(decision, signal_state(phase=3, state="rG", lane="N_I1_I1_0", spent=10.0), 10.0)
 
         self.assertNotEqual(result.reason, "cooldown_after_priority_active")
+
+    def test_emergency_preemption_bypasses_recovery_debt_cap(self) -> None:
+        # Caps de RACIONAMENTO (recovery-debt) protegem capacidade da
+        # transversal, não segurança física: a emergência ultrapassa-os. Com a
+        # dívida acima do tecto, o autocarro é bloqueado mas a emergência passa.
+        # Lock-in do invariante de safety.py (follow-up dos caps na PR #57).
+        cits, tsp = configs()
+        max_debt = cits.safety_constraints.get("max_recovery_debt_s")
+        self.assertIsNotNone(max_debt)
+
+        def validate(priority_level: str):
+            safety = TSPSafetyLayer(cits, tsp)
+            safety.set_signal_program_verified(True)
+            safety.recovery_debt_by_tls["I1"] = float(max_debt) + 100.0
+            safety.recovery_debt_update_time_by_tls["I1"] = 10.0
+            return safety.validate(
+                early_green_decision(priority_level=priority_level),
+                signal_state(phase=3, state="rG", lane="N_I1_I1_0", spent=10.0, next_switch=20.0),
+                10.0,
+            )
+
+        bus = validate(OperatorPriorityClass.HIGH_DELAY.value)
+        self.assertFalse(bus.approved)
+        self.assertEqual(bus.reason, "recovery_debt_limit_active")
+
+        emergency = validate(OperatorPriorityClass.EMERGENCY.value)
+        self.assertTrue(emergency.approved)
+        self.assertNotEqual(emergency.reason, "recovery_debt_limit_active")
+
+    def test_emergency_preemption_still_blocked_by_min_green_clearance(self) -> None:
+        # Caps de CLEARANCE (min-green da fase conflituante) são segurança
+        # física — peões/veículos a libertar o cruzamento — e NÃO são bypassed
+        # nem para emergência. Alinha com a preempção real (NEMA TS2 / MUTCD):
+        # encurta mas nunca elimina min-green + amarelo + all-red.
+        cits, tsp = configs()
+        min_green = cits.safety_constraints.get("min_green_s")
+        self.assertIsNotNone(min_green)
+        spent = float(min_green) - 1.0  # fase conflituante ainda não serviu o min-green
+
+        safety = TSPSafetyLayer(cits, tsp)
+        safety.set_signal_program_verified(True)
+        result = safety.validate(
+            early_green_decision(priority_level=OperatorPriorityClass.EMERGENCY.value),
+            signal_state(phase=3, state="rG", lane="N_I1_I1_0", spent=spent, next_switch=20.0),
+            10.0,
+        )
+        self.assertFalse(result.approved)
+        self.assertTrue(result.reason.startswith("min_green_not_satisfied"))
 
     def test_runtime_policy_cannot_suppress_baseline_actuation_by_default(self) -> None:
         cits, tsp = configs()
