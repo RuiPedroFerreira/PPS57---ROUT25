@@ -224,6 +224,7 @@ def _offline_counterfactuals(tsp_payload: JsonDict, policy_summary: Optional[Jso
 
 def _run_payload(run: DemonstratorRun) -> JsonDict:
     controller_rejections = _controller_rejections(run.actuations)
+    applied_ids = _applied_decision_ids(run.actuations)
     runtime = {
         "root": str(run.root),
         "total_decisions": _summary_or_count(run.summary, "total_decisions", run.decisions),
@@ -243,6 +244,8 @@ def _run_payload(run: DemonstratorRun) -> JsonDict:
         ),
         "controller_rejection_by_reason": dict(Counter(_controller_rejection_reason(item) for item in controller_rejections)),
         "per_tls": _per_tls(run.decisions, run.actuations, controller_rejections),
+        "green_time": _green_time(run.decisions, applied_ids),
+        "score_attribution": _score_attribution(run.decisions, applied_ids),
     }
     return {
         "runtime": runtime,
@@ -424,6 +427,56 @@ def _per_tls(decisions: List[JsonDict], actuations: List[JsonDict], controller_r
             "controller_rejections": sum(1 for item in controller_rejections if item.get("tls_id") == tls_id),
         }
     return payload
+
+
+def _applied_decision_ids(actuations: Iterable[JsonDict]) -> set[str]:
+    """decision_ids whose actuation actually reached the network — applied via
+    TraCI and NOT a no-actuation shadow. A decision can be `status=approved`
+    (passed the Safety Layer) yet never be applied (--no-actuation runs,
+    simulated-controller rejections), so safety-approval is not delivery."""
+    return {
+        str(a["decision_id"]) for a in actuations
+        if a.get("applied") and not a.get("no_actuation") and a.get("decision_id")
+    }
+
+
+def _green_time(decisions: List[JsonDict], applied_ids: set[str]) -> JsonDict:
+    """Green seconds actually delivered to the network.
+
+    Sums `extension_s` over decisions whose actuation was applied via TraCI
+    (`decision_id` in `applied_ids`) — the dose delivered, not merely approved.
+    Joining against the actuation log (not just `status`) keeps the number
+    honest in --no-actuation / controller-reject runs.
+    """
+    applied = [d for d in decisions if d.get("decision_id") in applied_ids]
+    ext = [float(d.get("extension_s") or 0.0) for d in applied]
+    granting = [e for e in ext if e > 0]
+    return {
+        "applied_extension_s_total": round(sum(ext), 1),
+        "mean_extension_s": round(sum(granting) / len(granting), 1) if granting else 0.0,
+        "max_extension_s": round(max(ext), 1) if ext else 0.0,
+        "n_extensions": len(granting),
+    }
+
+
+def _score_attribution(decisions: List[JsonDict], applied_ids: set[str]) -> Dict[str, float]:
+    """Mean per-objective contribution across decisions that actually actuated
+    (applied via TraCI, not merely approved) — which objective (delay, headway,
+    proximity, priority level) drove the score behind the network changes.
+    Reads `score_components.contribution` already computed by the engine."""
+    applied = [
+        d for d in decisions
+        if d.get("decision_id") in applied_ids and isinstance(d.get("score_components"), dict)
+    ]
+    if not applied:
+        return {}
+    totals: Dict[str, float] = {}
+    for d in applied:
+        for objective, comp in d["score_components"].items():
+            contribution = comp.get("contribution") if isinstance(comp, dict) else None
+            if isinstance(contribution, (int, float)):
+                totals[objective] = totals.get(objective, 0.0) + float(contribution)
+    return {objective: round(value / len(applied), 4) for objective, value in totals.items()}
 
 
 def _evidence_paths(run: DemonstratorRun) -> JsonDict:

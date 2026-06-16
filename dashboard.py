@@ -51,6 +51,14 @@ ACTION_META = {
     "reevaluate_next_cycle": ("Reavaliar no ciclo",     "#f59e0b", "Decisão adiada — reavalia na próxima janela de decisão."),
 }
 
+# friendly labels for the priority-score objectives (score_components keys)
+OBJECTIVE_LABELS = {
+    "schedule_delay":    "Atraso ao horário",
+    "headway_deviation": "Desvio de intervalo (headway)",
+    "priority_level":    "Nível de prioridade",
+    "proximity":         "Proximidade (ETA)",
+}
+
 PALETTE = {
     "sumo_baseline": "#64748b",
     "baseline":      "#64748b",
@@ -87,15 +95,18 @@ html, body, [class*="css"] { font-family: "Inter", "Segoe UI", system-ui, sans-s
 .dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
 .dot-ok  { background:#22c55e; }
 .dot-off { background:#cbd5e1; }
-.dot-label { font-family: monospace; color:#475569; }
 
-/* verdict banner */
-.verdict-pass    { background:#f0fdf4; border-left:4px solid #22c55e; padding:12px 16px; border-radius:0 8px 8px 0; }
-.verdict-review  { background:#fffbeb; border-left:4px solid #f59e0b; padding:12px 16px; border-radius:0 8px 8px 0; }
-.verdict-fail    { background:#fef2f2; border-left:4px solid #ef4444; padding:12px 16px; border-radius:0 8px 8px 0; }
-.verdict-unknown { background:#f8fafc; border-left:4px solid #94a3b8; padding:12px 16px; border-radius:0 8px 8px 0; }
-.verdict-title { font-weight:700; font-size:0.85rem; margin:0 0 2px; }
-.verdict-body  { font-size:0.82rem; color:#374151; margin:0; }
+/* verdict banner — single styled card; the left accent reflects the status */
+.verdict-card { background:#ffffff; border:1px solid #f1f5f9; border-left:4px solid #f59e0b;
+                border-radius:8px; padding:1rem 1.25rem; margin-bottom:1.5rem; }
+.verdict-card .verdict-headline { font-size:15px; font-weight:700; color:#92400e; margin:0 0 3px; }
+.verdict-card .verdict-support  { font-size:13px; color:#78716c; margin:0; line-height:1.5; }
+.verdict-card.is-pass    { border-left-color:#22c55e; }
+.verdict-card.is-pass .verdict-headline    { color:#15803d; }
+.verdict-card.is-fail    { border-left-color:#ef4444; }
+.verdict-card.is-fail .verdict-headline    { color:#b91c1c; }
+.verdict-card.is-unknown { border-left-color:#94a3b8; }
+.verdict-card.is-unknown .verdict-headline { color:#475569; }
 
 /* section label */
 .section-label { font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.1em;
@@ -133,6 +144,30 @@ html, body, [class*="css"] { font-family: "Inter", "Segoe UI", system-ui, sans-s
 .flow-step .ft { font-weight:700; font-size:0.8rem; color:#0f172a; }
 .flow-step .fd { font-size:0.74rem; color:#64748b; line-height:1.35; margin-top:2px; }
 .flow-arrow { align-self:center; color:#94a3b8; font-size:1.1rem; font-weight:700; }
+
+/* remove the default Streamlit top padding */
+section.main > div { padding-top: 1rem; }
+.block-container { padding-top: 1rem; }
+
+/* KPI metric cards — left accent stripe signals improvement vs cost */
+.kpi-card { border:1px solid #e5e7eb; border-radius:12px; padding:1.25rem; position:relative;
+            overflow:hidden; background:#ffffff; }
+.kpi-card::before { content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:transparent; }
+.kpi-card.kpi-good::before { background:#22c55e; }
+.kpi-card.kpi-bad::before  { background:#dc2626; }
+.kpi-card .kpi-label { font-size:12px; color:#6b7280; font-weight:600; margin:0; }
+.kpi-card .kpi-value { font-size:28px; font-weight:700; color:#0f172a; line-height:1.15; margin:4px 0 0; }
+.kpi-card .kpi-delta { font-size:14px; font-weight:600; margin:6px 0 0; }
+.kpi-delta.kpi-good { color:#16a34a; }
+.kpi-delta.kpi-bad  { color:#dc2626; }
+.kpi-delta.kpi-flat { color:#6b7280; }
+
+/* footer navigation chips */
+.footer-chip { border:1px solid #e5e7eb; border-radius:10px; padding:1rem 1.25rem;
+               cursor:pointer; transition:background 0.15s; background:#ffffff; height:100%; }
+.footer-chip:hover { background:#f9fafb; }
+.footer-chip .fc-label { font-size:14px; font-weight:700; color:#0f172a; margin:0 0 4px; }
+.footer-chip .fc-desc  { font-size:12px; color:#64748b; margin:0; line-height:1.45; }
 </style>
 """
 
@@ -199,23 +234,32 @@ def warn(text: str) -> None:
     st.markdown(f'<div class="warn-box">{text}</div>', unsafe_allow_html=True)
 
 
-def render_kpi_metric(col, metric_key: str, value, baseline_val=None) -> None:
-    """Native st.metric with accessible delta (arrow + colour) and help tooltip."""
+def render_kpi_card(col, metric_key: str, value, baseline_val=None) -> None:
+    """Custom .kpi-card: label, value and delta. A left accent stripe signals
+    improvement (green) or cost (red); neutral metrics (speed) get no stripe.
+    The metric definition is exposed as a native hover tooltip via `title`."""
     label, unit, desc = KPI_META.get(metric_key, (metric_key, "", ""))
-    delta = None
+    neutral = metric_key in HIGHER_IS_BETTER  # speed → neutral framing, no stripe
+    stripe_cls = ""
+    delta_html = ""
     if value is not None and baseline_val not in (None, 0):
         dabs = value - baseline_val
         p = pct(baseline_val, value)
-        delta = f"{dabs:+.1f} {unit}".strip()
+        improved = (dabs > 0) if metric_key in HIGHER_IS_BETTER else (dabs < 0)
+        arrow = "↑" if dabs > 0 else ("↓" if dabs < 0 else "→")
+        tone = "kpi-flat" if dabs == 0 else ("kpi-good" if improved else "kpi-bad")
+        dtxt = f"{arrow} {dabs:+.1f} {unit}".strip()
         if p is not None:
-            delta += f"  ({p:+.1f}%)"
-    col.metric(
-        label=label,
-        value=fmt(value, unit),
-        delta=delta,
-        delta_color=("normal" if metric_key in HIGHER_IS_BETTER else "inverse"),
-        help=desc,
-        border=True,
+            dtxt += f" ({p:+.1f}%)"
+        delta_html = f'<div class="kpi-delta {tone}">{dtxt}</div>'
+        if not neutral and dabs != 0:
+            stripe_cls = " kpi-good" if improved else " kpi-bad"
+    col.markdown(
+        f'<div class="kpi-card{stripe_cls}" title="{desc}">'
+        f'<div class="kpi-label">{label}</div>'
+        f'<div class="kpi-value">{fmt(value, unit)}</div>'
+        f'{delta_html}</div>',
+        unsafe_allow_html=True,
     )
 
 
@@ -423,6 +467,22 @@ with st.sidebar:
     st.markdown('<div class="sb-project">PPS57 · ROUT25</div>', unsafe_allow_html=True)
     st.markdown('<div class="sb-sub">Traffic Signal Priority — Linha 25, Porto</div>', unsafe_allow_html=True)
 
+    # ── detected reports (collapsible, human-readable labels) ──────────────────
+    report_files = {
+        "Baseline KPIs":        REPORTS / "baseline_kpis.json",
+        "Demonstrador TSP":     REPORTS / "tsp_demonstrator_report.json",
+        "Comparação TSP vs RL": REPORTS / "tsp_baseline_vs_rl_comparison.json",
+    }
+    with st.expander("Relatórios detectados", expanded=True):
+        for label, path in report_files.items():
+            dot = "dot-ok" if path.exists() else "dot-off"
+            st.markdown(
+                f'<div class="file-row"><span class="dot {dot}"></span>'
+                f'<span>{label}</span></div>',
+                unsafe_allow_html=True,
+            )
+
+    # ── global vehicle-class filter (below the reports expander) ───────────────
     st.markdown('<div class="sb-label">Filtro global</div>', unsafe_allow_html=True)
     # annotate each class with its vehicle count so empty/overlapping classes
     # are obvious (e.g. "Veículos de emergência (0)").
@@ -438,27 +498,13 @@ with st.sidebar:
              "Tráfego geral = todos os não-prioritários. As classes podem sobrepor-se.",
     )
     vehicle_cls = cls_label_map[sel_display]
-    vehicle_cls_label = next(l for k, l in VEHICLE_CLASSES if k == vehicle_cls)
+    vehicle_cls_label = next(lbl for k, lbl in VEHICLE_CLASSES if k == vehicle_cls)
 
     if vehicle_cls == "priority_vehicles" and cls_counts.get("emergency_vehicles", 0) == 0:
         st.caption("Sem veículos de emergência nesta simulação, por isso "
                    "**Prioritários = Autocarros**.")
     elif vehicle_cls == "emergency_vehicles" and cls_counts.get("emergency_vehicles", 0) == 0:
         st.caption("Sem veículos de emergência nesta simulação — métricas vazias.")
-
-    st.markdown('<div class="sb-label">Reports detectados</div>', unsafe_allow_html=True)
-    report_files = {
-        "baseline_kpis.json":               REPORTS / "baseline_kpis.json",
-        "tsp_demonstrator_report.json":     REPORTS / "tsp_demonstrator_report.json",
-        "tsp_baseline_vs_rl_comparison.json": REPORTS / "tsp_baseline_vs_rl_comparison.json",
-    }
-    for name, path in report_files.items():
-        dot = "dot-ok" if path.exists() else "dot-off"
-        st.markdown(
-            f'<div class="file-row"><span class="dot {dot}"></span>'
-            f'<span class="dot-label">{name}</span></div>',
-            unsafe_allow_html=True,
-        )
 
     st.markdown('<div class="sb-label">Documentação</div>', unsafe_allow_html=True)
     with st.expander("Glossário de métricas"):
@@ -541,12 +587,12 @@ if nonzero and (max(nonzero) - min(nonzero)) / max(nonzero) > 0.10:
 # ── verdict status map (used by the Resumo tab) ───────────────────────────────
 
 VERDICT_MAP = {
-    "value_demonstrated":              ("verdict-pass",   "Evidência positiva"),
-    "passes_primary_demonstrator_goal":("verdict-pass",   "Objectivo primário demonstrado"),
-    "passes_with_general_traffic_cost":("verdict-review",  "Ganho no transporte público com custo no tráfego geral"),
-    "review":                          ("verdict-review",  "Em revisão"),
-    "inconclusive_missing_bus_kpi":    ("verdict-unknown", "Inconclusivo — KPI de autocarros em falta"),
-    "does_not_demonstrate_actuation":  ("verdict-fail",    "Sem actuação TSP"),
+    "value_demonstrated":              ("is-pass",    "Evidência positiva"),
+    "passes_primary_demonstrator_goal":("is-pass",    "Objectivo primário demonstrado"),
+    "passes_with_general_traffic_cost":("",           "Ganho no transporte público com custo no tráfego geral"),
+    "review":                          ("",           "Em revisão"),
+    "inconclusive_missing_bus_kpi":    ("is-unknown", "Inconclusivo — KPI de autocarros em falta"),
+    "does_not_demonstrate_actuation":  ("is-fail",    "Sem actuação TSP"),
 }
 
 # ── tabs ──────────────────────────────────────────────────────────────────────
@@ -554,11 +600,11 @@ VERDICT_MAP = {
 tab_resumo, tab_kpi, tab_decisions, tab_cits, tab_rl, tab_scenarios, tab_meta, tab_sim = st.tabs([
     "Resumo",
     "KPIs",
-    "Motor de Decisão",
+    "Decisão",
     "C-ITS",
-    "Baseline vs RL",
+    "vs RL",
     "Cenários",
-    "Metodologia",
+    "Método",
     "Simulação",
 ])
 
@@ -578,10 +624,11 @@ with tab_resumo:
     # ── verdict ───────────────────────────────────────────────────────────────
     if demo and "verdict" in demo:
         v = demo["verdict"]
-        vcls, vtitle = VERDICT_MAP.get(v.get("status", ""), ("verdict-unknown", "Estado desconhecido"))
+        vmod, vtitle = VERDICT_MAP.get(v.get("status", ""), ("is-unknown", "Estado desconhecido"))
         st.markdown(
-            f'<div class="{vcls}"><p class="verdict-title">Veredicto · {vtitle}</p>'
-            f'<p class="verdict-body">{v.get("reason", v.get("status", ""))}</p></div>',
+            f'<div class="verdict-card {vmod}">'
+            f'<p class="verdict-headline">Veredicto · {vtitle}</p>'
+            f'<p class="verdict-support">{v.get("reason", v.get("status", ""))}</p></div>',
             unsafe_allow_html=True,
         )
 
@@ -624,48 +671,66 @@ with tab_resumo:
         if bus:
             bcls = bus["key"]
             m1, m2, m3 = st.columns(3)
-            render_kpi_metric(m1, "mean_time_loss_s",
+            render_kpi_card(m1, "mean_time_loss_s",
                               tk.get(bcls, {}).get("mean_time_loss_s"),
                               bk.get(bcls, {}).get("mean_time_loss_s"))
-            render_kpi_metric(m2, "mean_waiting_time_s",
+            render_kpi_card(m2, "mean_waiting_time_s",
                               tk.get(bcls, {}).get("mean_waiting_time_s"),
                               bk.get(bcls, {}).get("mean_waiting_time_s"))
-            render_kpi_metric(m3, "mean_speed_mps",
+            render_kpi_card(m3, "mean_speed_mps",
                               tk.get(bcls, {}).get("mean_speed_mps"),
                               bk.get(bcls, {}).get("mean_speed_mps"))
             st.caption(f"Classe {bus['Classe'].lower()} ({bus['n']} veículos) · "
                        f"{primary_tsp} vs {baseline_key}. Verde = melhoria, vermelho = custo.")
 
         # ── hero chart: who benefits ──────────────────────────────────────────
+        # Title lives above the chart (st.markdown/section), not inside the figure.
         section("Quem ganha com o TSP — variação da perda de tempo por classe")
         if hero:
             dfh = pd.DataFrame(hero)
+            # Diverging x-axis centred on zero. The range is computed from the data
+            # (plus zero) and padded, so even tiny bars like +0.1% / +0.3% and their
+            # outside labels stay inside the axis — never hardcoded, never clipped.
+            vals = dfh["pct"].tolist()
+            lo_v, hi_v = min(vals + [0.0]), max(vals + [0.0])
+            pad = max(1.0, (hi_v - lo_v) * 0.18)
             fig_hero = go.Figure(go.Bar(
                 x=dfh["pct"], y=dfh["Classe"], orientation="h",
                 marker_color=[COLOR_GOOD if p < 0 else COLOR_BAD for p in dfh["pct"]],
-                text=[f"{p:+.1f}%" for p in dfh["pct"]], textposition="outside",
+                texttemplate="%{x:.1f}%", textposition="outside", cliponaxis=False,
                 customdata=dfh[["baseline", "tsp", "n"]].values,
                 hovertemplate="%{y}: %{x:+.1f}%<br>%{customdata[0]:.0f}s → %{customdata[1]:.0f}s "
                               "(n=%{customdata[2]})<extra></extra>",
             ))
-            fig_hero.add_vline(x=0, line_width=2, line_color="#334155")
-            chart_layout(fig_hero, "Δ perda de tempo · TSP vs baseline (barras à esquerda = melhoria)",
-                         height=max(260, len(hero) * 56 + 90))
+            fig_hero.add_vline(x=0, line_color="#6b7280", line_width=1)
+            chart_layout(fig_hero, "", height=280)
+            fig_hero.update_layout(bargap=0.35)
+            fig_hero.update_xaxes(range=[lo_v - pad, hi_v + pad])
             st.plotly_chart(fig_hero, use_container_width=True)
-            insight("Barras <strong>verdes à esquerda</strong> = o TSP melhora essa classe; "
-                    "<strong>vermelhas à direita</strong> = custo. O padrão esperado de um sistema de "
-                    "prioridade: classes prioritárias (autocarros, emergência) ganham, o tráfego geral "
-                    "fica perto de zero. Passa o rato numa barra para ver os valores absolutos.")
+
+            # ── legend: colour squares instead of a wall of italic text ─────────
+            lg1, lg2 = st.columns(2)
+            lg1.markdown(":green[■] **Melhoria** (barras à esquerda)")
+            lg2.markdown(":red[■] **Custo** (barras à direita)")
             if not any(r["key"] == "emergency_vehicles" for r in hero):
                 st.caption("Emergência não aparece aqui (o cenário base não tem veículos de emergência). "
                            "Vê o separador **Cenários → emergency_vehicle_conflict** para o caso de emergência.")
 
-        # ── navigation hint ───────────────────────────────────────────────────
+        # ── navigation hint (visual chips; tab switching not wired) ───────────
         section("Explorar em detalhe")
         n1, n2, n3 = st.columns(3)
-        n1.markdown("**KPIs** — comparação detalhada entre cenários, por classe e métrica.")
-        n2.markdown("**Motor de Decisão** — o que o algoritmo decidiu e porquê.")
-        n3.markdown("**Cenários** — impacto do TSP nas 8 situações operacionais.")
+        n1.markdown(
+            '<div class="footer-chip"><div class="fc-label">KPIs →</div>'
+            '<div class="fc-desc">Comparação detalhada entre cenários, por classe e métrica.</div></div>',
+            unsafe_allow_html=True)
+        n2.markdown(
+            '<div class="footer-chip"><div class="fc-label">Decisão →</div>'
+            '<div class="fc-desc">O que o algoritmo decidiu e porquê.</div></div>',
+            unsafe_allow_html=True)
+        n3.markdown(
+            '<div class="footer-chip"><div class="fc-label">Cenários →</div>'
+            '<div class="fc-desc">Impacto do TSP nas 8 situações operacionais.</div></div>',
+            unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 1 — KPI comparison
@@ -713,9 +778,9 @@ with tab_kpi:
             card_metrics = ["mean_time_loss_s", "mean_waiting_time_s", "mean_duration_s", "p95_time_loss_s"]
             ccols = st.columns(len(card_metrics))
             for col, m in zip(ccols, card_metrics):
-                render_kpi_metric(col, m, cmp_data.get(m), ref_data.get(m))
+                render_kpi_card(col, m, cmp_data.get(m), ref_data.get(m))
             insight(f"Cartões: valor de <strong>{cmp_run}</strong>, delta vs <strong>{ref_run}</strong>. "
-                    "Passa o rato sobre o ícone (?) de cada métrica para ver a definição.")
+                    "Passa o rato sobre cada cartão para ver a definição da métrica.")
 
         # ── grouped bar chart — all runs ──────────────────────────────────────
         section("Comparação de métricas entre todos os cenários")
@@ -968,6 +1033,56 @@ with tab_decisions:
                     f'<span style="font-size:0.76rem;color:#64748b">{desc}</span></div></div>',
                     unsafe_allow_html=True,
                 )
+
+        # ── decision-quality KPIs: dose, attribution ──────────────────────────
+        green = runtime.get("green_time", {})
+        score_attr = runtime.get("score_attribution", {})
+
+        section("Verde concedido ao transporte público")
+        gt_total = green.get("applied_extension_s_total", 0) or 0
+        if gt_total:
+            st.markdown(
+                f"#### O motor concedeu **{gt_total:.1f} s** de verde extra ao transporte público, "
+                f"em **{green.get('n_extensions', 0)}** extensões aplicadas "
+                f"(média {green.get('mean_extension_s', 0):.1f} s, máx {green.get('max_extension_s', 0):.1f} s)."
+            )
+            gq1, gq2, gq3, gq4 = st.columns(4)
+            gq1.metric("Verde total concedido", f"{gt_total:.1f} s", border=True,
+                       help="Soma do verde de extensão em decisões efectivamente aplicadas na rede via "
+                            "TraCI (excl. runs em modo --no-actuation e rejeições do controlador). "
+                            "É a dose entregue à rede, não a aprovada.")
+            gq2.metric("Extensão média", f"{green.get('mean_extension_s', 0):.1f} s", border=True,
+                       help="Média de segundos por extensão de verde concedida.")
+            gq3.metric("Extensão máxima", f"{green.get('max_extension_s', 0):.1f} s", border=True,
+                       help="Maior extensão de verde aplicada numa única decisão.")
+            gq4.metric("Nº de extensões", green.get("n_extensions", 0), border=True,
+                       help="Decisões aprovadas que adicionaram segundos de verde.")
+            insight("Esta é a <strong>intensidade</strong> da prioridade: quanto verde o TSP "
+                    "efectivamente injectou na rede. Liga-se à equidade — esse verde é depois "
+                    "compensado às outras fases (ver <strong>C-ITS → Compensação de verde</strong>).")
+        else:
+            st.caption("Sem extensões de verde aplicadas nesta run.")
+
+        section("O que motivou as actuações — decomposição do priority score")
+        if score_attr:
+            items = sorted(score_attr.items(), key=lambda kv: kv[1], reverse=True)
+            labels_o = [OBJECTIVE_LABELS.get(k, k) for k, _ in items]
+            vals_o = [v for _, v in items]
+            fig_o = go.Figure(go.Bar(
+                x=vals_o, y=labels_o, orientation="h", marker_color="#1d6ef5",
+                texttemplate="%{x:.3f}", textposition="outside", cliponaxis=False,
+                hovertemplate="%{y}: contribuição média %{x:.3f}<extra></extra>",
+            ))
+            chart_layout(fig_o, "", height=max(220, len(items) * 46 + 80))
+            fig_o.update_xaxes(range=[0, max(vals_o) * 1.25 + 0.01])
+            st.plotly_chart(fig_o, use_container_width=True)
+            top_obj = labels_o[0] if labels_o else "—"
+            insight("Contribuição média de cada objectivo para o priority score das decisões que "
+                    f"<strong>actuaram</strong>. O motor agiu sobretudo por <strong>{top_obj.lower()}</strong>. "
+                    "A soma das barras ≈ score médio das actuações; objectivos a zero não tiveram peso "
+                    "neste cenário (ex. headway, quando não há bunching).")
+        else:
+            st.caption("Sem decomposição de score disponível (sem actuações aprovadas nesta run).")
 
         safety_reasons = runtime.get("safety_block_by_reason", {})
         section("Bloqueios da Safety Layer por motivo")
