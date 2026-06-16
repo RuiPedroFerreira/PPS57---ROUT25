@@ -328,10 +328,10 @@ class Package3CITSTestCase(unittest.TestCase):
 
     def test_rsu_rejects_emergency_class_from_non_emergency_identity(self) -> None:
         # P1: a autorização de emergência tem de assentar na IDENTIDADE
-        # autenticada (operational_vehicle_id, vinculado ao signer/trust store),
-        # não em campos auto-declarados do payload. Um OBU_bus_* que forje AMBOS
+        # autenticada (signer, vinculado ao trust store), não em campos
+        # auto-declarados do payload. Um OBU_bus_* que forje AMBOS
         # operator_priority_class E basic_vehicle_role = emergency não escala,
-        # porque a sua identidade autenticada não corresponde a um prefixo de
+        # porque a sua identidade autenticada não está na allowlist explícita de
         # emergência. Crucial mesmo com atraso real, senão a classe `emergency`
         # forjada seguiria para o motor/Safety layer. PR #57.
         intersection = self.config.rsu_to_intersection["RSU_BOAVISTA_02"]
@@ -352,15 +352,43 @@ class Package3CITSTestCase(unittest.TestCase):
                     response.reason, "emergency_priority_class_not_emergency_identity"
                 )
 
+    def test_rsu_rejects_emergency_class_from_unlisted_emergency_prefix(self) -> None:
+        # P2 (PR #57): num trust store em modo `prefix_allowlist`, o prefixo
+        # `OBU_ev_` não é fronteira mais forte que o payload auto-declarado — um
+        # SREM pode usar operational_vehicle_id="ev_qualquer", signer
+        # "OBU_ev_qualquer" e role "emergency" e passa o trust store por prefixo.
+        # A autorização de emergência tem de assentar numa allowlist EXPLÍCITA
+        # (trust_store.emergency_authorization), não em qualquer `ev_*`. Uma
+        # identidade de emergência bem-formada mas NÃO enumerada é rejeitada.
+        intersection = self.config.rsu_to_intersection["RSU_BOAVISTA_02"]
+        for label, delay, eta in (("sem atraso", 0.0, 5.0), ("com atraso real", 90.0, 15.0)):
+            with self.subTest(label):
+                rsu = RSUAgent(self.config, intersection)
+                request = _eligible_srem(
+                    vehicle_id="ev_spoofed_not_in_fleet",
+                    eta_to_stopline_s=eta,
+                    distance_to_stopline_m=60.0,
+                    schedule_delay_s=delay,
+                    headway_deviation_s=0.0,
+                    operator_priority_class=OperatorPriorityClass.EMERGENCY.value,
+                    basic_vehicle_role="emergency",
+                )
+                response = rsu.evaluate_request(request, sim_time_s=101.0)
+                self.assertEqual(response.status, ResponseStatus.REJECTED.value)
+                self.assertEqual(
+                    response.reason, "emergency_priority_class_not_emergency_identity"
+                )
+
     def test_rsu_rejects_emergency_identity_with_inconsistent_role(self) -> None:
-        # Coerência secundária: uma identidade de emergência autenticada (prefixo
-        # ev_) cujo BasicVehicleRole auto-declarado seja de transporte público é
-        # um SREM incoerente e também é rejeitado na fronteira.
+        # Coerência secundária: uma identidade de emergência AUTORIZADA (na
+        # allowlist explícita) cujo BasicVehicleRole auto-declarado seja de
+        # transporte público é um SREM incoerente e é rejeitado na fronteira.
         intersection = self.config.rsu_to_intersection["RSU_BOAVISTA_02"]
         rsu = RSUAgent(self.config, intersection)
         request = _eligible_srem(
-            vehicle_id="ev_decoy",
+            vehicle_id="ev_conflict_west_to_east_3600",
             eta_to_stopline_s=5.0,
+            distance_to_stopline_m=60.0,
             schedule_delay_s=0.0,
             headway_deviation_s=0.0,
             operator_priority_class=OperatorPriorityClass.EMERGENCY.value,

@@ -65,6 +65,13 @@
             "RSU_BOAVISTA_"
         ],
         "revoked_certificate_ids": [],
+        "emergency_authorization": {
+            "authorized_signer_ids": [
+                "OBU_ev_conflict_west_to_east_3600"
+            ],
+            "authorized_certificate_ids": [],
+            "assumption": "Frota de emergencia provisionada explicitamente (registo equivalente as permissoes de certificado ETSI TS 102 941 SSP/ITS-AID). A classe `emergency` desbloqueia preempcao, logo a autorizacao tem de enumerar identidades autenticadas concretas, NAO aceitar qualquer prefixo OBU_ev_. Aqui por signer_id porque o trust store simulado nao valida ECDSA per-veiculo; compoe com os modos exact-match allowed_signer_ids/allowed_certificate_ids."
+        },
         "assumption": "Simulated trust policy for SUMO. This is not ETSI PKI validation."
     },
     "obu_policy": {

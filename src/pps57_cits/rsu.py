@@ -264,24 +264,74 @@ class RSUAgent:
         em campos auto-declarados no payload — `operator_priority_class` e
         `basic_vehicle_role` são ambos controlados pelo emissor, logo um atacante
         que forje os dois passaria. A âncora de confiança é a **identidade
-        autenticada** do veículo: `operational_vehicle_id` está vinculado ao
-        `source_id`/`signer_id` e validado contra o trust store em
-        `_validate_identity`/`_validate_security` (no allowlist de prefixos
-        `OBU_ev_`/`OBU_emergency_` vs `OBU_bus_`). Exige-se portanto que essa
-        identidade corresponda a um prefixo de emergência configurado; só depois
-        se confirma a coerência do `BasicVehicleRole` auto-declarado. Em produção
-        o OBU só emite classe `emergency` para IDs de emergência com role
-        `emergency`, pelo que tráfego legítimo nunca é afetado.
+        autenticada** do veículo (`signer_id`/`certificate_id`, vinculados ao
+        `source_id` em `_validate_identity` e ao trust store em
+        `_validate_security`). Exige-se que essa identidade esteja autorizada
+        (`_emergency_identity_authorized`); só depois se confirma a coerência do
+        `BasicVehicleRole` auto-declarado. Em produção o OBU só emite classe
+        `emergency` para identidades de emergência com role `emergency`, pelo que
+        tráfego legítimo nunca é afetado.
         """
         if request.priority_level != OperatorPriorityClass.EMERGENCY.value:
             return None
-        vehicle_id = request.requestor.operational_vehicle_id if request.requestor else ""
-        if not vehicle_id.startswith(self._emergency_id_prefixes()):
+        if not self._emergency_identity_authorized(request):
             return "emergency_priority_class_not_emergency_identity"
         role = request.requestor.basic_vehicle_role if request.requestor else ""
         if role != BasicVehicleRole.EMERGENCY.value:
             return "emergency_priority_class_without_emergency_role"
         return None
+
+    def _emergency_identity_authorized(self, request: SREMLike) -> bool:
+        """A identidade autenticada do veículo está autorizada para emergência?
+
+        Âncora de autorização, por ordem de força:
+
+        1. **Allowlist explícita** (`trust_store.emergency_authorization`) —
+           enumera os signers/certificados de emergência provisionados (um
+           registo de frota). É estritamente mais forte que um prefixo aberto:
+           o prefixo `OBU_ev_` admite qualquer sufixo auto-escolhido
+           (`OBU_ev_qualquer`), pelo que cruzá-lo com o payload só apanha quem se
+           esqueça de forjar a identidade; a allowlist só admite identidades
+           concretas enumeradas. Quando configurada, é a única via. O `signer_id`
+           e o `certificate_id` são os campos vinculados ao trust store
+           (`_validate_security`), não payload livre, e cruzados com `source_id`
+           em `_validate_identity`.
+        2. **Fallback de prefixo** (`obu_policy.emergency_id_prefixes`) — só
+           quando NÃO há allowlist explícita configurada; gating fraco mantido
+           por compatibilidade com configs legacy.
+
+        Limite honesto do modelo: no trust store em modo `prefix_allowlist`, um
+        atacante que conheça uma identidade enumerada poderia impersoná-la (o
+        signer passa por prefixo), pelo que a allowlist estreita o ataque de
+        "qualquer `OBU_ev_*`" para "uma identidade autorizada específica" mas não
+        o elimina. A âncora forte real é a autorização de emergência nas
+        permissões do certificado per-veículo (ETSI TS 102 941, SSP/ITS-AID),
+        fora do âmbito deste simulador; a allowlist compõe com os modos
+        exact-match do trust store (`allowed_signer_ids`/`allowed_certificate_ids`),
+        que então a tornam criptograficamente significativa.
+        """
+        authorized_signers, authorized_certs = self._emergency_authorization_allowlist()
+        if authorized_signers or authorized_certs:
+            security = request.security
+            signer_id = security.signer_id if security else ""
+            certificate_id = security.certificate_id if security else ""
+            return signer_id in authorized_signers or certificate_id in authorized_certs
+        # Sem allowlist explícita: fallback de prefixo (legacy, mais fraco).
+        vehicle_id = request.requestor.operational_vehicle_id if request.requestor else ""
+        return bool(vehicle_id) and vehicle_id.startswith(self._emergency_id_prefixes())
+
+    def _emergency_authorization_allowlist(self) -> tuple[frozenset[str], frozenset[str]]:
+        """(signers autorizados, certificados autorizados) do trust store.
+
+        Vazio (ambos) significa "sem allowlist explícita" → fallback de prefixo.
+        """
+        trust_store = self.config.raw.get("trust_store", {})
+        block = trust_store.get("emergency_authorization", {}) if isinstance(trust_store, dict) else {}
+        if not isinstance(block, dict):
+            return frozenset(), frozenset()
+        signers = frozenset(str(item) for item in block.get("authorized_signer_ids", []))
+        certificates = frozenset(str(item) for item in block.get("authorized_certificate_ids", []))
+        return signers, certificates
 
     def _emergency_id_prefixes(self) -> tuple[str, ...]:
         raw = self.config.obu_policy.get("emergency_id_prefixes", ["ev_", "emergency_"])
