@@ -1048,8 +1048,9 @@ with tab_decisions:
             )
             gq1, gq2, gq3, gq4 = st.columns(4)
             gq1.metric("Verde total concedido", f"{gt_total:.1f} s", border=True,
-                       help="Soma do verde de extensão em decisões aprovadas (que passaram a Safety "
-                            "Layer e foram aplicadas via TraCI). É a dose entregue à rede, não a decidida.")
+                       help="Soma do verde de extensão em decisões efectivamente aplicadas na rede via "
+                            "TraCI (excl. runs em modo --no-actuation e rejeições do controlador). "
+                            "É a dose entregue à rede, não a aprovada.")
             gq2.metric("Extensão média", f"{green.get('mean_extension_s', 0):.1f} s", border=True,
                        help="Média de segundos por extensão de verde concedida.")
             gq3.metric("Extensão máxima", f"{green.get('max_extension_s', 0):.1f} s", border=True,
