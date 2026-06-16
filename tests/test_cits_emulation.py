@@ -289,6 +289,43 @@ class Package3CITSTestCase(unittest.TestCase):
         self.assertEqual(response.status, ResponseStatus.PROCESSING.value)
         self.assertEqual(response.destination_id, "OBU_bus_1")
 
+    def test_rsu_forwards_emergency_request_without_accumulated_delay(self) -> None:
+        # Emergência tem prioridade incondicional: o RSU deve encaminhar o SREM
+        # ao motor mesmo sem atraso de horário/headway acumulado. O OBU já faz
+        # bypass da condição operacional ao emitir o pedido; o RSU tem de
+        # espelhar esse bypass, senão a preempção só dispara após atraso
+        # artificial (>= delay_threshold_s). Regressão do P2 da PR #57.
+        intersection = self.config.rsu_to_intersection["RSU_BOAVISTA_02"]
+        rsu = RSUAgent(self.config, intersection)
+        request = _eligible_srem(
+            vehicle_id="ev_conflict_west_to_east_3600",
+            eta_to_stopline_s=5.0,
+            distance_to_stopline_m=60.0,
+            schedule_delay_s=0.0,
+            headway_deviation_s=0.0,
+            operator_priority_class=OperatorPriorityClass.EMERGENCY.value,
+            basic_vehicle_role="emergency",
+        )
+        self.assertEqual(request.priority_level, OperatorPriorityClass.EMERGENCY.value)
+        response = rsu.evaluate_request(request, sim_time_s=101.0)
+        self.assertEqual(response.status, ResponseStatus.PROCESSING.value)
+        self.assertFalse(response.reason)
+
+    def test_rsu_rejects_on_time_non_emergency_request_as_not_eligible(self) -> None:
+        # Contraponto ao teste de emergência: o bypass não pode vazar para
+        # transporte público pontual — a condição de delay/headway continua a
+        # filtrar pedidos sem necessidade operacional.
+        intersection = self.config.rsu_to_intersection["RSU_BOAVISTA_02"]
+        rsu = RSUAgent(self.config, intersection)
+        request = _eligible_srem(
+            schedule_delay_s=0.0,
+            headway_deviation_s=0.0,
+            operator_priority_class=OperatorPriorityClass.HIGH_DELAY.value,
+        )
+        response = rsu.evaluate_request(request, sim_time_s=101.0)
+        self.assertEqual(response.status, ResponseStatus.REJECTED.value)
+        self.assertEqual(response.reason, "not_eligible_for_priority")
+
     def test_rsu_does_not_start_vehicle_cooldown_on_forward_only_ack(self) -> None:
         # Forwarding to the TSP engine is not a granted priority intervention.
         intersection = self.config.rsu_to_intersection["RSU_BOAVISTA_02"]

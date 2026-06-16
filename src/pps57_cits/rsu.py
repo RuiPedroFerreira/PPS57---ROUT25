@@ -374,6 +374,14 @@ class RSUAgent:
         policy = self.config.obu_policy
         if bool(policy.get("allow_nominal_priority_requests", False)):
             return True
+        # Emergência tem prioridade incondicional: a hierarquia emergência >
+        # transporte público > tráfego geral exige que o RSU encaminhe o SREM
+        # ao motor de decisão sem o veículo precisar de acumular atraso de
+        # horário/headway. Espelha o bypass que o OBU já aplica ao *emitir* o
+        # SREM (obu.py) e a janela ETA alargada em `_eta_in_window`; sem isto a
+        # preempção de emergência só dispararia depois de atraso artificial.
+        if request.priority_level == OperatorPriorityClass.EMERGENCY.value:
+            return True
         telemetry = request.operator_telemetry
         if telemetry is None:
             return False
