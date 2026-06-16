@@ -8,6 +8,7 @@ infraestrutura (RSU/TSP). A OBU é também responsável por emitir explicitament
 o `priorityCancellation` quando o pedido em curso deixa de ser relevante
 (veículo passou stopline, saiu do corredor, mudou de interseção).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -180,7 +181,9 @@ class OBUEmulator:
         schedule_delay_s = self._effective_schedule_delay(observation)
         headway_deviation_s = observation.headway_deviation_s
 
-        if not is_emergency and not self._priority_condition_met(schedule_delay_s, headway_deviation_s):
+        if not is_emergency and not self._priority_condition_met(
+            schedule_delay_s, headway_deviation_s
+        ):
             return None
 
         state = self.state_by_vehicle.setdefault(
@@ -453,10 +456,9 @@ class OBUEmulator:
         policy = self.config.obu_policy
         if bool(policy.get("allow_nominal_priority_requests", False)):
             return True
-        return (
-            schedule_delay_s >= float(policy.get("delay_threshold_s", 60))
-            or abs(headway_deviation_s) >= float(policy.get("headway_deviation_threshold_s", 120))
-        )
+        return schedule_delay_s >= float(policy.get("delay_threshold_s", 60)) or abs(
+            headway_deviation_s
+        ) >= float(policy.get("headway_deviation_threshold_s", 120))
 
     def _operator_priority_class(
         self,

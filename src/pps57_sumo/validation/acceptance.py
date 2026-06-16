@@ -6,6 +6,7 @@ Thresholds are loaded from ``configs/validation_config.json`` (each carries a
 auditable. Nothing here fabricates data: callers pass in ``(modelled, observed)``
 pairs gathered from real counts / AVL / reference scenarios.
 """
+
 from __future__ import annotations
 
 import json
@@ -221,9 +222,9 @@ def evaluate_tsp_face_validity(
         "metric": "tsp_face_validity",
         "n_measurements": len(measurements),
         "results": results,
-        "verdict": "plausible" if all_inside and measurements else (
-            "no_measurements" if not measurements else "flagged"
-        ),
+        "verdict": "plausible"
+        if all_inside and measurements
+        else ("no_measurements" if not measurements else "flagged"),
     }
     anchors = fv_cfg.get("corridor_travel_time_anchors_pct")
     if anchors:

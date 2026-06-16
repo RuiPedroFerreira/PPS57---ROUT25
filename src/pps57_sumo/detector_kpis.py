@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Parse SUMO detector outputs into queue/occupancy KPIs."""
+
 from __future__ import annotations
 
 from pathlib import Path

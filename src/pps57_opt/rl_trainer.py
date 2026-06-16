@@ -17,6 +17,7 @@ interface pública (paths de outputs, configs, testes), mas o campo
 `gamma > 0` for usado, o trainer emite warning porque o efeito é nulo
 neste regime sem transições.
 """
+
 from __future__ import annotations
 
 from collections import Counter
@@ -81,7 +82,10 @@ class TabularQLearningController:
         # (state, action). Antes, _source_scenario_for_state devolvia o
         # PRIMEIRO scenario com aquele bucket — não o que realmente contribuiu.
         source_scenario_by_state_action: Dict[Tuple[str, str], str] = {}
-        candidate_cache = {scenario.scenario_id: self.optimizer._evaluate_scenario(scenario) for scenario in scenarios}
+        candidate_cache = {
+            scenario.scenario_id: self.optimizer._evaluate_scenario(scenario)
+            for scenario in scenarios
+        }
         scenario_by_id = {scenario.scenario_id: scenario for scenario in scenarios}
 
         for _episode in range(max(1, episodes)):
@@ -91,7 +95,11 @@ class TabularQLearningController:
                 candidates = candidate_cache[scenario.scenario_id]
                 by_action = {candidate.action: candidate for candidate in candidates}
                 state = self.optimizer._state_bucket(scenario)
-                safe_actions = [action for action in action_space if action in by_action and not by_action[action].is_safety_blocked]
+                safe_actions = [
+                    action
+                    for action in action_space
+                    if action in by_action and not by_action[action].is_safety_blocked
+                ]
                 if not safe_actions:
                     continue
                 if rng.random() < epsilon:
@@ -100,7 +108,9 @@ class TabularQLearningController:
                     action = max(safe_actions, key=lambda item: q_values.get((state, item), 0.0))
                 reward = by_action[action].reward
                 old_q = q_values.get((state, action), 0.0)
-                next_best = max((q_values.get((state, item), 0.0) for item in safe_actions), default=0.0)
+                next_best = max(
+                    (q_values.get((state, item), 0.0) for item in safe_actions), default=0.0
+                )
                 q_values[(state, action)] = old_q + alpha * (reward + gamma * next_best - old_q)
                 visits[(state, action)] = visits.get((state, action), 0) + 1
                 source_scenario_by_state_action[(state, action)] = scenario.scenario_id
@@ -109,14 +119,22 @@ class TabularQLearningController:
         learned_rules = self._rules_from_q_values(
             q_values, visits, candidate_cache, scenario_by_id, source_scenario_by_state_action
         )
-        self._write_outputs(q_values, visits, learned_rules, episodes, epsilon, scenarios, candidate_cache)
-        return self._summary(q_values, visits, learned_rules, episodes, epsilon, scenarios, candidate_cache)
+        self._write_outputs(
+            q_values, visits, learned_rules, episodes, epsilon, scenarios, candidate_cache
+        )
+        return self._summary(
+            q_values, visits, learned_rules, episodes, epsilon, scenarios, candidate_cache
+        )
 
     def _load_event_scenarios(self) -> List[OfflineScenario]:
         path = self.optimization_config.path_from_root(
-            self.optimization_config.logging.get("event_training_dataset", "outputs/event_training_dataset.jsonl")
+            self.optimization_config.logging.get(
+                "event_training_dataset", "outputs/event_training_dataset.jsonl"
+            )
         )
-        scenarios, load_report = load_event_training_dataset(path, self.tsp_config.actuating_actions())
+        scenarios, load_report = load_event_training_dataset(
+            path, self.tsp_config.actuating_actions()
+        )
         self.event_dataset_load = load_report
         if not scenarios:
             raise ValueError(
@@ -144,9 +162,7 @@ class TabularQLearningController:
             action, value = max(actions, key=lambda item: item[1])
             # Auditabilidade: o source scenario é aquele que realmente
             # produziu o reward escolhido, não o primeiro com o mesmo bucket.
-            source_scenario_id = source_scenario_by_state_action.get(
-                (state, action), ""
-            )
+            source_scenario_id = source_scenario_by_state_action.get((state, action), "")
             safety_status = ""
             safety_reason = ""
             for candidate in candidate_cache.get(source_scenario_id, []):
@@ -177,10 +193,14 @@ class TabularQLearningController:
         candidate_cache: Dict[str, List[CandidateEvaluation]],
     ) -> None:
         q_table_report = self.optimization_config.path_from_root(
-            self.optimization_config.logging.get("q_table_report", "reports/tabular_q_policy_report.json")
+            self.optimization_config.logging.get(
+                "q_table_report", "reports/tabular_q_policy_report.json"
+            )
         )
         summary_report = self.optimization_config.path_from_root(
-            self.optimization_config.logging.get("rl_training_summary", "reports/rl_training_summary.json")
+            self.optimization_config.logging.get(
+                "rl_training_summary", "reports/rl_training_summary.json"
+            )
         )
         for path in [q_table_report, summary_report]:
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -222,7 +242,9 @@ class TabularQLearningController:
         )
         summary_report.write_text(
             json.dumps(
-                self._summary(q_values, visits, rules, episodes, final_epsilon, scenarios, candidate_cache),
+                self._summary(
+                    q_values, visits, rules, episodes, final_epsilon, scenarios, candidate_cache
+                ),
                 indent=2,
                 ensure_ascii=False,
                 sort_keys=True,
@@ -252,7 +274,9 @@ class TabularQLearningController:
         )
         rule_action_counts = Counter(rule.action for rule in rules)
         intervention_actions = self.tsp_config.actuating_actions()
-        intervention_rule_count = sum(rule_action_counts.get(action, 0) for action in intervention_actions)
+        intervention_rule_count = sum(
+            rule_action_counts.get(action, 0) for action in intervention_actions
+        )
         safe_candidate_action_counts: Counter[str] = Counter()
         if candidate_cache is not None:
             for candidates in candidate_cache.values():
@@ -291,10 +315,14 @@ class TabularQLearningController:
             "safe_candidate_action_counts": dict(sorted(safe_candidate_action_counts.items())),
             "warnings": warnings,
             "final_epsilon": round(final_epsilon, 4),
-            "safety_filter_required": bool(self.optimization_config.safety.get("mandatory_filter", True)),
+            "safety_filter_required": bool(
+                self.optimization_config.safety.get("mandatory_filter", True)
+            ),
             "policy_report": str(
                 self.optimization_config.path_from_root(
-                    self.optimization_config.logging.get("q_table_report", "reports/tabular_q_policy_report.json")
+                    self.optimization_config.logging.get(
+                        "q_table_report", "reports/tabular_q_policy_report.json"
+                    )
                 )
             ),
         }

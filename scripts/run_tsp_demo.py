@@ -16,6 +16,7 @@ is served by real data; signal_program_verified(True) bypasses only the separate
 program/pedestrian-clearance proof this thin loop does not reconcile.
 Nothing is invented: both arms run the same real corridor; only TSP actuation differs.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -58,7 +59,9 @@ APPROACH_M = 120.0  # only act when a bus is within this distance of the TLS sto
 WORK = ROOT / ".tools" / "boavista-osm"
 
 
-def _write_sumocfg(path: Path, net: Path, routes: Path, busstops: Path, tripinfo: Path, end: int) -> None:
+def _write_sumocfg(
+    path: Path, net: Path, routes: Path, busstops: Path, tripinfo: Path, end: int
+) -> None:
     # Inputs may live outside .tools/boavista-osm; express them relative to the sumocfg
     # directory (SUMO resolves config-relative paths from there), not just basenames.
     net_rel = os.path.relpath(str(net), str(path.parent))
@@ -79,21 +82,27 @@ def _write_sumocfg(path: Path, net: Path, routes: Path, busstops: Path, tripinfo
 
 def _signal_state_from_traci(traci, tls_id: str, rsu_id: str, sim_time_s: float) -> SignalState:
     return SignalState(
-        intersection_id=tls_id, tls_id=tls_id, rsu_id=rsu_id, timestamp_s=sim_time_s,
+        intersection_id=tls_id,
+        tls_id=tls_id,
+        rsu_id=rsu_id,
+        timestamp_s=sim_time_s,
         current_phase_index=int(traci.trafficlight.getPhase(tls_id)),
         current_program_id=str(traci.trafficlight.getProgram(tls_id)),
         red_yellow_green_state=str(traci.trafficlight.getRedYellowGreenState(tls_id)),
         next_switch_s=float(traci.trafficlight.getNextSwitch(tls_id)),
         spent_duration_s=float(traci.trafficlight.getSpentDuration(tls_id)),
         controlled_lanes=list(traci.trafficlight.getControlledLanes(tls_id)),
-        controlled_links=list(traci.trafficlight.getControlledLinks(tls_id)))
+        controlled_links=list(traci.trafficlight.getControlledLinks(tls_id)),
+    )
 
 
 def run_baseline(sumocfg: Path) -> None:
     # ensure_sumo_environment sets BOTH SUMO_HOME and PATH, so `sumo` resolves even when it
     # lives under $SUMO_HOME/bin and is not already on PATH.
     env = ensure_sumo_environment()
-    proc = subprocess.run(["sumo", "-c", str(sumocfg)], capture_output=True, text=True, env=env, cwd=str(ROOT))
+    proc = subprocess.run(
+        ["sumo", "-c", str(sumocfg)], capture_output=True, text=True, env=env, cwd=str(ROOT)
+    )
     if proc.returncode != 0:
         # Fail loud: SUMO finaliza o XML mesmo em erro, e um baseline truncado a
         # meio produziria evidência "value_demonstrated" a partir de meio-run.
@@ -122,10 +131,15 @@ def run_tsp(sumocfg: Path, net: Path, end: int, port: int) -> dict:
     safety.set_signal_program_verified(True)
 
     from collections import Counter
+
     decisions = approved = blocked = actuated = 0
     block_reasons: Counter = Counter()
     actions: Counter = Counter()
-    traci.start(["sumo", "-c", str(sumocfg), "--no-step-log", "true", "--no-warnings", "true"], port=port, numRetries=20)
+    traci.start(
+        ["sumo", "-c", str(sumocfg), "--no-step-log", "true", "--no-warnings", "true"],
+        port=port,
+        numRetries=20,
+    )
     try:
         step = 0
         while traci.simulation.getMinExpectedNumber() > 0 and step < end:
@@ -148,24 +162,42 @@ def run_tsp(sumocfg: Path, net: Path, end: int, port: int) -> dict:
                     continue
                 next_edge = route[route.index(cur_edge) + 1]
                 tls_profile = profile.tls_profile(tls_id)
-                movement = tls_profile.movement_for_edges(cur_edge, next_edge) if tls_profile else None
+                movement = (
+                    tls_profile.movement_for_edges(cur_edge, next_edge) if tls_profile else None
+                )
                 intersection = cits.tls_to_intersection.get(tls_id)
                 if movement is None or intersection is None:
                     continue
                 cits_movement = next(
-                    (m for m in intersection.priority_movements
-                     if m.approach_edges == [movement.from_edge] and m.egress_edges == [movement.to_edge]), None)
+                    (
+                        m
+                        for m in intersection.priority_movements
+                        if m.approach_edges == [movement.from_edge]
+                        and m.egress_edges == [movement.to_edge]
+                    ),
+                    None,
+                )
                 if cits_movement is None or not movement.controlled_lanes:
                     continue
                 speed = max(float(traci.vehicle.getSpeed(bus)), 1.0)
                 request = synth_srem(
-                    sim_time_s=sim_time, vehicle_id=bus, intersection_alias=tls_id, tls_id=tls_id,
-                    rsu_id=intersection.rsu_id, lane_id=movement.controlled_lanes[0], next_edge_id=movement.to_edge,
-                    eta_to_stopline_s=round(dist / speed, 2), distance_to_stopline_m=round(dist, 2),
-                    schedule_delay_s=120.0, operator_priority_class=OperatorPriorityClass.HIGH_DELAY.value,
+                    sim_time_s=sim_time,
+                    vehicle_id=bus,
+                    intersection_alias=tls_id,
+                    tls_id=tls_id,
+                    rsu_id=intersection.rsu_id,
+                    lane_id=movement.controlled_lanes[0],
+                    next_edge_id=movement.to_edge,
+                    eta_to_stopline_s=round(dist / speed, 2),
+                    distance_to_stopline_m=round(dist, 2),
+                    schedule_delay_s=120.0,
+                    operator_priority_class=OperatorPriorityClass.HIGH_DELAY.value,
                     priority_movement_id=cits_movement.movement_id,
-                    target_signal_group_id_hint=cits_movement.target_signal_group_id)
-                signal_state = _signal_state_from_traci(traci, tls_id, intersection.rsu_id, sim_time)
+                    target_signal_group_id_hint=cits_movement.target_signal_group_id,
+                )
+                signal_state = _signal_state_from_traci(
+                    traci, tls_id, intersection.rsu_id, sim_time
+                )
                 decision = engine.decide(request, signal_state, sim_time)
                 decisions += 1
                 actions[decision.action] += 1
@@ -181,8 +213,11 @@ def run_tsp(sumocfg: Path, net: Path, end: int, port: int) -> dict:
                     # early_green via phase_duration_s. Mirror pps57_tsp.actuator so green
                     # extensions are actually applied (and cooldown recorded), not skipped.
                     if safe.action == TSPAction.GREEN_EXTENSION.value:
-                        remaining = (max(0.0, float(signal_state.next_switch_s) - sim_time)
-                                     if signal_state.next_switch_s is not None else 0.0)
+                        remaining = (
+                            max(0.0, float(signal_state.next_switch_s) - sim_time)
+                            if signal_state.next_switch_s is not None
+                            else 0.0
+                        )
                         new_duration = remaining + float(safe.extension_s or 0.0)
                     else:  # early_green = red truncation
                         new_duration = float(safe.phase_duration_s or 2.0)
@@ -191,9 +226,15 @@ def run_tsp(sumocfg: Path, net: Path, end: int, port: int) -> dict:
                     actuated += 1
     finally:
         traci.close()
-    return {"actuation_enabled": True, "decisions": decisions, "approved": approved,
-            "safety_blocks": blocked, "actuations_applied": actuated,
-            "block_reasons": dict(block_reasons.most_common(8)), "decision_actions": dict(actions)}
+    return {
+        "actuation_enabled": True,
+        "decisions": decisions,
+        "approved": approved,
+        "safety_blocks": blocked,
+        "actuations_applied": actuated,
+        "block_reasons": dict(block_reasons.most_common(8)),
+        "decision_actions": dict(actions),
+    }
 
 
 def _bus_rows(path: Path) -> dict:
@@ -202,38 +243,58 @@ def _bus_rows(path: Path) -> dict:
     for ti in root.iter("tripinfo"):
         vid = ti.get("id", "")
         if vid.startswith("bus_") or ti.get("vType", "").lower().startswith("bus"):
-            rows[vid] = {"time_loss": float(ti.get("timeLoss", 0.0)), "duration": float(ti.get("duration", 0.0))}
+            rows[vid] = {
+                "time_loss": float(ti.get("timeLoss", 0.0)),
+                "duration": float(ti.get("duration", 0.0)),
+            }
     return rows
 
 
 def _aggregate(path: Path) -> dict:
     clean = path.with_name(path.stem + ".clean.xml")
-    clean.write_text(re.sub(r"<!--.*?-->", "", path.read_text(encoding="utf-8"), flags=re.S), encoding="utf-8")
+    clean.write_text(
+        re.sub(r"<!--.*?-->", "", path.read_text(encoding="utf-8"), flags=re.S), encoding="utf-8"
+    )
     return parse_tripinfo(clean).get("buses", {})
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--net", type=Path, default=WORK / "boavista.net.xml")
     parser.add_argument("--routes", type=Path, default=WORK / "boavista_all_routed.rou.xml")
     parser.add_argument("--busstops", type=Path, default=WORK / "boavista_pt_stops.add.xml")
     parser.add_argument("--end", type=int, default=3600)
-    parser.add_argument("--port", type=int, default=None,
-                        help="TraCI port; default: a free port via the shared resolver "
-                             "(TRACI_PORT, else an OS-assigned free port, else a fixed fallback port).")
-    parser.add_argument("--out", type=Path, default=ROOT / "docs" / "validation" / "demo_baseline_vs_tsp.json")
-    parser.add_argument("--validation-config", type=Path, default=ROOT / "configs" / "validation_config.json")
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help="TraCI port; default: a free port via the shared resolver "
+        "(TRACI_PORT, else an OS-assigned free port, else a fixed fallback port).",
+    )
+    parser.add_argument(
+        "--out", type=Path, default=ROOT / "docs" / "validation" / "demo_baseline_vs_tsp.json"
+    )
+    parser.add_argument(
+        "--validation-config", type=Path, default=ROOT / "configs" / "validation_config.json"
+    )
     args = parser.parse_args()
     if args.port is None:
         # Reuse the shared adapter resolver: it tries getFreeSocketPort() and,
         # when ephemeral-port probing is unavailable (restricted environments),
         # falls back to scanning fixed ports instead of returning None/raising.
         from pps57_cits.traci_adapter import _resolve_traci_port
+
         args.port = _resolve_traci_port()
-    envelope_pct, envelope_source = running_time_envelope(load_validation_config(args.validation_config))
+    envelope_pct, envelope_source = running_time_envelope(
+        load_validation_config(args.validation_config)
+    )
     for p in (args.net, args.routes, args.busstops):
         if not p.exists():
-            raise SystemExit(f"Missing {p}. Build the reference corridor first (scripts/build_reference_corridor.py).")
+            raise SystemExit(
+                f"Missing {p}. Build the reference corridor first (scripts/build_reference_corridor.py)."
+            )
 
     base_tripinfo = WORK / "baseline_tripinfo.xml"
     tsp_tripinfo = WORK / "tsp_tripinfo.xml"
@@ -272,7 +333,8 @@ def main() -> None:
             "mean_running_time_improvement_pct": pct,
             "tsp_running_time_envelope_pct": list(envelope_pct),
             "within_published_envelope": in_env,
-            "envelope_source": envelope_source},
+            "envelope_source": envelope_source,
+        },
         "honest_notes": [
             "Both arms run the SAME real corridor (geometry/demand/buses); only TSP actuation differs.",
             "Demand is HCM/Madrid-referenced, signals netconvert-default (Webster is V4d); not Porto-measured.",
@@ -280,18 +342,26 @@ def main() -> None:
             "Thin TSP loop reuses the real engine + Safety Layer; the joined-intersection conflict-matrix "
             "gate is served by the NetworkBinding (authoritative <request foes> data; groups without foe "
             "data stay fail-closed). signal_program_verified(True) bypasses only the separate live "
-            "program/pedestrian-clearance proof, which this thin loop does not reconcile."],
-        "verdict": "value_demonstrated" if (tsp_summary["actuations_applied"] > 0 and significant and in_env)
+            "program/pedestrian-clearance proof, which this thin loop does not reconcile.",
+        ],
+        "verdict": "value_demonstrated"
+        if (tsp_summary["actuations_applied"] > 0 and significant and in_env)
         else ("no_actuation" if tsp_summary["actuations_applied"] == 0 else "review"),
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+    args.out.write_text(
+        json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
     print(f"TSP demo — baseline vs TSP on real Boavista corridor ({args.end}s)")
-    print(f"  TSP loop: decisions {tsp_summary['decisions']}  approved {tsp_summary['approved']}  "
-          f"blocked {tsp_summary['safety_blocks']}  actuated {tsp_summary['actuations_applied']}")
+    print(
+        f"  TSP loop: decisions {tsp_summary['decisions']}  approved {tsp_summary['approved']}  "
+        f"blocked {tsp_summary['safety_blocks']}  actuated {tsp_summary['actuations_applied']}"
+    )
     print(f"  buses paired: {len(paired)}")
-    print(f"  mean time-loss improvement: {ci['mean']}s  CI95 [{ci['ci95_low']}, {ci['ci95_high']}]  significant: {significant}")
+    print(
+        f"  mean time-loss improvement: {ci['mean']}s  CI95 [{ci['ci95_low']}, {ci['ci95_high']}]  significant: {significant}"
+    )
     print(f"  running-time improvement: {pct}%  (envelope {envelope_pct})  in_envelope: {in_env}")
     print(f"  verdict: {report['verdict']}  -> {args.out}")
     # Propagar o veredito para o exit code: make/CI não deve ver sucesso num

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Generate and optionally run configured SUMO validation scenarios."""
+
 from __future__ import annotations
 
 import argparse
@@ -38,13 +39,19 @@ RUN_TYPES = ("baseline", "cits", "tsp_no_actuation", "tsp_actuation")
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Generate/run SUMO scenarios from the scenario catalog.")
+    parser = argparse.ArgumentParser(
+        description="Generate/run SUMO scenarios from the scenario catalog."
+    )
     parser.add_argument("--config", default="configs/sumo_scenario_base.json", type=Path)
     parser.add_argument("--catalog", default="configs/scenario_catalog.yaml", type=Path)
-    parser.add_argument("--scenario", help="Scenario id to run. Use --all to run every catalog scenario.")
+    parser.add_argument(
+        "--scenario", help="Scenario id to run. Use --all to run every catalog scenario."
+    )
     parser.add_argument("--all", action="store_true", help="Run every scenario in the catalog.")
     parser.add_argument("--list", action="store_true", help="List configured scenarios and exit.")
-    parser.add_argument("--generate-only", action="store_true", help="Generate SUMO XMLs but do not execute SUMO.")
+    parser.add_argument(
+        "--generate-only", action="store_true", help="Generate SUMO XMLs but do not execute SUMO."
+    )
     parser.add_argument(
         "--run-type",
         choices=[*RUN_TYPES, "pair", "comparison", "all"],
@@ -71,8 +78,12 @@ def parse_args() -> argparse.Namespace:
         help="TSP config para os braços tsp_* (permite A/B de flags, ex.: v2.2 lifecycle).",
     )
     parser.add_argument("--sumo-binary", default="sumo")
-    parser.add_argument("--gui", action="store_true", help="Use sumo-gui for visual scenario execution.")
-    parser.add_argument("--skip-build", action="store_true", help="Skip netconvert after generating plain files.")
+    parser.add_argument(
+        "--gui", action="store_true", help="Use sumo-gui for visual scenario execution."
+    )
+    parser.add_argument(
+        "--skip-build", action="store_true", help="Skip netconvert after generating plain files."
+    )
     parser.add_argument("--outputs-dir", default=Path("outputs/scenarios"), type=Path)
     parser.add_argument("--reports-dir", default=Path("reports/scenarios"), type=Path)
     return parser.parse_args()
@@ -137,7 +148,9 @@ def main() -> int:
         json.dumps(scenario_report, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
-    (reports_dir / "scenario_suite_report.md").write_text(render_suite_report(scenario_report), encoding="utf-8")
+    (reports_dir / "scenario_suite_report.md").write_text(
+        render_suite_report(scenario_report), encoding="utf-8"
+    )
     print(json.dumps(scenario_report, indent=2, ensure_ascii=False))
     # Propaga o veredito para o exit code: qualquer cenário executado com veredito
     # != "pass" (fail/inconclusive) tem de falhar o processo, senão CI/make engolem
@@ -153,7 +166,9 @@ def main() -> int:
     return 0
 
 
-def run_scenario(args: argparse.Namespace, base_config: dict, catalog: dict, scenario_id: str) -> dict:
+def run_scenario(
+    args: argparse.Namespace, base_config: dict, catalog: dict, scenario_id: str
+) -> dict:
     config = apply_scenario_profile(base_config, scenario_id)
     scenario_output_dir = ROOT / args.outputs_dir / scenario_id
     scenario_report_dir = ROOT / args.reports_dir / scenario_id
@@ -207,7 +222,9 @@ def run_scenario(args: argparse.Namespace, base_config: dict, catalog: dict, sce
         json.dumps(summary, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
-    (scenario_report_dir / "scenario_report.md").write_text(render_scenario_report(summary), encoding="utf-8")
+    (scenario_report_dir / "scenario_report.md").write_text(
+        render_scenario_report(summary), encoding="utf-8"
+    )
 
     if args.generate_only:
         summary["status"] = "generated"
@@ -264,8 +281,12 @@ def apply_relative_insertion_gate(scenario_runs: dict[str, dict], *, load_kpis=N
                 base = base_kpis_by_seed.get(rep.get("seed"))
                 if not kpis or not base:
                     continue
-                candidate_value = float(kpis.get("insertion", {}).get("max_waiting_to_insert", 0) or 0)
-                baseline_value = float(base.get("insertion", {}).get("max_waiting_to_insert", 0) or 0)
+                candidate_value = float(
+                    kpis.get("insertion", {}).get("max_waiting_to_insert", 0) or 0
+                )
+                baseline_value = float(
+                    base.get("insertion", {}).get("max_waiting_to_insert", 0) or 0
+                )
                 threshold = float(_sumo_quality_thresholds(kpis)["max_waiting_to_insert"])
                 allowed = max(threshold, baseline_value * RELATIVE_INSERTION_GATE_FACTOR)
                 if candidate_value <= allowed:
@@ -377,18 +398,22 @@ def _compute_kpi_aggregate(kpis_list: list[dict]) -> dict:
         p95_idx = min(len(sorted_v) - 1, int(round((len(sorted_v) - 1) * 0.95)))
         # `stdev` (populacional) mantido para retrocompatibilidade; `stdev_sample`
         # e `ci95_*` são as estatísticas de inferência.
-        out.update({
-            "stdev": round(statistics.pstdev(values), 3) if len(values) > 1 else 0.0,
-            "p5": round(sorted_v[p5_idx], 3),
-            "p95": round(sorted_v[p95_idx], 3),
-        })
+        out.update(
+            {
+                "stdev": round(statistics.pstdev(values), 3) if len(values) > 1 else 0.0,
+                "p5": round(sorted_v[p5_idx], 3),
+                "p95": round(sorted_v[p95_idx], 3),
+            }
+        )
         return out
 
     return {
         "bus_mean_time_loss_s": stat(collect(["buses", "mean_time_loss_s"])),
         "general_mean_time_loss_s": stat(collect(["general_traffic", "mean_time_loss_s"])),
         "all_vehicles_mean_duration_s": stat(collect(["all_vehicles", "mean_duration_s"])),
-        "max_network_queue_vehicles": stat(collect(["detectors", "network_queue", "max_queue_vehicles"])),
+        "max_network_queue_vehicles": stat(
+            collect(["detectors", "network_queue", "max_queue_vehicles"])
+        ),
         "total_co2_mg": stat(collect(["emissions", "totals_mg", "CO2"])),
         "total_fuel_mg": stat(collect(["emissions", "totals_mg", "fuel"])),
     }
@@ -473,19 +498,32 @@ def run_scenario_type(
     return summary
 
 
-def run_baseline_sumo(args: argparse.Namespace, config: dict, run_output_dir: Path, sumocfg: Path) -> None:
-    binary = config.get("sumo", {}).get("default_gui_binary", "sumo-gui") if args.gui else args.sumo_binary
+def run_baseline_sumo(
+    args: argparse.Namespace, config: dict, run_output_dir: Path, sumocfg: Path
+) -> None:
+    binary = (
+        config.get("sumo", {}).get("default_gui_binary", "sumo-gui")
+        if args.gui
+        else args.sumo_binary
+    )
     end_s = _effective_end_s(config, args.steps)
     cmd = [
         binary,
-        "-c", str(sumocfg),
+        "-c",
+        str(sumocfg),
         "--duration-log.statistics",
-        "--tripinfo-output", str(run_output_dir / "tripinfo.xml"),
-        "--summary-output", str(run_output_dir / "summary.xml"),
-        "--statistic-output", str(run_output_dir / "statistics.xml"),
-        "--emission-output", str(run_output_dir / "emissions.xml"),
-        "--seed", str(config.get("random_seed", 57)),
-        "--end", _format_sumo_number(end_s),
+        "--tripinfo-output",
+        str(run_output_dir / "tripinfo.xml"),
+        "--summary-output",
+        str(run_output_dir / "summary.xml"),
+        "--statistic-output",
+        str(run_output_dir / "statistics.xml"),
+        "--emission-output",
+        str(run_output_dir / "emissions.xml"),
+        "--seed",
+        str(config.get("random_seed", 57)),
+        "--end",
+        _format_sumo_number(end_s),
     ]
     if config.get("pedestrian_flows"):
         cmd.extend(["--pedestrian.model", "striping"])
@@ -510,7 +548,13 @@ def _format_sumo_number(value: float) -> str:
     return str(int(value)) if float(value).is_integer() else str(value)
 
 
-def run_cits(args: argparse.Namespace, scenario_id: str, run_output_dir: Path, run_report_dir: Path, artifacts) -> None:
+def run_cits(
+    args: argparse.Namespace,
+    scenario_id: str,
+    run_output_dir: Path,
+    run_report_dir: Path,
+    artifacts,
+) -> None:
     clear_global_sumo_outputs()
     config_path = write_cits_config(scenario_id, run_output_dir, run_report_dir, artifacts)
     config = load_cits_config(config_path, root=ROOT)
@@ -545,14 +589,24 @@ def run_tsp(
 
 def collect_run_kpis(run_output_dir: Path) -> dict:
     tripinfo = run_output_dir / "tripinfo.xml"
-    kpis = parse_tripinfo(tripinfo) if tripinfo.exists() else {"source": str(tripinfo), "missing_tripinfo": True}
-    kpis["detectors"] = parse_detector_kpis(run_output_dir / "e1_detectors.xml", run_output_dir / "e2_queues.xml")
-    kpis["insertion"] = parse_insertion_kpis(run_output_dir / "summary.xml", run_output_dir / "statistics.xml")
+    kpis = (
+        parse_tripinfo(tripinfo)
+        if tripinfo.exists()
+        else {"source": str(tripinfo), "missing_tripinfo": True}
+    )
+    kpis["detectors"] = parse_detector_kpis(
+        run_output_dir / "e1_detectors.xml", run_output_dir / "e2_queues.xml"
+    )
+    kpis["insertion"] = parse_insertion_kpis(
+        run_output_dir / "summary.xml", run_output_dir / "statistics.xml"
+    )
     kpis["emissions"] = parse_emissions(run_output_dir / "emissions.xml")
     return kpis
 
 
-def write_cits_config(scenario_id: str, run_output_dir: Path, run_report_dir: Path, artifacts) -> Path:
+def write_cits_config(
+    scenario_id: str, run_output_dir: Path, run_report_dir: Path, artifacts
+) -> Path:
     raw = json.loads((ROOT / "configs/cits_v2x_config.json").read_text(encoding="utf-8"))
     raw["scenario_id"] = f"{scenario_id}_cits"
     raw.setdefault("sumo", {}).update(
@@ -564,9 +618,13 @@ def write_cits_config(scenario_id: str, run_output_dir: Path, run_report_dir: Pa
     raw.setdefault("logging", {}).update(
         {
             "message_log": str((run_output_dir / "cits_messages.jsonl").relative_to(ROOT)),
-            "summary_report": str((run_report_dir / "cits_emulation_summary.json").relative_to(ROOT)),
+            "summary_report": str(
+                (run_report_dir / "cits_emulation_summary.json").relative_to(ROOT)
+            ),
             "mapem_snapshot": str((run_output_dir / "cits_mapem_snapshot.json").relative_to(ROOT)),
-            "spatem_snapshot": str((run_output_dir / "cits_spatem_snapshot.json").relative_to(ROOT)),
+            "spatem_snapshot": str(
+                (run_output_dir / "cits_spatem_snapshot.json").relative_to(ROOT)
+            ),
         }
     )
     config_path = run_output_dir / "cits_v2x_config.json"
@@ -580,13 +638,17 @@ def write_tsp_config(
     run_report_dir: Path,
     source: Path | None = None,
 ) -> Path:
-    raw = json.loads((source or ROOT / "configs/tsp_safety_config.json").read_text(encoding="utf-8"))
+    raw = json.loads(
+        (source or ROOT / "configs/tsp_safety_config.json").read_text(encoding="utf-8")
+    )
     raw["scenario_id"] = f"{scenario_id}_tsp"
     raw.setdefault("logging", {}).update(
         {
             "decision_log": str((run_output_dir / "tsp_decisions.jsonl").relative_to(ROOT)),
             "actuation_log": str((run_output_dir / "tsp_actuation.jsonl").relative_to(ROOT)),
-            "summary_report": str((run_report_dir / "tsp_emulation_summary.json").relative_to(ROOT)),
+            "summary_report": str(
+                (run_report_dir / "tsp_emulation_summary.json").relative_to(ROOT)
+            ),
         }
     )
     config_path = run_output_dir / "tsp_safety_config.json"
@@ -650,7 +712,9 @@ def _paired_significance(
         base_value = base_by_seed[seed].get(group, {}).get(metric)
         cand_value = cand_by_seed[seed].get(group, {}).get(metric)
         if isinstance(base_value, (int, float)) and isinstance(cand_value, (int, float)):
-            improvement = (base_value - cand_value) if lower_is_better else (cand_value - base_value)
+            improvement = (
+                (base_value - cand_value) if lower_is_better else (cand_value - base_value)
+            )
             deltas.append(float(improvement))
     if len(deltas) < 2:
         return None
@@ -712,8 +776,12 @@ def compare_scenario_runs(runs: dict[str, dict]) -> dict:
 
 
 def compare_kpis(baseline: dict, candidate: dict) -> dict:
-    bus_delta = _metric_delta(baseline, candidate, "buses", "mean_time_loss_s", lower_is_better=True)
-    general_delta = _metric_delta(baseline, candidate, "general_traffic", "mean_time_loss_s", lower_is_better=True)
+    bus_delta = _metric_delta(
+        baseline, candidate, "buses", "mean_time_loss_s", lower_is_better=True
+    )
+    general_delta = _metric_delta(
+        baseline, candidate, "general_traffic", "mean_time_loss_s", lower_is_better=True
+    )
     max_queue = candidate.get("detectors", {}).get("network_queue", {}).get("max_queue_vehicles")
     fail_reasons = []
     if bus_delta.get("regression_pct") is not None and bus_delta["regression_pct"] > 10:
@@ -731,11 +799,18 @@ def compare_kpis(baseline: dict, candidate: dict) -> dict:
     }
 
 
-def _metric_delta(baseline: dict, candidate: dict, group: str, metric: str, *, lower_is_better: bool) -> dict:
+def _metric_delta(
+    baseline: dict, candidate: dict, group: str, metric: str, *, lower_is_better: bool
+) -> dict:
     base_value = baseline.get(group, {}).get(metric)
     candidate_value = candidate.get(group, {}).get(metric)
     if base_value is None or candidate_value is None:
-        return {"baseline": base_value, "candidate": candidate_value, "delta": None, "regression_pct": None}
+        return {
+            "baseline": base_value,
+            "candidate": candidate_value,
+            "delta": None,
+            "regression_pct": None,
+        }
     delta = round(candidate_value - base_value, 3)
     regression = delta if lower_is_better else -delta
     regression_pct = round((regression / base_value) * 100, 3) if base_value else None
@@ -787,11 +862,17 @@ def run_verdict(kpis: dict) -> dict:
         and emergency_braking_rate > float(thresholds["max_emergency_braking_per_1000_vehicles"])
     ):
         reasons.append("sumo_emergency_braking_gt_threshold")
-    if int(insertion.get("vehicles_waiting", 0) or 0) > int(thresholds["max_vehicles_waiting_at_end"]):
+    if int(insertion.get("vehicles_waiting", 0) or 0) > int(
+        thresholds["max_vehicles_waiting_at_end"]
+    ):
         reasons.append("sumo_waiting_to_insert_at_end_gt_threshold")
-    if int(insertion.get("insertion_gap_at_end", 0) or 0) > int(thresholds["max_insertion_gap_at_end"]):
+    if int(insertion.get("insertion_gap_at_end", 0) or 0) > int(
+        thresholds["max_insertion_gap_at_end"]
+    ):
         reasons.append("sumo_insertion_gap_at_end_gt_threshold")
-    if int(insertion.get("max_waiting_to_insert", 0) or 0) > int(thresholds["max_waiting_to_insert"]):
+    if int(insertion.get("max_waiting_to_insert", 0) or 0) > int(
+        thresholds["max_waiting_to_insert"]
+    ):
         reasons.append("sumo_max_waiting_to_insert_gt_threshold")
     steps = int(insertion.get("steps", 0) or 0)
     if steps > 0:
@@ -819,11 +900,7 @@ def _sumo_quality_thresholds(kpis: dict) -> dict[str, float | int]:
     }
     if isinstance(scenario_thresholds, dict):
         defaults.update(
-            {
-                key: scenario_thresholds[key]
-                for key in defaults
-                if key in scenario_thresholds
-            }
+            {key: scenario_thresholds[key] for key in defaults if key in scenario_thresholds}
         )
     return defaults
 
@@ -864,7 +941,11 @@ def render_scenario_report(summary: dict) -> str:
     ]
     for run_type, run in summary.get("runs", {}).items():
         kpis = _load_kpis(run.get("kpis")) or {}
-        emissions_totals = kpis.get("emissions", {}).get("totals_mg", {}) if isinstance(kpis.get("emissions"), dict) else {}
+        emissions_totals = (
+            kpis.get("emissions", {}).get("totals_mg", {})
+            if isinstance(kpis.get("emissions"), dict)
+            else {}
+        )
         lines.append(
             "| {run} | {status} | {veh} | {bus} | {bus_loss} | {gen_loss} | {queue} | {co2} | {fuel} |".format(
                 run=run_type,
@@ -873,7 +954,9 @@ def render_scenario_report(summary: dict) -> str:
                 bus=kpis.get("buses", {}).get("vehicles", ""),
                 bus_loss=kpis.get("buses", {}).get("mean_time_loss_s", ""),
                 gen_loss=kpis.get("general_traffic", {}).get("mean_time_loss_s", ""),
-                queue=kpis.get("detectors", {}).get("network_queue", {}).get("max_queue_vehicles", ""),
+                queue=kpis.get("detectors", {})
+                .get("network_queue", {})
+                .get("max_queue_vehicles", ""),
                 co2=emissions_totals.get("CO2", ""),
                 fuel=emissions_totals.get("fuel", ""),
             )

@@ -7,6 +7,7 @@ drift que já produziu um bug real neste pacote (colisão de prefixo de edge,
 M1). Fonte única; os módulos importam com alias `_nome` para manter os
 call-sites inalterados.
 """
+
 from __future__ import annotations
 
 from typing import Optional
@@ -63,7 +64,9 @@ def lane_belongs_to_edge_set(lane_id: Optional[str], edges: set[str]) -> bool:
     return edge in edges
 
 
-def controlled_links_match_request(links_for_signal: object, lane_id: str, next_edge_id: str) -> bool:
+def controlled_links_match_request(
+    links_for_signal: object, lane_id: str, next_edge_id: str
+) -> bool:
     """True se algum link controlado liga a lane do pedido à edge seguinte.
 
     Sem next_edge basta a lane de entrada; com next_edge o link tem de sair

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Run TSP control with mandatory safety validation."""
+
 from __future__ import annotations
 
 import argparse
@@ -19,14 +20,32 @@ from pps57_tsp.controller import TSPControlController  # noqa: E402
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="TSP Decision Engine + Safety Layer.")
-    parser.add_argument("--config", default="configs/cits_v2x_config.json", help="Configuração C-ITS base.")
-    parser.add_argument("--tsp-config", default="configs/tsp_safety_config.json", help="Configuração do motor TSP.")
-    parser.add_argument("--mode", choices=["sumo"], default="sumo", help="Modo de execução. Apenas SUMO/TraCI é suportado.")
+    parser.add_argument(
+        "--config", default="configs/cits_v2x_config.json", help="Configuração C-ITS base."
+    )
+    parser.add_argument(
+        "--tsp-config", default="configs/tsp_safety_config.json", help="Configuração do motor TSP."
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["sumo"],
+        default="sumo",
+        help="Modo de execução. Apenas SUMO/TraCI é suportado.",
+    )
     parser.add_argument("--steps", type=int, default=None, help="Número máximo de passos.")
     parser.add_argument("--sumo-binary", default="sumo", help="Binário SUMO para TraCI.")
     parser.add_argument("--gui", action="store_true", help="Usa sumo-gui em vez de sumo.")
-    parser.add_argument("--no-actuation", action="store_true", help="No modo SUMO, calcula decisões mas não aplica comandos TraCI.")
-    parser.add_argument("--policy-mode", choices=["baseline", "optimized", "rl"], default="baseline", help="Runtime policy mode.")
+    parser.add_argument(
+        "--no-actuation",
+        action="store_true",
+        help="No modo SUMO, calcula decisões mas não aplica comandos TraCI.",
+    )
+    parser.add_argument(
+        "--policy-mode",
+        choices=["baseline", "optimized", "rl"],
+        default="baseline",
+        help="Runtime policy mode.",
+    )
     parser.add_argument(
         "--policy-report",
         default=None,

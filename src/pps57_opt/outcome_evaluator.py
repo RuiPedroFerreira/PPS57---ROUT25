@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Conservative outcome evaluation for baseline vs RL TSP decisions."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -111,7 +112,9 @@ def write_decision_outcome_evaluation(
     markdown_output = Path(markdown_path)
     json_output.parent.mkdir(parents=True, exist_ok=True)
     markdown_output.parent.mkdir(parents=True, exist_ok=True)
-    json_output.write_text(json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+    json_output.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True), encoding="utf-8"
+    )
     markdown_output.write_text(render_outcome_markdown(payload), encoding="utf-8")
     return payload
 
@@ -134,7 +137,9 @@ def render_outcome_markdown(payload: Dict[str, object]) -> str:
                 time=_fmt(row.get("timestamp_s")),
                 vehicle=_escape(str(row.get("vehicle_id", ""))),
                 tls=_escape(str(row.get("tls_id", ""))),
-                baseline=_escape(f"{row.get('baseline_action', '')}/{row.get('baseline_status', '')}"),
+                baseline=_escape(
+                    f"{row.get('baseline_action', '')}/{row.get('baseline_status', '')}"
+                ),
                 rl=_escape(f"{row.get('rl_action', '')}/{row.get('rl_status', '')}"),
                 safety_delta=_escape(str(row.get("safety_delta", ""))),
                 actuation_delta=_escape(str(row.get("actuation_delta", ""))),
@@ -207,22 +212,50 @@ def _verdict(
     safety_delta: str,
     actuation_delta: str,
 ) -> Tuple[str, str]:
-    if rl_status == DecisionStatus.BLOCKED_BY_SAFETY.value and baseline_status != DecisionStatus.BLOCKED_BY_SAFETY.value:
-        return "unsafe_or_blocked", "RL proposal was blocked by the Safety Layer while baseline was not."
+    if (
+        rl_status == DecisionStatus.BLOCKED_BY_SAFETY.value
+        and baseline_status != DecisionStatus.BLOCKED_BY_SAFETY.value
+    ):
+        return (
+            "unsafe_or_blocked",
+            "RL proposal was blocked by the Safety Layer while baseline was not.",
+        )
     if safety_delta == "less_blocked":
         return "safer_or_less_intrusive", "RL avoided a Safety Layer block observed in baseline."
-    if baseline_action == rl_action and baseline_status == rl_status and baseline_applied == rl_applied:
+    if (
+        baseline_action == rl_action
+        and baseline_status == rl_status
+        and baseline_applied == rl_applied
+    ):
         return "same", "RL produced the same observable decision outcome as baseline."
-    if _requires_actuation(baseline_action) and not _requires_actuation(rl_action) and rl_status != DecisionStatus.BLOCKED_BY_SAFETY.value:
-        return "safer_or_less_intrusive", "RL chose a non-actuating alternative to a baseline actuating action; network impact still needs KPI evidence."
+    if (
+        _requires_actuation(baseline_action)
+        and not _requires_actuation(rl_action)
+        and rl_status != DecisionStatus.BLOCKED_BY_SAFETY.value
+    ):
+        return (
+            "safer_or_less_intrusive",
+            "RL chose a non-actuating alternative to a baseline actuating action; network impact still needs KPI evidence.",
+        )
     if rl_applied and not baseline_applied:
-        return "inconclusive", "RL added actuation; KPI evidence is required before calling this better."
+        return (
+            "inconclusive",
+            "RL added actuation; KPI evidence is required before calling this better.",
+        )
     if actuation_delta == "less_actuation":
-        return "safer_or_less_intrusive", "RL reduced actuation; KPI evidence is still required for network benefit."
-    return "inconclusive", "Decision changed, but available logs do not prove network benefit or harm."
+        return (
+            "safer_or_less_intrusive",
+            "RL reduced actuation; KPI evidence is still required for network benefit.",
+        )
+    return (
+        "inconclusive",
+        "Decision changed, but available logs do not prove network benefit or harm.",
+    )
 
 
-def _evaluate_kpis(baseline_kpis: Optional[Dict[str, Any]], rl_kpis: Optional[Dict[str, Any]]) -> Dict[str, object]:
+def _evaluate_kpis(
+    baseline_kpis: Optional[Dict[str, Any]], rl_kpis: Optional[Dict[str, Any]]
+) -> Dict[str, object]:
     if not baseline_kpis or not rl_kpis:
         return {
             "available": False,
@@ -269,7 +302,9 @@ def _decision_key(item: Dict[str, Any]) -> Tuple[float, str, str]:
     )
 
 
-def _decisions_by_key(items: Iterable[Dict[str, Any]]) -> Dict[Tuple[float, str, str], List[Dict[str, Any]]]:
+def _decisions_by_key(
+    items: Iterable[Dict[str, Any]],
+) -> Dict[Tuple[float, str, str], List[Dict[str, Any]]]:
     grouped: Dict[Tuple[float, str, str], List[Dict[str, Any]]] = {}
     for item in items:
         grouped.setdefault(_decision_key(item), []).append(item)
@@ -339,24 +374,20 @@ def _pair_within_key(
         r_list = rl_keyed.get(sub, [])
         for baseline, rl in zip(b_list, r_list):
             pairs.append((baseline, rl))
-        baseline_unpaired.extend(b_list[len(r_list):])
-        rl_unpaired.extend(r_list[len(b_list):])
+        baseline_unpaired.extend(b_list[len(r_list) :])
+        rl_unpaired.extend(r_list[len(b_list) :])
 
     # Fallback posicional para decisões sem identificador estável.
     for baseline, rl in zip(baseline_unkeyed, rl_unkeyed):
         pairs.append((baseline, rl))
-    baseline_unpaired.extend(baseline_unkeyed[len(rl_unkeyed):])
-    rl_unpaired.extend(rl_unkeyed[len(baseline_unkeyed):])
+    baseline_unpaired.extend(baseline_unkeyed[len(rl_unkeyed) :])
+    rl_unpaired.extend(rl_unkeyed[len(baseline_unkeyed) :])
 
     return pairs, baseline_unpaired, rl_unpaired
 
 
 def _actuations_by_decision_id(rows: Iterable[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
-    return {
-        str(row.get("decision_id")): row
-        for row in rows
-        if row.get("decision_id")
-    }
+    return {str(row.get("decision_id")): row for row in rows if row.get("decision_id")}
 
 
 def _missing_row(key: Tuple[float, str, str], verdict: str, item: Optional[Dict[str, Any]]) -> Row:
@@ -426,9 +457,7 @@ def _read_jsonl(path: Path) -> List[Dict[str, Any]]:
     if not path.exists():
         return []
     return [
-        json.loads(line)
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
     ]
 
 

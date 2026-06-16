@@ -4,6 +4,7 @@
 The runtime only proposes decisions. Every proposal still goes through the
 Safety Layer inside the TSP controller before actuation.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

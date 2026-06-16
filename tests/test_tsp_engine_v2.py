@@ -5,6 +5,7 @@ O portão de necessidade básico (bus a horas -> reject) vive em
 test_tsp_safety_layer; aqui cobrem-se os caminhos que dependem do
 NetworkStateSnapshot e da truncagem proporcional/recuperabilidade.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

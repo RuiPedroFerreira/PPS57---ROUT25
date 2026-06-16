@@ -24,6 +24,7 @@ desloca KPIs.
 Produz apenas campos de domínio (não formatos wire GTFS-RT/AVL); qualquer
 serialização wire pertenceria a uma subclasse de ProtocolCodec no futuro.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -71,7 +72,8 @@ class SchedulePlanProvider:
         except (OSError, ValueError) as exc:
             _LOGGER.warning(
                 "schedule_plan enabled but timetable_source %r could not be loaded (%s); provider disabled.",
-                source, exc,
+                source,
+                exc,
             )
             return None
         public_transport = raw.get("public_transport") if isinstance(raw, dict) else None
@@ -98,8 +100,12 @@ class SchedulePlanProvider:
         return cls(
             services_by_line_code=services_by_line_code,
             seed=_coerce_int(block.get("random_seed"), 57),
-            schedule_delay_scale_s=max(0.0, _coerce_float(block.get("schedule_delay_scale_s"), default_delay_scale)),
-            headway_deviation_fraction=max(0.0, _coerce_float(block.get("headway_deviation_fraction"), 0.25)),
+            schedule_delay_scale_s=max(
+                0.0, _coerce_float(block.get("schedule_delay_scale_s"), default_delay_scale)
+            ),
+            headway_deviation_fraction=max(
+                0.0, _coerce_float(block.get("headway_deviation_fraction"), 0.25)
+            ),
         )
 
     def schedule_adherence_for(
@@ -120,10 +126,20 @@ class SchedulePlanProvider:
         scheduled_headway_s = self._scheduled_headway_s(service, sim_time_s)
         # Atraso só não-negativo (um veículo está "atrasado" N s); o desvio de
         # headway é ±. Unidades determinísticas em [0,1] / [-1,1].
-        delay_unit = self._unit(observation.line_id, observation.vehicle_id, observation.edge_id, "delay")
-        headway_unit = 2.0 * self._unit(observation.line_id, observation.vehicle_id, observation.edge_id, "headway") - 1.0
+        delay_unit = self._unit(
+            observation.line_id, observation.vehicle_id, observation.edge_id, "delay"
+        )
+        headway_unit = (
+            2.0
+            * self._unit(
+                observation.line_id, observation.vehicle_id, observation.edge_id, "headway"
+            )
+            - 1.0
+        )
         schedule_delay_s = round(delay_unit * self.schedule_delay_scale_s, 3)
-        headway_deviation_s = round(headway_unit * self.headway_deviation_fraction * scheduled_headway_s, 3)
+        headway_deviation_s = round(
+            headway_unit * self.headway_deviation_fraction * scheduled_headway_s, 3
+        )
         return schedule_delay_s, headway_deviation_s
 
     @staticmethod

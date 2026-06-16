@@ -14,6 +14,7 @@ decisão". O motor TSP, a jusante, é que preenche o `audit.granted_strategy`
 no SSEM final ou emite um SSEM de granted/rejected. Esta separação espelha
 a arquitetura real: o RSU é gateway, o TMC/TSP é o decisor.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -55,18 +56,20 @@ class RSUAgent:
     # max_active_requests_per_rsu conte o que está realmente ativo, não só o
     # batch do tick corrente. Sai por SSEM final (granted via
     # mark_priority_granted, rejected, cancelled) ou por expiração do TTL.
-    processing_request_expiry: Dict[tuple[int, int], tuple[float, str]] = field(default_factory=dict)
+    processing_request_expiry: Dict[tuple[int, int], tuple[float, str]] = field(
+        default_factory=dict
+    )
 
     @property
     def rsu_id(self) -> str:
         return self.intersection.rsu_id
 
-    def handle_messages(
-        self, messages: Iterable[CITSMessage], sim_time_s: float
-    ) -> List[SSEMLike]:
+    def handle_messages(self, messages: Iterable[CITSMessage], sim_time_s: float) -> List[SSEMLike]:
         responses: List[SSEMLike] = []
         max_active = int(self.config.rsu_policy.get("max_active_requests_per_rsu", 4))
-        seen_request_keys: Set[tuple] = set()  # dedupe por (station_id, request_id, sequence_number)
+        seen_request_keys: Set[tuple] = (
+            set()
+        )  # dedupe por (station_id, request_id, sequence_number)
         self._prune_replay_cache(sim_time_s)
         self._prune_processing_requests(sim_time_s)
 
@@ -76,7 +79,9 @@ class RSUAgent:
             if not isinstance(message, SREMLike):
                 # SREM marcada mas dataclass não corresponde — ex.: reconstruída
                 # incorretamente. Rejeita explicitamente em vez de descartar.
-                responses.append(self._make_response_for_malformed(message, sim_time_s, "request_type_mismatch"))
+                responses.append(
+                    self._make_response_for_malformed(message, sim_time_s, "request_type_mismatch")
+                )
                 continue
             request = message
 
@@ -90,7 +95,9 @@ class RSUAgent:
             # rejeição por duplicado/replay.
             if not request.is_cancellation:
                 if dedupe_key in seen_request_keys:
-                    responses.append(self._reject(request, sim_time_s, "duplicate_request_in_batch"))
+                    responses.append(
+                        self._reject(request, sim_time_s, "duplicate_request_in_batch")
+                    )
                     continue
                 replay_problem = self._replay_or_ordering_problem(request, sim_time_s)
                 if replay_problem is not None:
@@ -104,7 +111,11 @@ class RSUAgent:
                 and len(self.processing_request_expiry) >= max_active
             )
             decision = self._evaluate_request(request, sim_time_s, too_many_active=too_many_active)
-            self._remember_request(request, sim_time_s, accepted=decision.response_status == ResponseStatus.PROCESSING.value)
+            self._remember_request(
+                request,
+                sim_time_s,
+                accepted=decision.response_status == ResponseStatus.PROCESSING.value,
+            )
             self._track_processing_request(request, decision, sim_time_s)
             responses.append(self._wrap_response(request, decision, sim_time_s))
         return responses
@@ -326,7 +337,9 @@ class RSUAgent:
         Vazio (ambos) significa "sem allowlist explícita" → fallback de prefixo.
         """
         trust_store = self.config.raw.get("trust_store", {})
-        block = trust_store.get("emergency_authorization", {}) if isinstance(trust_store, dict) else {}
+        block = (
+            trust_store.get("emergency_authorization", {}) if isinstance(trust_store, dict) else {}
+        )
         if not isinstance(block, dict):
             return frozenset(), frozenset()
         signers = frozenset(str(item) for item in block.get("authorized_signer_ids", []))
@@ -355,7 +368,9 @@ class RSUAgent:
         allowed_signers = set(trust_store.get("allowed_signer_ids", []))
         if security.signer_id in allowed_signers:
             return None
-        allowed_prefixes = tuple(str(item) for item in trust_store.get("allowed_signer_prefixes", []))
+        allowed_prefixes = tuple(
+            str(item) for item in trust_store.get("allowed_signer_prefixes", [])
+        )
         if allowed_prefixes and security.signer_id.startswith(allowed_prefixes):
             return None
         if mode == "prefix_allowlist":
@@ -410,9 +425,7 @@ class RSUAgent:
         )
 
     def _reject(self, request: SREMLike, sim_time_s: float, reason: str) -> SSEMLike:
-        return self._wrap_response(
-            request, _DecisionPair.reject(reason), sim_time_s
-        )
+        return self._wrap_response(request, _DecisionPair.reject(reason), sim_time_s)
 
     def _wrap_response(
         self, request: SREMLike, decision: "_DecisionPair", sim_time_s: float
@@ -482,11 +495,9 @@ class RSUAgent:
         telemetry = request.operator_telemetry
         if telemetry is None:
             return False
-        return (
-            telemetry.schedule_delay_s >= float(policy.get("delay_threshold_s", 60))
-            or abs(telemetry.headway_deviation_s)
-            >= float(policy.get("headway_deviation_threshold_s", 120))
-        )
+        return telemetry.schedule_delay_s >= float(policy.get("delay_threshold_s", 60)) or abs(
+            telemetry.headway_deviation_s
+        ) >= float(policy.get("headway_deviation_threshold_s", 120))
 
     def _cooldown_active(self, vehicle_id: str, sim_time_s: float) -> bool:
         if not vehicle_id:
@@ -497,9 +508,7 @@ class RSUAgent:
         cooldown_s = float(self.config.rsu_policy.get("cooldown_after_grant_s", 90))
         return sim_time_s - last < cooldown_s
 
-    def _replay_or_ordering_problem(
-        self, request: SREMLike, sim_time_s: float
-    ) -> Optional[str]:
+    def _replay_or_ordering_problem(self, request: SREMLike, sim_time_s: float) -> Optional[str]:
         key = self._request_key(request)
         if key is None:
             return None
@@ -514,7 +523,9 @@ class RSUAgent:
             return "out_of_order_request_sequence"
         return None
 
-    def _remember_request(self, request: SREMLike, sim_time_s: float, *, accepted: bool = True) -> None:
+    def _remember_request(
+        self, request: SREMLike, sim_time_s: float, *, accepted: bool = True
+    ) -> None:
         key = self._request_key(request)
         if key is None:
             return
@@ -594,9 +605,7 @@ class RSUAgent:
             if timestamp >= cutoff
         }
         self.last_sequence_by_request = {
-            key: value
-            for key, value in self.last_sequence_by_request.items()
-            if value[1] >= cutoff
+            key: value for key, value in self.last_sequence_by_request.items() if value[1] >= cutoff
         }
 
 
@@ -619,7 +628,10 @@ class _DecisionPair:
         # PrioritizationResponseStatus não tem "cancelled"; o standard fecha
         # o ciclo do pedido marcando o subsequente como "unknown" (não há
         # mais nada a reportar). Usamos `unknown` que é o mais próximo.
-        return _DecisionPair(response_status=ResponseStatus.UNKNOWN.value, rejection_reason="priority_request_cancelled")
+        return _DecisionPair(
+            response_status=ResponseStatus.UNKNOWN.value,
+            rejection_reason="priority_request_cancelled",
+        )
 
     @staticmethod
     def reject(reason: str) -> "_DecisionPair":

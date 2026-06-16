@@ -7,6 +7,7 @@ signal-program-derived conflict matrix from a SUMO ``net.xml``. The safety
 layer still owns final approval; this module only removes hard-coded phase and
 lane assumptions from imported maps.
 """
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
@@ -118,11 +119,23 @@ class TLSProfile:
 
     @property
     def controlled_lanes(self) -> List[str]:
-        return sorted({connection.controlled_lane for connection in self.connections if connection.controlled_lane})
+        return sorted(
+            {
+                connection.controlled_lane
+                for connection in self.connections
+                if connection.controlled_lane
+            }
+        )
 
     @property
     def incoming_edges(self) -> List[str]:
-        return sorted({connection.from_edge for connection in self.connections if not connection.from_edge.startswith(":")})
+        return sorted(
+            {
+                connection.from_edge
+                for connection in self.connections
+                if not connection.from_edge.startswith(":")
+            }
+        )
 
     def movement_for_edges(self, from_edge: str, to_edge: str = "") -> Optional[MovementProfile]:
         candidates = [movement for movement in self.movements if movement.from_edge == from_edge]
@@ -164,7 +177,9 @@ class NetworkProfile:
 
 
 class NetworkProfileBuilder:
-    def __init__(self, network_file: str | Path, *, additional_files: Optional[Iterable[str | Path]] = None) -> None:
+    def __init__(
+        self, network_file: str | Path, *, additional_files: Optional[Iterable[str | Path]] = None
+    ) -> None:
         self.network_file = Path(network_file)
         self.additional_files = [Path(path) for path in additional_files or []]
 
@@ -187,7 +202,9 @@ class NetworkProfileBuilder:
         for tls_id in sorted(set(tl_logics) | set(connections_by_tls)):
             logic = tl_logics.get(tls_id, {})
             phases = list(logic.get("phases", []))
-            connections = sorted(connections_by_tls.get(tls_id, []), key=lambda item: item.link_index)
+            connections = sorted(
+                connections_by_tls.get(tls_id, []), key=lambda item: item.link_index
+            )
             movements = _build_movements(tls_id, phases, connections)
             tls_profiles[tls_id] = TLSProfile(
                 tls_id=tls_id,

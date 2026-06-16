@@ -327,9 +327,7 @@ class TSPPlatformTests(unittest.TestCase):
         final = controller._process_acknowledged_requests(
             responses=[response],
             requests_by_id={},
-            signal_states={
-                "I1": signal_state(phase=0, state="G", next_switch=12.0, spent=10.0)
-            },
+            signal_states={"I1": signal_state(phase=0, state="G", next_switch=12.0, spent=10.0)},
             network_states={
                 "I1": NetworkStateSnapshot(
                     tls_id="I1",
@@ -356,7 +354,9 @@ class TSPPlatformTests(unittest.TestCase):
         controller = TSPControlController(cits, tsp)
         controller.safety.set_signal_program_verified(True)
         first = request(vehicle_id="bus_1", request_id=1, sequence_number=1)
-        second = request(vehicle_id="bus_2", request_id=2, sequence_number=1, eta_to_stopline_s=16.0)
+        second = request(
+            vehicle_id="bus_2", request_id=2, sequence_number=1, eta_to_stopline_s=16.0
+        )
         responses = [processing_ssem(first), processing_ssem(second)]
         requests_by_id = {first.request_id: first, second.request_id: second}
         actuator = RejectThenNoActuation()
@@ -364,9 +364,7 @@ class TSPPlatformTests(unittest.TestCase):
         controller._process_acknowledged_requests(
             responses=responses,
             requests_by_id=requests_by_id,
-            signal_states={
-                "I1": signal_state(phase=0, state="G", next_switch=12.0, spent=10.0)
-            },
+            signal_states={"I1": signal_state(phase=0, state="G", next_switch=12.0, spent=10.0)},
             network_states={},
             actuator=actuator,
             sim_time_s=0.0,
@@ -396,9 +394,7 @@ class TSPPlatformTests(unittest.TestCase):
         controller._process_acknowledged_requests(
             responses=[processing_ssem(low), processing_ssem(high)],
             requests_by_id={},
-            signal_states={
-                "I1": signal_state(phase=0, state="G", next_switch=12.0, spent=10.0)
-            },
+            signal_states={"I1": signal_state(phase=0, state="G", next_switch=12.0, spent=10.0)},
             network_states={},
             actuator=actuator,
             sim_time_s=0.0,
@@ -418,9 +414,7 @@ class TSPPlatformTests(unittest.TestCase):
         final = controller._process_acknowledged_requests(
             responses=[processing_ssem(srem)],
             requests_by_id={srem.request_id: srem},
-            signal_states={
-                "I1": signal_state(phase=0, state="G", next_switch=12.0, spent=10.0)
-            },
+            signal_states={"I1": signal_state(phase=0, state="G", next_switch=12.0, spent=10.0)},
             network_states={},
             actuator=TraciTSPActuator(adapter=object(), apply_actuation=False),
             sim_time_s=0.0,
@@ -438,7 +432,9 @@ class TSPPlatformTests(unittest.TestCase):
         cits, tsp = configs()
         controller = TSPControlController(cits, tsp)
         active = request(vehicle_id="bus_cancel", request_id=1)
-        cancellation = request(vehicle_id="bus_cancel", request_id=2, request_type="priorityCancellation")
+        cancellation = request(
+            vehicle_id="bus_cancel", request_id=2, request_type="priorityCancellation"
+        )
         controller.request_store.ingest_requests([active], 0.0)
         decision_log = MemoryLogger()
 
@@ -456,7 +452,9 @@ class TSPPlatformTests(unittest.TestCase):
         )
 
         summary = controller.request_store.to_summary()
-        self.assertEqual(decision_log.items[0].reason, "priority_request_cancellation_no_tsp_actuation")
+        self.assertEqual(
+            decision_log.items[0].reason, "priority_request_cancellation_no_tsp_actuation"
+        )
         self.assertEqual(final[0].status, ResponseStatus.REJECTED.value)
         self.assertEqual(summary["by_status"]["cleared"], 1)
 
@@ -576,8 +574,12 @@ class TSPPlatformTests(unittest.TestCase):
         configured = contract.__class__(**{**contract.__dict__, "pedestrian_phase_indices": [6]})
         configured_problems = adapter.verify_controller_contracts([configured])
 
-        self.assertTrue(any("fase pedonal exclusiva configurada" in problem for problem in problems))
-        self.assertFalse(any("fase pedonal exclusiva configurada" in problem for problem in configured_problems))
+        self.assertTrue(
+            any("fase pedonal exclusiva configurada" in problem for problem in problems)
+        )
+        self.assertFalse(
+            any("fase pedonal exclusiva configurada" in problem for problem in configured_problems)
+        )
 
     def test_priority_score_tolerates_zero_normalisation_config(self) -> None:
         cits, tsp = configs()
@@ -642,7 +644,9 @@ class TSPPlatformTests(unittest.TestCase):
             current_phase_index=3,
         )
 
-        result = safety.validate(decision, signal_state(phase=3, state="rG", lane="N_I1_I1_0", spent=10.0), 10.0)
+        result = safety.validate(
+            decision, signal_state(phase=3, state="rG", lane="N_I1_I1_0", spent=10.0), 10.0
+        )
 
         self.assertNotEqual(result.reason, "cooldown_after_priority_active")
 
@@ -716,7 +720,9 @@ class TSPPlatformTests(unittest.TestCase):
         decision = policy.decide(srem, state, 0.0, baseline)
 
         self.assertEqual(decision.action, baseline.action)
-        self.assertTrue(any("did not suppress baseline actuation" in note for note in decision.notes))
+        self.assertTrue(
+            any("did not suppress baseline actuation" in note for note in decision.notes)
+        )
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ GEH statistic
     Source: DMRB (Design Manual for Roads and Bridges); FHWA Traffic Analysis
     Toolbox Vol. III. Bands: < 5 good; 5-10 investigate; > 10 likely error.
 """
+
 from __future__ import annotations
 
 import math
@@ -45,7 +46,9 @@ def geh_band(value: float, *, good_below: float, investigate_below: float) -> st
     return "poor"
 
 
-def flow_within_band(modelled: float, observed: float, bands: Sequence[Mapping[str, float]]) -> bool:
+def flow_within_band(
+    modelled: float, observed: float, bands: Sequence[Mapping[str, float]]
+) -> bool:
     """Whether |M-C| is within the per-volume tolerance band selected by observed flow.
 
     Bands are the Wisconsin DOT / FHWA TAT Vol. III link-flow criteria, chosen by

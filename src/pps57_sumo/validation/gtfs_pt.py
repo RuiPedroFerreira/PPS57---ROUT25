@@ -10,6 +10,7 @@ GTFS reference: https://gtfs.org/schedule/reference/ . Headways are derived from
 the dispatch times (departure at the first stop) of the weekday trips of a route;
 dwell is `departure_time - arrival_time` per stop_time (often 0/unencoded).
 """
+
 from __future__ import annotations
 
 import csv
@@ -54,8 +55,10 @@ def select_weekday_service_id(zip_path: str, preferred: str = "DIAS UTEIS") -> s
         if "calendar.txt" in names:
             weekday: Dict[str, int] = {}
             for row in _read_table(zip_file, "calendar.txt"):
-                served = sum(int(row.get(day, "0") or "0") for day in
-                             ("monday", "tuesday", "wednesday", "thursday", "friday"))
+                served = sum(
+                    int(row.get(day, "0") or "0")
+                    for day in ("monday", "tuesday", "wednesday", "thursday", "friday")
+                )
                 if served > 0:
                     weekday[row["service_id"]] = served
             if preferred in weekday:
@@ -77,7 +80,9 @@ def select_weekday_service_id(zip_path: str, preferred: str = "DIAS UTEIS") -> s
     raise ValueError("feed has no calendar.txt or calendar_dates.txt weekday service")
 
 
-def headway_stats(departures_s: Sequence[int], window: Tuple[int, int]) -> Optional[Dict[str, float]]:
+def headway_stats(
+    departures_s: Sequence[int], window: Tuple[int, int]
+) -> Optional[Dict[str, float]]:
     """Headway statistics (minutes) for departures falling inside a clock window."""
     start, end = window
     inside = sorted(d for d in departures_s if start <= d < end)
@@ -121,7 +126,10 @@ def extract_corridor_headways(
         trip_key: Dict[str, Tuple[str, str]] = {}
         for row in _read_table(zip_file, "trips.txt"):
             if row.get("route_id") in rid_to_short and row.get("service_id") == service_id:
-                trip_key[row["trip_id"]] = (rid_to_short[row["route_id"]], row.get("direction_id", ""))
+                trip_key[row["trip_id"]] = (
+                    rid_to_short[row["route_id"]],
+                    row.get("direction_id", ""),
+                )
 
         # Trip's first departure = the departure at its MINIMUM stop_sequence. GTFS only
         # requires stop_sequence to increase along the trip, not to start at "1"; keying
@@ -162,7 +170,9 @@ def extract_corridor_headways(
             departures = sorted(departures)
             directions[direction or "?"] = {
                 "weekday_trips": len(departures),
-                "first_dep_span_h": [departures[0] // 3600, departures[-1] // 3600] if departures else [],
+                "first_dep_span_h": [departures[0] // 3600, departures[-1] // 3600]
+                if departures
+                else [],
                 "windows": {name: headway_stats(departures, win) for name, win in windows.items()},
             }
         lines[short] = {

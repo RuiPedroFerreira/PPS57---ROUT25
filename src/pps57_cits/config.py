@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Load and index C-ITS/V2X emulation configuration."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -75,7 +76,9 @@ class CITSConfig:
 
     @property
     def signal_controlled_intersections(self) -> List[IntersectionConfig]:
-        return [intersection for intersection in self.intersections if intersection.signal_controlled]
+        return [
+            intersection for intersection in self.intersections if intersection.signal_controlled
+        ]
 
     def path_from_root(self, relative: str | Path) -> Path:
         path = Path(relative)
@@ -97,7 +100,9 @@ class CITSConfig:
         vehicle_class_norm = normalise_vehicle_class(vehicle_class)
         movements = self.priority_movements_for_edge(edge_id)
         if next_edge_id:
-            egress_matches = [movement for movement in movements if next_edge_id in movement.egress_edges]
+            egress_matches = [
+                movement for movement in movements if next_edge_id in movement.egress_edges
+            ]
             if egress_matches:
                 movements = egress_matches
             else:
@@ -122,7 +127,9 @@ def load_cits_config(path: str | Path, root: Optional[str | Path] = None) -> CIT
     with config_path.open("r", encoding="utf-8") as handle:
         raw = json.load(handle)
 
-    def parse_priority_movements(item: Dict[str, Any], section_name: str) -> List[PriorityMovementConfig]:
+    def parse_priority_movements(
+        item: Dict[str, Any], section_name: str
+    ) -> List[PriorityMovementConfig]:
         movements: List[PriorityMovementConfig] = []
         raw_movements = item.get("priority_movements", [])
         if isinstance(raw_movements, dict):
@@ -145,7 +152,11 @@ def load_cits_config(path: str | Path, root: Optional[str | Path] = None) -> CIT
             raise ValueError(f"{section_name}.priority_movements must be a list")
         for movement_index, movement in enumerate(raw_movements):
             movement_section = f"{section_name}.priority_movements[{movement_index}]"
-            require_keys(movement, ("movement_id", "approach_edges", "target_signal_group_id"), movement_section)
+            require_keys(
+                movement,
+                ("movement_id", "approach_edges", "target_signal_group_id"),
+                movement_section,
+            )
             movements.append(
                 PriorityMovementConfig(
                     movement_id=str(movement["movement_id"]),
@@ -154,8 +165,12 @@ def load_cits_config(path: str | Path, root: Optional[str | Path] = None) -> CIT
                     egress_edges=list(movement.get("egress_edges", [])),
                     vehicle_classes=list(movement.get("vehicle_classes", ["public_transport"])),
                     target_signal_group_id=str(movement["target_signal_group_id"]),
-                    allowed_actions=list(movement.get("allowed_actions", ["green_extension", "early_green"])),
-                    objectives=list(movement.get("objectives", ["schedule_delay", "headway_recovery"])),
+                    allowed_actions=list(
+                        movement.get("allowed_actions", ["green_extension", "early_green"])
+                    ),
+                    objectives=list(
+                        movement.get("objectives", ["schedule_delay", "headway_recovery"])
+                    ),
                 )
             )
         return movements
@@ -254,7 +269,9 @@ def _auto_intersections_from_network(
     if profile is None:
         return []
 
-    classes = [str(item) for item in discovery.get("priority_vehicle_classes", ["public_transport"])]
+    classes = [
+        str(item) for item in discovery.get("priority_vehicle_classes", ["public_transport"])
+    ]
     rsu_prefix = str(discovery.get("rsu_id_prefix", "RSU_AUTO_"))
     auto_movements = bool(discovery.get("auto_generate_priority_movements", True))
     generated: List[IntersectionConfig] = []
@@ -275,7 +292,9 @@ def _auto_intersections_from_network(
     return generated
 
 
-def _load_network_profile_for_config(raw: Dict[str, Any], root_path: Path) -> Optional[NetworkProfile]:
+def _load_network_profile_for_config(
+    raw: Dict[str, Any], root_path: Path
+) -> Optional[NetworkProfile]:
     sumo_cfg = raw.get("sumo", {})
     if not isinstance(sumo_cfg, dict):
         return None

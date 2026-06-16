@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Comparison tables for baseline vs RL TSP runtime runs."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -25,7 +26,9 @@ def build_tsp_ab_comparison_rows(
     ]:
         rows.append(_row(key, baseline_summary.get(key, 0), rl_summary.get(key, 0)))
 
-    for action in _sorted_union_keys(baseline_summary.get("by_action"), rl_summary.get("by_action")):
+    for action in _sorted_union_keys(
+        baseline_summary.get("by_action"), rl_summary.get("by_action")
+    ):
         rows.append(
             _row(
                 f"action:{action}",
@@ -34,7 +37,9 @@ def build_tsp_ab_comparison_rows(
             )
         )
 
-    for status in _sorted_union_keys(baseline_summary.get("by_status"), rl_summary.get("by_status")):
+    for status in _sorted_union_keys(
+        baseline_summary.get("by_status"), rl_summary.get("by_status")
+    ):
         rows.append(
             _row(
                 f"status:{status}",
@@ -46,7 +51,11 @@ def build_tsp_ab_comparison_rows(
     rl_policy = rl_summary.get("runtime_policy", {})
     rows.extend(
         [
-            _row("runtime_policy_loaded", baseline_summary.get("runtime_policy_loaded"), rl_summary.get("runtime_policy_loaded")),
+            _row(
+                "runtime_policy_loaded",
+                baseline_summary.get("runtime_policy_loaded"),
+                rl_summary.get("runtime_policy_loaded"),
+            ),
             _metadata_row("rl_policy_id", rl_policy.get("policy_id")),
             _metadata_row("rl_algorithm", rl_policy.get("algorithm")),
             _metadata_row("rl_rule_count", rl_policy.get("rule_count")),
@@ -75,7 +84,9 @@ def write_tsp_ab_comparison(
     markdown_output = Path(markdown_path)
     json_output.parent.mkdir(parents=True, exist_ok=True)
     markdown_output.parent.mkdir(parents=True, exist_ok=True)
-    json_output.write_text(json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+    json_output.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True), encoding="utf-8"
+    )
     markdown_output.write_text(render_markdown_table(rows), encoding="utf-8")
     return payload
 
@@ -85,7 +96,14 @@ def build_kpi_comparison_rows(
     rl_kpis: Dict[str, Any],
 ) -> List[ComparisonRow]:
     rows: List[ComparisonRow] = []
-    for group in ["all_vehicles", "priority_vehicles", "buses", "emergency_vehicles", "general_traffic", "non_priority_vehicles"]:
+    for group in [
+        "all_vehicles",
+        "priority_vehicles",
+        "buses",
+        "emergency_vehicles",
+        "general_traffic",
+        "non_priority_vehicles",
+    ]:
         baseline_group = baseline_kpis.get(group, {})
         rl_group = rl_kpis.get(group, {})
         for metric in [
@@ -119,12 +137,18 @@ def write_kpi_comparison(
     markdown_output = Path(markdown_path)
     json_output.parent.mkdir(parents=True, exist_ok=True)
     markdown_output.parent.mkdir(parents=True, exist_ok=True)
-    json_output.write_text(json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True), encoding="utf-8")
-    markdown_output.write_text(render_markdown_table(rows, title="SUMO KPI Baseline vs RL Comparison"), encoding="utf-8")
+    json_output.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True), encoding="utf-8"
+    )
+    markdown_output.write_text(
+        render_markdown_table(rows, title="SUMO KPI Baseline vs RL Comparison"), encoding="utf-8"
+    )
     return payload
 
 
-def render_markdown_table(rows: Iterable[ComparisonRow], *, title: str = "TSP Baseline vs RL Comparison") -> str:
+def render_markdown_table(
+    rows: Iterable[ComparisonRow], *, title: str = "TSP Baseline vs RL Comparison"
+) -> str:
     lines = [
         f"# {title}",
         "",

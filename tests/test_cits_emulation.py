@@ -69,9 +69,7 @@ class Package3CITSTestCase(unittest.TestCase):
         mapem = build_mapem_messages(self.config, sim_time_s=0.0)
         i6 = next(message for message in mapem if message.intersection_alias == "I6")
         self.assertTrue(i6.approaches)
-        self.assertTrue(
-            all(not approach.priority_movement_ids for approach in i6.approaches)
-        )
+        self.assertTrue(all(not approach.priority_movement_ids for approach in i6.approaches))
 
     def test_cits_validator_accepts_eligible_srem(self) -> None:
         self.assertEqual(validate_cits_message(_eligible_srem()), [])
@@ -348,9 +346,7 @@ class Package3CITSTestCase(unittest.TestCase):
                 )
                 response = rsu.evaluate_request(request, sim_time_s=101.0)
                 self.assertEqual(response.status, ResponseStatus.REJECTED.value)
-                self.assertEqual(
-                    response.reason, "emergency_priority_class_not_emergency_identity"
-                )
+                self.assertEqual(response.reason, "emergency_priority_class_not_emergency_identity")
 
     def test_rsu_rejects_emergency_class_from_unlisted_emergency_prefix(self) -> None:
         # P2 (PR #57): num trust store em modo `prefix_allowlist`, o prefixo
@@ -375,9 +371,7 @@ class Package3CITSTestCase(unittest.TestCase):
                 )
                 response = rsu.evaluate_request(request, sim_time_s=101.0)
                 self.assertEqual(response.status, ResponseStatus.REJECTED.value)
-                self.assertEqual(
-                    response.reason, "emergency_priority_class_not_emergency_identity"
-                )
+                self.assertEqual(response.reason, "emergency_priority_class_not_emergency_identity")
 
     def test_rsu_rejects_emergency_identity_with_inconsistent_role(self) -> None:
         # Coerência secundária: uma identidade de emergência AUTORIZADA (na
@@ -396,9 +390,7 @@ class Package3CITSTestCase(unittest.TestCase):
         )
         response = rsu.evaluate_request(request, sim_time_s=101.0)
         self.assertEqual(response.status, ResponseStatus.REJECTED.value)
-        self.assertEqual(
-            response.reason, "emergency_priority_class_without_emergency_role"
-        )
+        self.assertEqual(response.reason, "emergency_priority_class_without_emergency_role")
 
     def test_rsu_does_not_start_vehicle_cooldown_on_forward_only_ack(self) -> None:
         # Forwarding to the TSP engine is not a granted priority intervention.
@@ -677,10 +669,7 @@ class Package3CITSTestCase(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             unsorted_path = Path(tmp) / "unsorted.rou.xml"
             unsorted_path.write_text(
-                '<routes>'
-                '<vehicle id="v1" depart="10"/>'
-                '<vehicle id="v2" depart="5"/>'
-                '</routes>',
+                '<routes><vehicle id="v1" depart="10"/><vehicle id="v2" depart="5"/></routes>',
                 encoding="utf-8",
             )
             with self.assertRaises(SystemExit) as ctx:
@@ -690,12 +679,12 @@ class Package3CITSTestCase(unittest.TestCase):
 
             sorted_path = Path(tmp) / "sorted.rou.xml"
             sorted_path.write_text(
-                '<routes>'
+                "<routes>"
                 '<flow id="f1" begin="0"/>'
                 '<vehicle id="v1" depart="5"/>'
                 '<flow id="f2" begin="10"/>'
                 '<vehicle id="v2" depart="20"/>'
-                '</routes>',
+                "</routes>",
                 encoding="utf-8",
             )
             validate_routes_sorted(sorted_path)  # must not raise
@@ -720,8 +709,13 @@ class Package3CITSTestCase(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_root = Path(tmp)
             (tmp_root / "configs").mkdir()
-            shutil.copy(ROOT / "configs/sumo_scenario_base.json", tmp_root / "configs/sumo_scenario_base.json")
-            shutil.copy(ROOT / "configs/cits_v2x_config.json", tmp_root / "configs/cits_v2x_config.json")
+            shutil.copy(
+                ROOT / "configs/sumo_scenario_base.json",
+                tmp_root / "configs/sumo_scenario_base.json",
+            )
+            shutil.copy(
+                ROOT / "configs/cits_v2x_config.json", tmp_root / "configs/cits_v2x_config.json"
+            )
             tsp = json.loads((ROOT / "configs/tsp_safety_config.json").read_text(encoding="utf-8"))
             tsp["decision_policy"]["green_extension_min_s"] = 20
             tsp["decision_policy"]["green_extension_max_s"] = 12
@@ -740,8 +734,13 @@ class Package3CITSTestCase(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_root = Path(tmp)
             (tmp_root / "configs").mkdir()
-            shutil.copy(ROOT / "configs/sumo_scenario_base.json", tmp_root / "configs/sumo_scenario_base.json")
-            shutil.copy(ROOT / "configs/cits_v2x_config.json", tmp_root / "configs/cits_v2x_config.json")
+            shutil.copy(
+                ROOT / "configs/sumo_scenario_base.json",
+                tmp_root / "configs/sumo_scenario_base.json",
+            )
+            shutil.copy(
+                ROOT / "configs/cits_v2x_config.json", tmp_root / "configs/cits_v2x_config.json"
+            )
             tsp = json.loads((ROOT / "configs/tsp_safety_config.json").read_text(encoding="utf-8"))
             tsp["decision_policy"]["weights"]["schedule_delay"] = 0.9
             (tmp_root / "configs/tsp_safety_config.json").write_text(
@@ -759,8 +758,13 @@ class Package3CITSTestCase(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_root = Path(tmp)
             (tmp_root / "configs").mkdir()
-            shutil.copy(ROOT / "configs/sumo_scenario_base.json", tmp_root / "configs/sumo_scenario_base.json")
-            shutil.copy(ROOT / "configs/tsp_safety_config.json", tmp_root / "configs/tsp_safety_config.json")
+            shutil.copy(
+                ROOT / "configs/sumo_scenario_base.json",
+                tmp_root / "configs/sumo_scenario_base.json",
+            )
+            shutil.copy(
+                ROOT / "configs/tsp_safety_config.json", tmp_root / "configs/tsp_safety_config.json"
+            )
             cits = json.loads((ROOT / "configs/cits_v2x_config.json").read_text(encoding="utf-8"))
             for intersection in cits["intersections"]:
                 if intersection["intersection_id"] == "I6":
@@ -776,8 +780,12 @@ class Package3CITSTestCase(unittest.TestCase):
         import shutil
 
         (tmp_root / "configs").mkdir()
-        shutil.copy(ROOT / "configs/sumo_scenario_base.json", tmp_root / "configs/sumo_scenario_base.json")
-        shutil.copy(ROOT / "configs/cits_v2x_config.json", tmp_root / "configs/cits_v2x_config.json")
+        shutil.copy(
+            ROOT / "configs/sumo_scenario_base.json", tmp_root / "configs/sumo_scenario_base.json"
+        )
+        shutil.copy(
+            ROOT / "configs/cits_v2x_config.json", tmp_root / "configs/cits_v2x_config.json"
+        )
         (tmp_root / "configs/tsp_safety_config.json").write_text(json.dumps(tsp), encoding="utf-8")
 
     def test_safety_config_validation_rejects_priority_level_weights_wrong_class(self) -> None:
@@ -828,7 +836,9 @@ class Package3CITSTestCase(unittest.TestCase):
         from pps57_tsp.models import DEFAULT_ACTUATING_ACTIONS
 
         configured = load_tsp_config(ROOT / "configs/tsp_safety_config.json", root=ROOT)
-        self.assertEqual(configured.actuating_actions(), frozenset({"green_extension", "early_green"}))
+        self.assertEqual(
+            configured.actuating_actions(), frozenset({"green_extension", "early_green"})
+        )
 
         # Ausência da chave recai no default em código (comportamento idêntico ao literal antigo).
         empty = TSPConfig(root=ROOT, raw={"decision_policy": {}})

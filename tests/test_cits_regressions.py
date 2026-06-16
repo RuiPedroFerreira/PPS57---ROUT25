@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Regression tests for C-ITS emulation robustness and protocol correctness."""
+
 from __future__ import annotations
 
 from copy import deepcopy
@@ -48,6 +49,7 @@ from pps57_cits.traci_adapter import TraciSimulationAdapter
 try:
     from traci.exceptions import TraCIException as _VehicleReadError
 except ImportError:
+
     class _VehicleReadError(Exception):
         pass
 
@@ -128,9 +130,7 @@ class DegradedTlsReadTestCase(unittest.TestCase):
             {"noValidSPATisAvailableAtThisTime": True},
         )
         self.assertEqual(len(spatem.movement_events), 1)
-        self.assertEqual(
-            spatem.movement_events[0].event_state, EventState.UNAVAILABLE.value
-        )
+        self.assertEqual(spatem.movement_events[0].event_state, EventState.UNAVAILABLE.value)
         self.assertEqual(validate_cits_message(spatem), [])
         JsonSimulationCodec().encode(spatem)  # must not raise
 
@@ -365,9 +365,7 @@ class VehicleClassFilterTestCase(unittest.TestCase):
         self.assertIsNone(resolved)
 
     def test_matching_vehicle_class_still_resolves(self) -> None:
-        resolved = self.config.priority_movement_for_request(
-            edge_id="I1_I2", vehicle_class="bus"
-        )
+        resolved = self.config.priority_movement_for_request(edge_id="I1_I2", vehicle_class="bus")
         self.assertIsNotNone(resolved)
         self.assertIn("public_transport", resolved.vehicle_classes)
 
@@ -393,9 +391,7 @@ class VehicleClassFilterTestCase(unittest.TestCase):
             tls_to_intersection={},
             intersection_by_alias={},
         )
-        resolved = config.priority_movement_for_request(
-            edge_id="E1", vehicle_class="passenger"
-        )
+        resolved = config.priority_movement_for_request(edge_id="E1", vehicle_class="passenger")
         self.assertIs(resolved, movement)
 
 
@@ -408,8 +404,7 @@ class IntersectionRefIdTestCase(unittest.TestCase):
 
     def test_exotic_aliases_no_longer_collide_with_canonical_ids(self) -> None:
         ref_ids = {
-            alias: parse_intersection_ref_id(alias)
-            for alias in ("I12", "TLS_1_2", "cluster_1_2")
+            alias: parse_intersection_ref_id(alias) for alias in ("I12", "TLS_1_2", "cluster_1_2")
         }
         self.assertEqual(len(set(ref_ids.values())), 3)
 
@@ -432,9 +427,7 @@ class StopThenProceedMappingTestCase(unittest.TestCase):
     """SUMO 's' (right-turn-on-red) is not a protected green movement."""
 
     def test_s_char_maps_to_stop_then_proceed(self) -> None:
-        self.assertEqual(
-            sumo_link_char_to_event_state("s"), EventState.STOP_THEN_PROCEED.value
-        )
+        self.assertEqual(sumo_link_char_to_event_state("s"), EventState.STOP_THEN_PROCEED.value)
         self.assertNotEqual(
             sumo_link_char_to_event_state("s"),
             EventState.PROTECTED_MOVEMENT_ALLOWED.value,

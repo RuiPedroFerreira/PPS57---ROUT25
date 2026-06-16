@@ -5,6 +5,7 @@ Lê JSONL no shape ETSI-aligned actual (`MessageType.SREM/SPATEM/...`). Logs
 gerados pela versão v0.3 do protocolo (`SREM_like`/`SPATEM_like` com campos
 top-level) **não são** compatíveis e devem ser regenerados.
 """
+
 from __future__ import annotations
 
 from collections import Counter
@@ -43,12 +44,10 @@ def build_event_training_rows(
         token = _correlation_token_from_payload(item)
         if token:
             requests[token] = item
-    spatem_rows = [item for item in cits_rows if item.get("message_type") == MessageType.SPATEM.value]
-    decisions = [
-        item
-        for item in _read_jsonl(Path(decision_log))
-        if item.get("request_id")
+    spatem_rows = [
+        item for item in cits_rows if item.get("message_type") == MessageType.SPATEM.value
     ]
+    decisions = [item for item in _read_jsonl(Path(decision_log)) if item.get("request_id")]
     actuations_by_decision = {
         str(item.get("decision_id")): item
         for item in _read_jsonl(Path(actuation_log))
@@ -59,7 +58,9 @@ def build_event_training_rows(
     for decision in decisions:
         request = requests.get(str(decision.get("request_id")), {})
         actuation = actuations_by_decision.get(str(decision.get("decision_id")), {})
-        signal_state = _latest_spatem(spatem_rows, str(decision.get("tls_id")), _float(decision.get("timestamp_s")))
+        signal_state = _latest_spatem(
+            spatem_rows, str(decision.get("tls_id")), _float(decision.get("timestamp_s"))
+        )
         rows.append(
             {
                 "request_id": decision.get("request_id"),
@@ -105,7 +106,10 @@ def write_event_training_dataset(
     )
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text("\n".join(json.dumps(row, ensure_ascii=False, sort_keys=True) for row in rows) + "\n", encoding="utf-8")
+    output.write_text(
+        "\n".join(json.dumps(row, ensure_ascii=False, sort_keys=True) for row in rows) + "\n",
+        encoding="utf-8",
+    )
     return {
         "row_count": len(rows),
         "output_path": str(output),
@@ -148,8 +152,12 @@ def load_event_training_dataset(
     skipped_by_reason: Counter[str] = Counter()
     for index, row in enumerate(raw_rows):
         request_payload = row.get("request") if isinstance(row.get("request"), dict) else {}
-        signal_payload = row.get("signal_state") if isinstance(row.get("signal_state"), dict) else {}
-        network_state = row.get("network_state") if isinstance(row.get("network_state"), dict) else {}
+        signal_payload = (
+            row.get("signal_state") if isinstance(row.get("signal_state"), dict) else {}
+        )
+        network_state = (
+            row.get("network_state") if isinstance(row.get("network_state"), dict) else {}
+        )
         if not request_payload or not signal_payload or not network_state:
             skipped_by_reason["missing_request_signal_or_network_state"] += 1
             _maybe_record_intervention(row, last_applied_intervention_by_tls, intervention_actions)
@@ -171,7 +179,9 @@ def load_event_training_dataset(
         scenario_id = str(row.get("decision_id") or row.get("request_id") or f"event_{index}")
         tls_id = str(row.get("tls_id") or request.tls_id)
         last_intervention = last_applied_intervention_by_tls.get(tls_id)
-        seconds_since = None if last_intervention is None else max(0.0, timestamp_s - last_intervention)
+        seconds_since = (
+            None if last_intervention is None else max(0.0, timestamp_s - last_intervention)
+        )
         scenarios.append(
             OfflineScenario(
                 scenario_id=f"EVENT_{scenario_id}",
@@ -188,7 +198,9 @@ def load_event_training_dataset(
                 occupancy=network_metrics["occupancy"],
                 spillback_risk=network_metrics["spillback_risk"],
                 seconds_since_last_intervention_s=seconds_since,
-                behavior_policy_action=(str(row["action"]) if row.get("action") is not None else None),
+                behavior_policy_action=(
+                    str(row["action"]) if row.get("action") is not None else None
+                ),
                 realized_outcome=_optional_float(row.get("realized_outcome")),
             )
         )
@@ -256,7 +268,9 @@ def _read_jsonl(path: Path) -> Iterable[Dict[str, Any]]:
     return rows
 
 
-def _latest_spatem(spatem_rows: List[Dict[str, Any]], tls_id: str, timestamp_s: float) -> Dict[str, Any]:
+def _latest_spatem(
+    spatem_rows: List[Dict[str, Any]], tls_id: str, timestamp_s: float
+) -> Dict[str, Any]:
     candidates = [
         item
         for item in spatem_rows
@@ -290,9 +304,7 @@ def _signal_state_from_payload(payload: Dict[str, Any], request: SREMLike) -> Si
     controlled_lanes = payload.get("controlled_lanes")
     # O SPATEM novo tem `intersection_alias` em vez de `intersection_id`.
     intersection_alias = (
-        spatem.intersection_alias
-        or payload.get("intersection_id")
-        or request.intersection_id
+        spatem.intersection_alias or payload.get("intersection_id") or request.intersection_id
     )
     return SignalState(
         intersection_id=str(intersection_alias),
@@ -303,7 +315,9 @@ def _signal_state_from_payload(payload: Dict[str, Any], request: SREMLike) -> Si
         if payload.get("current_phase_index") is not None
         else None,
         current_program_id=_optional_text(payload.get("current_program_id")),
-        red_yellow_green_state=_optional_text(spatem.debug_sumo_state or payload.get("red_yellow_green_state")),
+        red_yellow_green_state=_optional_text(
+            spatem.debug_sumo_state or payload.get("red_yellow_green_state")
+        ),
         next_switch_s=_optional_float(payload.get("next_switch_s")),
         spent_duration_s=_optional_float(payload.get("spent_duration_s")),
         controlled_lanes=list(controlled_lanes) if isinstance(controlled_lanes, list) else [],
@@ -342,7 +356,7 @@ def _network_state_from_notes(notes: Any) -> Dict[str, Any]:
         if not isinstance(note, str) or not note.startswith(prefix):
             continue
         payload: Dict[str, Any] = {}
-        for item in note[len(prefix):].split(","):
+        for item in note[len(prefix) :].split(","):
             if ":" not in item:
                 continue
             key, value = item.split(":", 1)

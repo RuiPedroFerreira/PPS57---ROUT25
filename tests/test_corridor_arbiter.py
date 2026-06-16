@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """P6 corridor arbiter: opt-in, pre-Safety, downgrade-only cross-TLS arbitration."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -28,7 +29,9 @@ def tsp_with_corridor(**corridor) -> TSPConfig:
     return TSPConfig(root=ROOT, raw={"corridor": corridor} if corridor else {})
 
 
-def decision(tls_id: str = "I1", next_edge_id: str = DOWNSTREAM_EDGE, action: str = "green_extension") -> TSPDecision:
+def decision(
+    tls_id: str = "I1", next_edge_id: str = DOWNSTREAM_EDGE, action: str = "green_extension"
+) -> TSPDecision:
     return TSPDecision(
         timestamp_s=0.0,
         request_id="r1",
@@ -104,9 +107,7 @@ class CorridorArbiterTestCase(unittest.TestCase):
             network_states={DOWNSTREAM_TLS: snapshot(DOWNSTREAM_TLS, True)},
         )
         self.assertFalse(out.allow)
-        self.assertEqual(
-            out.reason_code, ReasonCode.DEFERRED_DOWNSTREAM_SPILLBACK_RISK.value
-        )
+        self.assertEqual(out.reason_code, ReasonCode.DEFERRED_DOWNSTREAM_SPILLBACK_RISK.value)
         # Sem dívida nem spillback, a config de fábrica permite a atuação.
         out = arbiter.arbitrate(
             decision(),
@@ -120,7 +121,9 @@ class CorridorArbiterTestCase(unittest.TestCase):
         arbiter = CorridorArbiter(CITS, tsp_with_corridor(max_corridor_recovery_debt_s=10.0))
         out = arbiter.arbitrate(decision(), recovery_debt_by_tls={"I1": 6.0, "I2": 5.0})
         self.assertFalse(out.allow)
-        self.assertEqual(out.reason_code, ReasonCode.DEFERRED_CORRIDOR_RECOVERY_DEBT_EXHAUSTED.value)
+        self.assertEqual(
+            out.reason_code, ReasonCode.DEFERRED_CORRIDOR_RECOVERY_DEBT_EXHAUSTED.value
+        )
 
     def test_allows_when_debt_under_cap(self) -> None:
         arbiter = CorridorArbiter(CITS, tsp_with_corridor(max_corridor_recovery_debt_s=10.0))
@@ -148,7 +151,9 @@ class CorridorArbiterTestCase(unittest.TestCase):
         self.assertIn(DOWNSTREAM_TLS, out.note)
 
     def test_no_action_when_downstream_not_at_spillback(self) -> None:
-        arbiter = CorridorArbiter(CITS, tsp_with_corridor(respect_downstream_spillback=True, flag_green_wave=True))
+        arbiter = CorridorArbiter(
+            CITS, tsp_with_corridor(respect_downstream_spillback=True, flag_green_wave=True)
+        )
         out = arbiter.arbitrate(
             decision(),
             network_states={DOWNSTREAM_TLS: snapshot(DOWNSTREAM_TLS, False)},
@@ -171,9 +176,9 @@ class CorridorArbiterTestCase(unittest.TestCase):
         debt = CorridorArbiter(CITS, tsp_with_corridor(max_corridor_recovery_debt_s=1.0)).arbitrate(
             decision(), recovery_debt_by_tls={"I1": 5.0}
         )
-        spill = CorridorArbiter(CITS, tsp_with_corridor(respect_downstream_spillback=True)).arbitrate(
-            decision(), network_states={DOWNSTREAM_TLS: snapshot(DOWNSTREAM_TLS, True)}
-        )
+        spill = CorridorArbiter(
+            CITS, tsp_with_corridor(respect_downstream_spillback=True)
+        ).arbitrate(decision(), network_states={DOWNSTREAM_TLS: snapshot(DOWNSTREAM_TLS, True)})
         for out in (debt, spill):
             self.assertFalse(out.allow)
             self.assertIn(out.reason_code, codes)

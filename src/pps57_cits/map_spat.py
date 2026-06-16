@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Construção de MAPEM e SPATEM para as RSUs do corredor (ETSI TS 103 301-2)."""
+
 from __future__ import annotations
 
 from typing import List

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Runtime smoke validation for the generated SUMO scenario."""
+
 from __future__ import annotations
 
 import argparse

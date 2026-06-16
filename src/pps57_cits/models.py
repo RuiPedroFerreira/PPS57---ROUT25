@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Modelos internos para observações SUMO e estado de interseções."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

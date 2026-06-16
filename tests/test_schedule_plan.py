@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests for the deterministic schedule-adherence stand-in (P1)."""
+
 from __future__ import annotations
 
 import copy
@@ -155,12 +156,16 @@ class ScheduleAdherenceIntegrationTestCase(unittest.TestCase):
 
     def test_obu_prefers_sourced_delay_over_waiting_proxy(self) -> None:
         obu = OBUEmulator(self.config)
-        sourced = make_obs(schedule_delay_s=80.0, waiting_time_s=200.0, schedule_adherence_sourced=True)
+        sourced = make_obs(
+            schedule_delay_s=80.0, waiting_time_s=200.0, schedule_adherence_sourced=True
+        )
         self.assertEqual(obu._effective_schedule_delay(sourced), 80.0)
 
     def test_obu_falls_back_to_proxy_when_not_sourced(self) -> None:
         obu = OBUEmulator(self.config)
-        proxy = make_obs(schedule_delay_s=0.0, waiting_time_s=200.0, schedule_adherence_sourced=False)
+        proxy = make_obs(
+            schedule_delay_s=0.0, waiting_time_s=200.0, schedule_adherence_sourced=False
+        )
         self.assertEqual(obu._effective_schedule_delay(proxy), 200.0)
 
     def test_adapter_leaves_observation_unchanged_when_disabled(self) -> None:

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests for P2 state enrichment: configurable ETA, real back-of-queue, spillback."""
+
 from __future__ import annotations
 
 import copy
@@ -50,7 +51,9 @@ class EtaParamsTestCase(unittest.TestCase):
         self.assertAlmostEqual(obs.eta_to_stopline_s, expected)
 
     def test_custom_eta_params_change_result(self) -> None:
-        slow = make_obs(speed_mps=0.0, waiting_time_s=999.0, eta_params=EtaParams(waiting_cap_s=30.0))
+        slow = make_obs(
+            speed_mps=0.0, waiting_time_s=999.0, eta_params=EtaParams(waiting_cap_s=30.0)
+        )
         distance = slow.distance_to_stopline_m
         expected = distance / 8.0 + 0.0 + min(999.0, 30.0)
         self.assertAlmostEqual(slow.eta_to_stopline_s, expected)
@@ -121,7 +124,10 @@ class AdapterConfigWiringTestCase(unittest.TestCase):
 
     def test_malformed_scalar_falls_back_to_default(self) -> None:
         raw = copy.deepcopy(self.config.raw)
-        raw["state_estimation"] = {"eta_free_flow_speed_mps": "oops", "spillback_occupancy_threshold": "bad"}
+        raw["state_estimation"] = {
+            "eta_free_flow_speed_mps": "oops",
+            "spillback_occupancy_threshold": "bad",
+        }
         adapter = TraciSimulationAdapter(replace(self.config, raw=raw))
         self.assertEqual(adapter._eta_params.free_flow_speed_mps, 8.0)
         self.assertEqual(adapter._spillback_occupancy, 0.75)

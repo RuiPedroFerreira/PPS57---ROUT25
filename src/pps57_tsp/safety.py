@@ -21,6 +21,7 @@ não silenciosamente assumidas):
 Princípio geral: na ausência de dados que provem a segurança de uma atuação, a
 decisão é BLOQUEADA (fail-closed), nunca aprovada com defaults permissivos.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -101,11 +102,17 @@ class TSPSafetyLayer:
         # Contratos dependem do binding: invalidar o cache por-TLS.
         self._contract_cache.clear()
 
-    def validate(self, decision: TSPDecision, signal_state: SignalState, sim_time_s: float) -> SafetyValidationResult:
+    def validate(
+        self, decision: TSPDecision, signal_state: SignalState, sim_time_s: float
+    ) -> SafetyValidationResult:
         notes = list(decision.notes)
         emergency_preemption = decision.priority_level == OperatorPriorityClass.EMERGENCY.value
 
-        if decision.action in {TSPAction.NO_ACTION.value, TSPAction.REJECT.value, TSPAction.REEVALUATE_NEXT_CYCLE.value}:
+        if decision.action in {
+            TSPAction.NO_ACTION.value,
+            TSPAction.REJECT.value,
+            TSPAction.REEVALUATE_NEXT_CYCLE.value,
+        }:
             safe = decision.copy_with(status=DecisionStatus.NOT_ACTUABLE.value)
             return SafetyValidationResult(
                 decision_id=decision.decision_id,
@@ -136,18 +143,25 @@ class TSPSafetyLayer:
         ):
             return self._blocked(decision, "cooldown_after_priority_active", notes)
         if emergency_preemption:
-            notes.append("Emergency preemption: cooldown/recovery-debt rationing bypassed; clearance checks still enforced.")
+            notes.append(
+                "Emergency preemption: cooldown/recovery-debt rationing bypassed; clearance checks still enforced."
+            )
 
         self._reset_count_after_recovery_window(decision.tls_id, sim_time_s)
         if not emergency_preemption:
             self._recover_debt(decision.tls_id, sim_time_s)
             max_recovery_debt = self._optional_safety_value("max_recovery_debt_s")
-            if max_recovery_debt is not None and self.recovery_debt_by_tls.get(decision.tls_id, 0.0) >= max_recovery_debt:
+            if (
+                max_recovery_debt is not None
+                and self.recovery_debt_by_tls.get(decision.tls_id, 0.0) >= max_recovery_debt
+            ):
                 return self._blocked(decision, "recovery_debt_limit_active", notes)
 
         # Fail-closed: max_consecutive em falta significa que não temos bound
         # de segurança para limitar intervenções repetidas no mesmo TLS.
-        max_consecutive_raw = self._required_safety_value("max_consecutive_priority_interventions_per_tls")
+        max_consecutive_raw = self._required_safety_value(
+            "max_consecutive_priority_interventions_per_tls"
+        )
         if max_consecutive_raw is None:
             return self._blocked(
                 decision,
@@ -181,7 +195,9 @@ class TSPSafetyLayer:
         # incrementa o contador consecutivo (events.register_applied corre
         # depois deste mark_applied, logo na abertura ainda não há evento).
         if self._continuation_event(decision) is None:
-            self.consecutive_interventions_by_tls[decision.tls_id] = self.consecutive_interventions_by_tls.get(decision.tls_id, 0) + 1
+            self.consecutive_interventions_by_tls[decision.tls_id] = (
+                self.consecutive_interventions_by_tls.get(decision.tls_id, 0) + 1
+            )
         added_debt = max(0.0, float(decision.extension_s or 0.0))
         if decision.action == TSPAction.EARLY_GREEN.value:
             # A perturbação do early_green é o verde REMOVIDO à fase
@@ -197,7 +213,9 @@ class TSPSafetyLayer:
                 added_debt = max(added_debt, max(0.0, remaining_at_decision_s - truncated_to_s))
             else:
                 added_debt = max(added_debt, truncated_to_s)
-        self.recovery_debt_by_tls[decision.tls_id] = self.recovery_debt_by_tls.get(decision.tls_id, 0.0) + added_debt
+        self.recovery_debt_by_tls[decision.tls_id] = (
+            self.recovery_debt_by_tls.get(decision.tls_id, 0.0) + added_debt
+        )
         self.recovery_debt_update_time_by_tls[decision.tls_id] = sim_time_s
 
     def reset_intervention_count(self, tls_id: str) -> None:
@@ -247,8 +265,12 @@ class TSPSafetyLayer:
         if target_phase is None:
             return self._blocked(decision, "green_extension_unknown_target_phase", notes)
         if signal_state.current_phase_index != target_phase:
-            return self._blocked(decision, "green_extension_requires_priority_movement_green_phase", notes)
-        if signal_group.requires_protected_green and not _request_has_protected_green(signal_state, decision, signal_group):
+            return self._blocked(
+                decision, "green_extension_requires_priority_movement_green_phase", notes
+            )
+        if signal_group.requires_protected_green and not _request_has_protected_green(
+            signal_state, decision, signal_group
+        ):
             return self._blocked(decision, "green_extension_requires_protected_green", notes)
 
         # Bound de segurança obrigatório: sem ele, não é possível provar que a
@@ -260,7 +282,9 @@ class TSPSafetyLayer:
             max_extension = min(max_extension, signal_group.max_extension_s)
         # O teto de política só pode *reduzir* a extensão, nunca substituir o
         # bound de segurança.
-        max_extension = min(max_extension, _positive_float(policy, "green_extension_max_s", max_extension))
+        max_extension = min(
+            max_extension, _positive_float(policy, "green_extension_max_s", max_extension)
+        )
         # v2.2: o orçamento de um evento é CUMULATIVO — as prestações já
         # concedidas consomem o mesmo max_extension que limitava o one-shot.
         if continuation_event is not None:
@@ -270,7 +294,9 @@ class TSPSafetyLayer:
             max_extension = min(max_extension, event_budget_left)
         extension_s = min(decision.extension_s, max_extension)
         if extension_s < decision.extension_s:
-            notes.append(f"Extensão reduzida pela safety layer: {decision.extension_s:.1f}s -> {extension_s:.1f}s.")
+            notes.append(
+                f"Extensão reduzida pela safety layer: {decision.extension_s:.1f}s -> {extension_s:.1f}s."
+            )
 
         max_total_green = self._required_safety_value("max_total_green_s")
         if max_total_green is None:
@@ -291,13 +317,17 @@ class TSPSafetyLayer:
         if allowed_by_total <= 0:
             return self._blocked(decision, "max_total_green_already_reached", notes)
         if extension_s > allowed_by_total:
-            notes.append(f"Extensão limitada por max_total_green: {extension_s:.1f}s -> {allowed_by_total:.1f}s.")
+            notes.append(
+                f"Extensão limitada por max_total_green: {extension_s:.1f}s -> {allowed_by_total:.1f}s."
+            )
             extension_s = max(0.0, allowed_by_total)
 
         if extension_s <= 0:
             return self._blocked(decision, "green_extension_clipped_to_zero", notes)
 
-        safe = decision.copy_with(status=DecisionStatus.APPROVED.value, extension_s=round(extension_s, 3), notes=notes)
+        safe = decision.copy_with(
+            status=DecisionStatus.APPROVED.value, extension_s=round(extension_s, 3), notes=notes
+        )
         return SafetyValidationResult(
             decision_id=decision.decision_id,
             approved=True,
@@ -330,7 +360,9 @@ class TSPSafetyLayer:
             return self._blocked(decision, "signal_group_conflict_matrix_missing", notes)
 
         if bool(actuation.get("allow_direct_phase_jump", False)):
-            notes.append("Config permite salto direto de fase, mas o MVP usa setPhaseDuration por defeito.")
+            notes.append(
+                "Config permite salto direto de fase, mas o MVP usa setPhaseDuration por defeito."
+            )
 
         min_green = self._required_safety_value("min_green_s")
         if min_green is None:
@@ -344,7 +376,9 @@ class TSPSafetyLayer:
             return self._blocked(decision, "early_green_unknown_spent_phase_time", notes)
         spent_s = float(signal_state.spent_duration_s)
         if spent_s < min_green:
-            return self._blocked(decision, f"min_green_not_satisfied:{spent_s:.1f}<{min_green:.1f}", notes)
+            return self._blocked(
+                decision, f"min_green_not_satisfied:{spent_s:.1f}<{min_green:.1f}", notes
+            )
 
         requested_duration = decision.phase_duration_s
         if requested_duration is None:
@@ -353,7 +387,9 @@ class TSPSafetyLayer:
         sequence_problem = self._phase_sequence_clearance_check(signal_state, decision)
         if sequence_problem is not None:
             return self._blocked(decision, sequence_problem, notes)
-        current_conflict_problem = self._current_phase_conflict_check(signal_state, signal_group, contract)
+        current_conflict_problem = self._current_phase_conflict_check(
+            signal_state, signal_group, contract
+        )
         if current_conflict_problem is not None:
             return self._blocked(decision, current_conflict_problem, notes)
 
@@ -480,8 +516,12 @@ class TSPSafetyLayer:
         if decision.action == TSPAction.GREEN_EXTENSION.value:
             controlled_links = signal_state.controlled_links or []
             link_positions = [
-                i for i, links in enumerate(controlled_links)
-                if i < len(ryg) and _controlled_links_match_request(links, decision.current_lane_id, decision.next_edge_id)
+                i
+                for i, links in enumerate(controlled_links)
+                if i < len(ryg)
+                and _controlled_links_match_request(
+                    links, decision.current_lane_id, decision.next_edge_id
+                )
             ]
             if link_positions and not any(ryg[i].lower() == "y" for i in link_positions):
                 return False
@@ -499,10 +539,13 @@ class TSPSafetyLayer:
                 # "I1_I2" vs "I1_I20", mas o rsplit é estruturalmente mais
                 # robusto e independente do esquema de nomes das edges.
                 movement_positions = [
-                    i for i, lane in enumerate(controlled)
+                    i
+                    for i, lane in enumerate(controlled)
                     if i < len(ryg) and _lane_belongs_to_edge_set(lane, movement_edges)
                 ]
-                if movement_positions and not any(ryg[i].lower() == "y" for i in movement_positions):
+                if movement_positions and not any(
+                    ryg[i].lower() == "y" for i in movement_positions
+                ):
                     return False
         return True
 
@@ -518,7 +561,9 @@ class TSPSafetyLayer:
         executar a clearance amarelo/all-red. Fail-closed em dados em falta.
         """
         contract = self._controller_contract(decision)
-        never_skip = bool(self.cits_config.safety_constraints.get("never_skip_yellow_or_all_red", True))
+        never_skip = bool(
+            self.cits_config.safety_constraints.get("never_skip_yellow_or_all_red", True)
+        )
         return phase_sequence_clearance_problem(
             contract,
             signal_state.current_phase_index,
@@ -538,7 +583,8 @@ class TSPSafetyLayer:
         current_groups = [
             group
             for group in contract.signal_groups.values()
-            if group.phase_index == current and group.signal_group_id != target_group.signal_group_id
+            if group.phase_index == current
+            and group.signal_group_id != target_group.signal_group_id
         ]
         if not current_groups:
             return "early_green_current_phase_signal_group_unknown"
@@ -594,8 +640,12 @@ class TSPSafetyLayer:
         None aqui significa "funcionalidade desligada", não motivo de bloqueio."""
         return self._required_safety_value(key)
 
-    def _blocked(self, decision: TSPDecision, reason: str, notes: Optional[list[str]] = None) -> SafetyValidationResult:
-        safe = decision.copy_with(status=DecisionStatus.BLOCKED_BY_SAFETY.value, reason=reason, notes=list(notes or []))
+    def _blocked(
+        self, decision: TSPDecision, reason: str, notes: Optional[list[str]] = None
+    ) -> SafetyValidationResult:
+        safe = decision.copy_with(
+            status=DecisionStatus.BLOCKED_BY_SAFETY.value, reason=reason, notes=list(notes or [])
+        )
         return SafetyValidationResult(
             decision_id=decision.decision_id,
             approved=False,
@@ -614,7 +664,9 @@ def _request_has_protected_green(
     ryg = signal_state.red_yellow_green_state or ""
     controlled_links = signal_state.controlled_links or []
     for index, links in enumerate(controlled_links):
-        if index < len(ryg) and _controlled_links_match_request(links, decision.current_lane_id, decision.next_edge_id):
+        if index < len(ryg) and _controlled_links_match_request(
+            links, decision.current_lane_id, decision.next_edge_id
+        ):
             return ryg[index] == "G"
 
     controlled_lanes = signal_state.controlled_lanes or []

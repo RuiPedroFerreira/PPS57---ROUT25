@@ -25,6 +25,7 @@ estendida; na ativação seguinte dessa fase, encurta-se a fase em prestações
 (``compensation_max_per_cycle_s``) nunca abaixo do ``min_green_s`` da safety
 (fail-closed sem o bound). Opt-in: ``actuation.coordination_recovery_enabled``.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -161,15 +162,27 @@ class GreenCompensationManager:
             # mesma fase, se existir, fica pendente para a ativação seguinte —
             # nunca se combinam dois comandos absolutos no mesmo passo.
             result = self._pay_compensation(
-                tls_id, int(current), remaining_s, spent_s,
-                max_per_cycle_s, max_total_green, sim_time_s,
-                signal_control, apply_actuation,
+                tls_id,
+                int(current),
+                remaining_s,
+                spent_s,
+                max_per_cycle_s,
+                max_total_green,
+                sim_time_s,
+                signal_control,
+                apply_actuation,
             )
             if result is None:
                 result = self._reclaim_extension(
-                    tls_id, int(current), remaining_s, spent_s,
-                    max_per_cycle_s, min_green, sim_time_s,
-                    signal_control, apply_actuation,
+                    tls_id,
+                    int(current),
+                    remaining_s,
+                    spent_s,
+                    max_per_cycle_s,
+                    min_green,
+                    sim_time_s,
+                    signal_control,
+                    apply_actuation,
                 )
             if result is not None:
                 results.append(result)

@@ -8,6 +8,7 @@ about Porto: this suite proves the V2 instrument parses real payloads correctly
 and applies the documented plausibility gate, nothing more. The real Madrid/DfT
 numbers live only in the fetched payloads and the committed evidence report.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -44,8 +45,18 @@ DFT_PAYLOAD = {
     "data": [
         {"local_authority_id": 3, "road_category": "PA", "year": 2024, "all_motor_vehicles": 1000},
         {"local_authority_id": 3, "road_category": "TA", "year": 2024, "all_motor_vehicles": 2000},
-        {"local_authority_id": 3, "road_category": "TM", "year": 2024, "all_motor_vehicles": 9999},  # motorway: excluded
-        {"local_authority_id": 3, "road_category": "PA", "year": 2019, "all_motor_vehicles": 500},   # wrong year
+        {
+            "local_authority_id": 3,
+            "road_category": "TM",
+            "year": 2024,
+            "all_motor_vehicles": 9999,
+        },  # motorway: excluded
+        {
+            "local_authority_id": 3,
+            "road_category": "PA",
+            "year": 2019,
+            "all_motor_vehicles": 500,
+        },  # wrong year
     ]
 }
 

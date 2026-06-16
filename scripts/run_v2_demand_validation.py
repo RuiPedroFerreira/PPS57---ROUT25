@@ -22,6 +22,7 @@ Run scripts/fetch_reference_counts.py (reference counts) and
 scripts/build_reference_corridor.py (V4d evidence) first, or pass --v4d;
 this script refuses to invent data.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -110,7 +111,9 @@ def gate_verdict(rule: str, plausibility: Mapping, envelope: Mapping, enough_cit
 
 def madrid_distribution(raw_dir: Path, only_urban: bool) -> dict:
     xml_text = _require(raw_dir / "madrid_pm.xml").read_text(encoding="utf-8", errors="replace")
-    cat_text = _require(raw_dir / "madrid_catalogue.csv").read_text(encoding="utf-8", errors="replace")
+    cat_text = _require(raw_dir / "madrid_catalogue.csv").read_text(
+        encoding="utf-8", errors="replace"
+    )
     catalogue = rc.parse_madrid_catalogue(cat_text)
     values = rc.parse_madrid_intensities(xml_text, catalogue, only_urban=only_urban)
     dist = rc.distribution(values)
@@ -125,9 +128,14 @@ def _local_authority_id(rec: dict) -> int:
         return -1
 
 
-def dft_city_distributions(raw_dir: Path, provenance: dict, categories, k_factor: float) -> dict[str, dict]:
+def dft_city_distributions(
+    raw_dir: Path, provenance: dict, categories, k_factor: float
+) -> dict[str, dict]:
     records = json.loads(_require(raw_dir / "dft_aadf.json").read_text(encoding="utf-8"))
-    id_to_city = {int(la_id): city for city, la_id in provenance_source(provenance, "dft")["local_authorities"].items()}
+    id_to_city = {
+        int(la_id): city
+        for city, la_id in provenance_source(provenance, "dft")["local_authorities"].items()
+    }
     out: dict[str, dict] = {}
     for la_id, city in sorted(id_to_city.items(), key=lambda item: item[1]):
         city_records = [rec for rec in records if _local_authority_id(rec) == la_id]
@@ -142,11 +150,17 @@ def dft_city_distributions(raw_dir: Path, provenance: dict, categories, k_factor
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--raw-dir", type=Path, default=RAW_DIR)
-    parser.add_argument("--v4d", type=Path, default=ROOT / "docs" / "validation" / "v4d_reference_corridor.json")
+    parser.add_argument(
+        "--v4d", type=Path, default=ROOT / "docs" / "validation" / "v4d_reference_corridor.json"
+    )
     parser.add_argument("--config", type=Path, default=ROOT / "configs" / "validation_config.json")
-    parser.add_argument("--out", type=Path, default=ROOT / "docs" / "validation" / "v2_reference_demand_check.json")
+    parser.add_argument(
+        "--out", type=Path, default=ROOT / "docs" / "validation" / "v2_reference_demand_check.json"
+    )
     args = parser.parse_args()
 
     config = load_validation_config(args.config)
@@ -217,22 +231,34 @@ def main() -> None:
         "verdict": verdict,
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+    args.out.write_text(
+        json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
     print(f"V2 reference demand envelope — {len(cities)} cities, percentiles {percentiles}")
     for name, dist in sorted(cities.items()):
-        print(f"  {name:22s} n={dist.get('n', 0):4d}  median={dist.get('median')}  p90={dist.get('p90')}  veh/h")
-    print(f"  corridor (Boavista)    median={corridor_stats['median']}  p90={corridor_stats['p90']}  veh/h")
+        print(
+            f"  {name:22s} n={dist.get('n', 0):4d}  median={dist.get('median')}  p90={dist.get('p90')}  veh/h"
+        )
+    print(
+        f"  corridor (Boavista)    median={corridor_stats['median']}  p90={corridor_stats['p90']}  veh/h"
+    )
     ti = plausibility.get("typical_intensity_match", {})
     we = plausibility.get("within_real_envelope", {})
-    print(f"  [{'in' if ti.get('inside') else 'OUT'}] typical median {ti.get('corridor_median_veh_h')} "
-          f"in real median range {ti.get('real_median_range_veh_h')}")
-    print(f"  [{'in' if we.get('inside') else 'OUT'}] p90 {we.get('corridor_p90_veh_h')} "
-          f"in real range {we.get('real_floor_to_peak_veh_h')}")
+    print(
+        f"  [{'in' if ti.get('inside') else 'OUT'}] typical median {ti.get('corridor_median_veh_h')} "
+        f"in real median range {ti.get('real_median_range_veh_h')}"
+    )
+    print(
+        f"  [{'in' if we.get('inside') else 'OUT'}] p90 {we.get('corridor_p90_veh_h')} "
+        f"in real range {we.get('real_floor_to_peak_veh_h')}"
+    )
     print(f"  (raw same-percentile spread, for transparency:)")
     for chk in envelope["percentile_checks"]:
-        print(f"     [{ 'in' if chk.get('inside') else 'OUT'}] {chk['percentile']}: corridor {chk.get('corridor_veh_h')} "
-              f"vs band {chk.get('reference_band_veh_h')}")
+        print(
+            f"     [{'in' if chk.get('inside') else 'OUT'}] {chk['percentile']}: corridor {chk.get('corridor_veh_h')} "
+            f"vs band {chk.get('reference_band_veh_h')}"
+        )
     print(f"  verdict: {verdict}  -> {args.out}")
     if verdict not in ("pass",):
         raise SystemExit(1)

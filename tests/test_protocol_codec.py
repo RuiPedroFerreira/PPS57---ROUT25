@@ -68,7 +68,9 @@ class ProtocolCodecTests(unittest.TestCase):
         payload = valid_srem().to_dict()
         payload["station_id"] = "not-an-int"
 
-        with self.assertRaisesRegex(ProtocolCodecError, "Invalid json-simulation-etsi-like payload"):
+        with self.assertRaisesRegex(
+            ProtocolCodecError, "Invalid json-simulation-etsi-like payload"
+        ):
             codec.decode(payload)
 
     def test_cits_jsonl_logger_uses_codec_boundary(self) -> None:
@@ -212,7 +214,6 @@ class ProtocolCodecTests(unittest.TestCase):
 
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["signal_state"]["message_id"], spatem.message_id)
-
 
     def test_spatem_with_more_than_255_links_is_capped_and_valid(self) -> None:
         # A TLS with 260 links would produce signal_group_id=256 for the 256th link,

@@ -7,6 +7,7 @@ over a vehicle's trip are therefore the SUM of its per-step observations.
 Sustainability claims (TSP reduces CO2, fuel use, etc.) are only verifiable once
 this file is parsed — otherwise the KPIs are absent from the run summary.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

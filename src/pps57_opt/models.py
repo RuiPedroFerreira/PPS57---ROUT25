@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Modelos para avaliação offline de políticas TSP otimizadas."""
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
@@ -44,8 +45,12 @@ class OfflineScenario:
             "sim_time_s": self.sim_time_s,
             "request": self.request.to_dict(),
             "signal_state": asdict(self.signal_state),
-            "initial_last_intervention_time_by_tls": dict(self.initial_last_intervention_time_by_tls),
-            "initial_consecutive_interventions_by_tls": dict(self.initial_consecutive_interventions_by_tls),
+            "initial_last_intervention_time_by_tls": dict(
+                self.initial_last_intervention_time_by_tls
+            ),
+            "initial_consecutive_interventions_by_tls": dict(
+                self.initial_consecutive_interventions_by_tls
+            ),
             "active_request_count": self.active_request_count,
             "queue_vehicle_count": self.queue_vehicle_count,
             "halted_vehicle_count": self.halted_vehicle_count,

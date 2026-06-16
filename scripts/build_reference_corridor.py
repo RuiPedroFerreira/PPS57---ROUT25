@@ -15,6 +15,7 @@ It then runs the corridor (cars + the real STCP buses) under the Webster signals
 reports KPIs plus the Madrid demand-band validation. Every input is sourced; only the
 calibration *rate* is chosen to hit the referenced intensity band (and reported).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -40,7 +41,9 @@ SIM_END_S = 7200
 # PINNED STATIC SNAPSHOT, used only as a fallback when no fetched V2 snapshot
 # exists under .tools/reference-counts/ (scripts/fetch_reference_counts.py).
 MADRID_BAND = {
-    "median": 397, "p75": 819, "p90": 1329,
+    "median": 397,
+    "p75": 819,
+    "p90": 1329,
     "source": "datos.madrid.es / PMC11416623",
     "band_origin": "pinned_static_snapshot",
 }
@@ -61,16 +64,22 @@ def load_madrid_band(raw_dir: Path = REFERENCE_COUNTS_DIR) -> dict:
     if not (pm.exists() and cat.exists() and prov_path.exists()):
         return dict(MADRID_BAND)
     catalogue = rc.parse_madrid_catalogue(cat.read_text(encoding="utf-8", errors="replace"))
-    values = rc.parse_madrid_intensities(pm.read_text(encoding="utf-8", errors="replace"), catalogue, only_urban=True)
+    values = rc.parse_madrid_intensities(
+        pm.read_text(encoding="utf-8", errors="replace"), catalogue, only_urban=True
+    )
     if not values:
         raise SystemExit(
             f"Fetched Madrid snapshot in {raw_dir} parsed to zero URB intensities — refusing to fall "
             "back silently. Re-run scripts/fetch_reference_counts.py or remove the stale snapshot."
         )
     dist = rc.distribution(values)
-    madrid_prov = (json.loads(prov_path.read_text(encoding="utf-8")).get("sources") or {}).get("madrid") or {}
+    madrid_prov = (json.loads(prov_path.read_text(encoding="utf-8")).get("sources") or {}).get(
+        "madrid"
+    ) or {}
     return {
-        "median": dist["median"], "p75": dist["p75"], "p90": dist["p90"],
+        "median": dist["median"],
+        "p75": dist["p75"],
+        "p90": dist["p90"],
         "n_detectors": dist["n"],
         "source": "datos.madrid.es informo URB snapshot (fetched by scripts/fetch_reference_counts.py)",
         "band_origin": "fetched_snapshot",
@@ -123,20 +132,42 @@ def build_bus_flows(v4b_report: Path, path: Path) -> int:
     """Bus flows (one per line+direction) from the V4b mapping; same shape as V4c."""
     services = json.loads(v4b_report.read_text(encoding="utf-8"))["services"]
     routes = ET.Element("routes")
-    ET.SubElement(routes, "vType", {"id": "bus", "vClass": "bus", "length": "12.0",
-                                    "minGap": "3.0", "maxSpeed": "13.9", "guiShape": "bus"})
+    ET.SubElement(
+        routes,
+        "vType",
+        {
+            "id": "bus",
+            "vClass": "bus",
+            "length": "12.0",
+            "minGap": "3.0",
+            "maxSpeed": "13.9",
+            "guiShape": "bus",
+        },
+    )
     n = 0
     for key in sorted(services):
         entry = services[key]
         snapped = [s for s in entry["stops_in_bbox"] if s.get("snapped")]
         if len(snapped) < 2:
             continue
-        period = int(round((entry.get("headway_am_peak_min") or entry.get("headway_allday_min") or 12) * 60))
-        flow = ET.SubElement(routes, "flow", {
-            "id": f"bus_{entry['line']}_{entry['direction']}", "type": "bus",
-            "begin": "0", "end": str(SIM_END_S), "period": str(period),
-            "departLane": "best", "departSpeed": "max",
-            "from": snapped[0]["edge"], "to": snapped[-1]["edge"]})
+        period = int(
+            round((entry.get("headway_am_peak_min") or entry.get("headway_allday_min") or 12) * 60)
+        )
+        flow = ET.SubElement(
+            routes,
+            "flow",
+            {
+                "id": f"bus_{entry['line']}_{entry['direction']}",
+                "type": "bus",
+                "begin": "0",
+                "end": str(SIM_END_S),
+                "period": str(period),
+                "departLane": "best",
+                "departSpeed": "max",
+                "from": snapped[0]["edge"],
+                "to": snapped[-1]["edge"],
+            },
+        )
         for stop in snapped:
             ET.SubElement(flow, "stop", {"busStop": f"bs_{stop['stop_id']}", "duration": "15"})
         n += 1
@@ -144,7 +175,9 @@ def build_bus_flows(v4b_report: Path, path: Path) -> int:
     return n
 
 
-def build_arterial_car_flows(v4b_report: Path, path: Path, veh_h_per_dir: float) -> tuple[int, float]:
+def build_arterial_car_flows(
+    v4b_report: Path, path: Path, veh_h_per_dir: float
+) -> tuple[int, float]:
     """Explicit car flows along the dominant corridor line (per direction) at a target
     intensity, so the arterial carries realistic, controllable through-traffic
     (HCM/Madrid level). randomTrips adds diffuse cross-traffic on top.
@@ -159,13 +192,27 @@ def build_arterial_car_flows(v4b_report: Path, path: Path, veh_h_per_dir: float)
         if d not in by_dir or len(snapped) > by_dir[d][0]:
             by_dir[d] = (len(snapped), snapped[0]["edge"], snapped[-1]["edge"])
     routes = ET.Element("routes")
-    ET.SubElement(routes, "vType", {"id": "car", "vClass": "passenger", "length": "4.5", "minGap": "2.5"})
+    ET.SubElement(
+        routes, "vType", {"id": "car", "vClass": "passenger", "length": "4.5", "minGap": "2.5"}
+    )
     period = round(3600.0 / veh_h_per_dir, 3)
     n = 0
     for direction, (_, fr, to) in sorted(by_dir.items()):
-        ET.SubElement(routes, "flow", {"id": f"car_arterial_{direction}", "type": "car",
-                                       "begin": "0", "end": str(SIM_END_S), "period": str(period),
-                                       "from": fr, "to": to, "departLane": "best", "departSpeed": "max"})
+        ET.SubElement(
+            routes,
+            "flow",
+            {
+                "id": f"car_arterial_{direction}",
+                "type": "car",
+                "begin": "0",
+                "end": str(SIM_END_S),
+                "period": str(period),
+                "from": fr,
+                "to": to,
+                "departLane": "best",
+                "departSpeed": "max",
+            },
+        )
         n += 1
     ET.ElementTree(routes).write(path, encoding="utf-8", xml_declaration=True)
     return n, period
@@ -193,7 +240,8 @@ def measure_arterial_intensity(edgedata_path: Path, arterial_edges: set[str]) ->
     intensities = []
     zero_flow_excluded = 0
     for interval in _parse_sumo_xml(edgedata_path).findall("interval"):
-        begin = float(interval.get("begin", 0)); end = float(interval.get("end", SIM_END_S))
+        begin = float(interval.get("begin", 0))
+        end = float(interval.get("end", SIM_END_S))
         hours = max((end - begin) / 3600.0, 1e-9)
         for edge in interval.findall("edge"):
             if edge.get("id") in arterial_edges:
@@ -216,14 +264,36 @@ def measure_arterial_intensity(edgedata_path: Path, arterial_edges: set[str]) ->
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--net", type=Path, default=ROOT / ".tools" / "boavista-osm" / "boavista.net.xml")
-    parser.add_argument("--busstops", type=Path, default=ROOT / ".tools" / "boavista-osm" / "boavista_pt_stops.add.xml")
-    parser.add_argument("--v4b-report", type=Path, default=ROOT / "docs" / "validation" / "v4b_stcp_pt_mapping.json")
-    parser.add_argument("--car-period", type=float, default=4.0, help="randomTrips period (s) for diffuse cross-traffic")
-    parser.add_argument("--arterial-veh-h", type=float, default=700.0, help="explicit arterial through-flow per direction (veh/h)")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--net", type=Path, default=ROOT / ".tools" / "boavista-osm" / "boavista.net.xml"
+    )
+    parser.add_argument(
+        "--busstops",
+        type=Path,
+        default=ROOT / ".tools" / "boavista-osm" / "boavista_pt_stops.add.xml",
+    )
+    parser.add_argument(
+        "--v4b-report", type=Path, default=ROOT / "docs" / "validation" / "v4b_stcp_pt_mapping.json"
+    )
+    parser.add_argument(
+        "--car-period",
+        type=float,
+        default=4.0,
+        help="randomTrips period (s) for diffuse cross-traffic",
+    )
+    parser.add_argument(
+        "--arterial-veh-h",
+        type=float,
+        default=700.0,
+        help="explicit arterial through-flow per direction (veh/h)",
+    )
     parser.add_argument("--work", type=Path, default=ROOT / ".tools" / "boavista-osm")
-    parser.add_argument("--out", type=Path, default=ROOT / "docs" / "validation" / "v4d_reference_corridor.json")
+    parser.add_argument(
+        "--out", type=Path, default=ROOT / "docs" / "validation" / "v4d_reference_corridor.json"
+    )
     args = parser.parse_args()
     for p in (args.net, args.busstops, args.v4b_report):
         if not p.exists():
@@ -231,7 +301,9 @@ def main() -> None:
 
     sumo_home = _sumo_home()
     car_trips = args.work / "boavista_car_trips.xml"
-    car_routes = args.work / "boavista_car_routes.rou.xml"  # randomTrips default route output (keep out of ROOT)
+    car_routes = (
+        args.work / "boavista_car_routes.rou.xml"
+    )  # randomTrips default route output (keep out of ROOT)
     arterial_flows = args.work / "boavista_arterial_flows.xml"
     bus_flows = args.work / "boavista_bus_flows.xml"
     routed = args.work / "boavista_all_routed.rou.xml"
@@ -242,13 +314,42 @@ def main() -> None:
 
     # Fail-fast hygiene: drop stale tool outputs so a later "if file.exists()" can never
     # read artifacts from a previous (different) run when a tool now fails.
-    for stale in (car_trips, car_routes, arterial_flows, bus_flows, routed, webster, edgedata_out, tripinfo):
+    for stale in (
+        car_trips,
+        car_routes,
+        arterial_flows,
+        bus_flows,
+        routed,
+        webster,
+        edgedata_out,
+        tripinfo,
+    ):
         stale.unlink(missing_ok=True)
 
     # 1) reference background demand (randomTrips, fringe-biased through traffic)
-    rt = _run([sys.executable, str(_tool(sumo_home, "randomTrips.py")), "-n", _rel(args.net),
-               "-o", _rel(car_trips), "-r", _rel(car_routes), "-b", "0", "-e", str(SIM_END_S),
-               "-p", str(args.car_period), "--fringe-factor", "5", "--vehicle-class", "passenger"], sumo_home)
+    rt = _run(
+        [
+            sys.executable,
+            str(_tool(sumo_home, "randomTrips.py")),
+            "-n",
+            _rel(args.net),
+            "-o",
+            _rel(car_trips),
+            "-r",
+            _rel(car_routes),
+            "-b",
+            "0",
+            "-e",
+            str(SIM_END_S),
+            "-p",
+            str(args.car_period),
+            "--fringe-factor",
+            "5",
+            "--vehicle-class",
+            "passenger",
+        ],
+        sumo_home,
+    )
     # randomTrips is not part of any downstream verdict gate, so a silent failure here would
     # degrade to zero background demand (car_trips was unlinked above) and still produce a
     # misleading report. Fail loudly instead — refusing to build a reference corridor on
@@ -262,41 +363,104 @@ def main() -> None:
     n_cars = len(_parse_sumo_xml(car_trips).findall("trip"))
 
     # 2) explicit arterial through-flows (HCM/Madrid target) + real STCP bus flows
-    n_art, art_period = build_arterial_car_flows(args.v4b_report, arterial_flows, args.arterial_veh_h)
+    n_art, art_period = build_arterial_car_flows(
+        args.v4b_report, arterial_flows, args.arterial_veh_h
+    )
     n_flows = build_bus_flows(args.v4b_report, bus_flows)
 
     # 3) route arterial cars + background cars + buses together
-    dua = _run(["duarouter", "-n", _rel(args.net), "--additional-files", _rel(args.busstops),
-                "--route-files", f"{_rel(car_trips)},{_rel(arterial_flows)},{_rel(bus_flows)}", "-o", _rel(routed),
-                "--ignore-errors", "true", "--repair", "true", "--no-step-log", "true", "--no-warnings", "true"], sumo_home)
+    dua = _run(
+        [
+            "duarouter",
+            "-n",
+            _rel(args.net),
+            "--additional-files",
+            _rel(args.busstops),
+            "--route-files",
+            f"{_rel(car_trips)},{_rel(arterial_flows)},{_rel(bus_flows)}",
+            "-o",
+            _rel(routed),
+            "--ignore-errors",
+            "true",
+            "--repair",
+            "true",
+            "--no-step-log",
+            "true",
+            "--no-warnings",
+            "true",
+        ],
+        sumo_home,
+    )
     n_routed = len(_parse_sumo_xml(routed).findall("vehicle")) if routed.exists() else 0
 
     # 4) Webster signals from the routed demand (tlsCycleAdaptation = Webster 1958)
-    wj = _run([sys.executable, str(_tool(sumo_home, "tlsCycleAdaptation.py")),
-               "-n", _rel(args.net), "-r", _rel(routed), "-o", _rel(webster)], sumo_home)
+    wj = _run(
+        [
+            sys.executable,
+            str(_tool(sumo_home, "tlsCycleAdaptation.py")),
+            "-n",
+            _rel(args.net),
+            "-r",
+            _rel(routed),
+            "-o",
+            _rel(webster),
+        ],
+        sumo_home,
+    )
     if webster.exists():
         # rewrite without the SUMO header comment (its '---' path is invalid XML) so
         # both ET and SUMO can load it
-        webster.write_text(ET.tostring(_parse_sumo_xml(webster), encoding="unicode"), encoding="utf-8")
+        webster.write_text(
+            ET.tostring(_parse_sumo_xml(webster), encoding="unicode"), encoding="utf-8"
+        )
     n_tls = len(_parse_sumo_xml(webster).findall("tlLogic")) if webster.exists() else 0
 
     # 5) run the corridor under Webster signals, with edge intensity output
     edgedata_add.write_text(
         '<additional><edgeData id="ed" file="%s" begin="0" end="%d"/></additional>\n'
-        % (edgedata_out.name, SIM_END_S), encoding="utf-8")  # file= is resolved next to the add file
-    adds = ",".join(_rel(p) for p in ([webster, args.busstops, edgedata_add] if n_tls else [args.busstops, edgedata_add]))
+        % (edgedata_out.name, SIM_END_S),
+        encoding="utf-8",
+    )  # file= is resolved next to the add file
+    adds = ",".join(
+        _rel(p)
+        for p in (
+            [webster, args.busstops, edgedata_add] if n_tls else [args.busstops, edgedata_add]
+        )
+    )
     # No --end: demand departs through SIM_END_S, so capping SUMO at the same time would
     # drop late departures still finishing their trips from the KPIs. Let SUMO run until all
     # vehicles arrive. Explicit high time-to-teleport so the KPI run does not fall back to
     # SUMO's 300 s default (which teleports normal queues and skews KPIs); 900 s still lets a
     # genuine deadlock resolve rather than gridlocking the whole run.
-    sumo = _run(["sumo", "-n", _rel(args.net), "--additional-files", adds, "-r", _rel(routed),
-                 "--tripinfo-output", _rel(tripinfo), "--no-step-log", "true",
-                 "--no-warnings", "true", "--ignore-route-errors", "true",
-                 "--time-to-teleport", "900"], sumo_home)
+    sumo = _run(
+        [
+            "sumo",
+            "-n",
+            _rel(args.net),
+            "--additional-files",
+            adds,
+            "-r",
+            _rel(routed),
+            "--tripinfo-output",
+            _rel(tripinfo),
+            "--no-step-log",
+            "true",
+            "--no-warnings",
+            "true",
+            "--ignore-route-errors",
+            "true",
+            "--time-to-teleport",
+            "900",
+        ],
+        sumo_home,
+    )
 
     kpis = parse_tripinfo(tripinfo) if tripinfo.exists() else {}
-    arterial = measure_arterial_intensity(edgedata_out, bus_route_edges(routed)) if edgedata_out.exists() else {}
+    arterial = (
+        measure_arterial_intensity(edgedata_out, bus_route_edges(routed))
+        if edgedata_out.exists()
+        else {}
+    )
     madrid_band = load_madrid_band()
     p90 = arterial.get("p90_veh_h")
     # In-band = arterial p90 at least the documented Madrid median and at most its P90;
@@ -307,17 +471,28 @@ def main() -> None:
         "validation_phase": "V4d_reference_demand_and_webster_signals",
         "demand": {
             "model": "explicit arterial through-flows (HCM/Madrid target) + randomTrips diffuse cross-traffic",
-            "arterial_flow_per_dir_veh_h": args.arterial_veh_h, "arterial_flow_period_s": art_period,
-            "background_car_trips": n_cars, "background_period_s": args.car_period,
-            "arterial_intensity_measured": arterial, "madrid_reference_band_veh_h": madrid_band,
+            "arterial_flow_per_dir_veh_h": args.arterial_veh_h,
+            "arterial_flow_period_s": art_period,
+            "background_car_trips": n_cars,
+            "background_period_s": args.car_period,
+            "arterial_intensity_measured": arterial,
+            "madrid_reference_band_veh_h": madrid_band,
             "arterial_p90_in_madrid_band": in_band,
             "hcm_anchor": "HCM-derived ~1224 veh/h inbound (~612 veh/h/lane); see configs calibration_methodology",
         },
-        "signals": {"tool": "SUMO tlsCycleAdaptation (Webster 1958)", "tls_programs_optimised": n_tls,
-                    "note": "per-intersection Webster; coordination (green wave) would need tlsCoordinator.py"},
-        "run": {"vehicles_routed": n_routed, "bus_flows": n_flows, "arterial_flows": n_art,
-                "duarouter_ok": dua.returncode == 0, "webster_ok": wj.returncode == 0,
-                "sumo_ok": sumo.returncode == 0},
+        "signals": {
+            "tool": "SUMO tlsCycleAdaptation (Webster 1958)",
+            "tls_programs_optimised": n_tls,
+            "note": "per-intersection Webster; coordination (green wave) would need tlsCoordinator.py",
+        },
+        "run": {
+            "vehicles_routed": n_routed,
+            "bus_flows": n_flows,
+            "arterial_flows": n_art,
+            "duarouter_ok": dua.returncode == 0,
+            "webster_ok": wj.returncode == 0,
+            "sumo_ok": sumo.returncode == 0,
+        },
         "kpis_all_vehicles": kpis.get("all_vehicles", {}),
         "kpis_buses": kpis.get("buses", {}),
         "honest_notes": [
@@ -328,29 +503,48 @@ def main() -> None:
             f"({arterial.get('zero_flow_edges_excluded', 0)} excluded this run): edges the routed demand "
             "never entered are dropped from the per-edge sample, which biases the percentiles upward; "
             "the exclusion is a stated methodology choice, counted and reported, not hidden.",
-            ("Madrid band recomputed from the fetched V2 snapshot "
-             f"(feed {madrid_band.get('feed_timestamp')}, sha256 {str(madrid_band.get('intensity_sha256'))[:12]}…)."
-             if madrid_band.get("band_origin") == "fetched_snapshot" else
-             "Madrid band is the PINNED STATIC snapshot (datos.madrid.es / PMC11416623); run "
-             "scripts/fetch_reference_counts.py to validate against a live, hashed snapshot."),
+            (
+                "Madrid band recomputed from the fetched V2 snapshot "
+                f"(feed {madrid_band.get('feed_timestamp')}, sha256 {str(madrid_band.get('intensity_sha256'))[:12]}…)."
+                if madrid_band.get("band_origin") == "fetched_snapshot"
+                else "Madrid band is the PINNED STATIC snapshot (datos.madrid.es / PMC11416623); run "
+                "scripts/fetch_reference_counts.py to validate against a live, hashed snapshot."
+            ),
         ],
-        "verdict": "pass" if (n_tls > 0 and dua.returncode == 0 and sumo.returncode == 0
-                              and kpis.get("buses", {}).get("vehicles", 0) > 0 and in_band) else "review",
+        "verdict": "pass"
+        if (
+            n_tls > 0
+            and dua.returncode == 0
+            and sumo.returncode == 0
+            and kpis.get("buses", {}).get("vehicles", 0) > 0
+            and in_band
+        )
+        else "review",
     }
     if report["verdict"] != "pass":
-        report["debug"] = {"randomtrips_tail": (rt.stderr.strip().splitlines() or [""])[-2:],
-                           "duarouter_tail": (dua.stderr.strip().splitlines() or [""])[-2:],
-                           "webster_tail": (wj.stderr.strip().splitlines() or [""])[-2:],
-                           "sumo_tail": (sumo.stderr.strip().splitlines() or [""])[-2:]}
+        report["debug"] = {
+            "randomtrips_tail": (rt.stderr.strip().splitlines() or [""])[-2:],
+            "duarouter_tail": (dua.stderr.strip().splitlines() or [""])[-2:],
+            "webster_tail": (wj.stderr.strip().splitlines() or [""])[-2:],
+            "sumo_tail": (sumo.stderr.strip().splitlines() or [""])[-2:],
+        }
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+    args.out.write_text(
+        json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
-    print(f"V4d reference corridor — cars {n_cars} (p={args.car_period}s), Webster TLS {n_tls}, routed {n_routed}")
-    print(f"  arterial p90 {arterial.get('p90_veh_h')} veh/h (median {arterial.get('median_veh_h')})  "
-          f"Madrid band {madrid_band['median']}-{madrid_band['p90']} ({madrid_band['band_origin']})  in_band={in_band}  "
-          f"zero-flow edges excluded: {arterial.get('zero_flow_edges_excluded', 0)}")
+    print(
+        f"V4d reference corridor — cars {n_cars} (p={args.car_period}s), Webster TLS {n_tls}, routed {n_routed}"
+    )
+    print(
+        f"  arterial p90 {arterial.get('p90_veh_h')} veh/h (median {arterial.get('median_veh_h')})  "
+        f"Madrid band {madrid_band['median']}-{madrid_band['p90']} ({madrid_band['band_origin']})  in_band={in_band}  "
+        f"zero-flow edges excluded: {arterial.get('zero_flow_edges_excluded', 0)}"
+    )
     b = kpis.get("buses", {})
-    print(f"  buses: {b.get('vehicles', 0)}  mean duration {b.get('mean_duration_s')}s  time loss {b.get('mean_time_loss_s')}s")
+    print(
+        f"  buses: {b.get('vehicles', 0)}  mean duration {b.get('mean_duration_s')}s  time loss {b.get('mean_time_loss_s')}s"
+    )
     print(f"  verdict: {report['verdict']}  -> {args.out}")
     if report["verdict"] != "pass":
         raise SystemExit(1)

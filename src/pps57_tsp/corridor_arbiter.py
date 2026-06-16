@@ -19,6 +19,7 @@ bloco ausente é um no-op completo e o comportamento é byte-idêntico:
 Adjacência a jusante: derivada da convenção de nomes de edge fromNode_toNode via
 o índice edge_to_intersection do CITSConfig (estático, sem solver).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

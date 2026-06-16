@@ -5,6 +5,7 @@ The TSP engine and Safety Layer reason in terms of controller contracts:
 signal groups, phase indices, conflicts, intergreens and action capabilities.
 SUMO/TraCI is one implementation of the adapter boundary, not the contract.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
@@ -163,23 +164,17 @@ class ControllerCommandValidation:
 class SignalControlAdapter(Protocol):
     """Boundary for SUMO/TraCI and future real controller implementations."""
 
-    def read_program_phase_count(self, tls_id: str) -> Optional[int]:
-        ...
+    def read_program_phase_count(self, tls_id: str) -> Optional[int]: ...
 
-    def read_program_phase_states(self, tls_id: str) -> Optional[List[str]]:
-        ...
+    def read_program_phase_states(self, tls_id: str) -> Optional[List[str]]: ...
 
-    def read_program_phase_durations(self, tls_id: str) -> Optional[List[float]]:
-        ...
+    def read_program_phase_durations(self, tls_id: str) -> Optional[List[float]]: ...
 
-    def read_program_is_fixed_time(self, tls_id: str) -> Optional[bool]:
-        ...
+    def read_program_is_fixed_time(self, tls_id: str) -> Optional[bool]: ...
 
-    def read_program_type(self, tls_id: str) -> Optional[str]:
-        ...
+    def read_program_type(self, tls_id: str) -> Optional[str]: ...
 
-    def set_phase_duration(self, tls_id: str, duration_s: float) -> None:
-        ...
+    def set_phase_duration(self, tls_id: str, duration_s: float) -> None: ...
 
     def validate_actuation(
         self,
@@ -188,11 +183,9 @@ class SignalControlAdapter(Protocol):
         sim_time_s: float,
         command: str,
         parameters: Dict[str, object],
-    ) -> ControllerCommandValidation:
-        ...
+    ) -> ControllerCommandValidation: ...
 
-    def verify_controller_contracts(self, contracts: Iterable[ControllerContract]) -> List[str]:
-        ...
+    def verify_controller_contracts(self, contracts: Iterable[ControllerContract]) -> List[str]: ...
 
 
 @dataclass
@@ -242,7 +235,9 @@ class TraciSignalControlAdapter:
             tls_id = contract.tls_id
             phase_count = self.read_program_phase_count(tls_id)
             if phase_count is None:
-                problems.append(f"{tls_id}: programa TLS ilegível; impossível validar controller contract")
+                problems.append(
+                    f"{tls_id}: programa TLS ilegível; impossível validar controller contract"
+                )
                 continue
 
             for group in contract.signal_groups.values():
@@ -256,10 +251,14 @@ class TraciSignalControlAdapter:
 
             for idx in contract.phase_sequence:
                 if not (0 <= idx < phase_count):
-                    problems.append(f"{tls_id}: phase_sequence índice {idx} fora do programa (fases={phase_count})")
+                    problems.append(
+                        f"{tls_id}: phase_sequence índice {idx} fora do programa (fases={phase_count})"
+                    )
             for idx in contract.service_green_phase_indices + contract.intergreen_phase_indices:
                 if not (0 <= idx < phase_count):
-                    problems.append(f"{tls_id}: controller_contract phase index {idx} fora do programa (fases={phase_count})")
+                    problems.append(
+                        f"{tls_id}: controller_contract phase index {idx} fora do programa (fases={phase_count})"
+                    )
 
             states = self.read_program_phase_states(tls_id)
             durations = self.read_program_phase_durations(tls_id)
@@ -298,7 +297,11 @@ class TraciSignalControlAdapter:
                                 f"{tls_id}: fase {idx} tem duração {duration_s:.1f}s inferior ao amarelo mínimo "
                                 f"{contract.min_yellow_s:.1f}s"
                             )
-                if durations is not None and contract.min_all_red_s is not None and contract.min_all_red_s > 0:
+                if (
+                    durations is not None
+                    and contract.min_all_red_s is not None
+                    and contract.min_all_red_s > 0
+                ):
                     missing_all_red = _missing_all_red_transitions(
                         states,
                         durations,
@@ -335,12 +338,16 @@ class TraciSignalControlAdapter:
                             f"{tls_id}: signal_group {group.signal_group_id} referencia conflito inexistente {conflict}"
                         )
                 if signal_group_lacks_conflict_matrix(group):
-                    problems.append(f"{tls_id}: signal_group {group.signal_group_id} sem matriz de conflitos")
+                    problems.append(
+                        f"{tls_id}: signal_group {group.signal_group_id} sem matriz de conflitos"
+                    )
 
             if contract.fixed_time_required:
                 is_fixed = self.read_program_is_fixed_time(tls_id)
                 if is_fixed is None:
-                    problems.append(f"{tls_id}: não foi possível confirmar programa de tempo fixo (fail-closed)")
+                    problems.append(
+                        f"{tls_id}: não foi possível confirmar programa de tempo fixo (fail-closed)"
+                    )
                 elif is_fixed is False:
                     problems.append(
                         f"{tls_id}: programa atuado/adaptativo (tipo='{self.read_program_type(tls_id)}'); "
@@ -400,11 +407,15 @@ class SimulatedControllerAdapter:
     ) -> ControllerCommandValidation:
         contract = self.contract_by_tls.get(decision.tls_id)
         if contract is None:
-            return ControllerCommandValidation(False, "controller_contract_missing", severity="warning")
+            return ControllerCommandValidation(
+                False, "controller_contract_missing", severity="warning"
+            )
 
         mode = self._mode_for_tls(decision.tls_id)
         if mode != "automatic":
-            return ControllerCommandValidation(False, f"controller_locked_{mode}_mode", severity="warning")
+            return ControllerCommandValidation(
+                False, f"controller_locked_{mode}_mode", severity="warning"
+            )
 
         pending_until = self.pending_until_by_tls.get(decision.tls_id)
         if pending_until is not None and sim_time_s < pending_until:
@@ -429,23 +440,39 @@ class SimulatedControllerAdapter:
         if group is None:
             group = contract.signal_group_for_movement(decision.priority_movement_id)
         if group is None:
-            return ControllerCommandValidation(False, "controller_signal_group_unknown", severity="warning")
+            return ControllerCommandValidation(
+                False, "controller_signal_group_unknown", severity="warning"
+            )
 
-        if decision.action not in contract.allowed_actions or decision.action not in group.allowed_actions:
-            return ControllerCommandValidation(False, "controller_action_not_allowed", severity="warning")
+        if (
+            decision.action not in contract.allowed_actions
+            or decision.action not in group.allowed_actions
+        ):
+            return ControllerCommandValidation(
+                False, "controller_action_not_allowed", severity="warning"
+            )
 
-        if self._pedestrian_call_active(decision.tls_id) and any("pedestrian" in item for item in group.conflicts_with):
+        if self._pedestrian_call_active(decision.tls_id) and any(
+            "pedestrian" in item for item in group.conflicts_with
+        ):
             return ControllerCommandValidation(
                 False,
                 "controller_rejected_pedestrian_call_active",
                 severity="warning",
             )
 
-        if signal_state.red_yellow_green_state and "y" in signal_state.red_yellow_green_state.lower():
-            return ControllerCommandValidation(False, "controller_rejected_yellow_transition", severity="warning")
+        if (
+            signal_state.red_yellow_green_state
+            and "y" in signal_state.red_yellow_green_state.lower()
+        ):
+            return ControllerCommandValidation(
+                False, "controller_rejected_yellow_transition", severity="warning"
+            )
 
         if decision.action == TSPAction.EARLY_GREEN.value and not group.conflicts_with:
-            return ControllerCommandValidation(False, "controller_conflict_matrix_missing", severity="warning")
+            return ControllerCommandValidation(
+                False, "controller_conflict_matrix_missing", severity="warning"
+            )
 
         latency = float(self.config.get("command_latency_s", 0.0))
         if latency > 0:
@@ -483,7 +510,9 @@ class SimulatedControllerAdapter:
         return isinstance(active, list) and tls_id in {str(item) for item in active}
 
 
-def build_controller_contracts(cits_config: CITSConfig, tsp_config: TSPConfig) -> List[ControllerContract]:
+def build_controller_contracts(
+    cits_config: CITSConfig, tsp_config: TSPConfig
+) -> List[ControllerContract]:
     return [
         build_controller_contract(cits_config, tsp_config, intersection.tls_id)
         for intersection in cits_config.signal_controlled_intersections
@@ -547,7 +576,9 @@ def apply_network_binding(
             bound.append(contract)
             continue
         aliases = dict((aliases_by_tls or {}).get(contract.tls_id, {}))
-        contract_to_profile = {contract_id: profile_id for profile_id, contract_id in aliases.items()}
+        contract_to_profile = {
+            contract_id: profile_id for profile_id, contract_id in aliases.items()
+        }
         new_groups: Dict[str, SignalGroupContract] = {}
         for group_id, group in contract.signal_groups.items():
             profile_group_id = contract_to_profile.get(group_id, group_id)
@@ -567,7 +598,9 @@ def apply_network_binding(
     return bound
 
 
-def build_controller_contract(cits_config: CITSConfig, tsp_config: TSPConfig, tls_id: str) -> ControllerContract:
+def build_controller_contract(
+    cits_config: CITSConfig, tsp_config: TSPConfig, tls_id: str
+) -> ControllerContract:
     intersection = cits_config.tls_to_intersection[tls_id]
     raw = tsp_config.controller_contract_for_tls(tls_id)
     safety = cits_config.safety_constraints
@@ -590,7 +623,9 @@ def build_controller_contract(cits_config: CITSConfig, tsp_config: TSPConfig, tl
     signal_groups: Dict[str, SignalGroupContract] = {}
 
     priority_defaults = raw.get("priority_signal_group_defaults", {})
-    profile_by_target_group = _profile_movements_by_target_group(intersection.priority_movements, tls_profile)
+    profile_by_target_group = _profile_movements_by_target_group(
+        intersection.priority_movements, tls_profile
+    )
     profile_aliases = {
         profile.signal_group_id: group_id
         for group_id, profile in profile_by_target_group.items()
@@ -609,7 +644,9 @@ def build_controller_contract(cits_config: CITSConfig, tsp_config: TSPConfig, tl
             group_raw = dict(auto_group_raw)
             group_raw.update(priority_defaults)
             group_raw.update(specific_group_raw)
-        phase_index = _optional_int(group_raw.get("phase_index", movement_mapping.get("target_phase_index")))
+        phase_index = _optional_int(
+            group_raw.get("phase_index", movement_mapping.get("target_phase_index"))
+        )
         signal_groups[movement.target_signal_group_id] = _group_from_raw(
             movement.target_signal_group_id,
             group_raw,
@@ -624,7 +661,9 @@ def build_controller_contract(cits_config: CITSConfig, tsp_config: TSPConfig, tl
 
     if tls_profile is not None:
         for profile_movement in tls_profile.movements:
-            group_id = profile_aliases.get(profile_movement.signal_group_id, profile_movement.signal_group_id)
+            group_id = profile_aliases.get(
+                profile_movement.signal_group_id, profile_movement.signal_group_id
+            )
             if group_id in signal_groups:
                 continue
             auto_group_raw = _group_raw_from_profile(profile_movement, profile_aliases)
@@ -682,14 +721,18 @@ def build_controller_contract(cits_config: CITSConfig, tsp_config: TSPConfig, tl
         intergreen_phase_indices=intergreen_phase_indices,
         min_yellow_s=_float_or_none(safety.get("yellow_s")),
         min_all_red_s=_float_or_none(safety.get("all_red_s")),
-        expected_cycle_s=_float_or_none(raw.get("expected_cycle_s", raw.get("cycle_s", expected_cycle_default))),
+        expected_cycle_s=_float_or_none(
+            raw.get("expected_cycle_s", raw.get("cycle_s", expected_cycle_default))
+        ),
         pedestrian_phase_required=pedestrian_required,
         pedestrian_phase_indices=pedestrian_phase_indices,
         signal_groups=signal_groups,
     )
 
 
-def _network_tls_profile(cits_config: CITSConfig, tsp_config: TSPConfig, tls_id: str) -> Optional[TLSProfile]:
+def _network_tls_profile(
+    cits_config: CITSConfig, tsp_config: TSPConfig, tls_id: str
+) -> Optional[TLSProfile]:
     if not _network_profile_enabled(cits_config, tsp_config):
         return None
     network = cits_config.sumo.get("network")
@@ -708,16 +751,14 @@ def _network_tls_profile(cits_config: CITSConfig, tsp_config: TSPConfig, tls_id:
 def _network_profile_enabled(cits_config: CITSConfig, tsp_config: TSPConfig) -> bool:
     tsp_profile = tsp_config.raw.get("network_profile", {})
     cits_discovery = cits_config.raw.get("network_discovery", {})
-    return (
-        isinstance(tsp_profile, dict)
-        and bool(tsp_profile.get("enabled", False))
-    ) or (
-        isinstance(cits_discovery, dict)
-        and bool(cits_discovery.get("enabled", False))
+    return (isinstance(tsp_profile, dict) and bool(tsp_profile.get("enabled", False))) or (
+        isinstance(cits_discovery, dict) and bool(cits_discovery.get("enabled", False))
     )
 
 
-def _prefer_generated_contract(tsp_config: TSPConfig, tls_id: str, tls_profile: Optional[TLSProfile]) -> bool:
+def _prefer_generated_contract(
+    tsp_config: TSPConfig, tls_id: str, tls_profile: Optional[TLSProfile]
+) -> bool:
     if tls_profile is None:
         return False
     profile_cfg = tsp_config.raw.get("network_profile", {})
@@ -725,7 +766,10 @@ def _prefer_generated_contract(tsp_config: TSPConfig, tls_id: str, tls_profile: 
         return False
     controllers = tsp_config.controller_contracts.get("controllers", {})
     has_specific = isinstance(controllers, dict) and isinstance(controllers.get(tls_id), dict)
-    return bool(profile_cfg.get("prefer_generated_contracts_for_unknown_tls", True)) and not has_specific
+    return (
+        bool(profile_cfg.get("prefer_generated_contracts_for_unknown_tls", True))
+        and not has_specific
+    )
 
 
 def _profile_movements_by_target_group(
@@ -905,7 +949,9 @@ def _missing_all_red_transitions(
     # Iterate over (position, phase_index) pairs so that duplicate phase indices
     # in the sequence each get their own from_pos — using list.index() would
     # always return the first occurrence and silently skip later ones.
-    service_positions = [(pos, phase) for pos, phase in enumerate(phase_sequence) if phase in service_set]
+    service_positions = [
+        (pos, phase) for pos, phase in enumerate(phase_sequence) if phase in service_set
+    ]
     if len(service_positions) < 2:
         return []
 

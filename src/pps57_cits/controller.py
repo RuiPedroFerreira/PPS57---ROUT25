@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """C-ITS/V2X emulation controller."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -29,14 +30,18 @@ class CITSEmulationController:
         self.rsu_agents = build_rsu_agents(self.config)
         self.publish_codec_failures: Dict[str, int] = {}
 
-    def run_with_sumo(self, steps: Optional[int] = None, sumo_binary: str = "sumo", gui: bool = False) -> Dict[str, object]:
+    def run_with_sumo(
+        self, steps: Optional[int] = None, sumo_binary: str = "sumo", gui: bool = False
+    ) -> Dict[str, object]:
         """Executa a emulação ligada ao SUMO via TraCI.
 
         Este método exige SUMO instalado e a rede já compilada com netconvert.
         """
         adapter = TraciSimulationAdapter(self.config, sumo_binary=sumo_binary, gui=gui)
         summary = IncrementalCITSSummary()
-        log_path = self.config.path_from_root(self.config.logging.get("message_log", "outputs/cits_messages.jsonl"))
+        log_path = self.config.path_from_root(
+            self.config.logging.get("message_log", "outputs/cits_messages.jsonl")
+        )
 
         adapter.start()  # propaga TraciUnavailableError
 
@@ -84,7 +89,9 @@ class CITSEmulationController:
         finally:
             adapter.close()
 
-        summary_path = self.config.path_from_root(self.config.logging.get("summary_report", "reports/cits_emulation_summary.json"))
+        summary_path = self.config.path_from_root(
+            self.config.logging.get("summary_report", "reports/cits_emulation_summary.json")
+        )
         return write_summary_dict(
             summary_path,
             summary.to_dict(),
@@ -129,9 +136,19 @@ class CITSEmulationController:
         return responses
 
     def _write_snapshots(self, mapem: List[CITSMessage], spatem: List[CITSMessage]) -> None:
-        mapem_path = self.config.path_from_root(self.config.logging.get("mapem_snapshot", "outputs/cits_mapem_snapshot.json"))
-        spatem_path = self.config.path_from_root(self.config.logging.get("spatem_snapshot", "outputs/cits_spatem_snapshot.json"))
+        mapem_path = self.config.path_from_root(
+            self.config.logging.get("mapem_snapshot", "outputs/cits_mapem_snapshot.json")
+        )
+        spatem_path = self.config.path_from_root(
+            self.config.logging.get("spatem_snapshot", "outputs/cits_spatem_snapshot.json")
+        )
         mapem_path.parent.mkdir(parents=True, exist_ok=True)
         spatem_path.parent.mkdir(parents=True, exist_ok=True)
-        mapem_path.write_text(json.dumps([message.to_dict() for message in mapem], indent=2, ensure_ascii=False), encoding="utf-8")
-        spatem_path.write_text(json.dumps([message.to_dict() for message in spatem], indent=2, ensure_ascii=False), encoding="utf-8")
+        mapem_path.write_text(
+            json.dumps([message.to_dict() for message in mapem], indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        spatem_path.write_text(
+            json.dumps([message.to_dict() for message in spatem], indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )

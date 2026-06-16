@@ -29,6 +29,7 @@ It fabricates nothing: where the network genuinely carries no foe data for a
 group, the binding records ``conflict_source = "none"`` and the fail-closed gate
 correctly stays closed. Safety remains the final gate either way.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -241,7 +242,9 @@ def build_network_binding(
                 conflict_source="sumo_request_foes" if had_foe_data else "none",
             )
         tls_junctions = sorted({jid for slots in group_slots.values() for jid, _ in slots})
-        tls_bindings[tls_id] = BoundTLS(tls_id=tls_id, junction_ids=tls_junctions, signal_groups=groups)
+        tls_bindings[tls_id] = BoundTLS(
+            tls_id=tls_id, junction_ids=tls_junctions, signal_groups=groups
+        )
 
     return NetworkBinding(
         network_file=str(path),

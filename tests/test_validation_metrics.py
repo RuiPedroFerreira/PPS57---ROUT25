@@ -7,6 +7,7 @@ configs/validation_config.json. The numeric fixtures are formula-verification
 vectors, NOT traffic measurements: this suite asserts the measuring instrument
 is correct, it does not assert anything about Porto.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -43,8 +44,12 @@ class GehFormulaTests(unittest.TestCase):
 
     def test_bands(self) -> None:
         self.assertEqual(metrics.geh_band(4.9, good_below=5.0, investigate_below=10.0), "good")
-        self.assertEqual(metrics.geh_band(5.0, good_below=5.0, investigate_below=10.0), "investigate")
-        self.assertEqual(metrics.geh_band(7.0, good_below=5.0, investigate_below=10.0), "investigate")
+        self.assertEqual(
+            metrics.geh_band(5.0, good_below=5.0, investigate_below=10.0), "investigate"
+        )
+        self.assertEqual(
+            metrics.geh_band(7.0, good_below=5.0, investigate_below=10.0), "investigate"
+        )
         self.assertEqual(metrics.geh_band(10.0, good_below=5.0, investigate_below=10.0), "poor")
 
 
@@ -57,30 +62,36 @@ class FlowBandTests(unittest.TestCase):
     ]
 
     def test_low_band_absolute(self) -> None:
-        self.assertTrue(metrics.flow_within_band(700.0, 650.0, self.BANDS))   # |50| <= 100
+        self.assertTrue(metrics.flow_within_band(700.0, 650.0, self.BANDS))  # |50| <= 100
         self.assertFalse(metrics.flow_within_band(800.0, 650.0, self.BANDS))  # |150| > 100
 
     def test_mid_band_fraction(self) -> None:
-        self.assertTrue(metrics.flow_within_band(1100.0, 1000.0, self.BANDS))   # |100| <= 150
+        self.assertTrue(metrics.flow_within_band(1100.0, 1000.0, self.BANDS))  # |100| <= 150
         self.assertFalse(metrics.flow_within_band(1200.0, 1000.0, self.BANDS))  # |200| > 150
 
     def test_high_band_absolute(self) -> None:
-        self.assertTrue(metrics.flow_within_band(3300.0, 3000.0, self.BANDS))   # |300| <= 400
+        self.assertTrue(metrics.flow_within_band(3300.0, 3000.0, self.BANDS))  # |300| <= 400
         self.assertFalse(metrics.flow_within_band(3500.0, 3000.0, self.BANDS))  # |500| > 400
 
     def test_boundary_700_uses_fraction_band(self) -> None:
         # observed == 700 falls into the 700-2700 band (15% -> 105 tolerance).
-        self.assertTrue(metrics.flow_within_band(800.0, 700.0, self.BANDS))   # |100| <= 105
+        self.assertTrue(metrics.flow_within_band(800.0, 700.0, self.BANDS))  # |100| <= 105
 
 
 class TravelTimeTests(unittest.TestCase):
     def test_within_15_percent(self) -> None:
-        self.assertTrue(metrics.travel_time_within(540.0, 505.0, within_fraction=0.15, or_absolute_s=60.0))
+        self.assertTrue(
+            metrics.travel_time_within(540.0, 505.0, within_fraction=0.15, or_absolute_s=60.0)
+        )
 
     def test_one_minute_floor(self) -> None:
         # short trip: 15% of 100s = 15s, but the 60s floor applies.
-        self.assertTrue(metrics.travel_time_within(150.0, 100.0, within_fraction=0.15, or_absolute_s=60.0))
-        self.assertFalse(metrics.travel_time_within(170.0, 100.0, within_fraction=0.15, or_absolute_s=60.0))
+        self.assertTrue(
+            metrics.travel_time_within(150.0, 100.0, within_fraction=0.15, or_absolute_s=60.0)
+        )
+        self.assertFalse(
+            metrics.travel_time_within(170.0, 100.0, within_fraction=0.15, or_absolute_s=60.0)
+        )
 
     def test_negative_rejected(self) -> None:
         with self.assertRaises(ValueError):

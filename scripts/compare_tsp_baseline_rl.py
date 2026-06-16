@@ -10,6 +10,7 @@ posterior. Este script copia explicitamente os artefactos da baseline para
 `--snapshot-root/rl/` no fim. Mesmo padrão usado em
 `scripts/evaluate_decision_outcomes.py`.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -41,17 +42,47 @@ SNAPSHOT_PATHS = (
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Compare TSP baseline runtime against exported RL runtime policy.")
-    parser.add_argument("--config", default="configs/cits_v2x_config.json", help="Base C-ITS configuration.")
-    parser.add_argument("--tsp-config", default="configs/tsp_safety_config.json", help="TSP/Safety Layer configuration.")
-    parser.add_argument("--policy-config", default="configs/policy_training_config.json", help="RL training configuration.")
-    parser.add_argument("--policy-report", default="reports/tabular_q_policy_report.json", help="Exported RL policy report.")
+    parser = argparse.ArgumentParser(
+        description="Compare TSP baseline runtime against exported RL runtime policy."
+    )
+    parser.add_argument(
+        "--config", default="configs/cits_v2x_config.json", help="Base C-ITS configuration."
+    )
+    parser.add_argument(
+        "--tsp-config",
+        default="configs/tsp_safety_config.json",
+        help="TSP/Safety Layer configuration.",
+    )
+    parser.add_argument(
+        "--policy-config",
+        default="configs/policy_training_config.json",
+        help="RL training configuration.",
+    )
+    parser.add_argument(
+        "--policy-report",
+        default="reports/tabular_q_policy_report.json",
+        help="Exported RL policy report.",
+    )
     parser.add_argument("--steps", type=int, default=7200, help="SUMO/TraCI steps for both modes.")
     parser.add_argument("--sumo-binary", default="sumo", help="SUMO binary for TraCI.")
-    parser.add_argument("--no-actuation", action="store_true", help="Calculate decisions without applying TraCI commands.")
-    parser.add_argument("--train-rl", action="store_true", help="Train/export the RL policy before comparing.")
-    parser.add_argument("--json-out", default="reports/tsp_baseline_vs_rl_comparison.json", help="JSON comparison output.")
-    parser.add_argument("--md-out", default="reports/tsp_baseline_vs_rl_comparison.md", help="Markdown table output.")
+    parser.add_argument(
+        "--no-actuation",
+        action="store_true",
+        help="Calculate decisions without applying TraCI commands.",
+    )
+    parser.add_argument(
+        "--train-rl", action="store_true", help="Train/export the RL policy before comparing."
+    )
+    parser.add_argument(
+        "--json-out",
+        default="reports/tsp_baseline_vs_rl_comparison.json",
+        help="JSON comparison output.",
+    )
+    parser.add_argument(
+        "--md-out",
+        default="reports/tsp_baseline_vs_rl_comparison.md",
+        help="Markdown table output.",
+    )
     parser.add_argument(
         "--snapshot-root",
         default="outputs/runs",
@@ -72,16 +103,26 @@ def main() -> int:
         cits_config,
         tsp_config,
         policy_mode="baseline",
-    ).run_with_sumo(steps=args.steps, sumo_binary=args.sumo_binary, apply_actuation=not args.no_actuation)
+    ).run_with_sumo(
+        steps=args.steps, sumo_binary=args.sumo_binary, apply_actuation=not args.no_actuation
+    )
     baseline_snapshot = _snapshot_artifacts(ROOT, snapshot_root / "baseline")
 
     if args.train_rl or not policy_report.exists():
         write_event_training_dataset(
-            cits_log=cits_config.path_from_root(cits_config.logging.get("message_log", "outputs/cits_messages.jsonl")),
-            decision_log=tsp_config.path_from_root(tsp_config.logging.get("decision_log", "outputs/tsp_decisions.jsonl")),
-            actuation_log=tsp_config.path_from_root(tsp_config.logging.get("actuation_log", "outputs/tsp_actuation.jsonl")),
+            cits_log=cits_config.path_from_root(
+                cits_config.logging.get("message_log", "outputs/cits_messages.jsonl")
+            ),
+            decision_log=tsp_config.path_from_root(
+                tsp_config.logging.get("decision_log", "outputs/tsp_decisions.jsonl")
+            ),
+            actuation_log=tsp_config.path_from_root(
+                tsp_config.logging.get("actuation_log", "outputs/tsp_actuation.jsonl")
+            ),
             output_path=optimization_config.path_from_root(
-                optimization_config.logging.get("event_training_dataset", "outputs/event_training_dataset.jsonl")
+                optimization_config.logging.get(
+                    "event_training_dataset", "outputs/event_training_dataset.jsonl"
+                )
             ),
         )
         TabularQLearningController(cits_config, tsp_config, optimization_config).run()
@@ -91,7 +132,9 @@ def main() -> int:
         tsp_config,
         policy_mode="rl",
         policy_report_path=str(policy_report),
-    ).run_with_sumo(steps=args.steps, sumo_binary=args.sumo_binary, apply_actuation=not args.no_actuation)
+    ).run_with_sumo(
+        steps=args.steps, sumo_binary=args.sumo_binary, apply_actuation=not args.no_actuation
+    )
     rl_snapshot = _snapshot_artifacts(ROOT, snapshot_root / "rl")
 
     payload = write_tsp_ab_comparison(
@@ -105,7 +148,9 @@ def main() -> int:
     print(f"- rows: {len(payload['rows'])}")
     print(f"- json: {tsp_config.path_from_root(args.json_out)}")
     print(f"- markdown: {tsp_config.path_from_root(args.md_out)}")
-    print(f"- baseline snapshot: {baseline_snapshot} ({len(list(baseline_snapshot.rglob('*')))} files)")
+    print(
+        f"- baseline snapshot: {baseline_snapshot} ({len(list(baseline_snapshot.rglob('*')))} files)"
+    )
     print(f"- rl snapshot:       {rl_snapshot} ({len(list(rl_snapshot.rglob('*')))} files)")
     return 0
 

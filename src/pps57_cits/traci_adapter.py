@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Adaptador TraCI para ler estado SUMO durante a emulação C-ITS."""
+
 from __future__ import annotations
 
 from dataclasses import replace
@@ -103,7 +104,9 @@ class TraciSimulationAdapter:
         self.traci = traci
 
     def _sumo_command(self, binary: str, extra_args: Optional[List[str]] = None) -> List[str]:
-        sumocfg = self.config.path_from_root(self.config.sumo.get("sumocfg", "sumo/corredor.sumocfg"))
+        sumocfg = self.config.path_from_root(
+            self.config.sumo.get("sumocfg", "sumo/corredor.sumocfg")
+        )
         cmd = [binary, "-c", str(sumocfg), "--duration-log.statistics"]
         if self.gui:
             # Sem --start o sumo-gui fica pausado à espera do botão Play do
@@ -211,7 +214,7 @@ class TraciSimulationAdapter:
 
     @staticmethod
     def _lane_samples_from_snapshot(
-        snapshot: dict[str, dict[str, Any]]
+        snapshot: dict[str, dict[str, Any]],
     ) -> dict[str, list[tuple[float, float]]]:
         """Índice lane_id -> [(lane_position_m, speed_mps)] do snapshot.
 
@@ -289,7 +292,9 @@ class TraciSimulationAdapter:
             return None
         return self._with_schedule_adherence(observation, sim_time_s)
 
-    def _read_vehicle_observation(self, vehicle_id: str, sim_time_s: float = 0.0) -> Optional[VehicleObservation]:
+    def _read_vehicle_observation(
+        self, vehicle_id: str, sim_time_s: float = 0.0
+    ) -> Optional[VehicleObservation]:
         traci = self._require_traci()
         try:
             edge_id = traci.vehicle.getRoadID(vehicle_id)
@@ -306,10 +311,14 @@ class TraciSimulationAdapter:
             lane_position = float(traci.vehicle.getLanePosition(vehicle_id))
             lane_length = self._lane_length(lane_id)
             queue_ahead = self._queue_ahead_vehicle_count(lane_id, lane_position)
-            accumulated_waiting_time = float(_safe_call(lambda: traci.vehicle.getAccumulatedWaitingTime(vehicle_id)) or 0.0)
+            accumulated_waiting_time = float(
+                _safe_call(lambda: traci.vehicle.getAccumulatedWaitingTime(vehicle_id)) or 0.0
+            )
             observation = VehicleObservation(
                 vehicle_id=vehicle_id,
-                vehicle_class=str(_safe_call(lambda: traci.vehicle.getVehicleClass(vehicle_id)) or ""),
+                vehicle_class=str(
+                    _safe_call(lambda: traci.vehicle.getVehicleClass(vehicle_id)) or ""
+                ),
                 type_id=str(_safe_call(lambda: traci.vehicle.getTypeID(vehicle_id)) or ""),
                 line_id=str(_safe_call(lambda: traci.vehicle.getLine(vehicle_id)) or ""),
                 route_id=str(_safe_call(lambda: traci.vehicle.getRouteID(vehicle_id)) or ""),
@@ -318,7 +327,9 @@ class TraciSimulationAdapter:
                 lane_position_m=lane_position,
                 lane_length_m=lane_length,
                 speed_mps=float(_safe_call(lambda: traci.vehicle.getSpeed(vehicle_id)) or 0.0),
-                waiting_time_s=float(_safe_call(lambda: traci.vehicle.getWaitingTime(vehicle_id)) or 0.0),
+                waiting_time_s=float(
+                    _safe_call(lambda: traci.vehicle.getWaitingTime(vehicle_id)) or 0.0
+                ),
                 accumulated_waiting_time_s=accumulated_waiting_time,
                 route_edges=route_edges,
                 next_edge_id=next_edge_id,
@@ -378,9 +389,18 @@ class TraciSimulationAdapter:
         vehicle_ids = list(_safe_call(lambda: traci.lane.getLastStepVehicleIDs(lane_id)) or [])
         count = 0
         for other_id in vehicle_ids:
-            other_position = _safe_call(lambda other_id=other_id: float(traci.vehicle.getLanePosition(other_id)))
-            other_speed = _safe_call(lambda other_id=other_id: float(traci.vehicle.getSpeed(other_id)))
-            if other_position is not None and other_speed is not None and other_position > lane_position_m and other_speed < 0.5:
+            other_position = _safe_call(
+                lambda other_id=other_id: float(traci.vehicle.getLanePosition(other_id))
+            )
+            other_speed = _safe_call(
+                lambda other_id=other_id: float(traci.vehicle.getSpeed(other_id))
+            )
+            if (
+                other_position is not None
+                and other_speed is not None
+                and other_position > lane_position_m
+                and other_speed < 0.5
+            ):
                 count += 1
         return count
 
@@ -401,16 +421,16 @@ class TraciSimulationAdapter:
             return None
         samples: list[tuple[float, float]] = []
         for other_id in vehicle_ids:
-            position = _safe_call(lambda other_id=other_id: float(traci.vehicle.getLanePosition(other_id)))
+            position = _safe_call(
+                lambda other_id=other_id: float(traci.vehicle.getLanePosition(other_id))
+            )
             speed = _safe_call(lambda other_id=other_id: float(traci.vehicle.getSpeed(other_id)))
             if position is not None and speed is not None:
                 samples.append((position, speed))
         return self._contiguous_halted_from_stopline(samples, self._queue_halt_speed_mps)
 
     @staticmethod
-    def _contiguous_halted_from_stopline(
-        samples: List[tuple], halt_speed_mps: float
-    ) -> int:
+    def _contiguous_halted_from_stopline(samples: List[tuple], halt_speed_mps: float) -> int:
         """Conta a corrida contígua de veículos parados desde a stopline.
 
         `samples` é uma lista de (lane_position_m, speed_mps). A stopline é o
@@ -544,7 +564,9 @@ class TraciSimulationAdapter:
             timestamp_s=sim_time_s,
             current_phase_index=_safe_call(lambda: traci.trafficlight.getPhase(tls_id)),
             current_program_id=_safe_call(lambda: traci.trafficlight.getProgram(tls_id)),
-            red_yellow_green_state=_safe_call(lambda: traci.trafficlight.getRedYellowGreenState(tls_id)),
+            red_yellow_green_state=_safe_call(
+                lambda: traci.trafficlight.getRedYellowGreenState(tls_id)
+            ),
             next_switch_s=_safe_call(lambda: float(traci.trafficlight.getNextSwitch(tls_id))),
             spent_duration_s=_safe_call(lambda: float(traci.trafficlight.getSpentDuration(tls_id))),
             controlled_lanes=controlled_lanes,
@@ -554,7 +576,9 @@ class TraciSimulationAdapter:
     def _controlled_links(self, tls_id: str) -> list[Any]:
         if tls_id not in self._controlled_links_cache:
             traci = self._require_traci()
-            self._controlled_links_cache[tls_id] = list(_safe_call(lambda: traci.trafficlight.getControlledLinks(tls_id)) or [])
+            self._controlled_links_cache[tls_id] = list(
+                _safe_call(lambda: traci.trafficlight.getControlledLinks(tls_id)) or []
+            )
         return self._controlled_links_cache[tls_id]
 
     def read_network_state(
@@ -588,29 +612,43 @@ class TraciSimulationAdapter:
             self._subscribe_lane_if_possible(lane_id)
             lane_values = self._lane_subscription_results(lane_id)
             lane_failed = False
-            lane_vehicle_count_raw = self._subscription_value(lane_values, "LAST_STEP_VEHICLE_NUMBER")
+            lane_vehicle_count_raw = self._subscription_value(
+                lane_values, "LAST_STEP_VEHICLE_NUMBER"
+            )
             if lane_vehicle_count_raw is None:
-                lane_vehicle_count_raw = _safe_call(lambda lane_id=lane_id: traci.lane.getLastStepVehicleNumber(lane_id))
+                lane_vehicle_count_raw = _safe_call(
+                    lambda lane_id=lane_id: traci.lane.getLastStepVehicleNumber(lane_id)
+                )
                 if lane_vehicle_count_raw is None:
                     lane_failed = True
-            lane_halted_raw = self._subscription_value(lane_values, "LAST_STEP_VEHICLE_HALTING_NUMBER")
+            lane_halted_raw = self._subscription_value(
+                lane_values, "LAST_STEP_VEHICLE_HALTING_NUMBER"
+            )
             if lane_halted_raw is None:
-                lane_halted_raw = _safe_call(lambda lane_id=lane_id: traci.lane.getLastStepHaltingNumber(lane_id))
+                lane_halted_raw = _safe_call(
+                    lambda lane_id=lane_id: traci.lane.getLastStepHaltingNumber(lane_id)
+                )
                 if lane_halted_raw is None:
                     lane_failed = True
             lane_speed_raw = self._subscription_value(lane_values, "LAST_STEP_MEAN_SPEED")
             if lane_speed_raw is None:
-                lane_speed_raw = _safe_call(lambda lane_id=lane_id: traci.lane.getLastStepMeanSpeed(lane_id))
+                lane_speed_raw = _safe_call(
+                    lambda lane_id=lane_id: traci.lane.getLastStepMeanSpeed(lane_id)
+                )
                 if lane_speed_raw is None:
                     lane_failed = True
             lane_waiting_raw = self._subscription_value(lane_values, "VAR_WAITING_TIME")
             if lane_waiting_raw is None:
-                lane_waiting_raw = _safe_call(lambda lane_id=lane_id: traci.lane.getWaitingTime(lane_id))
+                lane_waiting_raw = _safe_call(
+                    lambda lane_id=lane_id: traci.lane.getWaitingTime(lane_id)
+                )
                 if lane_waiting_raw is None:
                     lane_failed = True
             lane_occupancy = self._subscription_value(lane_values, "LAST_STEP_OCCUPANCY")
             if lane_occupancy is None:
-                lane_occupancy = _safe_call(lambda lane_id=lane_id: traci.lane.getLastStepOccupancy(lane_id))
+                lane_occupancy = _safe_call(
+                    lambda lane_id=lane_id: traci.lane.getLastStepOccupancy(lane_id)
+                )
                 if lane_occupancy is None:
                     lane_failed = True
 
@@ -654,7 +692,10 @@ class TraciSimulationAdapter:
         spillback_risk = (
             degraded
             or occupancy >= self._spillback_occupancy
-            or (len(lanes) > 0 and halted_vehicle_count >= len(lanes) * self._spillback_halted_per_lane)
+            or (
+                len(lanes) > 0
+                and halted_vehicle_count >= len(lanes) * self._spillback_halted_per_lane
+            )
         )
         return NetworkStateSnapshot(
             tls_id=intersection.tls_id,
@@ -680,17 +721,21 @@ class TraciSimulationAdapter:
         traci = self._require_traci()
         constants = getattr(traci, "constants", None)
         names = [
-                "LAST_STEP_VEHICLE_NUMBER",
-                "LAST_STEP_VEHICLE_HALTING_NUMBER",
-                "LAST_STEP_MEAN_SPEED",
-                "LAST_STEP_OCCUPANCY",
-                "VAR_WAITING_TIME",
-            ]
+            "LAST_STEP_VEHICLE_NUMBER",
+            "LAST_STEP_VEHICLE_HALTING_NUMBER",
+            "LAST_STEP_MEAN_SPEED",
+            "LAST_STEP_OCCUPANCY",
+            "VAR_WAITING_TIME",
+        ]
         for name in names:
             value = getattr(constants, name, None)
             if value is not None:
                 self._subscription_var_ids_by_name[name] = value
-        var_ids = [self._subscription_var_ids_by_name[name] for name in names if name in self._subscription_var_ids_by_name]
+        var_ids = [
+            self._subscription_var_ids_by_name[name]
+            for name in names
+            if name in self._subscription_var_ids_by_name
+        ]
         var_ids = [value for value in var_ids if value is not None]
         if var_ids:
             _safe_call(lambda: traci.lane.subscribe(lane_id, var_ids))
@@ -709,7 +754,9 @@ class TraciSimulationAdapter:
             return None
         return values.get(var_id)
 
-    def _network_state_lanes(self, intersection: IntersectionConfig, signal_state: SignalState) -> list[str]:
+    def _network_state_lanes(
+        self, intersection: IntersectionConfig, signal_state: SignalState
+    ) -> list[str]:
         controlled = [lane for lane in signal_state.controlled_lanes if lane]
         if controlled:
             return sorted(set(controlled))

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Broker em memória para emular a troca de mensagens OBU/RSU."""
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -127,7 +128,9 @@ class InMemoryMessageBroker:
         jitter_steps = max(0, int(self.transport_config.get("jitter_steps", 0)))
         reorder_window_steps = max(0, int(self.transport_config.get("reorder_window_steps", 0)))
         jitter = self._rng.randint(0, jitter_steps) if self._rng and jitter_steps else 0
-        reorder = self._rng.randint(0, reorder_window_steps) if self._rng and reorder_window_steps else 0
+        reorder = (
+            self._rng.randint(0, reorder_window_steps) if self._rng and reorder_window_steps else 0
+        )
         due_step = self._current_step + latency_steps + jitter + reorder
         payload = self._payload_for_transport(message)
         if due_step <= self._current_step:

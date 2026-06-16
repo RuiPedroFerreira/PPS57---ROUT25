@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """SUMO environment discovery shared by subprocess and TraCI entrypoints."""
+
 from __future__ import annotations
 
 import importlib.util

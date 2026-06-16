@@ -5,6 +5,7 @@ because of congestion at the entry edges. Tracking this matters because heavy
 TSP intervention can starve cross-streets enough to back up insertions; without
 this KPI, capacity loss would be invisible in the tripinfo-derived metrics.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

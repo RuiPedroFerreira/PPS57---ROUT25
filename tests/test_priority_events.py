@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Testes do PriorityEventManager (v2.2, lifecycle check-in/check-out)."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -67,7 +68,9 @@ def _state(tls_id: str = "I2", phase: int = 0, *, next_switch_s, spent_s=5.0) ->
     )
 
 
-def _cleared_store(vehicle_id: str = "bus_1", tls_id: str = "I2", status: str = "cleared") -> PriorityRequestStore:
+def _cleared_store(
+    vehicle_id: str = "bus_1", tls_id: str = "I2", status: str = "cleared"
+) -> PriorityRequestStore:
     request = synth_srem(
         sim_time_s=100.0,
         vehicle_id=vehicle_id,

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """State bucketing shared by offline training and runtime policy inference."""
+
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
@@ -54,26 +55,38 @@ def state_bucket_for_context(
 
     phase_bucket = _movement_phase_bucket(request, signal_state)
     if phase_bucket == "phase_unknown":
-        mapping = tsp_config.phase_mapping_for_movement(request.priority_movement_id, signal_state.tls_id)
+        mapping = tsp_config.phase_mapping_for_movement(
+            request.priority_movement_id, signal_state.tls_id
+        )
         target_phase = _optional_int(mapping.get("target_phase_index"))
         if target_phase is not None and signal_state.current_phase_index == target_phase:
             phase_bucket = "priority_movement_green"
         elif signal_state.current_phase_index is not None:
             phase_bucket = "priority_movement_not_green"
 
-    if phase_bucket == "phase_unknown" and signal_state.red_yellow_green_state and "y" in signal_state.red_yellow_green_state.lower():
+    if (
+        phase_bucket == "phase_unknown"
+        and signal_state.red_yellow_green_state
+        and "y" in signal_state.red_yellow_green_state.lower()
+    ):
         phase_bucket = "yellow"
 
-    switch_bucket = "switch_close" if remaining is not None and remaining <= switch_close else "switch_open"
-    pressure_bucket = "traffic_pressure_high" if (
-        active_request_count >= high_active_requests
-        or queue_vehicle_count >= high_queue
-        or halted_vehicle_count >= high_halted
-        or (mean_speed_mps > 0.0 and mean_speed_mps <= low_speed)
-        or waiting_time_s >= high_waiting
-        or occupancy >= high_occupancy
-        or spillback_risk
-    ) else "traffic_pressure_low"
+    switch_bucket = (
+        "switch_close" if remaining is not None and remaining <= switch_close else "switch_open"
+    )
+    pressure_bucket = (
+        "traffic_pressure_high"
+        if (
+            active_request_count >= high_active_requests
+            or queue_vehicle_count >= high_queue
+            or halted_vehicle_count >= high_halted
+            or (mean_speed_mps > 0.0 and mean_speed_mps <= low_speed)
+            or waiting_time_s >= high_waiting
+            or occupancy >= high_occupancy
+            or spillback_risk
+        )
+        else "traffic_pressure_low"
+    )
     if seconds_since_last_intervention_s is None:
         intervention_bucket = "intervention_unknown"
     elif seconds_since_last_intervention_s < cooldown_recent:
@@ -124,7 +137,9 @@ def _bucket_for_signal_char(char: str) -> str:
     return "phase_unknown"
 
 
-def _controlled_links_match_request(links_for_signal: object, lane_id: str, next_edge_id: str) -> bool:
+def _controlled_links_match_request(
+    links_for_signal: object, lane_id: str, next_edge_id: str
+) -> bool:
     if not lane_id or not isinstance(links_for_signal, list):
         return False
     for link in links_for_signal:

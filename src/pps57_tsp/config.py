@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Configuration for the TSP decision engine and Safety Layer."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -60,7 +61,11 @@ class TSPConfig:
         return mapping
 
     def phase_mapping_for_movement(self, movement_id: str, tls_id: str = "") -> Dict[str, Any]:
-        mapping = self.phase_mapping_for_tls(tls_id) if tls_id else dict(self.phase_mapping.get("default", {}))
+        mapping = (
+            self.phase_mapping_for_tls(tls_id)
+            if tls_id
+            else dict(self.phase_mapping.get("default", {}))
+        )
         movement_mappings = self.phase_mapping.get("priority_movements", {})
         movement_mapping = movement_mappings.get(movement_id, {})
         if isinstance(movement_mapping, dict):

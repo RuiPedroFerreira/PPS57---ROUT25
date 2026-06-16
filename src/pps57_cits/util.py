@@ -4,6 +4,7 @@
 Vive em `pps57_cits` por ser o pacote base (tsp e opt dependem dele), mas o
 conteúdo é util genérico — não específico de C-ITS.
 """
+
 from __future__ import annotations
 
 from typing import Any, Optional

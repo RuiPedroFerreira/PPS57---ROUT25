@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Modelos internos para decisões TSP, validação de segurança e atuação."""
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, replace
@@ -61,7 +62,9 @@ class ReasonCode(str, Enum):
     # --- engine v2: prioridade condicional e decisão cost-aware ---
     PRIORITY_NEED_NOT_MET = "priority_need_not_met"  # dinâmico: :delay/headway vs mínimos
     NETWORK_PRESSURE_DEFER = "network_pressure_defer_intervention"  # dinâmico: :sinal observado
-    EARLY_GREEN_DEFERRED_MIN_GREEN = "early_green_deferred_until_min_green_served"  # dinâmico: :spent<min
+    EARLY_GREEN_DEFERRED_MIN_GREEN = (
+        "early_green_deferred_until_min_green_served"  # dinâmico: :spent<min
+    )
     EARLY_GREEN_PRECHECK_DEFER = "early_green_precheck_defer"  # dinâmico: :problema de sequência
     GREEN_EXTENSION_PRECHECK_DEFER = "green_extension_precheck_defer"  # dinâmico: :dado em falta
     INTERVENTION_BENEFIT_TOO_SMALL = "intervention_benefit_too_small"  # dinâmico: :saving<min
@@ -74,7 +77,9 @@ class ReasonCode(str, Enum):
     CURRENT_PHASE_IS_YELLOW = "current_phase_is_yellow_wait_for_next_cycle"
     COOLDOWN_AFTER_PRIORITY_ACTIVE = "cooldown_after_priority_active"
     RECOVERY_DEBT_LIMIT_ACTIVE = "recovery_debt_limit_active"
-    SAFETY_CONSTRAINT_MISSING_MAX_CONSECUTIVE = "safety_constraint_missing:max_consecutive_priority_interventions_per_tls"
+    SAFETY_CONSTRAINT_MISSING_MAX_CONSECUTIVE = (
+        "safety_constraint_missing:max_consecutive_priority_interventions_per_tls"
+    )
     MAX_CONSECUTIVE_INTERVENTIONS_REACHED = "max_consecutive_priority_interventions_reached"
     UNSUPPORTED_TSP_ACTION = "unsupported_tsp_action"
 
@@ -84,9 +89,13 @@ class ReasonCode(str, Enum):
     GREEN_EXTENSION_DISABLED_FOR_SIGNAL_GROUP = "green_extension_disabled_for_signal_group"
     GREEN_EXTENSION_NOT_POSITIVE = "green_extension_not_positive"
     GREEN_EXTENSION_UNKNOWN_TARGET_PHASE = "green_extension_unknown_target_phase"
-    GREEN_EXTENSION_REQUIRES_PRIORITY_MOVEMENT_GREEN_PHASE = "green_extension_requires_priority_movement_green_phase"
+    GREEN_EXTENSION_REQUIRES_PRIORITY_MOVEMENT_GREEN_PHASE = (
+        "green_extension_requires_priority_movement_green_phase"
+    )
     GREEN_EXTENSION_REQUIRES_PROTECTED_GREEN = "green_extension_requires_protected_green"
-    SAFETY_CONSTRAINT_MISSING_MAX_GREEN_EXTENSION_S = "safety_constraint_missing:max_green_extension_s"
+    SAFETY_CONSTRAINT_MISSING_MAX_GREEN_EXTENSION_S = (
+        "safety_constraint_missing:max_green_extension_s"
+    )
     SAFETY_CONSTRAINT_MISSING_MAX_TOTAL_GREEN_S = "safety_constraint_missing:max_total_green_s"
     GREEN_EXTENSION_UNKNOWN_REMAINING_PHASE_TIME = "green_extension_unknown_remaining_phase_time"
     GREEN_EXTENSION_UNKNOWN_SPENT_PHASE_TIME = "green_extension_unknown_spent_phase_time"
@@ -104,7 +113,9 @@ class ReasonCode(str, Enum):
     SAFETY_CONSTRAINT_MISSING_MIN_GREEN_S = "safety_constraint_missing:min_green_s"
     EARLY_GREEN_UNKNOWN_SPENT_PHASE_TIME = "early_green_unknown_spent_phase_time"
     MIN_GREEN_NOT_SATISFIED = "min_green_not_satisfied"  # dinâmico: :spent<min
-    PEDESTRIAN_CLEARANCE_UNVERIFIABLE = "pedestrian_clearance_unverifiable_signal_program_not_validated"
+    PEDESTRIAN_CLEARANCE_UNVERIFIABLE = (
+        "pedestrian_clearance_unverifiable_signal_program_not_validated"
+    )
     PHASE_ALREADY_CLOSE_TO_SWITCH = "phase_already_close_to_switch"
     APPROVED_RED_TRUNCATION = "approved_red_truncation"
 
@@ -112,11 +123,17 @@ class ReasonCode(str, Enum):
     EARLY_GREEN_PHASE_INDICES_UNKNOWN = "early_green_phase_indices_unknown"
     EARLY_GREEN_TARGET_PHASE_ALREADY_ACTIVE = "early_green_target_phase_already_active"
     EARLY_GREEN_PHASE_NOT_IN_CONFIGURED_SEQUENCE = "early_green_phase_not_in_configured_sequence"
-    EARLY_GREEN_TARGET_PHASE_NOT_IN_REMAINING_SEQUENCE = "early_green_target_phase_not_in_remaining_sequence"
+    EARLY_GREEN_TARGET_PHASE_NOT_IN_REMAINING_SEQUENCE = (
+        "early_green_target_phase_not_in_remaining_sequence"
+    )
     EARLY_GREEN_WOULD_SKIP_CLEARANCE_PHASE = "early_green_would_skip_clearance_phase"
     EARLY_GREEN_CURRENT_PHASE_UNKNOWN = "early_green_current_phase_unknown"
-    EARLY_GREEN_CURRENT_PHASE_SIGNAL_GROUP_UNKNOWN = "early_green_current_phase_signal_group_unknown"
-    EARLY_GREEN_CURRENT_PHASE_NOT_CONFIGURED_AS_CONFLICT = "early_green_current_phase_not_configured_as_conflict"
+    EARLY_GREEN_CURRENT_PHASE_SIGNAL_GROUP_UNKNOWN = (
+        "early_green_current_phase_signal_group_unknown"
+    )
+    EARLY_GREEN_CURRENT_PHASE_NOT_CONFIGURED_AS_CONFLICT = (
+        "early_green_current_phase_not_configured_as_conflict"
+    )
 
     # --- controller (orquestração) ---
     SUPERSEDED_BY_EARLIER_INTERVENTION_SAME_STEP = "superseded_by_earlier_intervention_same_step"

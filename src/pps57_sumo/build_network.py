@@ -5,6 +5,7 @@ The project has several entry points that need a SUMO network: baseline runs,
 scenario-suite runs, C-ITS/TSP runs and GUI inspection. Keeping netconvert flags
 and post-build TLS edits in one module prevents those paths from drifting.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -84,7 +85,11 @@ def build_sumo_artifacts(
         tls_offsets_output=artifacts.tls_offsets_file,
     )
     _ensure_detector_output_dirs(config, artifacts)
-    resolved_output_dir = root / "outputs" if output_dir is None else (root / output_dir if not output_dir.is_absolute() else output_dir)
+    resolved_output_dir = (
+        root / "outputs"
+        if output_dir is None
+        else (root / output_dir if not output_dir.is_absolute() else output_dir)
+    )
     write_sumocfg(config, artifacts, output_dir=resolved_output_dir)
     if build_net:
         command = netconvert_command(config, artifacts, netconvert_binary=netconvert_binary)
@@ -104,7 +109,11 @@ def netconvert_command(
 ) -> list[str]:
     network_cfg = config.get("network", {}) if isinstance(config.get("network"), dict) else {}
     cycle_time = "90"
-    intersections = network_cfg.get("intersections", []) if isinstance(network_cfg.get("intersections"), list) else []
+    intersections = (
+        network_cfg.get("intersections", [])
+        if isinstance(network_cfg.get("intersections"), list)
+        else []
+    )
     cycles = {int(i.get("tls_cycle_s", 90)) for i in intersections if "tls_cycle_s" in i}
     if cycles and len(cycles) == 1:
         cycle_time = str(cycles.pop())
@@ -129,17 +138,23 @@ def netconvert_command(
     if network_cfg.get("enable_sidewalks"):
         cmd.extend(["--sidewalks.guess", "true"])
     if network_cfg.get("enable_pedestrian_crossings"):
-        ped_cfg = network_cfg.get("pedestrian_crossings", {}) if isinstance(network_cfg.get("pedestrian_crossings"), dict) else {}
+        ped_cfg = (
+            network_cfg.get("pedestrian_crossings", {})
+            if isinstance(network_cfg.get("pedestrian_crossings"), dict)
+            else {}
+        )
         cmd.extend(["--crossings.guess", "true", "--walkingareas", "true"])
         # Override netconvert defaults so the guessed crossing phase has a
         # realistic clearance (WALK + flashing-DW). Default green is ~5s,
         # default clearance is ~3s — too tight for a 8m crossing at 1.2 m/s.
-        cmd.extend([
-            "--tls.crossing-min.time",
-            str(int(ped_cfg.get("crossing_min_s", 6))),
-            "--tls.crossing-clearance.time",
-            str(int(ped_cfg.get("crossing_clearance_s", 5))),
-        ])
+        cmd.extend(
+            [
+                "--tls.crossing-min.time",
+                str(int(ped_cfg.get("crossing_min_s", 6))),
+                "--tls.crossing-clearance.time",
+                str(int(ped_cfg.get("crossing_clearance_s", 5))),
+            ]
+        )
     return cmd
 
 
@@ -189,20 +204,26 @@ def write_sumocfg(config: dict, artifacts: SumoArtifacts, *, output_dir: Path) -
     # SUMO default (3.0s) here; tighten via additional-files override if a
     # SCATS-style sub-3s gap becomes necessary.
     network_cfg = config.get("network", {}) if isinstance(config.get("network"), dict) else {}
-    intersections = network_cfg.get("intersections", []) if isinstance(network_cfg.get("intersections"), list) else []
+    intersections = (
+        network_cfg.get("intersections", [])
+        if isinstance(network_cfg.get("intersections"), list)
+        else []
+    )
     actuated_lines = ""
     if any(str(i.get("tls_type", "")) == "actuated" for i in intersections):
-        actuated_cfg = network_cfg.get("actuated_tls", {}) if isinstance(network_cfg.get("actuated_tls"), dict) else {}
-        jam_threshold = float(actuated_cfg.get("jam_threshold_s", 30.0))
-        actuated_lines = (
-            f'    <tls.actuated.jam-threshold value="{jam_threshold:g}"/>\n'
+        actuated_cfg = (
+            network_cfg.get("actuated_tls", {})
+            if isinstance(network_cfg.get("actuated_tls"), dict)
+            else {}
         )
+        jam_threshold = float(actuated_cfg.get("jam_threshold_s", 30.0))
+        actuated_lines = f'    <tls.actuated.jam-threshold value="{jam_threshold:g}"/>\n'
     text = f"""<?xml version="1.0" ?>
 <configuration>
   <input>
     <net-file value="{rel(artifacts.network_file)}"/>
     <route-files value="{rel(artifacts.routes_file)}"/>
-    <additional-files value="{','.join(additional_files)}"/>
+    <additional-files value="{",".join(additional_files)}"/>
     <!-- Calibrators are generated as scaffolding but intentionally not loaded.
          SUMO calibrators enforce synthetic targets by inserting/removing
          vehicles, so they should only be activated with real count data. -->
@@ -213,10 +234,10 @@ def write_sumocfg(config: dict, artifacts: SumoArtifacts, *, output_dir: Path) -
     <step-length value="{step_length:g}"/>
   </time>
   <output>
-    <tripinfo-output value="{rel(output_dir / 'tripinfo.xml')}"/>
-    <summary-output value="{rel(output_dir / 'summary.xml')}"/>
-    <statistic-output value="{rel(output_dir / 'statistics.xml')}"/>
-    <emission-output value="{rel(output_dir / 'emissions.xml')}"/>
+    <tripinfo-output value="{rel(output_dir / "tripinfo.xml")}"/>
+    <summary-output value="{rel(output_dir / "summary.xml")}"/>
+    <statistic-output value="{rel(output_dir / "statistics.xml")}"/>
+    <emission-output value="{rel(output_dir / "emissions.xml")}"/>
   </output>
   <report>
     <duration-log.statistics value="true"/>

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Logging JSONL e resumo para decisões/atuações TSP."""
+
 from __future__ import annotations
 
 import json
@@ -37,7 +38,9 @@ class TSPJsonlLogger:
         self.close()
 
 
-def summarise_tsp(decisions: List[TSPDecision], actuations: List[ActuationResult]) -> Dict[str, object]:
+def summarise_tsp(
+    decisions: List[TSPDecision], actuations: List[ActuationResult]
+) -> Dict[str, object]:
     by_action: Dict[str, int] = {}
     by_status: Dict[str, int] = {}
     for decision in decisions:

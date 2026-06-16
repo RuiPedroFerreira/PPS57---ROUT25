@@ -5,6 +5,7 @@ This does not replace validation with SUMO. It checks the file structure, XML
 well-formedness, and the safety-critical numeric invariants of the TSP/C-ITS
 configuration files.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -12,6 +13,7 @@ import json
 from pathlib import Path
 import sys
 from typing import Any, Dict
+
 try:
     from defusedxml import ElementTree as ET  # type: ignore[import-untyped]
 except ImportError:  # pragma: no cover - exercised in minimal CI images.
@@ -133,9 +135,13 @@ def validate_safety_configs(root: Path) -> None:
         lateral = _require_number(geometry, "lateral_offset_e7", "cits.synthetic_geometry")
         _require_number(geometry, "elevation_dm", "cits.synthetic_geometry")
         if not -900000000 <= lat <= 900000000:
-            raise SystemExit("Config inválida: synthetic_geometry.origin_latitude_e7 fora de range CDD.")
+            raise SystemExit(
+                "Config inválida: synthetic_geometry.origin_latitude_e7 fora de range CDD."
+            )
         if not -1800000000 <= lon <= 1800000000:
-            raise SystemExit("Config inválida: synthetic_geometry.origin_longitude_e7 fora de range CDD.")
+            raise SystemExit(
+                "Config inválida: synthetic_geometry.origin_longitude_e7 fora de range CDD."
+            )
         if spacing < 0 or lateral < 0:
             raise SystemExit("Config inválida: synthetic_geometry spacing/lateral devem ser >= 0.")
 
@@ -152,7 +158,11 @@ def validate_safety_configs(root: Path) -> None:
             raise SystemExit(f"Config inválida: message_transport.{key} deve ser inteiro >= 0.")
     for key in ("drop_rate", "duplicate_rate"):
         value = transport.get(key, 0.0)
-        if not isinstance(value, (int, float)) or isinstance(value, bool) or not 0.0 <= float(value) <= 1.0:
+        if (
+            not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or not 0.0 <= float(value) <= 1.0
+        ):
             raise SystemExit(f"Config inválida: message_transport.{key} deve estar em [0,1].")
 
     trust_store = cits.get("trust_store", {})
@@ -160,7 +170,9 @@ def validate_safety_configs(root: Path) -> None:
         raise SystemExit("Config inválida: trust_store deve ser objeto.")
     if trust_store.get("mode", "tofu") not in {"tofu", "prefix_allowlist"}:
         raise SystemExit("Config inválida: trust_store.mode deve ser tofu ou prefix_allowlist.")
-    if trust_store.get("mode") == "prefix_allowlist" and not trust_store.get("allowed_signer_prefixes"):
+    if trust_store.get("mode") == "prefix_allowlist" and not trust_store.get(
+        "allowed_signer_prefixes"
+    ):
         raise SystemExit("Config inválida: prefix_allowlist requer allowed_signer_prefixes.")
 
     sumo_intersection_types = {
@@ -203,7 +215,9 @@ def validate_safety_configs(root: Path) -> None:
     if min_green <= 0:
         raise SystemExit(f"Config inválida: min_green_s deve ser > 0 (é {min_green}).")
     if max_extension <= 0:
-        raise SystemExit(f"Config inválida: max_green_extension_s deve ser > 0 (é {max_extension}).")
+        raise SystemExit(
+            f"Config inválida: max_green_extension_s deve ser > 0 (é {max_extension})."
+        )
     if max_total_green < min_green:
         raise SystemExit(
             f"Config inválida: max_total_green_s ({max_total_green}) < min_green_s ({min_green})."
@@ -217,7 +231,9 @@ def validate_safety_configs(root: Path) -> None:
             f"Config inválida: max_consecutive_priority_interventions_per_tls deve ser >= 1 (é {max_consecutive})."
         )
     if cooldown_s < 0:
-        raise SystemExit(f"Config inválida: cooldown_after_priority_s deve ser >= 0 (é {cooldown_s}).")
+        raise SystemExit(
+            f"Config inválida: cooldown_after_priority_s deve ser >= 0 (é {cooldown_s})."
+        )
 
     policy = tsp.get("decision_policy", {})
     ge_min = _require_number(policy, "green_extension_min_s", "tsp.decision_policy")
@@ -233,9 +249,13 @@ def validate_safety_configs(root: Path) -> None:
             f"0 < min ({ge_min}) <= default ({ge_default}) <= max ({ge_max})."
         )
     if not 0.0 <= min_score <= 1.0:
-        raise SystemExit(f"Config inválida: min_priority_score deve estar em [0,1] (é {min_score}).")
+        raise SystemExit(
+            f"Config inválida: min_priority_score deve estar em [0,1] (é {min_score})."
+        )
     if early_green_min_eta <= 0:
-        raise SystemExit(f"Config inválida: early_green_min_eta_s deve ser > 0 (é {early_green_min_eta}).")
+        raise SystemExit(
+            f"Config inválida: early_green_min_eta_s deve ser > 0 (é {early_green_min_eta})."
+        )
     if red_truncation <= 0:
         # Uma fase truncada para 0s (ou menos) é estruturalmente insegura.
         raise SystemExit(f"Config inválida: red_truncation_to_s deve ser > 0 (é {red_truncation}).")
@@ -318,7 +338,9 @@ def validate_safety_configs(root: Path) -> None:
             raise SystemExit(f"Config inválida: phase_mapping[{tls_id}].target_phase_index < 0.")
         for idx in mapping.get("service_green_phase_indices", []):
             if not isinstance(idx, int) or idx < 0:
-                raise SystemExit(f"Config inválida: phase_mapping[{tls_id}].service_green_phase_indices inválido.")
+                raise SystemExit(
+                    f"Config inválida: phase_mapping[{tls_id}].service_green_phase_indices inválido."
+                )
 
     declared_movements = {}
     for index, intersection in enumerate(cits.get("intersections", [])):
@@ -326,13 +348,17 @@ def validate_safety_configs(root: Path) -> None:
         for movement in intersection.get("priority_movements", []):
             movement_id = movement.get("movement_id")
             if not movement_id:
-                raise SystemExit(f"Config inválida: intersections[{index}].priority_movements sem movement_id.")
+                raise SystemExit(
+                    f"Config inválida: intersections[{index}].priority_movements sem movement_id."
+                )
             if movement_id in declared_movements:
                 raise SystemExit(f"Config inválida: priority movement duplicado: {movement_id}.")
             declared_movements[movement_id] = movement
             approach_edges = movement.get("approach_edges", [])
             if not approach_edges:
-                raise SystemExit(f"Config inválida: priority movement {movement_id} sem approach_edges.")
+                raise SystemExit(
+                    f"Config inválida: priority movement {movement_id} sem approach_edges."
+                )
             unknown_edges = [edge for edge in approach_edges if edge not in controlled_edges]
             if unknown_edges:
                 raise SystemExit(
@@ -340,10 +366,16 @@ def validate_safety_configs(root: Path) -> None:
                     + ", ".join(unknown_edges)
                 )
             if not movement.get("target_signal_group_id"):
-                raise SystemExit(f"Config inválida: priority movement {movement_id} sem target_signal_group_id.")
+                raise SystemExit(
+                    f"Config inválida: priority movement {movement_id} sem target_signal_group_id."
+                )
 
     movement_phase_mapping = phase_mapping.get("priority_movements", {})
-    missing_mappings = [movement_id for movement_id in declared_movements if movement_id not in movement_phase_mapping]
+    missing_mappings = [
+        movement_id
+        for movement_id in declared_movements
+        if movement_id not in movement_phase_mapping
+    ]
     if missing_mappings:
         raise SystemExit(
             "Config inválida: faltam mappings tsp.phase_mapping.priority_movements para: "
@@ -351,11 +383,17 @@ def validate_safety_configs(root: Path) -> None:
         )
     for movement_id, mapping in movement_phase_mapping.items():
         if movement_id not in declared_movements:
-            raise SystemExit(f"Config inválida: mapping TSP para movement inexistente: {movement_id}.")
+            raise SystemExit(
+                f"Config inválida: mapping TSP para movement inexistente: {movement_id}."
+            )
         if not isinstance(mapping, dict) or not isinstance(mapping.get("target_phase_index"), int):
-            raise SystemExit(f"Config inválida: priority movement {movement_id} sem target_phase_index inteiro.")
+            raise SystemExit(
+                f"Config inválida: priority movement {movement_id} sem target_phase_index inteiro."
+            )
         if mapping["target_phase_index"] < 0:
-            raise SystemExit(f"Config inválida: priority movement {movement_id}.target_phase_index < 0.")
+            raise SystemExit(
+                f"Config inválida: priority movement {movement_id}.target_phase_index < 0."
+            )
 
     controller_default = tsp.get("controller_contracts", {}).get("default", {})
     if not isinstance(controller_default, dict):
@@ -365,9 +403,13 @@ def validate_safety_configs(root: Path) -> None:
             raise SystemExit(f"Config inválida: controller_contracts.default.{key} em falta.")
     if not controller_default.get("allowed_actions"):
         raise SystemExit("Config inválida: controller_contracts.default.allowed_actions vazio.")
-    for idx in controller_default.get("phase_sequence", []) + controller_default.get("intergreen_phase_indices", []):
+    for idx in controller_default.get("phase_sequence", []) + controller_default.get(
+        "intergreen_phase_indices", []
+    ):
         if not isinstance(idx, int) or idx < 0:
-            raise SystemExit("Config inválida: controller_contracts.default contém índice de fase inválido.")
+            raise SystemExit(
+                "Config inválida: controller_contracts.default contém índice de fase inválido."
+            )
 
     priority_group_defaults = controller_default.get("priority_signal_group_defaults", {})
     if not isinstance(priority_group_defaults, dict):
@@ -379,9 +421,13 @@ def validate_safety_configs(root: Path) -> None:
         if not isinstance(value, (int, float)) or value <= 0:
             raise SystemExit(f"Config inválida: priority_signal_group_defaults.{key} inválido.")
     if priority_group_defaults["max_green_s"] < priority_group_defaults["min_green_s"]:
-        raise SystemExit("Config inválida: priority_signal_group_defaults max_green_s < min_green_s.")
+        raise SystemExit(
+            "Config inválida: priority_signal_group_defaults max_green_s < min_green_s."
+        )
     if not controller_default.get("additional_signal_groups"):
-        raise SystemExit("Config inválida: controller_contracts.default.additional_signal_groups vazio.")
+        raise SystemExit(
+            "Config inválida: controller_contracts.default.additional_signal_groups vazio."
+        )
     controllers = tsp.get("controller_contracts", {}).get("controllers", {})
     if not isinstance(controllers, dict) or not controllers:
         raise SystemExit("Config inválida: controller_contracts.controllers em falta.")
@@ -391,8 +437,13 @@ def validate_safety_configs(root: Path) -> None:
         tls_id = intersection.get("tls_id")
         controller = controllers.get(tls_id)
         if not isinstance(controller, dict):
-            raise SystemExit(f"Config inválida: controller_contracts.controllers[{tls_id}] em falta.")
-        group_ids = {movement["target_signal_group_id"] for movement in intersection.get("priority_movements", [])}
+            raise SystemExit(
+                f"Config inválida: controller_contracts.controllers[{tls_id}] em falta."
+            )
+        group_ids = {
+            movement["target_signal_group_id"]
+            for movement in intersection.get("priority_movements", [])
+        }
         group_ids.update(
             str(item.get("signal_group_id"))
             for item in controller.get("additional_signal_groups", [])
@@ -404,11 +455,15 @@ def validate_safety_configs(root: Path) -> None:
         for movement in intersection.get("priority_movements", []):
             group_id = movement["target_signal_group_id"]
             if group_id not in explicit_groups:
-                raise SystemExit(f"Config inválida: controller {tls_id} sem signal_group específico {group_id}.")
+                raise SystemExit(
+                    f"Config inválida: controller {tls_id} sem signal_group específico {group_id}."
+                )
         for group_id, group in explicit_groups.items():
             conflicts = group.get("conflicts_with", [])
             if not conflicts:
-                raise SystemExit(f"Config inválida: controller {tls_id} signal_group {group_id} sem conflitos.")
+                raise SystemExit(
+                    f"Config inválida: controller {tls_id} signal_group {group_id} sem conflitos."
+                )
             unknown = [item for item in conflicts if item not in group_ids]
             if unknown:
                 raise SystemExit(
@@ -419,7 +474,9 @@ def validate_safety_configs(root: Path) -> None:
             group_id = group.get("signal_group_id")
             conflicts = group.get("conflicts_with", [])
             if group_id and not conflicts:
-                raise SystemExit(f"Config inválida: controller {tls_id} signal_group {group_id} sem conflitos.")
+                raise SystemExit(
+                    f"Config inválida: controller {tls_id} signal_group {group_id} sem conflitos."
+                )
             unknown = [item for item in conflicts if item not in group_ids]
             if unknown:
                 raise SystemExit(
@@ -441,36 +498,42 @@ def validate_safety_configs(root: Path) -> None:
 def validate_network_profile_config(root: Path, cits: Dict[str, Any], tsp: Dict[str, Any]) -> None:
     cits_discovery = cits.get("network_discovery", {})
     tsp_profile = tsp.get("network_profile", {})
-    enabled = (
-        isinstance(cits_discovery, dict)
-        and bool(cits_discovery.get("enabled", False))
-    ) or (
-        isinstance(tsp_profile, dict)
-        and bool(tsp_profile.get("enabled", False))
+    enabled = (isinstance(cits_discovery, dict) and bool(cits_discovery.get("enabled", False))) or (
+        isinstance(tsp_profile, dict) and bool(tsp_profile.get("enabled", False))
     )
     if not enabled:
         return
     sumo_cfg = cits.get("sumo", {})
     if not isinstance(sumo_cfg, dict) or not sumo_cfg.get("network"):
-        raise SystemExit("Config invalida: network_discovery/network_profile requer cits.sumo.network.")
+        raise SystemExit(
+            "Config invalida: network_discovery/network_profile requer cits.sumo.network."
+        )
     network_path = Path(str(sumo_cfg["network"]))
     if not network_path.is_absolute():
         network_path = root / network_path
     if not network_path.exists() and network_path.parent == root / "sumo" / "network":
-        print(f"SKIP network profile: generated net.xml not found at {network_path}; run make build to generate it.")
+        print(
+            f"SKIP network profile: generated net.xml not found at {network_path}; run make build to generate it."
+        )
         return
     if not network_path.exists():
         raise SystemExit(f"Config invalida: network profile net.xml nao existe: {network_path}")
     try:
         profile = load_network_profile(network_path)
     except Exception as exc:
-        raise SystemExit(f"Config invalida: nao foi possivel ler network profile de {network_path}: {exc}") from exc
+        raise SystemExit(
+            f"Config invalida: nao foi possivel ler network profile de {network_path}: {exc}"
+        ) from exc
     if not profile.tls_profiles:
-        raise SystemExit(f"Config invalida: network profile sem tlLogic/controladores em {network_path}.")
+        raise SystemExit(
+            f"Config invalida: network profile sem tlLogic/controladores em {network_path}."
+        )
 
     profile_tls = set(profile.tls_profiles)
     for index, intersection in enumerate(cits.get("intersections", [])):
-        if not isinstance(intersection, dict) or not bool(intersection.get("signal_controlled", True)):
+        if not isinstance(intersection, dict) or not bool(
+            intersection.get("signal_controlled", True)
+        ):
             continue
         tls_id = str(intersection.get("tls_id", ""))
         if tls_id and tls_id not in profile_tls:

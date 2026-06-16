@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Testes do GreenCompensationManager (v2.1, compensação NEMA-style)."""
+
 from __future__ import annotations
 
 from pathlib import Path

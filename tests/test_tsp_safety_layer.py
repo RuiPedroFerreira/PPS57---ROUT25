@@ -108,7 +108,13 @@ class Package4TSPTestCase(unittest.TestCase):
             "priority_level": "operator_priority_class",
         }
         # Drops silenciosos: campos que deixaram de fazer sentido.
-        ignored = {"requested_maneuver", "current_edge_id", "destination_id", "source_id", "timestamp_s"}
+        ignored = {
+            "requested_maneuver",
+            "current_edge_id",
+            "destination_id",
+            "source_id",
+            "timestamp_s",
+        }
         for key, value in overrides.items():
             if key in ignored:
                 continue
@@ -231,7 +237,9 @@ class Package4TSPTestCase(unittest.TestCase):
         decision = self.engine.decide(request, self._state(next_switch_s=101.0), sim_time_s=100.0)
         result = safety.validate(decision, self._state(next_switch_s=101.0), sim_time_s=100.0)
         self.assertTrue(result.approved)
-        self.assertLessEqual(result.safe_decision.extension_s, self.cits.safety_constraints["max_green_extension_s"])
+        self.assertLessEqual(
+            result.safe_decision.extension_s, self.cits.safety_constraints["max_green_extension_s"]
+        )
 
     def test_safety_blocks_early_green_before_min_green(self) -> None:
         safety = TSPSafetyLayer(self.cits, self.tsp)
@@ -269,7 +277,9 @@ class Package4TSPTestCase(unittest.TestCase):
     def test_safety_blocks_green_extension_during_yellow_transition(self) -> None:
         safety = TSPSafetyLayer(self.cits, self.tsp)
         decision = self.engine.decide(self._request(), self._state(), sim_time_s=100.0)
-        result = safety.validate(decision, self._state(red_yellow_green_state="yyrr"), sim_time_s=100.0)
+        result = safety.validate(
+            decision, self._state(red_yellow_green_state="yyrr"), sim_time_s=100.0
+        )
         self.assertFalse(result.approved)
         self.assertEqual(result.reason, "current_phase_is_yellow_wait_for_next_cycle")
 
@@ -292,9 +302,7 @@ class Package4TSPTestCase(unittest.TestCase):
 
     def test_safety_blocks_early_green_when_phase_sequence_does_not_reach_target(self) -> None:
         raw = deepcopy(self.tsp.raw)
-        raw["controller_contracts"]["controllers"] = {
-            "I7": {"phase_sequence": [2, 3, 1]}
-        }
+        raw["controller_contracts"]["controllers"] = {"I7": {"phase_sequence": [2, 3, 1]}}
         tsp = TSPConfig(root=self.tsp.root, raw=raw)
         # Decisão construída com o contrato VÁLIDO (self.engine): o engine v2
         # com o contrato partido diferia na pré-consulta e a Safety nunca via a
@@ -349,9 +357,7 @@ class Package4TSPTestCase(unittest.TestCase):
     def test_safety_blocks_early_green_that_would_skip_clearance_phase(self) -> None:
         # C1: never_skip_yellow_or_all_red é agora efetivamente verificado.
         raw = deepcopy(self.tsp.raw)
-        raw["controller_contracts"]["controllers"] = {
-            "I7": {"phase_sequence": [2, 0, 1, 3]}
-        }
+        raw["controller_contracts"]["controllers"] = {"I7": {"phase_sequence": [2, 0, 1, 3]}}
         tsp = TSPConfig(root=self.tsp.root, raw=raw)
         # Tal como no teste de sequência: decisão do contrato válido, Safety
         # com o contrato partido — defesa em profundidade testada isolada.
@@ -393,7 +399,9 @@ class Package4TSPTestCase(unittest.TestCase):
         safety = TSPSafetyLayer(self.cits, self.tsp)
         decision = self.engine.decide(self._request(), self._state(), sim_time_s=100.0)
         safety.last_intervention_time_by_tls["I2"] = 0.0
-        safety.consecutive_interventions_by_tls["I2"] = self.cits.safety_constraints["max_consecutive_priority_interventions_per_tls"]
+        safety.consecutive_interventions_by_tls["I2"] = self.cits.safety_constraints[
+            "max_consecutive_priority_interventions_per_tls"
+        ]
         result = safety.validate(decision, self._state(), sim_time_s=1000.0)
         self.assertTrue(result.approved)
         self.assertEqual(safety.consecutive_interventions_by_tls["I2"], 0)
@@ -733,7 +741,9 @@ class Package4TSPTestCase(unittest.TestCase):
         )
         self.assertEqual(len(decisions), 2)
         approved = [d for d in decisions if d.status == DecisionStatus.APPROVED.value]
-        superseded = [d for d in decisions if d.reason == "superseded_by_earlier_intervention_same_step"]
+        superseded = [
+            d for d in decisions if d.reason == "superseded_by_earlier_intervention_same_step"
+        ]
         self.assertEqual(len(approved), 1)
         self.assertEqual(len(superseded), 1)
         self.assertEqual(superseded[0].status, DecisionStatus.NOT_ACTUABLE.value)
@@ -743,7 +753,9 @@ class Package4TSPTestCase(unittest.TestCase):
         # P6: a corridor defer (pre-Safety) must downgrade to NOT_ACTUABLE, never
         # reach APPROVED, never actuate, and NOT mark the TLS intervened (so a
         # same-step follow-up is corridor-deferred, not superseded).
-        tsp = replace(self.tsp, raw={**self.tsp.raw, "corridor": {"max_corridor_recovery_debt_s": 1.0}})
+        tsp = replace(
+            self.tsp, raw={**self.tsp.raw, "corridor": {"max_corridor_recovery_debt_s": 1.0}}
+        )
         controller = TSPControlController(self.cits, tsp)
         controller.safety.recovery_debt_by_tls["I2"] = 5.0  # over the 1.0 corridor cap
 
@@ -826,8 +838,8 @@ class Package4TSPTestCase(unittest.TestCase):
         joined = " ".join(problems)
         self.assertIn("fora do programa", joined)  # phase_sequence 2,3 > 2 phases
         self.assertIn("atuado/adaptativo", joined)  # actuated detected by behaviour
-        self.assertIn("ilegível", joined)           # unreadable program (fail-closed)
-        self.assertNotIn("I6:", joined)             # I6 is a SUMO priority roundabout, not a TLS
+        self.assertIn("ilegível", joined)  # unreadable program (fail-closed)
+        self.assertNotIn("I6:", joined)  # I6 is a SUMO priority roundabout, not a TLS
 
     def test_signal_program_verification_flags_intermediate_phase_without_clearance(self) -> None:
         # Item 2 (closes C1 residual): fase intermédia da sequência tem de ser
@@ -858,7 +870,9 @@ class Package4TSPTestCase(unittest.TestCase):
 
     def test_controller_contract_requires_conflict_matrix(self) -> None:
         raw = deepcopy(self.tsp.raw)
-        raw["controller_contracts"]["controllers"]["I2"]["signal_groups"]["I2_priority_westbound"]["conflicts_with"] = []
+        raw["controller_contracts"]["controllers"]["I2"]["signal_groups"]["I2_priority_westbound"][
+            "conflicts_with"
+        ] = []
         controller = TSPControlController(self.cits, TSPConfig(root=self.tsp.root, raw=raw))
 
         class _CleanAdapter:
@@ -923,7 +937,10 @@ class Package4TSPTestCase(unittest.TestCase):
             def getAllProgramLogics(self, tls_id: str):
                 return [
                     SimpleNamespace(programID="stale", phases=[SimpleNamespace(state="G")]),
-                    SimpleNamespace(programID="active", phases=[SimpleNamespace(state="G"), SimpleNamespace(state="r")]),
+                    SimpleNamespace(
+                        programID="active",
+                        phases=[SimpleNamespace(state="G"), SimpleNamespace(state="r")],
+                    ),
                 ]
 
         adapter = TraciSimulationAdapter(self.cits)
@@ -1083,7 +1100,9 @@ class Package4TSPTestCase(unittest.TestCase):
         )
         decision = self.engine.decide(self._request(), self._state(), sim_time_s=100.0)
         safe = decision.copy_with(status=DecisionStatus.APPROVED.value)
-        result = TraciTSPActuator(adapter=simulated, apply_actuation=True).apply(safe, self._state(), sim_time_s=100.0)
+        result = TraciTSPActuator(adapter=simulated, apply_actuation=True).apply(
+            safe, self._state(), sim_time_s=100.0
+        )
         self.assertFalse(result.applied)
         self.assertFalse(base.called)
         self.assertEqual(result.reason, "controller_locked_manual_mode")
@@ -1104,7 +1123,9 @@ class Package4TSPTestCase(unittest.TestCase):
         )
         decision = self.engine.decide(self._request(), self._state(), sim_time_s=100.0)
         safe = decision.copy_with(status=DecisionStatus.APPROVED.value)
-        result = TraciTSPActuator(adapter=simulated, apply_actuation=True).apply(safe, self._state(), sim_time_s=100.0)
+        result = TraciTSPActuator(adapter=simulated, apply_actuation=True).apply(
+            safe, self._state(), sim_time_s=100.0
+        )
         self.assertTrue(result.applied)
         self.assertIsNotNone(base.duration_s)
         self.assertEqual(result.controller_response["reason"], "controller_command_accepted")
@@ -1130,7 +1151,9 @@ class Package4TSPTestCase(unittest.TestCase):
         )
         decision = self.engine.decide(self._request(), self._state(), sim_time_s=100.0)
         safe = decision.copy_with(status=DecisionStatus.APPROVED.value)
-        result = TraciTSPActuator(adapter=simulated, apply_actuation=True).apply(safe, self._state(), sim_time_s=100.0)
+        result = TraciTSPActuator(adapter=simulated, apply_actuation=True).apply(
+            safe, self._state(), sim_time_s=100.0
+        )
         self.assertFalse(result.applied)
         self.assertIsNone(base.duration_s)
         self.assertEqual(result.reason, "controller_latency_requires_command_scheduler")
@@ -1163,13 +1186,17 @@ class Package4TSPTestCase(unittest.TestCase):
             spent_duration_s=20.0,
             controlled_lanes=["I6_I7_0", "ATLANTIC_WEST_I7_0", "N_I7_I7_0", "S_I7_I7_0"],
         )
-        decision = self.engine.decide(request, state, sim_time_s=100.0).copy_with(status=DecisionStatus.APPROVED.value)
+        decision = self.engine.decide(request, state, sim_time_s=100.0).copy_with(
+            status=DecisionStatus.APPROVED.value
+        )
         simulated = SimulatedControllerAdapter(
             base=_BaseAdapter(),  # type: ignore[arg-type]
             contracts=build_controller_contracts(self.cits, self.tsp),
             config={"default_mode": "automatic", "active_pedestrian_calls_by_tls": ["I7"]},
         )
-        result = TraciTSPActuator(adapter=simulated, apply_actuation=True).apply(decision, state, sim_time_s=100.0)
+        result = TraciTSPActuator(adapter=simulated, apply_actuation=True).apply(
+            decision, state, sim_time_s=100.0
+        )
         self.assertFalse(result.applied)
         self.assertEqual(result.reason, "controller_rejected_pedestrian_call_active")
 
@@ -1214,6 +1241,7 @@ class Package4TSPTestCase(unittest.TestCase):
         self.assertEqual(controller.safety.last_intervention_time_by_tls["I2"], 100.0)
         error_actuations = [a for a in actuations if a.severity == "error"]
         self.assertEqual(len(error_actuations), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

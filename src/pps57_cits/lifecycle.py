@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Conceptual request lifecycle state machine for the SUMO C-ITS profile."""
+
 from __future__ import annotations
 
 from enum import Enum

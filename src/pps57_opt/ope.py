@@ -22,6 +22,7 @@ cenários onde alvo == behavior, escalada pela cobertura — reportamos cobertur
 IC (t de Student) e um veredicto que degrada para `limited_support` quando a
 sobreposição de suporte é baixa. Nunca recomputa reward no loop vivo.
 """
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
@@ -112,7 +113,9 @@ def evaluate_policy(
             matched_mean_outcome=None,
             confidence_interval=None,
             assumed_deterministic_behavior_propensity=True,
-            notes=["Há outcomes mas nenhuma behavior_policy_action registada; sem suporte para IPS."],
+            notes=[
+                "Há outcomes mas nenhuma behavior_policy_action registada; sem suporte para IPS."
+            ],
         )
 
     # IPS com propensão da behavior assumida = 1.0 (determinística): peso = 1 se a
@@ -152,7 +155,9 @@ def evaluate_policy(
             confidence_interval=None,
             assumed_deterministic_behavior_propensity=True,
             notes=base_notes
-            + ["Sem sobreposição de suporte (a política-alvo nunca coincide com a behavior); IPS não estimável."],
+            + [
+                "Sem sobreposição de suporte (a política-alvo nunca coincide com a behavior); IPS não estimável."
+            ],
         )
 
     ips = mean_ci95(ips_terms)

@@ -10,6 +10,7 @@ SUMO dependency cannot quietly leak across the seam.
 
 Scope: src/ (the library). Standalone scripts under scripts/ may use raw TraCI.
 """
+
 from __future__ import annotations
 
 import ast

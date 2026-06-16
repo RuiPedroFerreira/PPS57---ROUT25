@@ -13,6 +13,7 @@ Source of truth (pinned):
   resource  c71a52cd-b4ed-4011-896a-898e92b15a6f  ("GTFS STCP 05-06-2026 Mais Recente")
   license   Creative Commons CC0
 """
+
 from __future__ import annotations
 
 import argparse
@@ -57,8 +58,20 @@ def fetch(out_dir: Path) -> Path:
         # and transient errors should retry. Download to a temp file and rename only after
         # validating it is a real zip, so a failed/partial fetch never leaves a bad cache.
         subprocess.run(
-            ["curl", "-fsSL", "--retry", "3", "--retry-delay", "2", "--retry-all-errors",
-             "-A", "Mozilla/5.0 (PPS57-ROUT25-validation)", "-o", str(tmp), RAW_URL],
+            [
+                "curl",
+                "-fsSL",
+                "--retry",
+                "3",
+                "--retry-delay",
+                "2",
+                "--retry-all-errors",
+                "-A",
+                "Mozilla/5.0 (PPS57-ROUT25-validation)",
+                "-o",
+                str(tmp),
+                RAW_URL,
+            ],
             check=True,
         )
         if not zipfile.is_zipfile(tmp):
@@ -95,7 +108,9 @@ def fetch(out_dir: Path) -> Path:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--out-dir", type=Path, default=ROOT / ".tools" / "stcp-gtfs")
     args = parser.parse_args()
     fetch(args.out_dir)

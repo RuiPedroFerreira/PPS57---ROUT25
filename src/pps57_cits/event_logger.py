@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Logging JSONL e geração de resumo para a emulação C-ITS."""
+
 from __future__ import annotations
 
 import json
@@ -58,7 +59,7 @@ class IncrementalCITSSummary:
         self.request_ids: set[str] = set()
         self.vehicle_ids: set[str] = set()
         self.rsu_ids: set[str] = set()
-        self.processing = 0      # SSEM com response_status=processing (era "acknowledged")
+        self.processing = 0  # SSEM com response_status=processing (era "acknowledged")
         self.rejected = 0
         self.granted = 0
         self.cancelled = 0
@@ -123,7 +124,9 @@ def summarise_messages(messages: List[CITSMessage]) -> Dict[str, object]:
     return summary.to_dict()
 
 
-def write_summary_dict(path: str | Path, summary: Dict[str, object], extra: Dict[str, object] | None = None) -> Dict[str, object]:
+def write_summary_dict(
+    path: str | Path, summary: Dict[str, object], extra: Dict[str, object] | None = None
+) -> Dict[str, object]:
     """Escreve um resumo já calculado, normalmente agregado incrementalmente.
 
     Escreve atomicamente via `.tmp` + `os.replace`: um crash a meio da

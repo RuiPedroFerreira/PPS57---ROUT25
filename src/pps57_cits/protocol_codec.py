@@ -9,6 +9,7 @@ typed internal models, while transport/persistence code uses a codec.
 field deployment should add a separate codec implementation backed by the
 official ASN.1 modules, PKI validation and the selected transport stack.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -46,14 +47,11 @@ class ProtocolCodec(Protocol):
     profile_name: str
     content_type: str
 
-    def encode(self, message: CITSMessage) -> str:
-        ...
+    def encode(self, message: CITSMessage) -> str: ...
 
-    def decode(self, payload: str | bytes | Dict[str, Any]) -> CITSMessage:
-        ...
+    def decode(self, payload: str | bytes | Dict[str, Any]) -> CITSMessage: ...
 
-    def validate(self, message: CITSMessage) -> List[str]:
-        ...
+    def validate(self, message: CITSMessage) -> List[str]: ...
 
 
 @dataclass(frozen=True)
@@ -87,7 +85,9 @@ class JsonSimulationCodec:
             elif isinstance(payload, dict):
                 raw = dict(payload)
             else:
-                raise ProtocolCodecError(f"Unsupported JSON simulation payload type: {type(payload).__name__}")
+                raise ProtocolCodecError(
+                    f"Unsupported JSON simulation payload type: {type(payload).__name__}"
+                )
         except ProtocolCodecError:
             raise
         except (UnicodeDecodeError, json.JSONDecodeError, TypeError) as exc:
@@ -127,7 +127,9 @@ def message_from_dict(payload: Dict[str, Any]) -> CITSMessage:
             rsu_id=str(payload.get("rsu_id", "")),
             revision=int(payload.get("revision", 0)),
             ref_point=_position_or_none(payload.get("ref_point")),
-            approaches=[_approach(item) for item in payload.get("approaches", []) if isinstance(item, dict)],
+            approaches=[
+                _approach(item) for item in payload.get("approaches", []) if isinstance(item, dict)
+            ],
         )
     if message_type == MessageType.SPATEM.value:
         return SPATEMLike(
@@ -136,7 +138,11 @@ def message_from_dict(payload: Dict[str, Any]) -> CITSMessage:
             intersection_alias=str(payload.get("intersection_alias", "")),
             tls_id=str(payload.get("tls_id", "")),
             revision=int(payload.get("revision", 0)),
-            movement_events=[_movement_event(item) for item in payload.get("movement_events", []) if isinstance(item, dict)],
+            movement_events=[
+                _movement_event(item)
+                for item in payload.get("movement_events", [])
+                if isinstance(item, dict)
+            ],
             intersection_status=dict(payload.get("intersection_status", {})),
             debug_sumo_state=_optional_str(payload.get("debug_sumo_state")),
         )
@@ -144,7 +150,11 @@ def message_from_dict(payload: Dict[str, Any]) -> CITSMessage:
         return SREMLike(
             **common,
             sequence_number=int(payload.get("sequence_number", 0)),
-            requests=[_signal_request(item) for item in payload.get("requests", []) if isinstance(item, dict)],
+            requests=[
+                _signal_request(item)
+                for item in payload.get("requests", [])
+                if isinstance(item, dict)
+            ],
             requestor=_requestor_or_none(payload.get("requestor")),
             operator_telemetry=_operator_telemetry_or_none(payload.get("operator_telemetry")),
             expires_at_s=_optional_float(payload.get("expires_at_s")),

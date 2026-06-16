@@ -24,6 +24,7 @@ stopline), devolvendo o verde não usado à transversal. Aqui:
 Opt-in por config: ``actuation.priority_event_lifecycle_enabled``; com o flag
 ausente o comportamento é byte-idêntico (sem eventos, decisão one-shot v2.1).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -153,7 +154,12 @@ class PriorityEventManager:
                 # caso em que a fase entretanto termina).
                 continue
             result = self._terminate_at_checkout(
-                event, state, signal_control, safety, compensation, sim_time_s,
+                event,
+                state,
+                signal_control,
+                safety,
+                compensation,
+                sim_time_s,
                 apply_actuation=apply_actuation,
             )
             del self.events_by_key[key]

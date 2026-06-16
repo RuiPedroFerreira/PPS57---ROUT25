@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Audit/replay helpers for C-ITS JSONL protocol lifecycles."""
+
 from __future__ import annotations
 
 from collections import Counter, defaultdict
@@ -96,9 +97,7 @@ def audit_protocol_lifecycle(
             decisions_by_request[str(request_id)].append(decision)
 
     actuations_by_decision = {
-        str(item.get("decision_id")): item
-        for item in actuations
-        if item.get("decision_id")
+        str(item.get("decision_id")): item for item in actuations if item.get("decision_id")
     }
     controller_nacks = 0
     actuation_errors = 0
@@ -175,11 +174,17 @@ def audit_protocol_lifecycle(
         },
         "protocol_kpis": {
             "total_cits_messages": len(cits_messages),
-            "total_srem": sum(1 for item in cits_messages if _normalise_message_type(item) == "SREM"),
-            "total_ssem": sum(1 for item in cits_messages if _normalise_message_type(item) == "SSEM"),
+            "total_srem": sum(
+                1 for item in cits_messages if _normalise_message_type(item) == "SREM"
+            ),
+            "total_ssem": sum(
+                1 for item in cits_messages if _normalise_message_type(item) == "SSEM"
+            ),
             "lifecycle_chains": len(chains),
             "duplicate_srem_keys": sum(1 for count in srem_key_counts.values() if count > 1),
-            "with_processing_ssem": sum(1 for chain in chains.values() if chain["processing_ssem_count"] > 0),
+            "with_processing_ssem": sum(
+                1 for chain in chains.values() if chain["processing_ssem_count"] > 0
+            ),
             "with_final_ssem": sum(1 for chain in chains.values() if chain["final_ssem_count"] > 0),
             "missing_final_ssem": len(missing_final),
             "superseded_request_chains": superseded_chains,

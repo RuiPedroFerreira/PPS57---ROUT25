@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """P3 explainability: ReasonCode registry, score_components, counterfactual join."""
+
 from __future__ import annotations
 
 import ast
@@ -18,7 +19,11 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from pps57_cits.config import load_cits_config
-from pps57_opt.demonstrator import DemonstratorRun, build_demonstrator_report, render_demonstrator_markdown
+from pps57_opt.demonstrator import (
+    DemonstratorRun,
+    build_demonstrator_report,
+    render_demonstrator_markdown,
+)
 from pps57_tsp.config import load_tsp_config
 from pps57_tsp.engine import TSPDecisionEngine, _component
 from pps57_tsp.models import ReasonCode
@@ -72,8 +77,12 @@ class ReasonCodeRegistryTestCase(unittest.TestCase):
         literals = _reason_literals(SRC / "pps57_tsp/safety.py", scan_returns=True)
         # sanity: the scanner actually found the safety reasons
         self.assertGreater(len(literals), 20)
-        unregistered = {lit for lit in literals if lit not in codes and lit.split(":")[0] not in codes}
-        self.assertEqual(unregistered, set(), f"unregistered safety reason literals: {unregistered}")
+        unregistered = {
+            lit for lit in literals if lit not in codes and lit.split(":")[0] not in codes
+        }
+        self.assertEqual(
+            unregistered, set(), f"unregistered safety reason literals: {unregistered}"
+        )
 
     def test_engine_and_controller_emit_via_reasoncode_not_literals(self) -> None:
         # After P3 conversion these files should emit reasons via ReasonCode,
@@ -117,8 +126,13 @@ class ScoreComponentsTestCase(unittest.TestCase):
 class CounterfactualJoinTestCase(unittest.TestCase):
     def _run(self, label: str, summary: dict) -> DemonstratorRun:
         return DemonstratorRun(
-            label=label, root=ROOT, summary=summary, cits_summary={},
-            decisions=[], actuations=[], kpis=None,
+            label=label,
+            root=ROOT,
+            summary=summary,
+            cits_summary={},
+            decisions=[],
+            actuations=[],
+            kpis=None,
         )
 
     def test_join_present_when_summary_provided(self) -> None:
