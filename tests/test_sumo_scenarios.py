@@ -694,7 +694,7 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
             # Time profile must cover the full 0–7200 window contiguously.
             self.assertEqual(float(tp[0]["begin"]), 0.0)
             self.assertEqual(float(tp[-1]["end"]), 7200.0)
-            for prev, curr in zip(tp, tp[1:]):
+            for prev, curr in zip(tp, tp[1:], strict=False):
                 self.assertEqual(float(prev["end"]), float(curr["begin"]))
             # The peak scale must be the largest and occur in the middle 1/3 of the window.
             peak_entry = max(tp, key=lambda entry: float(entry["scale"]))

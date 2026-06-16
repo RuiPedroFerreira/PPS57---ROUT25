@@ -372,13 +372,13 @@ def _pair_within_key(
     for sub in ordered_subs:
         b_list = baseline_keyed.get(sub, [])
         r_list = rl_keyed.get(sub, [])
-        for baseline, rl in zip(b_list, r_list):
+        for baseline, rl in zip(b_list, r_list, strict=False):
             pairs.append((baseline, rl))
         baseline_unpaired.extend(b_list[len(r_list) :])
         rl_unpaired.extend(r_list[len(b_list) :])
 
     # Fallback posicional para decisões sem identificador estável.
-    for baseline, rl in zip(baseline_unkeyed, rl_unkeyed):
+    for baseline, rl in zip(baseline_unkeyed, rl_unkeyed, strict=False):
         pairs.append((baseline, rl))
     baseline_unpaired.extend(baseline_unkeyed[len(rl_unkeyed) :])
     rl_unpaired.extend(rl_unkeyed[len(baseline_unkeyed) :])

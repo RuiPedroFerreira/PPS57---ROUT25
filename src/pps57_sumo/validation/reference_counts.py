@@ -157,10 +157,7 @@ def madrid_feed_catalogue_coverage(xml_text: str, catalogue: Mapping[int, str]) 
 
 def _dft_records(payload: Any) -> Iterable[Mapping[str, Any]]:
     """Yield record dicts from a DfT API page (``{"data": [...]}``) or a bare list."""
-    if isinstance(payload, Mapping):
-        data = payload.get("data", [])
-    else:
-        data = payload
+    data = payload.get("data", []) if isinstance(payload, Mapping) else payload
     for rec in data or []:
         if isinstance(rec, Mapping):
             yield rec

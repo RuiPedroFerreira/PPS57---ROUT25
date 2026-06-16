@@ -239,7 +239,7 @@ def generate(
         major_speed,
         major_priority,
     )
-    for a, b in zip(intersections, intersections[1:]):
+    for a, b in zip(intersections, intersections[1:], strict=False):
         lanes = min(
             int(a.get("major_lanes", network.get("default_major_lanes", 2))),
             int(b.get("major_lanes", network.get("default_major_lanes", 2))),
@@ -394,12 +394,15 @@ def build_routes(
     config: dict, intersections: list[dict], terminals: dict[str, dict]
 ) -> dict[str, list[str]]:
     east_to_west = [f"{terminals['CITY_EAST']['id']}_{intersections[0]['id']}"]
-    east_to_west.extend(f"{a['id']}_{b['id']}" for a, b in zip(intersections, intersections[1:]))
+    east_to_west.extend(
+        f"{a['id']}_{b['id']}" for a, b in zip(intersections, intersections[1:], strict=False)
+    )
     east_to_west.append(f"{intersections[-1]['id']}_{terminals['ATLANTIC_WEST']['id']}")
 
     west_to_east = [f"{terminals['ATLANTIC_WEST']['id']}_{intersections[-1]['id']}"]
     west_to_east.extend(
-        f"{b['id']}_{a['id']}" for a, b in reversed(list(zip(intersections, intersections[1:])))
+        f"{b['id']}_{a['id']}"
+        for a, b in reversed(list(zip(intersections, intersections[1:], strict=False)))
     )
     west_to_east.append(f"{intersections[0]['id']}_{terminals['CITY_EAST']['id']}")
 
@@ -461,7 +464,7 @@ def _add_roundabout_ring_edges(
     priority = int(inter.get("roundabout_priority", 6))
     cycle = ("CITY", "NORTH", "ATLANTIC", "SOUTH")
     ring_ids: list[str] = []
-    for src, dst in zip(cycle, (*cycle[1:], cycle[0])):
+    for src, dst in zip(cycle, (*cycle[1:], cycle[0]), strict=False):
         edge_id = f"RB_{inter_id}_{src}_TO_{dst}"
         add_edge(
             edge_id,

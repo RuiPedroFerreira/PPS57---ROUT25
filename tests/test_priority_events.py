@@ -32,24 +32,24 @@ class _RecordingSignalControl:
 
 
 def _extension_decision(**overrides) -> TSPDecision:
-    payload = dict(
-        timestamp_s=100.0,
-        request_id="r1",
-        vehicle_id="bus_1",
-        intersection_id="I2",
-        tls_id="I2",
-        rsu_id="RSU",
-        action="green_extension",
-        status="approved",
-        reason="extend",
-        priority_score=0.5,
-        eta_to_stopline_s=16.0,
-        schedule_delay_s=60.0,
-        headway_deviation_s=0.0,
-        current_phase_index=0,
-        current_next_switch_s=110.0,
-        extension_s=4.0,
-    )
+    payload = {
+        "timestamp_s": 100.0,
+        "request_id": "r1",
+        "vehicle_id": "bus_1",
+        "intersection_id": "I2",
+        "tls_id": "I2",
+        "rsu_id": "RSU",
+        "action": "green_extension",
+        "status": "approved",
+        "reason": "extend",
+        "priority_score": 0.5,
+        "eta_to_stopline_s": 16.0,
+        "schedule_delay_s": 60.0,
+        "headway_deviation_s": 0.0,
+        "current_phase_index": 0,
+        "current_next_switch_s": 110.0,
+        "extension_s": 4.0,
+    }
     payload.update(overrides)
     return TSPDecision(**payload)
 

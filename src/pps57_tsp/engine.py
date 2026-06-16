@@ -524,7 +524,7 @@ class TSPDecisionEngine:
         if not lanes or len(lanes) != len(ryg):
             return {}
         chars: dict[str, str] = {}
-        for lane_id, char in zip(lanes, ryg):
+        for lane_id, char in zip(lanes, ryg, strict=False):
             chars[lane_id] = chars.get(lane_id, "") + char
         return chars
 

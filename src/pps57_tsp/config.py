@@ -92,9 +92,6 @@ class TSPConfig:
 
 def load_tsp_config(path: str | Path, root: str | Path | None = None) -> TSPConfig:
     config_path = Path(path)
-    if root is None:
-        root_path = config_path.resolve().parents[1]
-    else:
-        root_path = Path(root).resolve()
+    root_path = config_path.resolve().parents[1] if root is None else Path(root).resolve()
     raw = json.loads(config_path.read_text(encoding="utf-8"))
     return TSPConfig(root=root_path, raw=raw)

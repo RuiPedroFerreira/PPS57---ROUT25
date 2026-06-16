@@ -120,10 +120,7 @@ class CITSConfig:
 
 def load_cits_config(path: str | Path, root: str | Path | None = None) -> CITSConfig:
     config_path = Path(path)
-    if root is None:
-        root_path = config_path.resolve().parents[1]
-    else:
-        root_path = Path(root).resolve()
+    root_path = config_path.resolve().parents[1] if root is None else Path(root).resolve()
 
     with config_path.open("r", encoding="utf-8") as handle:
         raw = json.load(handle)
@@ -293,9 +290,7 @@ def _auto_intersections_from_network(
     return generated
 
 
-def _load_network_profile_for_config(
-    raw: dict[str, Any], root_path: Path
-) -> NetworkProfile | None:
+def _load_network_profile_for_config(raw: dict[str, Any], root_path: Path) -> NetworkProfile | None:
     sumo_cfg = raw.get("sumo", {})
     if not isinstance(sumo_cfg, dict):
         return None

@@ -104,9 +104,8 @@ NOVIA_NET = """<?xml version="1.0" encoding="UTF-8"?>
 
 
 def _write_net(text: str) -> Path:
-    handle = tempfile.NamedTemporaryFile("w", suffix=".net.xml", delete=False)
-    handle.write(text)
-    handle.close()
+    with tempfile.NamedTemporaryFile("w", suffix=".net.xml", delete=False) as handle:
+        handle.write(text)
     return Path(handle.name)
 
 
@@ -268,9 +267,8 @@ def _auto_cits_config(net: Path):
         },
         "intersections": [],
     }
-    handle = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
-    json.dump(payload, handle)
-    handle.close()
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+        json.dump(payload, handle)
     config_path = Path(handle.name)
     try:
         return load_cits_config(config_path, root=config_path.parent)

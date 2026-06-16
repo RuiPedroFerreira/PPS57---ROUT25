@@ -53,9 +53,8 @@ def auto_discovery_cits_config(network: Path) -> Any:
         },
         "intersections": [],
     }
-    handle = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
-    json.dump(payload, handle)
-    handle.close()
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+        json.dump(payload, handle)
     config_path = Path(handle.name)
     try:
         return load_cits_config(config_path, root=config_path.parent)

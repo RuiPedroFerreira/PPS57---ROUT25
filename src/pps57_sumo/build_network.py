@@ -21,10 +21,10 @@ SRC = Path(__file__).resolve().parents[1]
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from pps57_sumo.apply_tls_offsets import apply_tls_offsets
-from pps57_sumo.environment import ensure_sumo_environment
-from pps57_sumo.generate_plain_corridor import generate
-from pps57_sumo.scenarios import apply_scenario_profile
+from pps57_sumo.apply_tls_offsets import apply_tls_offsets  # noqa: E402
+from pps57_sumo.environment import ensure_sumo_environment  # noqa: E402
+from pps57_sumo.generate_plain_corridor import generate  # noqa: E402
+from pps57_sumo.scenarios import apply_scenario_profile  # noqa: E402
 
 Runner = Callable[[Sequence[str], Path], None]
 

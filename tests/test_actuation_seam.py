@@ -50,10 +50,13 @@ def _runtime_usages(path: Path) -> list:
                 and node.args[0].value.split(".")[0] in _RUNTIME_MODULES
             ):
                 hits.append((node.lineno, f"import_module({node.args[0].value!r})"))
-        elif isinstance(node, ast.Attribute):
-            # bare `traci.foo` / `libsumo.foo` module attribute access
-            if isinstance(node.value, ast.Name) and node.value.id in _RUNTIME_MODULES:
-                hits.append((node.lineno, f"{node.value.id}.{node.attr}"))
+        # bare `traci.foo` / `libsumo.foo` module attribute access
+        elif (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Name)
+            and node.value.id in _RUNTIME_MODULES
+        ):
+            hits.append((node.lineno, f"{node.value.id}.{node.attr}"))
     return hits
 
 

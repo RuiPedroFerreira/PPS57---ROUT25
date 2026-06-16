@@ -347,7 +347,7 @@ def _is_ped_clearance_of(
     """
     if len(candidate_state) != len(original_state):
         return False
-    for i, (c, o) in enumerate(zip(candidate_state, original_state)):
+    for i, (c, o) in enumerate(zip(candidate_state, original_state, strict=False)):
         if i in ped_set:
             if c == o:
                 continue

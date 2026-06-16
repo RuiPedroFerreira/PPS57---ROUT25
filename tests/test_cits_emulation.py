@@ -865,23 +865,23 @@ class Package3CITSTestCase(unittest.TestCase):
 
 def _eligible_srem(**overrides) -> SREMLike:
     """Constrói um SREM elegível (alta-prioridade, ETA na janela, destinado a I2/RSU_BOAVISTA_02)."""
-    params = dict(
-        sim_time_s=100.0,
-        vehicle_id="bus_1",
-        intersection_alias="I2",
-        tls_id="I2",
-        rsu_id="RSU_BOAVISTA_02",
-        lane_id="I1_I2_0",
-        line_id="STCP500_PROXY_W",
-        route_id="route_boavista_east_to_west",
-        eta_to_stopline_s=15.0,
-        distance_to_stopline_m=150.0,
-        speed_mps=10.0,
-        schedule_delay_s=90.0,
-        headway_deviation_s=0.0,
-        operator_priority_class=OperatorPriorityClass.HIGH_DELAY.value,
-        ttl_s=30.0,
-    )
+    params = {
+        "sim_time_s": 100.0,
+        "vehicle_id": "bus_1",
+        "intersection_alias": "I2",
+        "tls_id": "I2",
+        "rsu_id": "RSU_BOAVISTA_02",
+        "lane_id": "I1_I2_0",
+        "line_id": "STCP500_PROXY_W",
+        "route_id": "route_boavista_east_to_west",
+        "eta_to_stopline_s": 15.0,
+        "distance_to_stopline_m": 150.0,
+        "speed_mps": 10.0,
+        "schedule_delay_s": 90.0,
+        "headway_deviation_s": 0.0,
+        "operator_priority_class": OperatorPriorityClass.HIGH_DELAY.value,
+        "ttl_s": 30.0,
+    }
     params.update(overrides)
     return synth_srem(**params)
 

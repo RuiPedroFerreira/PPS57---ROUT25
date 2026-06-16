@@ -38,18 +38,18 @@ SERVICE_W = {
 
 
 def make_obs(**overrides) -> VehicleObservation:
-    base = dict(
-        vehicle_id="bus_1",
-        vehicle_class="bus",
-        type_id="bus_12m",
-        line_id="STCP500_PROXY_W",
-        route_id="route_boavista_east_to_west",
-        edge_id="CITY_EAST_I1",
-        lane_id="CITY_EAST_I1_0",
-        lane_position_m=10.0,
-        lane_length_m=100.0,
-        speed_mps=5.0,
-    )
+    base = {
+        "vehicle_id": "bus_1",
+        "vehicle_class": "bus",
+        "type_id": "bus_12m",
+        "line_id": "STCP500_PROXY_W",
+        "route_id": "route_boavista_east_to_west",
+        "edge_id": "CITY_EAST_I1",
+        "lane_id": "CITY_EAST_I1_0",
+        "lane_position_m": 10.0,
+        "lane_length_m": 100.0,
+        "speed_mps": 5.0,
+    }
     base.update(overrides)
     return VehicleObservation(**base)
 

@@ -16,8 +16,9 @@ select = ["E", "W", "F", "I", "UP", "B", "C4", "SIM"]
 ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
-# Test files may keep unused imports/fixtures and assert-heavy patterns.
-"tests/**" = ["B011"]
+# Tests bootstrap sys.path before importing the package, so module-level
+# imports legitimately appear after that setup (E402).
+"tests/**" = ["B011", "E402"]
 
 [tool.ruff.format]
 docstring-code-format = true

@@ -267,7 +267,7 @@ def load_existing_provenance(path: Path) -> dict | None:
         raise SystemExit(
             f"Existing provenance is not valid JSON ({path}): {exc}. "
             "Delete it and re-fetch ALL sources rather than overwriting silently."
-        )
+        ) from exc
     if not isinstance(existing, dict):
         raise SystemExit(f"Existing provenance has unexpected shape ({path}): expected an object.")
     return existing

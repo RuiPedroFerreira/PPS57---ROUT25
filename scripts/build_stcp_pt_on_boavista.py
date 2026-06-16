@@ -143,7 +143,7 @@ def corridor_lines(zip_path: Path, bbox):
 
         rep = max(trip_ids, key=in_bbox_count)
         ordered = []
-        for seq, sid in sorted(trip_seq.get(rep, [])):
+        for _seq, sid in sorted(trip_seq.get(rep, [])):
             s = stops.get(sid)
             if s is None:
                 continue
@@ -366,7 +366,7 @@ def main() -> None:
         f"median {report['stop_mapping']['snap_dist_m_median']}m  "
         f"(boundary-clipping misses: {len(boundary_losses)}, interior gaps: {len(interior_gaps)})"
     )
-    for key, e in sorted(services.items()):
+    for _key, e in sorted(services.items()):
         print(
             f"  line {e['line']} dir{e['direction']}: {len(e['stops_in_bbox'])} stops | "
             f"real headway AM={e['headway_am_peak_min']}min allday={e['headway_allday_min']}min"

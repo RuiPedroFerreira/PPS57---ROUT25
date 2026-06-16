@@ -69,7 +69,7 @@ def parse_emissions(path: Path | None) -> dict[str, Any]:
 
     totals: dict[str, float] = dict.fromkeys(METRICS, 0.0)
     samples: dict[str, list[float]] = {metric: [] for metric in METRICS}
-    for vid, values in per_vehicle.items():
+    for _vid, values in per_vehicle.items():
         for metric in METRICS:
             value = values.get(metric)
             if value is None:

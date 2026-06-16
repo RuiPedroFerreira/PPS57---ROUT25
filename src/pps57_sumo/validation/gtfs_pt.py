@@ -80,9 +80,7 @@ def select_weekday_service_id(zip_path: str, preferred: str = "DIAS UTEIS") -> s
     raise ValueError("feed has no calendar.txt or calendar_dates.txt weekday service")
 
 
-def headway_stats(
-    departures_s: Sequence[int], window: tuple[int, int]
-) -> dict[str, float] | None:
+def headway_stats(departures_s: Sequence[int], window: tuple[int, int]) -> dict[str, float] | None:
     """Headway statistics (minutes) for departures falling inside a clock window."""
     start, end = window
     inside = sorted(d for d in departures_s if start <= d < end)

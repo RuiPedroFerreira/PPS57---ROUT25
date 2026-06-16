@@ -28,12 +28,12 @@ from _evidence_common import auto_discovery_cits_config, auto_tsp_config  # noqa
 from pps57_cits.messages import OperatorPriorityClass, synth_srem  # noqa: E402
 from pps57_cits.models import SignalState  # noqa: E402
 from pps57_sumo.environment import apply_sumo_environment  # noqa: E402
-from pps57_sumo.network_profile import (
+from pps57_sumo.network_profile import (  # noqa: E402
     MovementProfile,
     NetworkProfile,
     TLSProfile,
     load_network_profile,
-)  # noqa: E402
+)
 from pps57_tsp.config import TSPConfig  # noqa: E402
 from pps57_tsp.engine import TSPDecisionEngine  # noqa: E402
 from pps57_tsp.safety import TSPSafetyLayer  # noqa: E402
@@ -168,7 +168,7 @@ def _compare_profile_to_traci(profile: NetworkProfile, traci_module: Any) -> dic
         if traci_states != profile_states:
             mismatches.append(f"{tls_id}: phase states mismatch")
         if len(traci_durations) != len(profile_durations) or any(
-            abs(a - b) > 1e-6 for a, b in zip(traci_durations, profile_durations)
+            abs(a - b) > 1e-6 for a, b in zip(traci_durations, profile_durations, strict=False)
         ):
             mismatches.append(f"{tls_id}: phase durations mismatch")
         controlled_links = traci_module.trafficlight.getControlledLinks(tls_id)

@@ -36,26 +36,26 @@ class EngineV2CostAwareTestCase(unittest.TestCase):
     # Fixtures
     # ------------------------------------------------------------------
     def _request_i2(self, **overrides):
-        defaults = dict(
-            sim_time_s=100.0,
-            vehicle_id="bus_1",
-            intersection_alias="I2",
-            tls_id="I2",
-            rsu_id="RSU_BOAVISTA_02",
-            lane_id="I1_I2_0",
-            line_id="STCP500_PROXY_W",
-            route_id="route_boavista_east_to_west",
-            speed_mps=10.0,
-            distance_to_stopline_m=160.0,
-            eta_to_stopline_s=16.0,
-            schedule_delay_s=120.0,
-            headway_deviation_s=0.0,
-            operator_priority_class=OperatorPriorityClass.HIGH_DELAY.value,
-            priority_movement_id="I2_westbound_public_transport",
-            target_signal_group_id_hint="I2_priority_westbound",
-            expires_at_s=130.0,
-            ttl_s=30.0,
-        )
+        defaults = {
+            "sim_time_s": 100.0,
+            "vehicle_id": "bus_1",
+            "intersection_alias": "I2",
+            "tls_id": "I2",
+            "rsu_id": "RSU_BOAVISTA_02",
+            "lane_id": "I1_I2_0",
+            "line_id": "STCP500_PROXY_W",
+            "route_id": "route_boavista_east_to_west",
+            "speed_mps": 10.0,
+            "distance_to_stopline_m": 160.0,
+            "eta_to_stopline_s": 16.0,
+            "schedule_delay_s": 120.0,
+            "headway_deviation_s": 0.0,
+            "operator_priority_class": OperatorPriorityClass.HIGH_DELAY.value,
+            "priority_movement_id": "I2_westbound_public_transport",
+            "target_signal_group_id_hint": "I2_priority_westbound",
+            "expires_at_s": 130.0,
+            "ttl_s": 30.0,
+        }
         defaults.update(overrides)
         return synth_srem(**defaults)
 
@@ -71,45 +71,45 @@ class EngineV2CostAwareTestCase(unittest.TestCase):
         )
 
     def _state_i2_green(self, **overrides):
-        payload = dict(
-            intersection_id="I2",
-            tls_id="I2",
-            rsu_id="RSU_BOAVISTA_02",
-            timestamp_s=100.0,
-            current_phase_index=0,
-            current_program_id="test",
-            red_yellow_green_state="GGrr",
-            next_switch_s=102.0,
-            spent_duration_s=33.0,
-            controlled_lanes=["I1_I2_0", "I3_I2_0", "N_I2_I2_0", "S_I2_I2_0"],
-        )
+        payload = {
+            "intersection_id": "I2",
+            "tls_id": "I2",
+            "rsu_id": "RSU_BOAVISTA_02",
+            "timestamp_s": 100.0,
+            "current_phase_index": 0,
+            "current_program_id": "test",
+            "red_yellow_green_state": "GGrr",
+            "next_switch_s": 102.0,
+            "spent_duration_s": 33.0,
+            "controlled_lanes": ["I1_I2_0", "I3_I2_0", "N_I2_I2_0", "S_I2_I2_0"],
+        }
         payload.update(overrides)
         return SignalState(**payload)
 
     def _state_i7_red(self, **overrides):
-        payload = dict(
-            intersection_id="I7",
-            tls_id="I7",
-            rsu_id="RSU_BOAVISTA_07",
-            timestamp_s=100.0,
-            current_phase_index=2,
-            current_program_id="test",
-            red_yellow_green_state="rrGG",
-            next_switch_s=125.0,
-            spent_duration_s=20.0,
-            controlled_lanes=["I6_I7_0", "ATLANTIC_WEST_I7_0", "N_I7_I7_0", "S_I7_I7_0"],
-        )
+        payload = {
+            "intersection_id": "I7",
+            "tls_id": "I7",
+            "rsu_id": "RSU_BOAVISTA_07",
+            "timestamp_s": 100.0,
+            "current_phase_index": 2,
+            "current_program_id": "test",
+            "red_yellow_green_state": "rrGG",
+            "next_switch_s": 125.0,
+            "spent_duration_s": 20.0,
+            "controlled_lanes": ["I6_I7_0", "ATLANTIC_WEST_I7_0", "N_I7_I7_0", "S_I7_I7_0"],
+        }
         payload.update(overrides)
         return SignalState(**payload)
 
     def _snapshot(self, tls_id="I7", **overrides):
-        payload = dict(
-            tls_id=tls_id,
-            timestamp_s=100.0,
-            occupancy=0.1,
-            spillback_risk=False,
-            halted_by_lane={},
-        )
+        payload = {
+            "tls_id": tls_id,
+            "timestamp_s": 100.0,
+            "occupancy": 0.1,
+            "spillback_risk": False,
+            "halted_by_lane": {},
+        }
         payload.update(overrides)
         return NetworkStateSnapshot(**payload)
 

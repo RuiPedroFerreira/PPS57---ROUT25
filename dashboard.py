@@ -428,27 +428,29 @@ def render_simulation_panel() -> None:
     )
     gc1, gc2 = st.columns(2)
     with gc1:
-        if st.button("Abrir SUMO-GUI · Baseline", use_container_width=True):
-            if _run_streaming([("build", BUILD_CMD)], "A construir a rede"):
-                _launch_detached(
-                    [_bin("sumo-gui"), "-c", "sumo/corredor.sumocfg"],
-                    "Janela do SUMO (baseline) a abrir no ambiente de trabalho.",
-                )
+        if st.button("Abrir SUMO-GUI · Baseline", use_container_width=True) and _run_streaming(
+            [("build", BUILD_CMD)], "A construir a rede"
+        ):
+            _launch_detached(
+                [_bin("sumo-gui"), "-c", "sumo/corredor.sumocfg"],
+                "Janela do SUMO (baseline) a abrir no ambiente de trabalho.",
+            )
     with gc2:
-        if st.button("Abrir SUMO-GUI · TSP", use_container_width=True):
-            if _run_streaming([("build", BUILD_CMD)], "A construir a rede"):
-                _launch_detached(
-                    [
-                        _bin("python"),
-                        "scripts/run_tsp_control.py",
-                        "--mode",
-                        "sumo",
-                        "--gui",
-                        "--steps",
-                        "7200",
-                    ],
-                    "Simulação TSP visual a abrir no SUMO-GUI.",
-                )
+        if st.button("Abrir SUMO-GUI · TSP", use_container_width=True) and _run_streaming(
+            [("build", BUILD_CMD)], "A construir a rede"
+        ):
+            _launch_detached(
+                [
+                    _bin("python"),
+                    "scripts/run_tsp_control.py",
+                    "--mode",
+                    "sumo",
+                    "--gui",
+                    "--steps",
+                    "7200",
+                ],
+                "Simulação TSP visual a abrir no SUMO-GUI.",
+            )
 
     section("Gerar dados de análise (headless)")
     steps = st.slider(
@@ -505,11 +507,10 @@ def render_simulation_panel() -> None:
         "A janela fica bloqueada durante a execução — acompanha o progresso no log."
     )
 
-    if triggered:
-        if _run_streaming(triggered, "A correr simulação"):
-            st.cache_data.clear()
-            st.success("Dados actualizados. A recarregar a dashboard...")
-            st.rerun()
+    if triggered and _run_streaming(triggered, "A correr simulação"):
+        st.cache_data.clear()
+        st.success("Dados actualizados. A recarregar a dashboard...")
+        st.rerun()
 
     with st.expander("Requisitos e diagnóstico"):
         gui_ok = (VENV_BIN / "sumo-gui").exists() or shutil.which("sumo-gui")
@@ -950,7 +951,7 @@ with tab_kpi:
                 "p95_time_loss_s",
             ]
             ccols = st.columns(len(card_metrics))
-            for col, m in zip(ccols, card_metrics):
+            for col, m in zip(ccols, card_metrics, strict=False):
                 render_kpi_card(col, m, cmp_data.get(m), ref_data.get(m))
             insight(
                 f"Cartões: valor de <strong>{cmp_run}</strong>, delta vs <strong>{ref_run}</strong>. "

@@ -59,57 +59,57 @@ def _load_config() -> CITSConfig:
 
 
 def _eligible_srem(**overrides):
-    params = dict(
-        sim_time_s=100.0,
-        vehicle_id="bus_1",
-        intersection_alias="I2",
-        tls_id="I2",
-        rsu_id="RSU_BOAVISTA_02",
-        lane_id="I1_I2_0",
-        line_id="STCP500_PROXY_W",
-        route_id="route_boavista_east_to_west",
-        eta_to_stopline_s=15.0,
-        distance_to_stopline_m=150.0,
-        speed_mps=10.0,
-        schedule_delay_s=90.0,
-        headway_deviation_s=0.0,
-        operator_priority_class=OperatorPriorityClass.HIGH_DELAY.value,
-        ttl_s=30.0,
-    )
+    params = {
+        "sim_time_s": 100.0,
+        "vehicle_id": "bus_1",
+        "intersection_alias": "I2",
+        "tls_id": "I2",
+        "rsu_id": "RSU_BOAVISTA_02",
+        "lane_id": "I1_I2_0",
+        "line_id": "STCP500_PROXY_W",
+        "route_id": "route_boavista_east_to_west",
+        "eta_to_stopline_s": 15.0,
+        "distance_to_stopline_m": 150.0,
+        "speed_mps": 10.0,
+        "schedule_delay_s": 90.0,
+        "headway_deviation_s": 0.0,
+        "operator_priority_class": OperatorPriorityClass.HIGH_DELAY.value,
+        "ttl_s": 30.0,
+    }
     params.update(overrides)
     return synth_srem(**params)
 
 
 def _signal_state(ryg, **overrides) -> SignalState:
-    params = dict(
-        intersection_id="I2",
-        tls_id="I2",
-        rsu_id="RSU_BOAVISTA_02",
-        timestamp_s=10.0,
-        current_phase_index=0,
-        current_program_id="0",
-        red_yellow_green_state=ryg,
-        next_switch_s=25.0,
-        spent_duration_s=2.0,
-    )
+    params = {
+        "intersection_id": "I2",
+        "tls_id": "I2",
+        "rsu_id": "RSU_BOAVISTA_02",
+        "timestamp_s": 10.0,
+        "current_phase_index": 0,
+        "current_program_id": "0",
+        "red_yellow_green_state": ryg,
+        "next_switch_s": 25.0,
+        "spent_duration_s": 2.0,
+    }
     params.update(overrides)
     return SignalState(**params)
 
 
 def _bus_observation(**overrides) -> VehicleObservation:
-    params = dict(
-        vehicle_id="bus_STCP500_W_UNIT",
-        vehicle_class="bus",
-        type_id="bus_12m",
-        line_id="STCP500_PROXY_W",
-        route_id="route_boavista_east_to_west",
-        edge_id="I1_I2",
-        lane_id="I1_I2_0",
-        lane_position_m=500.0,
-        lane_length_m=650.0,
-        speed_mps=10.0,
-        schedule_delay_s=90.0,
-    )
+    params = {
+        "vehicle_id": "bus_STCP500_W_UNIT",
+        "vehicle_class": "bus",
+        "type_id": "bus_12m",
+        "line_id": "STCP500_PROXY_W",
+        "route_id": "route_boavista_east_to_west",
+        "edge_id": "I1_I2",
+        "lane_id": "I1_I2_0",
+        "lane_position_m": 500.0,
+        "lane_length_m": 650.0,
+        "speed_mps": 10.0,
+        "schedule_delay_s": 90.0,
+    }
     params.update(overrides)
     return VehicleObservation(**params)
 
@@ -159,9 +159,11 @@ class DegradedTlsReadTestCase(unittest.TestCase):
             movement_events=[],  # codec rejects: spatem.movement_events_missing
         )
         summary = IncrementalCITSSummary()
-        with tempfile.TemporaryDirectory() as tmp:
-            with CITSJsonlLogger(Path(tmp) / "cits.jsonl") as logger:
-                controller._publish_log_collect([invalid_spatem], logger, summary)
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            CITSJsonlLogger(Path(tmp) / "cits.jsonl") as logger,
+        ):
+            controller._publish_log_collect([invalid_spatem], logger, summary)
         self.assertEqual(controller.publish_codec_failures, {"SPATEM": 1})
         self.assertEqual(summary.total, 0)
 

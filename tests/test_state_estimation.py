@@ -20,18 +20,18 @@ from pps57_cits.traci_adapter import TraciSimulationAdapter
 
 
 def make_obs(**overrides) -> VehicleObservation:
-    base = dict(
-        vehicle_id="bus_1",
-        vehicle_class="bus",
-        type_id="bus_12m",
-        line_id="STCP500_PROXY_W",
-        route_id="r",
-        edge_id="I1_I2",
-        lane_id="I1_I2_0",
-        lane_position_m=550.0,
-        lane_length_m=650.0,
-        speed_mps=10.0,
-    )
+    base = {
+        "vehicle_id": "bus_1",
+        "vehicle_class": "bus",
+        "type_id": "bus_12m",
+        "line_id": "STCP500_PROXY_W",
+        "route_id": "r",
+        "edge_id": "I1_I2",
+        "lane_id": "I1_I2_0",
+        "lane_position_m": 550.0,
+        "lane_length_m": 650.0,
+        "speed_mps": 10.0,
+    }
     base.update(overrides)
     return VehicleObservation(**base)
 

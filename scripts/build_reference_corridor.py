@@ -417,8 +417,7 @@ def main() -> None:
 
     # 5) run the corridor under Webster signals, with edge intensity output
     edgedata_add.write_text(
-        '<additional><edgeData id="ed" file="%s" begin="0" end="%d"/></additional>\n'
-        % (edgedata_out.name, SIM_END_S),
+        f'<additional><edgeData id="ed" file="{edgedata_out.name}" begin="0" end="{SIM_END_S}"/></additional>\n',
         encoding="utf-8",
     )  # file= is resolved next to the add file
     adds = ",".join(
