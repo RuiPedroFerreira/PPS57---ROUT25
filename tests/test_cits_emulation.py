@@ -326,13 +326,14 @@ class Package3CITSTestCase(unittest.TestCase):
         self.assertEqual(response.status, ResponseStatus.REJECTED.value)
         self.assertEqual(response.reason, "not_eligible_for_priority")
 
-    def test_rsu_rejects_emergency_class_without_emergency_role(self) -> None:
-        # Anti-spoofing: `operator_priority_class` é auto-declarada. Um emissor
-        # autorizado (OBU_bus_*) que reclame classe `emergency` mas mantenha
-        # BasicVehicleRole de transporte público não pode receber tratamento de
-        # preempção — a mensagem é incoerente e rejeitada na fronteira. Crucial
-        # mesmo com atraso real, senão a classe `emergency` forjada seguiria
-        # para o motor/Safety layer e accionaria preempção. P2 da PR #57.
+    def test_rsu_rejects_emergency_class_from_non_emergency_identity(self) -> None:
+        # P1: a autorização de emergência tem de assentar na IDENTIDADE
+        # autenticada (operational_vehicle_id, vinculado ao signer/trust store),
+        # não em campos auto-declarados do payload. Um OBU_bus_* que forje AMBOS
+        # operator_priority_class E basic_vehicle_role = emergency não escala,
+        # porque a sua identidade autenticada não corresponde a um prefixo de
+        # emergência. Crucial mesmo com atraso real, senão a classe `emergency`
+        # forjada seguiria para o motor/Safety layer. PR #57.
         intersection = self.config.rsu_to_intersection["RSU_BOAVISTA_02"]
         for label, delay, eta in (("sem atraso", 0.0, 5.0), ("com atraso real", 90.0, 15.0)):
             with self.subTest(label):
@@ -343,13 +344,33 @@ class Package3CITSTestCase(unittest.TestCase):
                     schedule_delay_s=delay,
                     headway_deviation_s=0.0,
                     operator_priority_class=OperatorPriorityClass.EMERGENCY.value,
-                    basic_vehicle_role="publicTransport",
+                    basic_vehicle_role="emergency",  # ambos os campos forjados
                 )
                 response = rsu.evaluate_request(request, sim_time_s=101.0)
                 self.assertEqual(response.status, ResponseStatus.REJECTED.value)
                 self.assertEqual(
-                    response.reason, "emergency_priority_class_without_emergency_role"
+                    response.reason, "emergency_priority_class_not_emergency_identity"
                 )
+
+    def test_rsu_rejects_emergency_identity_with_inconsistent_role(self) -> None:
+        # Coerência secundária: uma identidade de emergência autenticada (prefixo
+        # ev_) cujo BasicVehicleRole auto-declarado seja de transporte público é
+        # um SREM incoerente e também é rejeitado na fronteira.
+        intersection = self.config.rsu_to_intersection["RSU_BOAVISTA_02"]
+        rsu = RSUAgent(self.config, intersection)
+        request = _eligible_srem(
+            vehicle_id="ev_decoy",
+            eta_to_stopline_s=5.0,
+            schedule_delay_s=0.0,
+            headway_deviation_s=0.0,
+            operator_priority_class=OperatorPriorityClass.EMERGENCY.value,
+            basic_vehicle_role="publicTransport",
+        )
+        response = rsu.evaluate_request(request, sim_time_s=101.0)
+        self.assertEqual(response.status, ResponseStatus.REJECTED.value)
+        self.assertEqual(
+            response.reason, "emergency_priority_class_without_emergency_role"
+        )
 
     def test_rsu_does_not_start_vehicle_cooldown_on_forward_only_ack(self) -> None:
         # Forwarding to the TSP engine is not a granted priority intervention.

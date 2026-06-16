@@ -141,16 +141,13 @@ class RSUAgent:
         if signal_request.request_type == RequestType.PRIORITY_CANCELLATION.value:
             return _DecisionPair.cancelled()
 
-        # 3b. Coerência da classe de emergência com a classificação do veículo.
-        # A classe `emergency` desbloqueia tratamento de preempção (janela ETA
-        # alargada em `_eta_in_window`, bypass da condição de delay/headway em
-        # `_priority_condition_met`, e bypass dos caps de racionamento na Safety
-        # layer a jusante). Como `operator_priority_class` é auto-declarada na
-        # telemetria, um emissor autorizado mas comprometido (ex.: OBU_bus_*)
-        # poderia escalar para emergência sem o ser. Exige-se que a
-        # classificação estrutural do veículo (BasicVehicleRole) confirme a
-        # emergência; caso contrário a mensagem é incoerente e rejeitada na
-        # fronteira, antes de qualquer tratamento específico de emergência.
+        # 3b. Autorização de emergência ligada à identidade autenticada.
+        # A classe `emergency` desbloqueia preempção a jusante; a autorização
+        # tem de assentar na identidade do veículo (vinculada ao signer/trust
+        # store em `_validate_identity`/`_validate_security`), não em campos
+        # auto-declarados do payload. Rejeita na fronteira, antes de qualquer
+        # tratamento específico de emergência (`_eta_in_window`,
+        # `_priority_condition_met`, e o motor/Safety layer a jusante).
         classification_problem = self._emergency_classification_problem(request)
         if classification_problem is not None:
             return _DecisionPair.reject(classification_problem)
@@ -261,20 +258,37 @@ class RSUAgent:
     def _emergency_classification_problem(self, request: SREMLike) -> Optional[str]:
         """Rejeita pedidos que reclamam classe `emergency` sem o serem.
 
-        `operator_priority_class` (auto-declarada na telemetria) não pode, por
-        si só, desbloquear o tratamento de preempção: exige-se que o
-        `BasicVehicleRole` do requestor — a classificação estrutural do veículo
-        no SREM — confirme a emergência. Em produção o OBU move os dois campos
-        em conjunto (ambos derivam de `is_emergency_like`), pelo que tráfego
-        legítimo nunca é afetado; só uma combinação incoerente (escalada) é
-        bloqueada. A direção inversa não desbloqueia preempção e não é gated.
+        A classe `emergency` desbloqueia tratamento de preempção (janela ETA
+        alargada, bypass da condição de delay/headway no RSU e dos caps de
+        racionamento na Safety layer a jusante). A autorização NÃO pode assentar
+        em campos auto-declarados no payload — `operator_priority_class` e
+        `basic_vehicle_role` são ambos controlados pelo emissor, logo um atacante
+        que forje os dois passaria. A âncora de confiança é a **identidade
+        autenticada** do veículo: `operational_vehicle_id` está vinculado ao
+        `source_id`/`signer_id` e validado contra o trust store em
+        `_validate_identity`/`_validate_security` (no allowlist de prefixos
+        `OBU_ev_`/`OBU_emergency_` vs `OBU_bus_`). Exige-se portanto que essa
+        identidade corresponda a um prefixo de emergência configurado; só depois
+        se confirma a coerência do `BasicVehicleRole` auto-declarado. Em produção
+        o OBU só emite classe `emergency` para IDs de emergência com role
+        `emergency`, pelo que tráfego legítimo nunca é afetado.
         """
         if request.priority_level != OperatorPriorityClass.EMERGENCY.value:
             return None
+        vehicle_id = request.requestor.operational_vehicle_id if request.requestor else ""
+        if not vehicle_id.startswith(self._emergency_id_prefixes()):
+            return "emergency_priority_class_not_emergency_identity"
         role = request.requestor.basic_vehicle_role if request.requestor else ""
         if role != BasicVehicleRole.EMERGENCY.value:
             return "emergency_priority_class_without_emergency_role"
         return None
+
+    def _emergency_id_prefixes(self) -> tuple[str, ...]:
+        raw = self.config.obu_policy.get("emergency_id_prefixes", ["ev_", "emergency_"])
+        if isinstance(raw, str):
+            # String solta na config: tuple() iteraria os caracteres.
+            raw = (raw,)
+        return tuple(str(prefix) for prefix in raw)
 
     def _validate_simulated_trust(self, security: SecurityEnvelope) -> Optional[str]:
         trust_store = self.config.raw.get("trust_store", {})
