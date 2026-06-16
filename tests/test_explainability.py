@@ -4,11 +4,11 @@
 from __future__ import annotations
 
 import ast
-from pathlib import Path
 import re
-from types import SimpleNamespace
 import sys
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 
 # Forma de um código de motivo: snake_case, opcional sufixo ":suffix".
 _REASON_SHAPE = re.compile(r"^[a-z][a-z0-9_]*(?::[a-z0-9_]+)?$")

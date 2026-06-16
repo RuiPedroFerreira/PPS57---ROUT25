@@ -4,13 +4,13 @@
 from __future__ import annotations
 
 import argparse
-from copy import deepcopy
 import json
-from pathlib import Path
 import shutil
 import statistics
 import subprocess
 import sys
+from copy import deepcopy
+from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,20 +18,20 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from pps57_cits.config import load_cits_config  # noqa: E402
+from pps57_cits.controller import CITSEmulationController  # noqa: E402
 from pps57_sumo.build_network import build_sumo_artifacts, sumo_environment  # noqa: E402
 from pps57_sumo.detector_kpis import parse_detector_kpis  # noqa: E402
-from pps57_sumo.parse_tripinfo import parse_tripinfo  # noqa: E402
-from pps57_sumo.stats import T_CRITICAL_95, mean_ci95, t_critical_95  # noqa: E402
-from pps57_sumo.parse_insertion import parse_insertion_kpis  # noqa: E402
 from pps57_sumo.parse_emissions import parse_emissions  # noqa: E402
+from pps57_sumo.parse_insertion import parse_insertion_kpis  # noqa: E402
+from pps57_sumo.parse_tripinfo import parse_tripinfo  # noqa: E402
 from pps57_sumo.scenarios import (  # noqa: E402
     apply_scenario_profile,
     load_catalog,
     scenario_summary,
     validate_scenario_catalog,
 )
-from pps57_cits.config import load_cits_config  # noqa: E402
-from pps57_cits.controller import CITSEmulationController  # noqa: E402
+from pps57_sumo.stats import T_CRITICAL_95, mean_ci95, t_critical_95  # noqa: E402
 from pps57_tsp.config import load_tsp_config  # noqa: E402
 from pps57_tsp.controller import TSPControlController  # noqa: E402
 

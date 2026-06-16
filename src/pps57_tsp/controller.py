@@ -3,10 +3,10 @@
 
 from __future__ import annotations
 
+import sys
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-import sys
-from typing import Dict, Iterable, List, Optional
 
 from pps57_cits.broker import InMemoryMessageBroker
 from pps57_cits.config import CITSConfig
@@ -19,8 +19,8 @@ from pps57_cits.messages import (
     OperatorPriorityClass,
     PrioritizationResponse,
     ResponseStatus,
-    SSEMAudit,
     SREMLike,
+    SSEMAudit,
     SSEMLike,
     StationType,
     build_security_envelope,
@@ -36,8 +36,8 @@ from pps57_opt.policy_runtime import RuntimePolicy
 from pps57_sumo.network_binding import NetworkBinding, build_network_binding
 
 from .actuator import TraciTSPActuator
-from .config import TSPConfig
 from .compensation import GreenCompensationManager
+from .config import TSPConfig
 from .corridor_arbiter import CorridorArbiter
 from .engine import TSPDecisionEngine
 from .events import PriorityEventManager
@@ -62,7 +62,7 @@ class TSPControlController:
     cits_config: CITSConfig
     tsp_config: TSPConfig
     policy_mode: str = "baseline"
-    policy_report_path: Optional[str] = None
+    policy_report_path: str | None = None
 
     def __post_init__(self) -> None:
         self.broker = InMemoryMessageBroker(
@@ -75,9 +75,9 @@ class TSPControlController:
         # NetworkBinding autoritativo (junction <request foes>) construído UMA
         # vez aqui e partilhado por contratos, verificação e Safety Layer — uma
         # única fonte de verdade, como em scripts/run_network_binding_check.py.
-        self.network_binding: Optional[NetworkBinding] = None
-        self.network_binding_aliases: Optional[Dict[str, Dict[str, str]]] = None
-        self.network_binding_error: Optional[str] = None
+        self.network_binding: NetworkBinding | None = None
+        self.network_binding_aliases: dict[str, dict[str, str]] | None = None
+        self.network_binding_error: str | None = None
         self._bind_network()
         self.safety.set_network_binding(
             self.network_binding, aliases_by_tls=self.network_binding_aliases
@@ -94,7 +94,7 @@ class TSPControlController:
         self.request_store = PriorityRequestStore(
             ttl_s=float(self.cits_config.obu_policy.get("request_lifecycle_ttl_s", 30.0))
         )
-        self.runtime_policy: Optional[RuntimePolicy] = None
+        self.runtime_policy: RuntimePolicy | None = None
         if self.policy_mode in {"optimized", "rl"}:
             raw_path = self.policy_report_path or self._default_policy_report_path()
             if raw_path:
@@ -104,16 +104,16 @@ class TSPControlController:
 
     def run_with_sumo(
         self,
-        steps: Optional[int] = None,
+        steps: int | None = None,
         sumo_binary: str = "sumo",
         gui: bool = False,
         apply_actuation: bool = True,
-    ) -> Dict[str, object]:
+    ) -> dict[str, object]:
         adapter = TraciSimulationAdapter(self.cits_config, sumo_binary=sumo_binary, gui=gui)
         cits_summary = IncrementalCITSSummary()
-        decisions: List[TSPDecision] = []
-        actuations: List[ActuationResult] = []
-        compensations: List[ActuationResult] = []
+        decisions: list[TSPDecision] = []
+        actuations: list[ActuationResult] = []
+        compensations: list[ActuationResult] = []
 
         adapter.start()  # propaga TraciUnavailableError
 
@@ -303,16 +303,16 @@ class TSPControlController:
         self,
         *,
         responses: Iterable[SSEMLike],
-        requests_by_id: Dict[str, SREMLike],
-        signal_states: Dict[str, SignalState],
-        network_states: Optional[Dict[str, NetworkStateSnapshot]] = None,
+        requests_by_id: dict[str, SREMLike],
+        signal_states: dict[str, SignalState],
+        network_states: dict[str, NetworkStateSnapshot] | None = None,
         actuator: TraciTSPActuator,
         sim_time_s: float,
         decision_logger: TSPJsonlLogger,
         actuation_logger: TSPJsonlLogger,
-        decisions: List[TSPDecision],
-        actuations: List[ActuationResult],
-    ) -> List[SSEMLike]:
+        decisions: list[TSPDecision],
+        actuations: list[ActuationResult],
+    ) -> list[SSEMLike]:
         # M6: invariante explícita "no máximo 1 intervenção por TLS por passo".
         # Até aqui isto dependia implicitamente do efeito colateral do cooldown
         # (frágil e silenciosamente quebrado em modo no-actuation/downgraded, onde
@@ -329,14 +329,14 @@ class TSPControlController:
                 request = self.request_store.get_by_request_id(response.request_id)
                 if request is not None:
                     resolved_requests_by_id[response.request_id] = request
-        active_requests_by_tls: Dict[str, int] = {}
+        active_requests_by_tls: dict[str, int] = {}
         response_list = sorted(
             response_list,
             key=lambda response: _response_priority_sort_key(
                 response, resolved_requests_by_id, self.cits_config
             ),
         )
-        final_responses: List[SSEMLike] = []
+        final_responses: list[SSEMLike] = []
 
         for response in response_list:
             if response.status != ResponseStatus.PROCESSING.value:
@@ -590,7 +590,7 @@ class TSPControlController:
             logger.write(message)
             summary.add(message)
 
-    def _verify_signal_programs(self, adapter: SignalControlAdapter) -> List[str]:
+    def _verify_signal_programs(self, adapter: SignalControlAdapter) -> list[str]:
         """Verifica contratos de controlador contra o programa semafórico real.
 
         Fail-closed: se o programa não puder ser lido, ou se algum índice de fase
@@ -603,7 +603,7 @@ class TSPControlController:
             return adapter.verify_controller_contracts(contracts)
         return TraciSignalControlAdapter(adapter).verify_controller_contracts(contracts)  # type: ignore[arg-type]
 
-    def _signal_controlled_contracts(self) -> List[ControllerContract]:
+    def _signal_controlled_contracts(self) -> list[ControllerContract]:
         signal_controlled_tls = {
             intersection.tls_id for intersection in self.cits_config.signal_controlled_intersections
         }
@@ -652,12 +652,12 @@ class TSPControlController:
     def _read_network_states(
         self,
         adapter: TraciSimulationAdapter,
-        signal_states: Dict[str, SignalState],
+        signal_states: dict[str, SignalState],
         responses: Iterable[SSEMLike],
-        requests_by_id: Dict[str, SREMLike],
+        requests_by_id: dict[str, SREMLike],
         sim_time_s: float,
-    ) -> Dict[str, NetworkStateSnapshot]:
-        active_requests_by_tls: Dict[str, int] = {}
+    ) -> dict[str, NetworkStateSnapshot]:
+        active_requests_by_tls: dict[str, int] = {}
         for response in responses:
             if response.status != ResponseStatus.PROCESSING.value:
                 continue
@@ -669,7 +669,7 @@ class TSPControlController:
                     active_requests_by_tls.get(request.tls_id, 0) + 1
                 )
 
-        snapshots: Dict[str, NetworkStateSnapshot] = {}
+        snapshots: dict[str, NetworkStateSnapshot] = {}
         for intersection in self.cits_config.signal_controlled_intersections:
             signal_state = signal_states.get(intersection.tls_id)
             if signal_state is None:
@@ -682,13 +682,13 @@ class TSPControlController:
             )
         return snapshots
 
-    def _default_policy_report_path(self) -> Optional[str]:
+    def _default_policy_report_path(self) -> str | None:
         runtime_cfg = self.tsp_config.raw.get("policy_runtime", {})
         if self.policy_mode == "rl":
             return runtime_cfg.get("rl_policy_report", "reports/tabular_q_policy_report.json")
         return runtime_cfg.get("policy_report", "reports/policy_report.json")
 
-    def _runtime_policy_summary(self) -> Dict[str, object]:
+    def _runtime_policy_summary(self) -> dict[str, object]:
         if self.runtime_policy is None:
             return {
                 "loaded": False,
@@ -709,8 +709,8 @@ class TSPControlController:
             else None,
         }
 
-    def _process_rsu_queues(self, sim_time_s: float) -> List[SSEMLike]:
-        responses: List[SSEMLike] = []
+    def _process_rsu_queues(self, sim_time_s: float) -> list[SSEMLike]:
+        responses: list[SSEMLike] = []
         for rsu_id, agent in self.rsu_agents.items():
             messages = self.broker.consume(rsu_id)
             responses.extend(agent.handle_messages(messages, sim_time_s))
@@ -762,7 +762,7 @@ def _granted_strategy_for_decision(decision: TSPDecision, status: str) -> str:
 
 def _response_priority_sort_key(
     response: SSEMLike,
-    requests_by_id: Dict[str, SREMLike],
+    requests_by_id: dict[str, SREMLike],
     cits_config: CITSConfig,
 ) -> tuple[int, float, float, str]:
     request = requests_by_id.get(response.request_id)

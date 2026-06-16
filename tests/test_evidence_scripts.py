@@ -11,10 +11,10 @@ predicate) behave as documented, nothing more.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -31,7 +31,10 @@ import run_network_binding_check  # noqa: E402
 import run_tsp_demo  # noqa: E402
 import run_v2_demand_validation as run_v2  # noqa: E402
 
-from pps57_sumo.validation.acceptance import evaluate_tsp_face_validity, load_validation_config  # noqa: E402
+from pps57_sumo.validation.acceptance import (  # noqa: E402
+    evaluate_tsp_face_validity,
+    load_validation_config,
+)
 from pps57_tsp.signal_control import (  # noqa: E402
     ControllerContract,
     SignalGroupContract,

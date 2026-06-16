@@ -41,8 +41,8 @@ that PT engineering practice (and the HCM intergreen calculation) requires.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 from xml.etree import ElementTree as ET
 
 # M4: net.xml/overrides podem vir de fontes externas (OSM) -> endurece o parsing

@@ -8,9 +8,10 @@ SUMO/TraCI is one implementation of the adapter boundary, not the contract.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Protocol
+from typing import Protocol
 
 from pps57_cits.config import CITSConfig, PriorityMovementConfig
 from pps57_cits.models import SignalState
@@ -26,14 +27,14 @@ from .models import TSPAction, TSPDecision
 @dataclass(frozen=True)
 class SignalGroupContract:
     signal_group_id: str
-    phase_index: Optional[int]
-    movement_ids: List[str] = field(default_factory=list)
-    allowed_actions: List[str] = field(default_factory=list)
-    min_green_s: Optional[float] = None
-    max_green_s: Optional[float] = None
-    max_extension_s: Optional[float] = None
-    pedestrian_clearance_s: Optional[float] = None
-    conflicts_with: List[str] = field(default_factory=list)
+    phase_index: int | None
+    movement_ids: list[str] = field(default_factory=list)
+    allowed_actions: list[str] = field(default_factory=list)
+    min_green_s: float | None = None
+    max_green_s: float | None = None
+    max_extension_s: float | None = None
+    pedestrian_clearance_s: float | None = None
+    conflicts_with: list[str] = field(default_factory=list)
     requires_protected_green: bool = True
     allow_edge_state_fallback: bool = False
     # True when an authoritative source (NetworkBinding, from SUMO junction foes)
@@ -60,27 +61,27 @@ class ControllerContract:
     tls_id: str
     adapter_type: str
     fixed_time_required: bool
-    allowed_actions: List[str]
-    phase_sequence: List[int]
-    service_green_phase_indices: List[int]
-    intergreen_phase_indices: List[int]
-    min_yellow_s: Optional[float]
-    min_all_red_s: Optional[float]
-    expected_cycle_s: Optional[float]
+    allowed_actions: list[str]
+    phase_sequence: list[int]
+    service_green_phase_indices: list[int]
+    intergreen_phase_indices: list[int]
+    min_yellow_s: float | None
+    min_all_red_s: float | None
+    expected_cycle_s: float | None
     pedestrian_phase_required: bool
-    pedestrian_phase_indices: List[int]
-    signal_groups: Dict[str, SignalGroupContract]
+    pedestrian_phase_indices: list[int]
+    signal_groups: dict[str, SignalGroupContract]
 
-    def signal_group_for_id(self, signal_group_id: str) -> Optional[SignalGroupContract]:
+    def signal_group_for_id(self, signal_group_id: str) -> SignalGroupContract | None:
         return self.signal_groups.get(signal_group_id)
 
-    def signal_group_for_movement(self, movement_id: str) -> Optional[SignalGroupContract]:
+    def signal_group_for_movement(self, movement_id: str) -> SignalGroupContract | None:
         for group in self.signal_groups.values():
             if movement_id in group.movement_ids:
                 return group
         return None
 
-    def min_green_for_phase(self, phase_index: Optional[int]) -> Optional[float]:
+    def min_green_for_phase(self, phase_index: int | None) -> float | None:
         if phase_index is None:
             return None
         values = [
@@ -93,11 +94,11 @@ class ControllerContract:
 
 def phase_sequence_clearance_problem(
     contract: ControllerContract,
-    current_phase_index: Optional[int],
-    target_phase_index: Optional[int],
+    current_phase_index: int | None,
+    target_phase_index: int | None,
     *,
     never_skip_yellow_or_all_red: bool,
-) -> Optional[str]:
+) -> str | None:
     """Devolve None se a transição early-green é estruturalmente segura.
 
     Verifica (a) que o verde-alvo é alcançável a partir da fase atual segundo
@@ -147,11 +148,11 @@ def phase_sequence_clearance_problem(
 class ControllerCommandValidation:
     accepted: bool
     reason: str
-    effective_at_s: Optional[float] = None
-    adjusted_parameters: Dict[str, object] = field(default_factory=dict)
+    effective_at_s: float | None = None
+    adjusted_parameters: dict[str, object] = field(default_factory=dict)
     severity: str = "info"
 
-    def to_dict(self) -> Dict[str, object]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "accepted": self.accepted,
             "reason": self.reason,
@@ -164,15 +165,15 @@ class ControllerCommandValidation:
 class SignalControlAdapter(Protocol):
     """Boundary for SUMO/TraCI and future real controller implementations."""
 
-    def read_program_phase_count(self, tls_id: str) -> Optional[int]: ...
+    def read_program_phase_count(self, tls_id: str) -> int | None: ...
 
-    def read_program_phase_states(self, tls_id: str) -> Optional[List[str]]: ...
+    def read_program_phase_states(self, tls_id: str) -> list[str] | None: ...
 
-    def read_program_phase_durations(self, tls_id: str) -> Optional[List[float]]: ...
+    def read_program_phase_durations(self, tls_id: str) -> list[float] | None: ...
 
-    def read_program_is_fixed_time(self, tls_id: str) -> Optional[bool]: ...
+    def read_program_is_fixed_time(self, tls_id: str) -> bool | None: ...
 
-    def read_program_type(self, tls_id: str) -> Optional[str]: ...
+    def read_program_type(self, tls_id: str) -> str | None: ...
 
     def set_phase_duration(self, tls_id: str, duration_s: float) -> None: ...
 
@@ -182,10 +183,10 @@ class SignalControlAdapter(Protocol):
         signal_state: SignalState,
         sim_time_s: float,
         command: str,
-        parameters: Dict[str, object],
+        parameters: dict[str, object],
     ) -> ControllerCommandValidation: ...
 
-    def verify_controller_contracts(self, contracts: Iterable[ControllerContract]) -> List[str]: ...
+    def verify_controller_contracts(self, contracts: Iterable[ControllerContract]) -> list[str]: ...
 
 
 @dataclass
@@ -194,21 +195,21 @@ class TraciSignalControlAdapter:
 
     adapter: TraciSimulationAdapter
 
-    def read_program_phase_count(self, tls_id: str) -> Optional[int]:
+    def read_program_phase_count(self, tls_id: str) -> int | None:
         return self.adapter.read_program_phase_count(tls_id)
 
-    def read_program_phase_states(self, tls_id: str) -> Optional[List[str]]:
+    def read_program_phase_states(self, tls_id: str) -> list[str] | None:
         return self.adapter.read_program_phase_states(tls_id)
 
-    def read_program_phase_durations(self, tls_id: str) -> Optional[List[float]]:
+    def read_program_phase_durations(self, tls_id: str) -> list[float] | None:
         if hasattr(self.adapter, "read_program_phase_durations"):
             return self.adapter.read_program_phase_durations(tls_id)
         return None
 
-    def read_program_is_fixed_time(self, tls_id: str) -> Optional[bool]:
+    def read_program_is_fixed_time(self, tls_id: str) -> bool | None:
         return self.adapter.read_program_is_fixed_time(tls_id)
 
-    def read_program_type(self, tls_id: str) -> Optional[str]:
+    def read_program_type(self, tls_id: str) -> str | None:
         return self.adapter.read_program_type(tls_id)
 
     def set_phase_duration(self, tls_id: str, duration_s: float) -> None:
@@ -220,7 +221,7 @@ class TraciSignalControlAdapter:
         signal_state: SignalState,
         sim_time_s: float,
         command: str,
-        parameters: Dict[str, object],
+        parameters: dict[str, object],
     ) -> ControllerCommandValidation:
         return ControllerCommandValidation(
             accepted=True,
@@ -229,8 +230,8 @@ class TraciSignalControlAdapter:
             adjusted_parameters=dict(parameters),
         )
 
-    def verify_controller_contracts(self, contracts: Iterable[ControllerContract]) -> List[str]:
-        problems: List[str] = []
+    def verify_controller_contracts(self, contracts: Iterable[ControllerContract]) -> list[str]:
+        problems: list[str] = []
         for contract in contracts:
             tls_id = contract.tls_id
             phase_count = self.read_program_phase_count(tls_id)
@@ -367,34 +368,34 @@ class SimulatedControllerAdapter:
 
     base: SignalControlAdapter
     contracts: Iterable[ControllerContract]
-    config: Dict[str, object]
-    last_command_time_by_tls: Dict[str, float] = field(default_factory=dict)
-    pending_until_by_tls: Dict[str, float] = field(default_factory=dict)
+    config: dict[str, object]
+    last_command_time_by_tls: dict[str, float] = field(default_factory=dict)
+    pending_until_by_tls: dict[str, float] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.contract_by_tls = {contract.tls_id: contract for contract in self.contracts}
 
-    def read_program_phase_count(self, tls_id: str) -> Optional[int]:
+    def read_program_phase_count(self, tls_id: str) -> int | None:
         return self.base.read_program_phase_count(tls_id)
 
-    def read_program_phase_states(self, tls_id: str) -> Optional[List[str]]:
+    def read_program_phase_states(self, tls_id: str) -> list[str] | None:
         return self.base.read_program_phase_states(tls_id)
 
-    def read_program_phase_durations(self, tls_id: str) -> Optional[List[float]]:
+    def read_program_phase_durations(self, tls_id: str) -> list[float] | None:
         if hasattr(self.base, "read_program_phase_durations"):
             return self.base.read_program_phase_durations(tls_id)
         return None
 
-    def read_program_is_fixed_time(self, tls_id: str) -> Optional[bool]:
+    def read_program_is_fixed_time(self, tls_id: str) -> bool | None:
         return self.base.read_program_is_fixed_time(tls_id)
 
-    def read_program_type(self, tls_id: str) -> Optional[str]:
+    def read_program_type(self, tls_id: str) -> str | None:
         return self.base.read_program_type(tls_id)
 
     def set_phase_duration(self, tls_id: str, duration_s: float) -> None:
         self.base.set_phase_duration(tls_id, duration_s)
 
-    def verify_controller_contracts(self, contracts: Iterable[ControllerContract]) -> List[str]:
+    def verify_controller_contracts(self, contracts: Iterable[ControllerContract]) -> list[str]:
         return self.base.verify_controller_contracts(contracts)
 
     def validate_actuation(
@@ -403,7 +404,7 @@ class SimulatedControllerAdapter:
         signal_state: SignalState,
         sim_time_s: float,
         command: str,
-        parameters: Dict[str, object],
+        parameters: dict[str, object],
     ) -> ControllerCommandValidation:
         contract = self.contract_by_tls.get(decision.tls_id)
         if contract is None:
@@ -512,7 +513,7 @@ class SimulatedControllerAdapter:
 
 def build_controller_contracts(
     cits_config: CITSConfig, tsp_config: TSPConfig
-) -> List[ControllerContract]:
+) -> list[ControllerContract]:
     return [
         build_controller_contract(cits_config, tsp_config, intersection.tls_id)
         for intersection in cits_config.signal_controlled_intersections
@@ -521,7 +522,7 @@ def build_controller_contracts(
 
 def network_binding_aliases(
     cits_config: CITSConfig, tsp_config: TSPConfig
-) -> Dict[str, Dict[str, str]]:
+) -> dict[str, dict[str, str]]:
     """Per-TLS map of profile signal-group ids -> contract signal-group ids.
 
     ``build_controller_contract`` renames profile groups to the config's
@@ -529,7 +530,7 @@ def network_binding_aliases(
     profile names. Pass this map to :func:`apply_network_binding` so lookups and
     conflict lists are translated into the contract namespace.
     """
-    aliases: Dict[str, Dict[str, str]] = {}
+    aliases: dict[str, dict[str, str]] = {}
     for intersection in cits_config.signal_controlled_intersections:
         tls_id = intersection.tls_id
         tls_profile = _network_tls_profile(cits_config, tsp_config, tls_id)
@@ -547,8 +548,8 @@ def network_binding_aliases(
 def apply_network_binding(
     contracts: Iterable[ControllerContract],
     binding: NetworkBinding,
-    aliases_by_tls: Optional[Dict[str, Dict[str, str]]] = None,
-) -> List[ControllerContract]:
+    aliases_by_tls: dict[str, dict[str, str]] | None = None,
+) -> list[ControllerContract]:
     """Replace each signal group's conflict matrix with the network's authoritative one.
 
     The :class:`~pps57_sumo.network_binding.NetworkBinding` reads the real conflict
@@ -569,7 +570,7 @@ def apply_network_binding(
     if their matrix was unknown). This never *grants* a permission — it only
     supplies conflict information; the Safety Layer stays the final gate.
     """
-    bound: List[ControllerContract] = []
+    bound: list[ControllerContract] = []
     for contract in contracts:
         tls_binding = binding.binding_for_tls(contract.tls_id)
         if tls_binding is None:
@@ -579,7 +580,7 @@ def apply_network_binding(
         contract_to_profile = {
             contract_id: profile_id for profile_id, contract_id in aliases.items()
         }
-        new_groups: Dict[str, SignalGroupContract] = {}
+        new_groups: dict[str, SignalGroupContract] = {}
         for group_id, group in contract.signal_groups.items():
             profile_group_id = contract_to_profile.get(group_id, group_id)
             group_binding = tls_binding.signal_groups.get(profile_group_id)
@@ -620,7 +621,7 @@ def build_controller_contract(
     intergreen_phase_indices = _int_list(raw.get("intergreen_phase_indices", []))
     if tls_profile is not None and (prefer_generated or not intergreen_phase_indices):
         intergreen_phase_indices = list(tls_profile.intergreen_phase_indices)
-    signal_groups: Dict[str, SignalGroupContract] = {}
+    signal_groups: dict[str, SignalGroupContract] = {}
 
     priority_defaults = raw.get("priority_signal_group_defaults", {})
     profile_by_target_group = _profile_movements_by_target_group(
@@ -732,7 +733,7 @@ def build_controller_contract(
 
 def _network_tls_profile(
     cits_config: CITSConfig, tsp_config: TSPConfig, tls_id: str
-) -> Optional[TLSProfile]:
+) -> TLSProfile | None:
     if not _network_profile_enabled(cits_config, tsp_config):
         return None
     network = cits_config.sumo.get("network")
@@ -757,7 +758,7 @@ def _network_profile_enabled(cits_config: CITSConfig, tsp_config: TSPConfig) -> 
 
 
 def _prefer_generated_contract(
-    tsp_config: TSPConfig, tls_id: str, tls_profile: Optional[TLSProfile]
+    tsp_config: TSPConfig, tls_id: str, tls_profile: TLSProfile | None
 ) -> bool:
     if tls_profile is None:
         return False
@@ -773,9 +774,9 @@ def _prefer_generated_contract(
 
 
 def _profile_movements_by_target_group(
-    movements: List[PriorityMovementConfig],
-    tls_profile: Optional[TLSProfile],
-) -> Dict[str, Optional[MovementProfile]]:
+    movements: list[PriorityMovementConfig],
+    tls_profile: TLSProfile | None,
+) -> dict[str, MovementProfile | None]:
     if tls_profile is None:
         return {movement.target_signal_group_id: None for movement in movements}
     return {
@@ -787,7 +788,7 @@ def _profile_movements_by_target_group(
 def _profile_movement_for_priority(
     tls_profile: TLSProfile,
     movement: PriorityMovementConfig,
-) -> Optional[MovementProfile]:
+) -> MovementProfile | None:
     for profile_movement in tls_profile.movements:
         if (
             profile_movement.movement_id == movement.movement_id
@@ -808,9 +809,9 @@ def _profile_movement_for_priority(
 
 
 def _group_raw_from_profile(
-    movement: Optional[MovementProfile],
-    aliases: Dict[str, str],
-) -> Dict[str, object]:
+    movement: MovementProfile | None,
+    aliases: dict[str, str],
+) -> dict[str, object]:
     if movement is None:
         return {}
     conflicts = [aliases.get(group_id, group_id) for group_id in movement.conflicts_with]
@@ -825,9 +826,9 @@ def _group_raw_from_profile(
 def _additional_signal_group_items(
     tsp_config: TSPConfig,
     tls_id: str,
-    raw: Dict[str, object],
+    raw: dict[str, object],
     prefer_generated: bool,
-) -> List[Dict[str, object]]:
+) -> list[dict[str, object]]:
     if not prefer_generated:
         items = raw.get("additional_signal_groups", [])
         return [item for item in items if isinstance(item, dict)] if isinstance(items, list) else []
@@ -841,7 +842,7 @@ def _additional_signal_group_items(
     return [item for item in items if isinstance(item, dict)] if isinstance(items, list) else []
 
 
-def _pedestrian_phase_indices(tls_profile: TLSProfile) -> List[int]:
+def _pedestrian_phase_indices(tls_profile: TLSProfile) -> list[int]:
     pedestrian_indices = {
         connection.link_index
         for connection in tls_profile.connections
@@ -852,7 +853,7 @@ def _pedestrian_phase_indices(tls_profile: TLSProfile) -> List[int]:
         for connection in tls_profile.connections
         if not connection.from_edge.startswith(":") and not connection.to_edge.startswith(":")
     }
-    result: List[int] = []
+    result: list[int] = []
     for phase in tls_profile.phases:
         pedestrian_green = any(
             index < len(phase.state) and phase.state[index].lower() == "g"
@@ -869,15 +870,15 @@ def _pedestrian_phase_indices(tls_profile: TLSProfile) -> List[int]:
 
 def _group_from_raw(
     signal_group_id: str,
-    raw: Dict[str, object],
+    raw: dict[str, object],
     *,
     tls_id: str,
-    default_allowed_actions: List[str],
-    default_phase_index: Optional[int],
-    default_movement_ids: List[str],
-    default_min_green: Optional[float],
-    default_max_green: Optional[float],
-    default_max_extension: Optional[float],
+    default_allowed_actions: list[str],
+    default_phase_index: int | None,
+    default_movement_ids: list[str],
+    default_min_green: float | None,
+    default_max_green: float | None,
+    default_max_extension: float | None,
 ) -> SignalGroupContract:
     return SignalGroupContract(
         signal_group_id=signal_group_id,
@@ -894,10 +895,10 @@ def _group_from_raw(
     )
 
 
-def _int_list(values: object) -> List[int]:
+def _int_list(values: object) -> list[int]:
     if not isinstance(values, list):
         return []
-    result: List[int] = []
+    result: list[int] = []
     for item in values:
         value = _optional_int(item)
         if value is not None:
@@ -905,7 +906,7 @@ def _int_list(values: object) -> List[int]:
     return result
 
 
-def _float_or_none(value: object, default: Optional[float] = None) -> Optional[float]:
+def _float_or_none(value: object, default: float | None = None) -> float | None:
     if value is None:
         return default
     try:
@@ -919,10 +920,10 @@ def _is_all_red_state(state: str) -> bool:
 
 
 def _has_configured_pedestrian_phase(
-    states: List[str],
-    service_green_phase_indices: List[int],
-    intergreen_phase_indices: List[int],
-    pedestrian_phase_indices: List[int],
+    states: list[str],
+    service_green_phase_indices: list[int],
+    intergreen_phase_indices: list[int],
+    pedestrian_phase_indices: list[int],
 ) -> bool:
     if not pedestrian_phase_indices:
         return False
@@ -939,12 +940,12 @@ def _has_configured_pedestrian_phase(
 
 
 def _missing_all_red_transitions(
-    states: List[str],
-    durations: List[float],
-    phase_sequence: List[int],
-    service_green_phase_indices: List[int],
+    states: list[str],
+    durations: list[float],
+    phase_sequence: list[int],
+    service_green_phase_indices: list[int],
     min_all_red_s: float,
-) -> List[tuple[int, int]]:
+) -> list[tuple[int, int]]:
     service_set = set(service_green_phase_indices)
     # Iterate over (position, phase_index) pairs so that duplicate phase indices
     # in the sequence each get their own from_pos — using list.index() would
@@ -955,12 +956,12 @@ def _missing_all_red_transitions(
     if len(service_positions) < 2:
         return []
 
-    missing: List[tuple[int, int]] = []
+    missing: list[tuple[int, int]] = []
     sequence_len = len(phase_sequence)
     for from_pos, from_phase in service_positions:
-        between: List[int] = []
+        between: list[int] = []
         pos = from_pos
-        to_phase: Optional[int] = None
+        to_phase: int | None = None
         for _ in range(1, sequence_len + 1):
             pos = (pos + 1) % sequence_len
             phase = phase_sequence[pos]

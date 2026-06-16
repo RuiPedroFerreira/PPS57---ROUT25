@@ -3,11 +3,11 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-import json
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"

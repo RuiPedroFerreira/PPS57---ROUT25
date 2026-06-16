@@ -10,8 +10,6 @@ call-sites inalterados.
 
 from __future__ import annotations
 
-from typing import Optional
-
 
 def positive_float(mapping: dict, key: str, default: float) -> float:
     """Dial de política > 0; ausente/inválido/<=0 -> default."""
@@ -31,7 +29,7 @@ def non_negative_float(mapping: dict, key: str, default: float) -> float:
     return value if value >= 0 else default
 
 
-def optional_float(value: object) -> Optional[float]:
+def optional_float(value: object) -> float | None:
     """float(value) ou None se ausente/inválido (semântica opcional, fail-closed).
 
     bool é subclasse de int: um `true/false` por engano não deve virar um
@@ -50,7 +48,7 @@ def float_or_default(value: object, default: float) -> float:
     return parsed if parsed is not None else default
 
 
-def lane_belongs_to_edge_set(lane_id: Optional[str], edges: set[str]) -> bool:
+def lane_belongs_to_edge_set(lane_id: str | None, edges: set[str]) -> bool:
     """Lane SUMO `<edge>_<index>` pertence a `edges` sse extracted-edge ∈ edges.
 
     O sufixo numérico obrigatório protege contra colisões de prefixo

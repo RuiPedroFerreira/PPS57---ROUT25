@@ -2,28 +2,28 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from pps57_sumo.apply_tls_offsets import apply_tls_offsets  # noqa: E402
+from pps57_sumo.build_network import build_sumo_artifacts  # noqa: E402
+from pps57_sumo.detector_kpis import parse_detector_kpis  # noqa: E402
 from pps57_sumo.generate_plain_corridor import (  # noqa: E402
     _service_departures,
     build_route_xml,
     build_tls_offsets,
     generate,
 )
-from pps57_sumo.build_network import build_sumo_artifacts  # noqa: E402
-from pps57_sumo.detector_kpis import parse_detector_kpis  # noqa: E402
-from pps57_sumo.parse_tripinfo import parse_tripinfo  # noqa: E402
-from pps57_sumo.parse_insertion import parse_insertion_kpis  # noqa: E402
 from pps57_sumo.parse_emissions import parse_emissions  # noqa: E402
-from pps57_sumo.apply_tls_offsets import apply_tls_offsets  # noqa: E402
+from pps57_sumo.parse_insertion import parse_insertion_kpis  # noqa: E402
+from pps57_sumo.parse_tripinfo import parse_tripinfo  # noqa: E402
 from pps57_sumo.scenarios import (  # noqa: E402
     ScenarioConfigError,
     apply_scenario_profile,

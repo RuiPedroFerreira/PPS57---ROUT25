@@ -18,9 +18,9 @@ GEH statistic
 from __future__ import annotations
 
 import math
-from typing import Mapping, Sequence, Tuple
+from collections.abc import Mapping, Sequence
 
-Pair = Tuple[float, float]  # (modelled, observed)
+Pair = tuple[float, float]  # (modelled, observed)
 
 
 def geh(modelled: float, observed: float) -> float:

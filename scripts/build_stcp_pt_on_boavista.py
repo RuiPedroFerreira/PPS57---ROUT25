@@ -19,11 +19,11 @@ import argparse
 import csv
 import io
 import json
-from pathlib import Path
-from statistics import fmean, median
 import subprocess
 import xml.etree.ElementTree as ET
 import zipfile
+from pathlib import Path
+from statistics import fmean, median
 
 import sumolib  # ships with SUMO; already in .venv
 

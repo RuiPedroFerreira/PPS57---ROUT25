@@ -15,12 +15,12 @@ from __future__ import annotations
 
 import csv
 import io
-from statistics import fmean, median
-from typing import Dict, Iterable, Iterator, List, Mapping, Optional, Sequence, Tuple
 import zipfile
+from collections.abc import Iterable, Iterator, Mapping, Sequence
+from statistics import fmean, median
 
 # Clock windows (seconds since midnight) used to report headways.
-DEFAULT_WINDOWS: Dict[str, Tuple[int, int]] = {
+DEFAULT_WINDOWS: dict[str, tuple[int, int]] = {
     "am_peak": (7 * 3600, 9 * 3600),
     "midday": (11 * 3600, 14 * 3600),
     "pm_peak": (17 * 3600, 19 * 3600),
@@ -36,7 +36,7 @@ def gtfs_time_to_seconds(value: str) -> int:
     return hours * 3600 + minutes * 60 + seconds
 
 
-def _read_table(zip_file: zipfile.ZipFile, name: str) -> Iterator[Dict[str, str]]:
+def _read_table(zip_file: zipfile.ZipFile, name: str) -> Iterator[dict[str, str]]:
     with zip_file.open(name) as handle:
         yield from csv.DictReader(io.TextIOWrapper(handle, "utf-8-sig"))
 
@@ -53,7 +53,7 @@ def select_weekday_service_id(zip_path: str, preferred: str = "DIAS UTEIS") -> s
     with zipfile.ZipFile(zip_path) as zip_file:
         names = set(zip_file.namelist())
         if "calendar.txt" in names:
-            weekday: Dict[str, int] = {}
+            weekday: dict[str, int] = {}
             for row in _read_table(zip_file, "calendar.txt"):
                 served = sum(
                     int(row.get(day, "0") or "0")
@@ -66,7 +66,7 @@ def select_weekday_service_id(zip_path: str, preferred: str = "DIAS UTEIS") -> s
             if weekday:
                 return max(weekday, key=weekday.get)
         if "calendar_dates.txt" in names:
-            counts: Dict[str, int] = {}
+            counts: dict[str, int] = {}
             for row in _read_table(zip_file, "calendar_dates.txt"):
                 # exception_type=1 adds service on that date; 2 REMOVES it.
                 # Counting removals would inflate exception-heavy services.
@@ -81,8 +81,8 @@ def select_weekday_service_id(zip_path: str, preferred: str = "DIAS UTEIS") -> s
 
 
 def headway_stats(
-    departures_s: Sequence[int], window: Tuple[int, int]
-) -> Optional[Dict[str, float]]:
+    departures_s: Sequence[int], window: tuple[int, int]
+) -> dict[str, float] | None:
     """Headway statistics (minutes) for departures falling inside a clock window."""
     start, end = window
     inside = sorted(d for d in departures_s if start <= d < end)
@@ -102,9 +102,9 @@ def extract_corridor_headways(
     zip_path: str,
     short_names: Iterable[str],
     *,
-    windows: Optional[Mapping[str, Tuple[int, int]]] = None,
+    windows: Mapping[str, tuple[int, int]] | None = None,
     preferred_service: str = "DIAS UTEIS",
-) -> Dict[str, object]:
+) -> dict[str, object]:
     """Extract real weekday headways (by direction and clock window) for the given
     route short names, plus whether the feed encodes dwell.
 
@@ -116,14 +116,14 @@ def extract_corridor_headways(
     service_id = select_weekday_service_id(zip_path, preferred_service)
 
     with zipfile.ZipFile(zip_path) as zip_file:
-        rid_to_short: Dict[str, str] = {}
-        long_names: Dict[str, str] = {}
+        rid_to_short: dict[str, str] = {}
+        long_names: dict[str, str] = {}
         for row in _read_table(zip_file, "routes.txt"):
             if row.get("route_short_name") in short_set:
                 rid_to_short[row["route_id"]] = row["route_short_name"]
                 long_names[row["route_short_name"]] = row.get("route_long_name", "")
 
-        trip_key: Dict[str, Tuple[str, str]] = {}
+        trip_key: dict[str, tuple[str, str]] = {}
         for row in _read_table(zip_file, "trips.txt"):
             if row.get("route_id") in rid_to_short and row.get("service_id") == service_id:
                 trip_key[row["trip_id"]] = (
@@ -134,7 +134,7 @@ def extract_corridor_headways(
         # Trip's first departure = the departure at its MINIMUM stop_sequence. GTFS only
         # requires stop_sequence to increase along the trip, not to start at "1"; keying
         # off the literal "1" would drop every departure for feeds numbered otherwise.
-        trip_first: Dict[str, Tuple[int, int]] = {}  # trip_id -> (min_seq, departure_s)
+        trip_first: dict[str, tuple[int, int]] = {}  # trip_id -> (min_seq, departure_s)
         target_rows = 0
         dwell_nonzero = 0
         for row in _read_table(zip_file, "stop_times.txt"):
@@ -157,13 +157,13 @@ def extract_corridor_headways(
                 except ValueError:
                     continue
                 trip_first[tid] = (seq, dep_s)
-        first_departures: Dict[Tuple[str, str], List[int]] = {}
+        first_departures: dict[tuple[str, str], list[int]] = {}
         for tid, (_seq, dep_s) in trip_first.items():
             first_departures.setdefault(trip_key[tid], []).append(dep_s)
 
-    lines: Dict[str, Dict[str, object]] = {}
+    lines: dict[str, dict[str, object]] = {}
     for short in sorted(short_set):
-        directions: Dict[str, object] = {}
+        directions: dict[str, object] = {}
         for (line_short, direction), departures in first_departures.items():
             if line_short != short:
                 continue

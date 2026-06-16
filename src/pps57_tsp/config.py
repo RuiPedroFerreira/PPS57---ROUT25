@@ -3,10 +3,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, FrozenSet, Optional
+from typing import Any
 
 from .models import DEFAULT_ACTUATING_ACTIONS
 
@@ -14,21 +14,21 @@ from .models import DEFAULT_ACTUATING_ACTIONS
 @dataclass(frozen=True)
 class TSPConfig:
     root: Path
-    raw: Dict[str, Any]
+    raw: dict[str, Any]
 
     @property
-    def logging(self) -> Dict[str, Any]:
+    def logging(self) -> dict[str, Any]:
         return self.raw.get("logging", {})
 
     @property
-    def decision_policy(self) -> Dict[str, Any]:
+    def decision_policy(self) -> dict[str, Any]:
         return self.raw.get("decision_policy", {})
 
     @property
-    def actuation(self) -> Dict[str, Any]:
+    def actuation(self) -> dict[str, Any]:
         return self.raw.get("actuation", {})
 
-    def actuating_actions(self) -> FrozenSet[str]:
+    def actuating_actions(self) -> frozenset[str]:
         """Conjunto de ações que atuam o semáforo (fonte de verdade única).
 
         Lido de decision_policy.actuating_actions; recai em
@@ -44,23 +44,23 @@ class TSPConfig:
         return DEFAULT_ACTUATING_ACTIONS
 
     @property
-    def phase_mapping(self) -> Dict[str, Any]:
+    def phase_mapping(self) -> dict[str, Any]:
         return self.raw.get("phase_mapping", {})
 
     @property
-    def controller_contracts(self) -> Dict[str, Any]:
+    def controller_contracts(self) -> dict[str, Any]:
         return self.raw.get("controller_contracts", {})
 
     def path_from_root(self, relative: str | Path) -> Path:
         path = Path(relative)
         return path if path.is_absolute() else self.root / path
 
-    def phase_mapping_for_tls(self, tls_id: str) -> Dict[str, Any]:
+    def phase_mapping_for_tls(self, tls_id: str) -> dict[str, Any]:
         mapping = dict(self.phase_mapping.get("default", {}))
         mapping.update(self.phase_mapping.get(tls_id, {}))
         return mapping
 
-    def phase_mapping_for_movement(self, movement_id: str, tls_id: str = "") -> Dict[str, Any]:
+    def phase_mapping_for_movement(self, movement_id: str, tls_id: str = "") -> dict[str, Any]:
         mapping = (
             self.phase_mapping_for_tls(tls_id)
             if tls_id
@@ -72,7 +72,7 @@ class TSPConfig:
             mapping.update(movement_mapping)
         return mapping
 
-    def controller_contract_for_tls(self, tls_id: str) -> Dict[str, Any]:
+    def controller_contract_for_tls(self, tls_id: str) -> dict[str, Any]:
         contracts = self.controller_contracts
         default = dict(contracts.get("default", {}))
         controllers = contracts.get("controllers", {})
@@ -90,7 +90,7 @@ class TSPConfig:
         return merged
 
 
-def load_tsp_config(path: str | Path, root: Optional[str | Path] = None) -> TSPConfig:
+def load_tsp_config(path: str | Path, root: str | Path | None = None) -> TSPConfig:
     config_path = Path(path)
     if root is None:
         root_path = config_path.resolve().parents[1]

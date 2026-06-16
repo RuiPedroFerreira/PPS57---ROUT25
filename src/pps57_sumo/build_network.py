@@ -9,13 +9,13 @@ and post-build TLS edits in one module prevents those paths from drifting.
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
-from typing import Callable, Sequence
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[1]
 if str(SRC) not in sys.path:
@@ -25,7 +25,6 @@ from pps57_sumo.apply_tls_offsets import apply_tls_offsets
 from pps57_sumo.environment import ensure_sumo_environment
 from pps57_sumo.generate_plain_corridor import generate
 from pps57_sumo.scenarios import apply_scenario_profile
-
 
 Runner = Callable[[Sequence[str], Path], None]
 

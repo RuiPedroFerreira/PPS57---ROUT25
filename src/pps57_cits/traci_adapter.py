@@ -3,14 +3,14 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 import importlib
 import os
-from pathlib import Path
 import shutil
 import socket
 import sys
-from typing import Any, List, Optional
+from dataclasses import replace
+from pathlib import Path
+from typing import Any
 
 from pps57_sumo.environment import apply_sumo_environment
 
@@ -82,7 +82,7 @@ class TraciSimulationAdapter:
         # contadas para o run summary em vez de desaparecerem em silêncio.
         self.vehicle_read_failures = 0
 
-    def start(self, extra_args: Optional[List[str]] = None) -> None:
+    def start(self, extra_args: list[str] | None = None) -> None:
         apply_sumo_environment()
         try:
             traci = _load_traci()
@@ -103,7 +103,7 @@ class TraciSimulationAdapter:
         traci.start(cmd, port=_resolve_traci_port(), numRetries=60)
         self.traci = traci
 
-    def _sumo_command(self, binary: str, extra_args: Optional[List[str]] = None) -> List[str]:
+    def _sumo_command(self, binary: str, extra_args: list[str] | None = None) -> list[str]:
         sumocfg = self.config.path_from_root(
             self.config.sumo.get("sumocfg", "sumo/corredor.sumocfg")
         )
@@ -133,7 +133,7 @@ class TraciSimulationAdapter:
         traci = self._require_traci()
         return int(traci.simulation.getMinExpectedNumber())
 
-    def read_vehicle_observations(self) -> List[VehicleObservation]:
+    def read_vehicle_observations(self) -> list[VehicleObservation]:
         traci = self._require_traci()
         sim_time_s_raw = _safe_call(lambda: traci.simulation.getTime())
         if sim_time_s_raw is None:
@@ -144,7 +144,7 @@ class TraciSimulationAdapter:
         vehicle_ids = list(traci.vehicle.getIDList())
         snapshot = self._vehicle_subscription_snapshot(vehicle_ids)
         lane_samples = self._lane_samples_from_snapshot(snapshot)
-        observations: List[VehicleObservation] = []
+        observations: list[VehicleObservation] = []
         for vehicle_id in vehicle_ids:
             values = snapshot.get(vehicle_id)
             if values is not None:
@@ -159,7 +159,7 @@ class TraciSimulationAdapter:
                 observations.append(observation)
         return observations
 
-    def _vehicle_subscription_snapshot(self, vehicle_ids: List[str]) -> dict[str, dict[str, Any]]:
+    def _vehicle_subscription_snapshot(self, vehicle_ids: list[str]) -> dict[str, dict[str, Any]]:
         """Valores subscritos de TODOS os veículos da rede, num round-trip.
 
         Devolve {vehicle_id: {nome_var: valor}} apenas para veículos com as
@@ -239,7 +239,7 @@ class TraciSimulationAdapter:
         values: dict[str, Any],
         lane_samples: dict[str, list[tuple[float, float]]],
         sim_time_s: float,
-    ) -> Optional[VehicleObservation]:
+    ) -> VehicleObservation | None:
         """Constrói a observação a partir do snapshot subscrito.
 
         Espelha campo-a-campo _read_vehicle_observation (mesmos defaults e
@@ -294,7 +294,7 @@ class TraciSimulationAdapter:
 
     def _read_vehicle_observation(
         self, vehicle_id: str, sim_time_s: float = 0.0
-    ) -> Optional[VehicleObservation]:
+    ) -> VehicleObservation | None:
         traci = self._require_traci()
         try:
             edge_id = traci.vehicle.getRoadID(vehicle_id)
@@ -404,7 +404,7 @@ class TraciSimulationAdapter:
                 count += 1
         return count
 
-    def _back_of_queue_count(self, lane_id: str) -> Optional[int]:
+    def _back_of_queue_count(self, lane_id: str) -> int | None:
         """Fila contígua a partir da stopline.
 
         Difere de getLastStepHaltingNumber, que conta TODOS os veículos parados
@@ -430,7 +430,7 @@ class TraciSimulationAdapter:
         return self._contiguous_halted_from_stopline(samples, self._queue_halt_speed_mps)
 
     @staticmethod
-    def _contiguous_halted_from_stopline(samples: List[tuple], halt_speed_mps: float) -> int:
+    def _contiguous_halted_from_stopline(samples: list[tuple], halt_speed_mps: float) -> int:
         """Conta a corrida contígua de veículos parados desde a stopline.
 
         `samples` é uma lista de (lane_position_m, speed_mps). A stopline é o
@@ -476,7 +476,7 @@ class TraciSimulationAdapter:
         # por design — devolve None em vez de adivinhar um programa errado.
         return None
 
-    def read_program_phase_count(self, tls_id: str) -> Optional[int]:
+    def read_program_phase_count(self, tls_id: str) -> int | None:
         """Número de fases do programa carregado, ou None se indeterminável."""
         logic = self._program_logic(tls_id)
         try:
@@ -484,37 +484,37 @@ class TraciSimulationAdapter:
         except Exception:
             return None
 
-    def read_program_type(self, tls_id: str) -> Optional[str]:
+    def read_program_type(self, tls_id: str) -> str | None:
         """Tipo bruto do programa TLS (código SUMO), só para diagnóstico."""
         logic = self._program_logic(tls_id)
         if logic is None:
             return None
         try:
-            return str(getattr(logic, "type"))
+            return str(logic.type)
         except Exception:
             return None
 
-    def read_program_phase_states(self, tls_id: str) -> Optional[List[str]]:
+    def read_program_phase_states(self, tls_id: str) -> list[str] | None:
         """Lista os estados RYG das fases do programa atual, ou None se ilegível."""
         logic = self._program_logic(tls_id)
         if logic is None:
             return None
         try:
-            return [str(getattr(phase, "state")) for phase in logic.phases]
+            return [str(phase.state) for phase in logic.phases]
         except Exception:
             return None
 
-    def read_program_phase_durations(self, tls_id: str) -> Optional[List[float]]:
+    def read_program_phase_durations(self, tls_id: str) -> list[float] | None:
         """Lista as durações nominais das fases do programa atual, ou None se ilegível."""
         logic = self._program_logic(tls_id)
         if logic is None:
             return None
         try:
-            return [float(getattr(phase, "duration")) for phase in logic.phases]
+            return [float(phase.duration) for phase in logic.phases]
         except Exception:
             return None
 
-    def read_program_is_fixed_time(self, tls_id: str) -> Optional[bool]:
+    def read_program_is_fixed_time(self, tls_id: str) -> bool | None:
         """Classifica o programa por *comportamento*, não pela etiqueta.
 
         Devolve True só se for possível confirmar tempo fixo, False se for
@@ -528,7 +528,7 @@ class TraciSimulationAdapter:
         if logic is None:
             return None
         try:
-            type_repr = str(getattr(logic, "type")).strip().lower()
+            type_repr = str(logic.type).strip().lower()
         except Exception:
             type_repr = ""
         if type_repr in {"actuated", "delay_based", "delaybased", "nema"}:
@@ -541,8 +541,8 @@ class TraciSimulationAdapter:
             return None
         for phase in phases:
             try:
-                min_dur = float(getattr(phase, "minDur"))
-                max_dur = float(getattr(phase, "maxDur"))
+                min_dur = float(phase.minDur)
+                max_dur = float(phase.maxDur)
             except Exception:
                 return None  # sem min/max fiável -> não confirmado
             if abs(max_dur - min_dur) > 1e-6:
@@ -797,7 +797,7 @@ def _safe_call(callable_):  # type: ignore[no-untyped-def]
         return None
 
 
-_TRACI_ERROR_TYPES: Optional[tuple] = None
+_TRACI_ERROR_TYPES: tuple | None = None
 
 
 def _traci_error_types() -> tuple:
@@ -827,7 +827,7 @@ def _cfg_float(mapping: Any, key: str, default: float) -> float:
         return float(default)
 
 
-def _logic_program_id(logic) -> Optional[str]:  # type: ignore[no-untyped-def]
+def _logic_program_id(logic) -> str | None:  # type: ignore[no-untyped-def]
     for attr in ("programID", "programId", "id", "subID"):
         try:
             value = getattr(logic, attr)

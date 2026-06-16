@@ -10,8 +10,9 @@ pairs gathered from real counts / AVL / reference scenarios.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Sequence
+from typing import Any
 
 from pps57_sumo.stats import mean_ci95
 from pps57_sumo.validation import metrics
@@ -20,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_CONFIG = ROOT / "configs" / "validation_config.json"
 
 
-def load_validation_config(path: str | Path | None = None) -> Dict[str, Any]:
+def load_validation_config(path: str | Path | None = None) -> dict[str, Any]:
     """Load the validation thresholds config (defaults to configs/validation_config.json)."""
     config_path = Path(path) if path is not None else DEFAULT_CONFIG
     if not config_path.exists():
@@ -35,7 +36,7 @@ def _fraction(passing: int, total: int) -> float:
 def evaluate_link_flow_calibration(
     links: Sequence[Mapping[str, Any]],
     config: Mapping[str, Any],
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Evaluate modelled vs observed link flows against the DMRB/FHWA criteria.
 
     Each link is a mapping with ``link_id``, ``modelled_veh_h``, ``observed_veh_h``
@@ -48,8 +49,8 @@ def evaluate_link_flow_calibration(
     band_cfg = cal["flow_percentage_bands"]
     sum_cfg = cal["sum_of_flows"]
 
-    per_link: List[Dict[str, Any]] = []
-    pairs: List[metrics.Pair] = []
+    per_link: list[dict[str, Any]] = []
+    pairs: list[metrics.Pair] = []
     geh_pass = 0
     band_pass = 0
     for link in links:
@@ -135,14 +136,14 @@ def evaluate_link_flow_calibration(
 def evaluate_travel_times(
     segments: Sequence[Mapping[str, Any]],
     config: Mapping[str, Any],
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Evaluate modelled vs observed journey times against the FHWA/WisDOT criterion.
 
     Each segment is a mapping with ``segment_id``, ``modelled_s``, ``observed_s``
     and an optional ``source``.
     """
     tt_cfg = config["travel_time_validation"]
-    per_segment: List[Dict[str, Any]] = []
+    per_segment: list[dict[str, Any]] = []
     passing = 0
     for segment in segments:
         modelled = float(segment["modelled_s"])
@@ -187,7 +188,7 @@ _FACE_VALIDITY_BANDS = {
 def evaluate_tsp_face_validity(
     measurements: Sequence[Mapping[str, Any]],
     config: Mapping[str, Any],
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Check measured TSP gains against the published face-validity envelopes.
 
     Each measurement is a mapping with ``metric`` (one of the configured bands,
@@ -198,7 +199,7 @@ def evaluate_tsp_face_validity(
     nothing.
     """
     fv_cfg = config["tsp_face_validity"]
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     all_inside = True
     for item in measurements:
         band_key = str(item["metric"])

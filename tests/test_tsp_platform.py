@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 import copy
-from pathlib import Path
 import sys
 import unittest
-
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -27,6 +26,7 @@ from pps57_cits.messages import (
     synth_srem,
 )
 from pps57_cits.models import NetworkStateSnapshot, SignalState
+from pps57_opt.policy_runtime import RuntimePolicy, RuntimePolicyRule
 from pps57_tsp.actuator import TraciTSPActuator
 from pps57_tsp.config import TSPConfig, load_tsp_config
 from pps57_tsp.controller import TSPControlController
@@ -38,7 +38,6 @@ from pps57_tsp.signal_control import (
     SignalGroupContract,
     TraciSignalControlAdapter,
 )
-from pps57_opt.policy_runtime import RuntimePolicy, RuntimePolicyRule
 
 
 class MemoryLogger:

@@ -3,19 +3,19 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, Dict, Iterable, List
 import json
+from collections.abc import Iterable
+from pathlib import Path
+from typing import Any
 
-
-ComparisonRow = Dict[str, object]
+ComparisonRow = dict[str, object]
 
 
 def build_tsp_ab_comparison_rows(
-    baseline_summary: Dict[str, Any],
-    rl_summary: Dict[str, Any],
-) -> List[ComparisonRow]:
-    rows: List[ComparisonRow] = []
+    baseline_summary: dict[str, Any],
+    rl_summary: dict[str, Any],
+) -> list[ComparisonRow]:
+    rows: list[ComparisonRow] = []
 
     for key in [
         "total_decisions",
@@ -66,12 +66,12 @@ def build_tsp_ab_comparison_rows(
 
 
 def write_tsp_ab_comparison(
-    baseline_summary: Dict[str, Any],
-    rl_summary: Dict[str, Any],
+    baseline_summary: dict[str, Any],
+    rl_summary: dict[str, Any],
     *,
     json_path: str | Path,
     markdown_path: str | Path,
-) -> Dict[str, object]:
+) -> dict[str, object]:
     rows = build_tsp_ab_comparison_rows(baseline_summary, rl_summary)
     payload = {
         "comparison": "baseline_vs_rl_tsp_runtime",
@@ -92,10 +92,10 @@ def write_tsp_ab_comparison(
 
 
 def build_kpi_comparison_rows(
-    baseline_kpis: Dict[str, Any],
-    rl_kpis: Dict[str, Any],
-) -> List[ComparisonRow]:
-    rows: List[ComparisonRow] = []
+    baseline_kpis: dict[str, Any],
+    rl_kpis: dict[str, Any],
+) -> list[ComparisonRow]:
+    rows: list[ComparisonRow] = []
     for group in [
         "all_vehicles",
         "priority_vehicles",
@@ -120,12 +120,12 @@ def build_kpi_comparison_rows(
 
 
 def write_kpi_comparison(
-    baseline_kpis: Dict[str, Any],
-    rl_kpis: Dict[str, Any],
+    baseline_kpis: dict[str, Any],
+    rl_kpis: dict[str, Any],
     *,
     json_path: str | Path,
     markdown_path: str | Path,
-) -> Dict[str, object]:
+) -> dict[str, object]:
     rows = build_kpi_comparison_rows(baseline_kpis, rl_kpis)
     payload = {
         "comparison": "baseline_vs_rl_sumo_kpis",
@@ -194,7 +194,7 @@ def _delta(baseline: Any, rl: Any) -> int | float | str:
     return ""
 
 
-def _sorted_union_keys(left: Any, right: Any) -> List[str]:
+def _sorted_union_keys(left: Any, right: Any) -> list[str]:
     left_keys = set(left.keys()) if isinstance(left, dict) else set()
     right_keys = set(right.keys()) if isinstance(right, dict) else set()
     return sorted(str(item) for item in left_keys | right_keys)

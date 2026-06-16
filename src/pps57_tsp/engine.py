@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 from pps57_cits.config import CITSConfig
 from pps57_cits.messages import OperatorPriorityClass, SREMLike
@@ -21,8 +20,14 @@ from .signal_control import (
 )
 from .util import (
     controlled_links_match_request as _controlled_links_match_request,
+)
+from .util import (
     lane_belongs_to_edge_set as _lane_belongs_to_edge_set,
+)
+from .util import (
     non_negative_float as _non_negative_float,
+)
+from .util import (
     positive_float as _positive_float,
 )
 
@@ -40,7 +45,7 @@ class TSPDecisionEngine:
         request: SREMLike,
         signal_state: SignalState,
         sim_time_s: float,
-        network_state: Optional[NetworkStateSnapshot] = None,
+        network_state: NetworkStateSnapshot | None = None,
     ) -> TSPDecision:
         # Breakdown calculado UMA vez por decisão: o escalar guia os portões e
         # os componentes seguem para a decisão (antes recomputava-se em
@@ -428,7 +433,7 @@ class TSPDecisionEngine:
     _RED_CHARS = ("r", "R")
 
     def _queue_eta_correction_s(
-        self, request: SREMLike, network_state: Optional[NetworkStateSnapshot]
+        self, request: SREMLike, network_state: NetworkStateSnapshot | None
     ) -> float:
         """Tempo de descarga da fila à frente do autocarro (v2.2).
 
@@ -465,10 +470,10 @@ class TSPDecisionEngine:
         self,
         request: SREMLike,
         signal_state: SignalState,
-        network_state: Optional[NetworkStateSnapshot],
+        network_state: NetworkStateSnapshot | None,
         *,
         victims: str,
-    ) -> Optional[int]:
+    ) -> int | None:
         """Veículos parados nas lanes realmente lesadas pela intervenção (v2.1).
 
         victims="red" (extensão de verde): lesadas são as aproximações sem
@@ -525,7 +530,7 @@ class TSPDecisionEngine:
 
     def _min_green_for_current_phase(
         self, contract: ControllerContract, signal_state: SignalState
-    ) -> Optional[float]:
+    ) -> float | None:
         """Verde mínimo aplicável à fase corrente (global vs por-fase, o maior)."""
         raw = self.cits_config.safety_constraints.get("min_green_s")
         try:
@@ -539,7 +544,7 @@ class TSPDecisionEngine:
             return float(phase_min)
         return max(min_green, float(phase_min))
 
-    def _controller_contract_for_request(self, request: SREMLike) -> Optional[ControllerContract]:
+    def _controller_contract_for_request(self, request: SREMLike) -> ControllerContract | None:
         if request.tls_id not in self._contract_cache:
             try:
                 self._contract_cache[request.tls_id] = build_controller_contract(
@@ -643,7 +648,7 @@ class TSPDecisionEngine:
         )
 
     @staticmethod
-    def remaining_phase_time_s(signal_state: SignalState, sim_time_s: float) -> Optional[float]:
+    def remaining_phase_time_s(signal_state: SignalState, sim_time_s: float) -> float | None:
         if signal_state.next_switch_s is None:
             return None
         return max(0.0, float(signal_state.next_switch_s) - sim_time_s)
@@ -696,7 +701,7 @@ class TSPDecisionEngine:
                 group_raw.update(specific)
         return bool(group_raw.get(key, raw.get(key, default)))
 
-    def _target_phase_for_request(self, request: SREMLike) -> Optional[int]:
+    def _target_phase_for_request(self, request: SREMLike) -> int | None:
         mapping = self.tsp_config.phase_mapping_for_movement(
             request.priority_movement_id, request.tls_id
         )
@@ -706,7 +711,7 @@ class TSPDecisionEngine:
         group = self._signal_group_for_request(request)
         return group.phase_index if group is not None else None
 
-    def _signal_group_for_request(self, request: SREMLike) -> Optional[SignalGroupContract]:
+    def _signal_group_for_request(self, request: SREMLike) -> SignalGroupContract | None:
         contract = self._controller_contract_for_request(request)
         if contract is None:
             return None
@@ -727,11 +732,11 @@ class TSPDecisionEngine:
         action: str,
         reason: str,
         score: float,
-        score_components: Optional[dict] = None,
+        score_components: dict | None = None,
         extension_s: float = 0.0,
-        phase_duration_s: Optional[float] = None,
-        target_phase_index: Optional[int] = None,
-        notes: Optional[list[str]] = None,
+        phase_duration_s: float | None = None,
+        target_phase_index: int | None = None,
+        notes: list[str] | None = None,
     ) -> TSPDecision:
         if score_components is None:
             _, score_components = self._score_breakdown(request)

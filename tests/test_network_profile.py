@@ -3,12 +3,11 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
-
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -18,6 +17,7 @@ if str(SRC) not in sys.path:
 from pps57_cits.config import load_cits_config
 from pps57_cits.messages import OperatorPriorityClass, synth_srem
 from pps57_cits.models import SignalState
+from pps57_opt.state import state_bucket_for_context
 from pps57_sumo.environment import ensure_sumo_environment, resolve_sumo_home
 from pps57_sumo.network_profile import load_network_profile
 from pps57_sumo.validate_project import validate_network_profile_config
@@ -26,7 +26,6 @@ from pps57_tsp.engine import TSPDecisionEngine
 from pps57_tsp.models import TSPAction
 from pps57_tsp.safety import TSPSafetyLayer
 from pps57_tsp.signal_control import build_controller_contract
-from pps57_opt.state import state_bucket_for_context
 
 
 class NetworkProfileTests(unittest.TestCase):

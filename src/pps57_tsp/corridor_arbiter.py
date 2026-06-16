@@ -23,7 +23,6 @@ o índice edge_to_intersection do CITSConfig (estático, sem solver).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Optional
 
 from pps57_cits.config import CITSConfig
 from pps57_cits.models import NetworkStateSnapshot
@@ -42,8 +41,8 @@ class ArbiterOutcome:
     """
 
     allow: bool
-    reason_code: Optional[str] = None
-    note: Optional[str] = None
+    reason_code: str | None = None
+    note: str | None = None
 
 
 _ALLOW = ArbiterOutcome(allow=True)
@@ -58,8 +57,8 @@ class CorridorArbiter:
         self,
         decision: TSPDecision,
         *,
-        recovery_debt_by_tls: Optional[Dict[str, float]] = None,
-        network_states: Optional[Dict[str, NetworkStateSnapshot]] = None,
+        recovery_debt_by_tls: dict[str, float] | None = None,
+        network_states: dict[str, NetworkStateSnapshot] | None = None,
     ) -> ArbiterOutcome:
         corridor = self.tsp_config.raw.get("corridor", {})
         if not isinstance(corridor, dict) or not corridor:
@@ -96,7 +95,7 @@ class CorridorArbiter:
                 )
         return _ALLOW
 
-    def _downstream_tls(self, decision: TSPDecision) -> Optional[str]:
+    def _downstream_tls(self, decision: TSPDecision) -> str | None:
         """TLS a jusante via a edge seguinte (fromNode_toNode -> approach do jusante)."""
         next_edge = getattr(decision, "next_edge_id", "") or ""
         if not next_edge:

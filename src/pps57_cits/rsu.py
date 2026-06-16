@@ -17,8 +17,8 @@ a arquitetura real: o RSU é gateway, o TMC/TSP é o decisor.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, List, Optional, Set
 
 from .config import CITSConfig, IntersectionConfig
 from .messages import (
@@ -28,17 +28,17 @@ from .messages import (
     MessageType,
     OperatorPriorityClass,
     PrioritizationResponse,
+    RequestType,
     ResponseStatus,
+    SecurityEnvelope,
+    SREMLike,
     SSEMAudit,
     SSEMLike,
-    SREMLike,
-    SecurityEnvelope,
     StationType,
     build_security_envelope,
     derive_station_id,
     parse_intersection_ref_id,
     sim_time_to_cdd,
-    RequestType,
     validate_cits_message,
 )
 
@@ -47,16 +47,16 @@ from .messages import (
 class RSUAgent:
     config: CITSConfig
     intersection: IntersectionConfig
-    last_grant_time_by_vehicle: Dict[str, float] = field(default_factory=dict)
-    known_certificate_ids: Set[str] = field(default_factory=set)
-    processed_request_keys: Dict[tuple[int, int, int], float] = field(default_factory=dict)
-    last_sequence_by_request: Dict[tuple[int, int], tuple[int, float]] = field(default_factory=dict)
+    last_grant_time_by_vehicle: dict[str, float] = field(default_factory=dict)
+    known_certificate_ids: set[str] = field(default_factory=set)
+    processed_request_keys: dict[tuple[int, int, int], float] = field(default_factory=dict)
+    last_sequence_by_request: dict[tuple[int, int], tuple[int, float]] = field(default_factory=dict)
     # Pedidos em PROCESSING ainda não fechados: (station_id, request_id) ->
     # (expires_at_s, vehicle_id). Persiste entre ticks para que o limite
     # max_active_requests_per_rsu conte o que está realmente ativo, não só o
     # batch do tick corrente. Sai por SSEM final (granted via
     # mark_priority_granted, rejected, cancelled) ou por expiração do TTL.
-    processing_request_expiry: Dict[tuple[int, int], tuple[float, str]] = field(
+    processing_request_expiry: dict[tuple[int, int], tuple[float, str]] = field(
         default_factory=dict
     )
 
@@ -64,10 +64,10 @@ class RSUAgent:
     def rsu_id(self) -> str:
         return self.intersection.rsu_id
 
-    def handle_messages(self, messages: Iterable[CITSMessage], sim_time_s: float) -> List[SSEMLike]:
-        responses: List[SSEMLike] = []
+    def handle_messages(self, messages: Iterable[CITSMessage], sim_time_s: float) -> list[SSEMLike]:
+        responses: list[SSEMLike] = []
         max_active = int(self.config.rsu_policy.get("max_active_requests_per_rsu", 4))
-        seen_request_keys: Set[tuple] = (
+        seen_request_keys: set[tuple] = (
             set()
         )  # dedupe por (station_id, request_id, sequence_number)
         self._prune_replay_cache(sim_time_s)
@@ -129,7 +129,7 @@ class RSUAgent:
         request: SREMLike,
         sim_time_s: float,
         too_many_active: bool = False,
-    ) -> "_DecisionPair":
+    ) -> _DecisionPair:
         if not request.requests:
             return _DecisionPair.reject("malformed_request_no_signal_requests")
         signal_request = request.requests[0]
@@ -222,8 +222,8 @@ class RSUAgent:
     # ------------------------------------------------------------------
 
     def _validate_security(
-        self, security: Optional[SecurityEnvelope], sim_time_s: float
-    ) -> Optional[str]:
+        self, security: SecurityEnvelope | None, sim_time_s: float
+    ) -> str | None:
         if security is None:
             return "security_envelope_missing"
         now_ms = int(round(sim_time_s * 1000))
@@ -246,7 +246,7 @@ class RSUAgent:
             self.known_certificate_ids.add(security.certificate_id)
         return None
 
-    def _validate_identity(self, request: SREMLike) -> Optional[str]:
+    def _validate_identity(self, request: SREMLike) -> str | None:
         if request.requestor is None:
             return "requestor_missing"
         if not request.requestor.operational_vehicle_id:
@@ -266,7 +266,7 @@ class RSUAgent:
             return "request_rsu_id_mismatch"
         return None
 
-    def _emergency_classification_problem(self, request: SREMLike) -> Optional[str]:
+    def _emergency_classification_problem(self, request: SREMLike) -> str | None:
         """Rejeita pedidos que reclamam classe `emergency` sem o serem.
 
         A classe `emergency` desbloqueia tratamento de preempção (janela ETA
@@ -353,7 +353,7 @@ class RSUAgent:
             raw = (raw,)
         return tuple(str(prefix) for prefix in raw)
 
-    def _validate_simulated_trust(self, security: SecurityEnvelope) -> Optional[str]:
+    def _validate_simulated_trust(self, security: SecurityEnvelope) -> str | None:
         trust_store = self.config.raw.get("trust_store", {})
         if not isinstance(trust_store, dict):
             return "trust_store_invalid"
@@ -428,7 +428,7 @@ class RSUAgent:
         return self._wrap_response(request, _DecisionPair.reject(reason), sim_time_s)
 
     def _wrap_response(
-        self, request: SREMLike, decision: "_DecisionPair", sim_time_s: float
+        self, request: SREMLike, decision: _DecisionPair, sim_time_s: float
     ) -> SSEMLike:
         response_ttl_ms = int(round(float(self.config.rsu_policy.get("response_ttl_s", 15)) * 1000))
         moy, timestamp_ms, generation_delta = sim_time_to_cdd(sim_time_s)
@@ -508,7 +508,7 @@ class RSUAgent:
         cooldown_s = float(self.config.rsu_policy.get("cooldown_after_grant_s", 90))
         return sim_time_s - last < cooldown_s
 
-    def _replay_or_ordering_problem(self, request: SREMLike, sim_time_s: float) -> Optional[str]:
+    def _replay_or_ordering_problem(self, request: SREMLike, sim_time_s: float) -> str | None:
         key = self._request_key(request)
         if key is None:
             return None
@@ -538,13 +538,13 @@ class RSUAgent:
             self.processed_request_keys[key] = sim_time_s
         self.last_sequence_by_request[(station_id, request_id)] = (sequence_number, sim_time_s)
 
-    def _request_key(self, request: SREMLike) -> Optional[tuple[int, int, int]]:
+    def _request_key(self, request: SREMLike) -> tuple[int, int, int] | None:
         if not request.requests:
             return None
         signal_request = request.requests[0]
         return (request.station_id, signal_request.request_id, request.sequence_number)
 
-    def _active_request_key(self, request: SREMLike) -> Optional[tuple[int, int]]:
+    def _active_request_key(self, request: SREMLike) -> tuple[int, int] | None:
         """Chave do pedido lógico (sem sequence_number): updates do mesmo
         pedido partilham a mesma entrada na quota de ativos."""
         if not request.requests:
@@ -552,7 +552,7 @@ class RSUAgent:
         return (request.station_id, request.requests[0].request_id)
 
     def _track_processing_request(
-        self, request: SREMLike, decision: "_DecisionPair", sim_time_s: float
+        self, request: SREMLike, decision: _DecisionPair, sim_time_s: float
     ) -> None:
         key = self._active_request_key(request)
         if key is None:
@@ -617,14 +617,14 @@ class RSUAgent:
 @dataclass(frozen=True)
 class _DecisionPair:
     response_status: str
-    rejection_reason: Optional[str] = None
+    rejection_reason: str | None = None
 
     @staticmethod
-    def processing() -> "_DecisionPair":
+    def processing() -> _DecisionPair:
         return _DecisionPair(response_status=ResponseStatus.PROCESSING.value)
 
     @staticmethod
-    def cancelled() -> "_DecisionPair":
+    def cancelled() -> _DecisionPair:
         # PrioritizationResponseStatus não tem "cancelled"; o standard fecha
         # o ciclo do pedido marcando o subsequente como "unknown" (não há
         # mais nada a reportar). Usamos `unknown` que é o mais próximo.
@@ -634,11 +634,11 @@ class _DecisionPair:
         )
 
     @staticmethod
-    def reject(reason: str) -> "_DecisionPair":
+    def reject(reason: str) -> _DecisionPair:
         return _DecisionPair(response_status=ResponseStatus.REJECTED.value, rejection_reason=reason)
 
 
-def build_rsu_agents(config: CITSConfig) -> Dict[str, RSUAgent]:
+def build_rsu_agents(config: CITSConfig) -> dict[str, RSUAgent]:
     return {
         intersection.rsu_id: RSUAgent(config=config, intersection=intersection)
         for intersection in config.intersections

@@ -10,13 +10,13 @@ The demonstrator compares:
 from __future__ import annotations
 
 import argparse
-from copy import deepcopy
-from datetime import datetime
 import json
-from pathlib import Path
 import shutil
 import subprocess
 import sys
+from copy import deepcopy
+from datetime import datetime
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -30,11 +30,10 @@ from pps57_opt.demonstrator import (  # noqa: E402
     load_demonstrator_run,
     write_demonstrator_report,
 )
-from pps57_sumo.parse_tripinfo import parse_tripinfo  # noqa: E402
 from pps57_sumo.build_network import build_sumo_artifacts, sumo_environment  # noqa: E402
+from pps57_sumo.parse_tripinfo import parse_tripinfo  # noqa: E402
 from pps57_tsp.config import TSPConfig, load_tsp_config  # noqa: E402
 from pps57_tsp.controller import TSPControlController  # noqa: E402
-
 
 SNAPSHOT_PATHS = (
     "outputs/tripinfo.xml",

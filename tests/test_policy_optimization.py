@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-from dataclasses import replace
-from pathlib import Path
 import json
 import sys
 import tempfile
 import unittest
+from dataclasses import replace
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -22,9 +22,9 @@ from pps57_opt.optimizer import OfflineOptimizationController
 from pps57_opt.outcome_evaluator import write_decision_outcome_evaluation
 from pps57_opt.policy_runtime import RuntimePolicy
 from pps57_opt.rl_trainer import TabularQLearningController
-from pps57_tsp.engine import TSPDecisionEngine
 from pps57_tsp.config import load_tsp_config
 from pps57_tsp.controller import TSPControlController
+from pps57_tsp.engine import TSPDecisionEngine
 
 
 class PolicyOptimizationTestCase(unittest.TestCase):

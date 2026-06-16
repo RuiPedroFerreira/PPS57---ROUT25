@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import sys
-from typing import Any, Dict
+from pathlib import Path
+from typing import Any
 
 try:
     from defusedxml import ElementTree as ET  # type: ignore[import-untyped]
@@ -89,7 +89,7 @@ def validate_routes_sorted(routes_path: Path) -> None:
     print(f"OK sorted: {routes_path.name} ({len(timeline)} time-dependent elements)")
 
 
-def _require_number(holder: Dict[str, Any], key: str, context: str) -> float:
+def _require_number(holder: dict[str, Any], key: str, context: str) -> float:
     value = holder.get(key)
     if not isinstance(value, (int, float)) or isinstance(value, bool):
         raise SystemExit(f"Config inválida ({context}): '{key}' em falta ou não numérico.")
@@ -495,7 +495,7 @@ def validate_safety_configs(root: Path) -> None:
     print("OK config: invariantes safety-critical de cits/tsp config verificadas.")
 
 
-def validate_network_profile_config(root: Path, cits: Dict[str, Any], tsp: Dict[str, Any]) -> None:
+def validate_network_profile_config(root: Path, cits: dict[str, Any], tsp: dict[str, Any]) -> None:
     cits_discovery = cits.get("network_discovery", {})
     tsp_profile = tsp.get("network_profile", {})
     enabled = (isinstance(cits_discovery, dict) and bool(cits_discovery.get("enabled", False))) or (

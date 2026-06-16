@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import argparse
 import shutil
-from pathlib import Path
 import sys
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -30,7 +30,6 @@ from pps57_opt.event_dataset import write_event_training_dataset  # noqa: E402
 from pps57_opt.rl_trainer import TabularQLearningController  # noqa: E402
 from pps57_tsp.config import load_tsp_config  # noqa: E402
 from pps57_tsp.controller import TSPControlController  # noqa: E402
-
 
 SNAPSHOT_PATHS = (
     "outputs/tsp_decisions.jsonl",

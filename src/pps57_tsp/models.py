@@ -3,10 +3,10 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass, field, replace
 from enum import Enum
-import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import uuid4
 
 from pps57_cits.messages import normalise_for_json  # L6: helper partilhado
@@ -168,25 +168,25 @@ class TSPDecision:
     target_signal_group_id: str = ""
     decision_id: str = field(default_factory=lambda: str(uuid4()))
     extension_s: float = 0.0
-    phase_duration_s: Optional[float] = None
-    target_phase_index: Optional[int] = None
-    current_phase_index: Optional[int] = None
-    current_signal_state: Optional[str] = None
-    current_next_switch_s: Optional[float] = None
-    current_spent_duration_s: Optional[float] = None
-    controlled_lanes: List[str] = field(default_factory=list)
-    notes: List[str] = field(default_factory=list)
-    correlation_id: Optional[str] = None
+    phase_duration_s: float | None = None
+    target_phase_index: int | None = None
+    current_phase_index: int | None = None
+    current_signal_state: str | None = None
+    current_next_switch_s: float | None = None
+    current_spent_duration_s: float | None = None
+    controlled_lanes: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+    correlation_id: str | None = None
     # Decomposição por-termo do priority_score ({raw, normalised, weight,
     # contribution} por objetivo). engine.priority_score já a computa; antes só
     # o escalar sobrevivia. Aditivo e serializa via to_dict()/to_json().
-    score_components: Dict[str, Any] = field(default_factory=dict)
+    score_components: dict[str, Any] = field(default_factory=dict)
 
     @property
     def requires_actuation(self) -> bool:
         return self.action in DEFAULT_ACTUATING_ACTIONS
 
-    def copy_with(self, **changes: Any) -> "TSPDecision":
+    def copy_with(self, **changes: Any) -> TSPDecision:
         # `dataclasses.replace` preserva tipos (sem o round-trip JSON de
         # `to_dict()`). `notes` é o único campo mutável: copia-se a lista
         # quando o chamador não a substitui, para o novo objeto não partilhar
@@ -195,7 +195,7 @@ class TSPDecision:
             changes["notes"] = list(self.notes)
         return replace(self, **changes)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return _normalise(asdict(self))
 
     def to_json(self) -> str:
@@ -209,9 +209,9 @@ class SafetyValidationResult:
     status: str
     reason: str
     safe_decision: TSPDecision
-    notes: List[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return _normalise(asdict(self))
 
 
@@ -225,15 +225,15 @@ class ActuationResult:
     no_actuation: bool
     command: str
     reason: str
-    parameters: Dict[str, Any] = field(default_factory=dict)
-    controller_response: Dict[str, Any] = field(default_factory=dict)
+    parameters: dict[str, Any] = field(default_factory=dict)
+    controller_response: dict[str, Any] = field(default_factory=dict)
     # "info" = normal applied/skipped; "warning" = decisão chegou ao atuador
     # mas a ação não é suportada; "error" = TraCI levantou exceção a meio
     # de uma atuação — auditoria deve filtrar por severity para detetar
     # falhas em vez de fazer match de substrings do `reason`.
     severity: str = "info"
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return _normalise(asdict(self))
 
     def to_json(self) -> str:

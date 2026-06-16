@@ -22,11 +22,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
 import re
-from statistics import fmean
 import subprocess
 import sys
+from pathlib import Path
+from statistics import fmean
 
 # M4: defusedxml em vez do stdlib — convenção do repo para parsing de XML.
 try:
@@ -41,7 +41,12 @@ for entry in (str(SRC), str(SCRIPTS)):
     if entry not in sys.path:
         sys.path.insert(0, entry)
 
-from _evidence_common import auto_discovery_cits_config, auto_tsp_config, running_time_envelope  # noqa: E402
+from _evidence_common import (  # noqa: E402
+    auto_discovery_cits_config,
+    auto_tsp_config,
+    running_time_envelope,
+)
+
 from pps57_cits.messages import OperatorPriorityClass, synth_srem  # noqa: E402
 from pps57_cits.models import SignalState  # noqa: E402
 from pps57_sumo.environment import apply_sumo_environment, ensure_sumo_environment  # noqa: E402

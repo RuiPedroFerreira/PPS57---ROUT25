@@ -3,24 +3,22 @@
 
 from __future__ import annotations
 
-from typing import List
-
 from .config import CITSConfig
 from .messages import (
     Approach,
     EventState,
     MAPEMLike,
+    MessageType,
     MovementEvent,
+    Position3D,
     SPATEMLike,
     StationType,
-    Position3D,
     build_security_envelope,
     derive_station_id,
     parse_intersection_ref_id,
     sim_time_to_cdd,
     sumo_link_char_to_event_state,
 )
-from .messages import MessageType
 from .models import SignalState
 
 
@@ -42,7 +40,7 @@ def direction_for_edge(edge_id: str) -> str:
     return "unknown"
 
 
-def build_mapem_messages(config: CITSConfig, sim_time_s: float = 0.0) -> List[MAPEMLike]:
+def build_mapem_messages(config: CITSConfig, sim_time_s: float = 0.0) -> list[MAPEMLike]:
     """Constrói um MAPEM por interseção a partir do catálogo do operador.
 
     MAP standard exige `revision` (mandatório) e `refPoint` (lat/lon âncora).
@@ -51,7 +49,7 @@ def build_mapem_messages(config: CITSConfig, sim_time_s: float = 0.0) -> List[MA
     operação real isto é uma falha de integração que o operador resolve.
     """
     moy, timestamp_ms, generation_delta = sim_time_to_cdd(sim_time_s)
-    messages: List[MAPEMLike] = []
+    messages: list[MAPEMLike] = []
     for intersection_index, intersection in enumerate(config.intersections):
         approaches = [
             Approach(
@@ -130,7 +128,7 @@ def build_spatem_message_from_state(state: SignalState) -> SPATEMLike:
     else:
         remaining_ms = 0
 
-    movement_events: List[MovementEvent] = []
+    movement_events: list[MovementEvent] = []
     intersection_status: dict[str, bool] = {}
     for link_index, char in enumerate(ryg):
         if link_index >= 255:

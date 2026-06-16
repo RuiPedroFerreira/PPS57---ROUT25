@@ -8,8 +8,6 @@ source.
 
 from __future__ import annotations
 
-from typing import List
-
 from pps57_cits.config import CITSConfig, IntersectionConfig
 from pps57_cits.messages import OperatorPriorityClass, SREMLike, synth_srem
 from pps57_cits.models import SignalState
@@ -17,7 +15,7 @@ from pps57_cits.models import SignalState
 from .models import OfflineScenario
 
 
-def build_offline_scenarios(config: CITSConfig) -> List[OfflineScenario]:
+def build_offline_scenarios(config: CITSConfig) -> list[OfflineScenario]:
     intersections = {item.tls_id: item for item in config.intersections}
     return [
         OfflineScenario(

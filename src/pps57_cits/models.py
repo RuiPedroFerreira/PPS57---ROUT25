@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -44,7 +44,7 @@ class VehicleObservation:
     # "provider disse 0.0 (a horas)" de "sem provider, default 0.0" e só então
     # recair no proxy de waiting-time. Ver pps57_cits.schedule_plan.
     schedule_adherence_sourced: bool = False
-    route_edges: List[str] = field(default_factory=list)
+    route_edges: list[str] = field(default_factory=list)
     next_edge_id: str = ""
     queue_ahead_vehicle_count: int = 0
     stop_count: int = 0
@@ -113,13 +113,13 @@ class SignalState:
     tls_id: str
     rsu_id: str
     timestamp_s: float
-    current_phase_index: Optional[int]
-    current_program_id: Optional[str]
-    red_yellow_green_state: Optional[str]
-    next_switch_s: Optional[float]
-    spent_duration_s: Optional[float]
-    controlled_lanes: List[str] = field(default_factory=list)
-    controlled_links: List[Any] = field(default_factory=list)
+    current_phase_index: int | None
+    current_program_id: str | None
+    red_yellow_green_state: str | None
+    next_switch_s: float | None
+    spent_duration_s: float | None
+    controlled_lanes: list[str] = field(default_factory=list)
+    controlled_links: list[Any] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -137,9 +137,9 @@ class NetworkStateSnapshot:
     spillback_risk: bool = False
     degraded: bool = False
     detector_read_failures: int = 0
-    failed_lanes: List[str] = field(default_factory=list)
+    failed_lanes: list[str] = field(default_factory=list)
     # Halted por lane controlada (estado bruto do passo, não agregado): permite
     # ao motor de decisão separar pressão na aproximação prioritária da pressão
     # transversal sem inventar sinais novos — é a mesma leitura que alimenta
     # halted_vehicle_count, apenas sem a soma.
-    halted_by_lane: Dict[str, int] = field(default_factory=dict)
+    halted_by_lane: dict[str, int] = field(default_factory=dict)

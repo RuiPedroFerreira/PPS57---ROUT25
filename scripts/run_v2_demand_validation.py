@@ -29,8 +29,8 @@ import argparse
 import hashlib
 import json
 import sys
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Mapping
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -253,7 +253,7 @@ def main() -> None:
         f"  [{'in' if we.get('inside') else 'OUT'}] p90 {we.get('corridor_p90_veh_h')} "
         f"in real range {we.get('real_floor_to_peak_veh_h')}"
     )
-    print(f"  (raw same-percentile spread, for transparency:)")
+    print("  (raw same-percentile spread, for transparency:)")
     for chk in envelope["percentile_checks"]:
         print(
             f"     [{'in' if chk.get('inside') else 'OUT'}] {chk['percentile']}: corridor {chk.get('corridor_veh_h')} "

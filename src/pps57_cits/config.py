@@ -3,10 +3,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
+from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any
 
 from pps57_sumo.network_profile import NetworkProfile, TLSProfile, load_network_profile
 
@@ -15,12 +16,12 @@ from pps57_sumo.network_profile import NetworkProfile, TLSProfile, load_network_
 class PriorityMovementConfig:
     movement_id: str
     direction: str
-    approach_edges: List[str]
-    egress_edges: List[str]
-    vehicle_classes: List[str]
+    approach_edges: list[str]
+    egress_edges: list[str]
+    vehicle_classes: list[str]
     target_signal_group_id: str
-    allowed_actions: List[str]
-    objectives: List[str]
+    allowed_actions: list[str]
+    objectives: list[str]
 
 
 @dataclass(frozen=True)
@@ -29,53 +30,53 @@ class IntersectionConfig:
     tls_id: str
     rsu_id: str
     name: str
-    controlled_approach_edges: List[str]
-    priority_movements: List[PriorityMovementConfig]
+    controlled_approach_edges: list[str]
+    priority_movements: list[PriorityMovementConfig]
     signal_controlled: bool = True
 
 
 @dataclass(frozen=True)
 class CITSConfig:
     root: Path
-    raw: Dict[str, Any]
-    intersections: List[IntersectionConfig]
-    edge_to_intersection: Dict[str, IntersectionConfig]
-    edge_to_priority_movements: Dict[str, List[PriorityMovementConfig]]
-    movement_by_id: Dict[str, PriorityMovementConfig]
-    rsu_to_intersection: Dict[str, IntersectionConfig]
-    tls_to_intersection: Dict[str, IntersectionConfig]
-    intersection_by_alias: Dict[str, IntersectionConfig]
+    raw: dict[str, Any]
+    intersections: list[IntersectionConfig]
+    edge_to_intersection: dict[str, IntersectionConfig]
+    edge_to_priority_movements: dict[str, list[PriorityMovementConfig]]
+    movement_by_id: dict[str, PriorityMovementConfig]
+    rsu_to_intersection: dict[str, IntersectionConfig]
+    tls_to_intersection: dict[str, IntersectionConfig]
+    intersection_by_alias: dict[str, IntersectionConfig]
 
     @property
-    def obu_policy(self) -> Dict[str, Any]:
+    def obu_policy(self) -> dict[str, Any]:
         return self.raw.get("obu_policy", {})
 
     @property
-    def rsu_policy(self) -> Dict[str, Any]:
+    def rsu_policy(self) -> dict[str, Any]:
         return self.raw.get("rsu_policy", {})
 
     @property
-    def safety_constraints(self) -> Dict[str, Any]:
+    def safety_constraints(self) -> dict[str, Any]:
         return self.raw.get("safety_constraints", {})
 
     @property
-    def schedule_plan(self) -> Dict[str, Any]:
+    def schedule_plan(self) -> dict[str, Any]:
         return self.raw.get("schedule_plan", {})
 
     @property
-    def state_estimation(self) -> Dict[str, Any]:
+    def state_estimation(self) -> dict[str, Any]:
         return self.raw.get("state_estimation", {})
 
     @property
-    def logging(self) -> Dict[str, Any]:
+    def logging(self) -> dict[str, Any]:
         return self.raw.get("logging", {})
 
     @property
-    def sumo(self) -> Dict[str, Any]:
+    def sumo(self) -> dict[str, Any]:
         return self.raw.get("sumo", {})
 
     @property
-    def signal_controlled_intersections(self) -> List[IntersectionConfig]:
+    def signal_controlled_intersections(self) -> list[IntersectionConfig]:
         return [
             intersection for intersection in self.intersections if intersection.signal_controlled
         ]
@@ -84,7 +85,7 @@ class CITSConfig:
         path = Path(relative)
         return path if path.is_absolute() else self.root / path
 
-    def priority_movements_for_edge(self, edge_id: str) -> List[PriorityMovementConfig]:
+    def priority_movements_for_edge(self, edge_id: str) -> list[PriorityMovementConfig]:
         return list(self.edge_to_priority_movements.get(edge_id, []))
 
     def priority_movement_for_request(
@@ -94,7 +95,7 @@ class CITSConfig:
         edge_id: str = "",
         next_edge_id: str = "",
         vehicle_class: str = "",
-    ) -> Optional[PriorityMovementConfig]:
+    ) -> PriorityMovementConfig | None:
         if movement_id:
             return self.movement_by_id.get(movement_id)
         vehicle_class_norm = normalise_vehicle_class(vehicle_class)
@@ -117,7 +118,7 @@ class CITSConfig:
         return None
 
 
-def load_cits_config(path: str | Path, root: Optional[str | Path] = None) -> CITSConfig:
+def load_cits_config(path: str | Path, root: str | Path | None = None) -> CITSConfig:
     config_path = Path(path)
     if root is None:
         root_path = config_path.resolve().parents[1]
@@ -128,9 +129,9 @@ def load_cits_config(path: str | Path, root: Optional[str | Path] = None) -> CIT
         raw = json.load(handle)
 
     def parse_priority_movements(
-        item: Dict[str, Any], section_name: str
-    ) -> List[PriorityMovementConfig]:
-        movements: List[PriorityMovementConfig] = []
+        item: dict[str, Any], section_name: str
+    ) -> list[PriorityMovementConfig]:
+        movements: list[PriorityMovementConfig] = []
         raw_movements = item.get("priority_movements", [])
         if isinstance(raw_movements, dict):
             # Legacy shape: {"westbound": "I1_I2"}. Kept only to provide a
@@ -175,7 +176,7 @@ def load_cits_config(path: str | Path, root: Optional[str | Path] = None) -> CIT
             )
         return movements
 
-    intersections: List[IntersectionConfig] = []
+    intersections: list[IntersectionConfig] = []
     for index, item in enumerate(raw.get("intersections", [])):
         # Erro claro em vez de um KeyError nu vindo do fundo de uma list
         # comprehension quando um bloco de intersection está malformado.
@@ -205,12 +206,12 @@ def load_cits_config(path: str | Path, root: Optional[str | Path] = None) -> CIT
         )
     )
 
-    edge_to_intersection: Dict[str, IntersectionConfig] = {}
-    edge_to_priority_movements: Dict[str, List[PriorityMovementConfig]] = {}
-    movement_by_id: Dict[str, PriorityMovementConfig] = {}
-    rsu_to_intersection: Dict[str, IntersectionConfig] = {}
-    tls_to_intersection: Dict[str, IntersectionConfig] = {}
-    intersection_by_alias: Dict[str, IntersectionConfig] = {}
+    edge_to_intersection: dict[str, IntersectionConfig] = {}
+    edge_to_priority_movements: dict[str, list[PriorityMovementConfig]] = {}
+    movement_by_id: dict[str, PriorityMovementConfig] = {}
+    rsu_to_intersection: dict[str, IntersectionConfig] = {}
+    tls_to_intersection: dict[str, IntersectionConfig] = {}
+    intersection_by_alias: dict[str, IntersectionConfig] = {}
 
     for intersection in intersections:
         rsu_to_intersection[intersection.rsu_id] = intersection
@@ -238,7 +239,7 @@ def load_cits_config(path: str | Path, root: Optional[str | Path] = None) -> CIT
     )
 
 
-def require_keys(mapping: Dict[str, Any], keys: Iterable[str], section_name: str) -> None:
+def require_keys(mapping: dict[str, Any], keys: Iterable[str], section_name: str) -> None:
     missing = [key for key in keys if key not in mapping]
     if missing:
         raise ValueError(f"Missing required keys in {section_name}: {', '.join(missing)}")
@@ -252,12 +253,12 @@ def normalise_vehicle_class(vehicle_class: str) -> str:
 
 
 def _auto_intersections_from_network(
-    raw: Dict[str, Any],
+    raw: dict[str, Any],
     root_path: Path,
     *,
     configured_tls_ids: set[str],
     configured_aliases: set[str],
-) -> List[IntersectionConfig]:
+) -> list[IntersectionConfig]:
     discovery = raw.get("network_discovery", {})
     if not isinstance(discovery, dict) or not bool(discovery.get("enabled", False)):
         return []
@@ -274,7 +275,7 @@ def _auto_intersections_from_network(
     ]
     rsu_prefix = str(discovery.get("rsu_id_prefix", "RSU_AUTO_"))
     auto_movements = bool(discovery.get("auto_generate_priority_movements", True))
-    generated: List[IntersectionConfig] = []
+    generated: list[IntersectionConfig] = []
     for tls_id in profile.tls_ids():
         if tls_id in configured_tls_ids or tls_id in configured_aliases:
             continue
@@ -293,8 +294,8 @@ def _auto_intersections_from_network(
 
 
 def _load_network_profile_for_config(
-    raw: Dict[str, Any], root_path: Path
-) -> Optional[NetworkProfile]:
+    raw: dict[str, Any], root_path: Path
+) -> NetworkProfile | None:
     sumo_cfg = raw.get("sumo", {})
     if not isinstance(sumo_cfg, dict):
         return None
@@ -313,7 +314,7 @@ def _load_network_profile_for_config(
 def _intersection_from_tls_profile(
     tls: TLSProfile,
     *,
-    classes: List[str],
+    classes: list[str],
     rsu_prefix: str,
     auto_generate_priority_movements: bool,
 ) -> IntersectionConfig:

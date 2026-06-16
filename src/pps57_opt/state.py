@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from pps57_cits.messages import SREMLike
 from pps57_cits.models import SignalState
@@ -14,7 +14,7 @@ from pps57_tsp.engine import TSPDecisionEngine
 
 def state_bucket_for_context(
     tsp_config: TSPConfig,
-    bucket_config: Dict[str, Any],
+    bucket_config: dict[str, Any],
     request: SREMLike,
     signal_state: SignalState,
     sim_time_s: float,
@@ -26,7 +26,7 @@ def state_bucket_for_context(
     waiting_time_s: float = 0.0,
     occupancy: float = 0.0,
     spillback_risk: bool = False,
-    seconds_since_last_intervention_s: Optional[float] = None,
+    seconds_since_last_intervention_s: float | None = None,
 ) -> str:
     eta_close = float(bucket_config.get("eta_close_s", 10))
     eta_far = float(bucket_config.get("eta_far_s", 25))

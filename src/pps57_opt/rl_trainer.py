@@ -20,12 +20,11 @@ neste regime sem transições.
 
 from __future__ import annotations
 
-from collections import Counter
-from dataclasses import dataclass
 import json
 import random
 import sys
-from typing import Dict, List, Optional, Tuple
+from collections import Counter
+from dataclasses import dataclass
 
 from pps57_cits.config import CITSConfig
 from pps57_tsp.config import TSPConfig
@@ -41,10 +40,10 @@ class TabularQLearningController:
     cits_config: CITSConfig
     tsp_config: TSPConfig
     optimization_config: OptimizationConfig
-    scenarios: Optional[List[OfflineScenario]] = None
+    scenarios: list[OfflineScenario] | None = None
 
     def __post_init__(self) -> None:
-        self.event_dataset_load: Optional[Dict[str, object]] = None
+        self.event_dataset_load: dict[str, object] | None = None
         self.optimizer = OfflineOptimizationController(
             self.cits_config,
             self.tsp_config,
@@ -52,7 +51,7 @@ class TabularQLearningController:
             scenarios=self.scenarios,
         )
 
-    def run(self) -> Dict[str, object]:
+    def run(self) -> dict[str, object]:
         scenarios = self.scenarios or self._load_event_scenarios()
         action_space = list(self.optimization_config.offline_training.get("candidate_actions", []))
         if not action_space:
@@ -76,12 +75,12 @@ class TabularQLearningController:
                 flush=True,
             )
 
-        q_values: Dict[Tuple[str, str], float] = {}
-        visits: Dict[Tuple[str, str], int] = {}
+        q_values: dict[tuple[str, str], float] = {}
+        visits: dict[tuple[str, str], int] = {}
         # Para auditabilidade real: regista qual scenario contribuiu para cada
         # (state, action). Antes, _source_scenario_for_state devolvia o
         # PRIMEIRO scenario com aquele bucket — não o que realmente contribuiu.
-        source_scenario_by_state_action: Dict[Tuple[str, str], str] = {}
+        source_scenario_by_state_action: dict[tuple[str, str], str] = {}
         candidate_cache = {
             scenario.scenario_id: self.optimizer._evaluate_scenario(scenario)
             for scenario in scenarios
@@ -126,7 +125,7 @@ class TabularQLearningController:
             q_values, visits, learned_rules, episodes, epsilon, scenarios, candidate_cache
         )
 
-    def _load_event_scenarios(self) -> List[OfflineScenario]:
+    def _load_event_scenarios(self) -> list[OfflineScenario]:
         path = self.optimization_config.path_from_root(
             self.optimization_config.logging.get(
                 "event_training_dataset", "outputs/event_training_dataset.jsonl"
@@ -145,19 +144,19 @@ class TabularQLearningController:
 
     def _rules_from_q_values(
         self,
-        q_values: Dict[Tuple[str, str], float],
-        visits: Dict[Tuple[str, str], int],
-        candidate_cache: Dict[str, List[CandidateEvaluation]],
-        scenario_by_id: Dict[str, OfflineScenario],
-        source_scenario_by_state_action: Dict[Tuple[str, str], str],
-    ) -> List[LearnedPolicyRule]:
-        by_state: Dict[str, list[Tuple[str, float]]] = {}
+        q_values: dict[tuple[str, str], float],
+        visits: dict[tuple[str, str], int],
+        candidate_cache: dict[str, list[CandidateEvaluation]],
+        scenario_by_id: dict[str, OfflineScenario],
+        source_scenario_by_state_action: dict[tuple[str, str], str],
+    ) -> list[LearnedPolicyRule]:
+        by_state: dict[str, list[tuple[str, float]]] = {}
         for (state, action), value in q_values.items():
             if visits.get((state, action), 0) <= 0:
                 continue
             by_state.setdefault(state, []).append((action, value))
 
-        rules: List[LearnedPolicyRule] = []
+        rules: list[LearnedPolicyRule] = []
         for state, actions in sorted(by_state.items()):
             action, value = max(actions, key=lambda item: item[1])
             # Auditabilidade: o source scenario é aquele que realmente
@@ -184,13 +183,13 @@ class TabularQLearningController:
 
     def _write_outputs(
         self,
-        q_values: Dict[Tuple[str, str], float],
-        visits: Dict[Tuple[str, str], int],
-        rules: List[LearnedPolicyRule],
+        q_values: dict[tuple[str, str], float],
+        visits: dict[tuple[str, str], int],
+        rules: list[LearnedPolicyRule],
         episodes: int,
         final_epsilon: float,
-        scenarios: List[OfflineScenario],
-        candidate_cache: Dict[str, List[CandidateEvaluation]],
+        scenarios: list[OfflineScenario],
+        candidate_cache: dict[str, list[CandidateEvaluation]],
     ) -> None:
         q_table_report = self.optimization_config.path_from_root(
             self.optimization_config.logging.get(
@@ -254,14 +253,14 @@ class TabularQLearningController:
 
     def _summary(
         self,
-        q_values: Dict[Tuple[str, str], float],
-        visits: Dict[Tuple[str, str], int],
-        rules: List[LearnedPolicyRule],
+        q_values: dict[tuple[str, str], float],
+        visits: dict[tuple[str, str], int],
+        rules: list[LearnedPolicyRule],
         episodes: int,
         final_epsilon: float,
-        scenarios: Optional[List[OfflineScenario]] = None,
-        candidate_cache: Optional[Dict[str, List[CandidateEvaluation]]] = None,
-    ) -> Dict[str, object]:
+        scenarios: list[OfflineScenario] | None = None,
+        candidate_cache: dict[str, list[CandidateEvaluation]] | None = None,
+    ) -> dict[str, object]:
         cfg = self.optimization_config.reinforcement_learning
         gamma = float(cfg.get("gamma", 0.0))
         # `algorithm` mantém o nome histórico para não quebrar consumidores

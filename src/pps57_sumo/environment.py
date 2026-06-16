@@ -6,10 +6,9 @@ from __future__ import annotations
 import importlib.util
 import os
 from pathlib import Path
-from typing import Optional
 
 
-def resolve_sumo_home() -> Optional[Path]:
+def resolve_sumo_home() -> Path | None:
     """Return a valid SUMO_HOME path, ignoring stale environment values."""
     current = os.environ.get("SUMO_HOME")
     if current:
@@ -41,7 +40,7 @@ def ensure_sumo_environment() -> dict[str, str]:
     return env
 
 
-def apply_sumo_environment() -> Optional[Path]:
+def apply_sumo_environment() -> Path | None:
     """Repair os.environ in-place for APIs that do not accept an env mapping."""
     home = resolve_sumo_home()
     if home is None:

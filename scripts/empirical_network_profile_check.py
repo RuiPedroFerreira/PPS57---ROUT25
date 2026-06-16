@@ -12,10 +12,9 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import sys
-from typing import Any, Dict
-
+from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -25,6 +24,7 @@ for entry in (str(SRC), str(SCRIPTS)):
         sys.path.insert(0, entry)
 
 from _evidence_common import auto_discovery_cits_config, auto_tsp_config  # noqa: E402
+
 from pps57_cits.messages import OperatorPriorityClass, synth_srem  # noqa: E402
 from pps57_cits.models import SignalState  # noqa: E402
 from pps57_sumo.environment import apply_sumo_environment  # noqa: E402
@@ -98,7 +98,7 @@ def run_check(
     traci_port: int,
     sumo_binary: str,
     apply_actuation: bool,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     apply_sumo_environment()
     import traci  # imported lazily so static imports work without SUMO tools
 
@@ -144,9 +144,9 @@ def run_check(
         traci.close()
 
 
-def _compare_profile_to_traci(profile: NetworkProfile, traci_module: Any) -> Dict[str, Any]:
+def _compare_profile_to_traci(profile: NetworkProfile, traci_module: Any) -> dict[str, Any]:
     mismatches: list[str] = []
-    checked: list[Dict[str, Any]] = []
+    checked: list[dict[str, Any]] = []
     for tls_id in sorted(traci_module.trafficlight.getIDList()):
         tls = profile.tls_profile(tls_id)
         if tls is None:
@@ -227,7 +227,7 @@ def _run_tsp_probe(
     movement: MovementProfile,
     sim_time_s: float,
     apply_actuation: bool,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     intersection = cits.tls_to_intersection[tls.tls_id]
     cits_movement = next(
         item
@@ -324,7 +324,7 @@ def _signal_state_from_traci(
     )
 
 
-def _phase_sample(traci_module: Any, tls_id: str, sim_time_s: float) -> Dict[str, Any]:
+def _phase_sample(traci_module: Any, tls_id: str, sim_time_s: float) -> dict[str, Any]:
     return {
         "time_s": round(sim_time_s, 3),
         "phase": int(traci_module.trafficlight.getPhase(tls_id)),

@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Dict, Iterable
 
 from pps57_cits.messages import SREMLike
 from pps57_cits.models import VehicleObservation
@@ -23,7 +23,7 @@ class PriorityRequestState:
 @dataclass
 class PriorityRequestStore:
     ttl_s: float = 30.0
-    states_by_key: Dict[str, PriorityRequestState] = field(default_factory=dict)
+    states_by_key: dict[str, PriorityRequestState] = field(default_factory=dict)
     cleared_count: int = 0
     expired_count: int = 0
     granted_count: int = 0

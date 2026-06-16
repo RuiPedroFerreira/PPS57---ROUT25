@@ -3,11 +3,12 @@
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict
 import json
+from collections import Counter, defaultdict
+from collections.abc import Iterable
 from pathlib import Path
 from statistics import mean
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any
 
 from .lifecycle import PriorityRequestState, transition_request_state
 
@@ -16,18 +17,18 @@ def audit_protocol_lifecycle(
     cits_messages_path: str | Path,
     tsp_decisions_path: str | Path | None = None,
     actuation_path: str | Path | None = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Reconstruct SREM/SSEM/TSP/actuation chains from JSONL artifacts."""
     cits_messages = _read_jsonl(cits_messages_path)
     decisions = _read_jsonl(tsp_decisions_path) if tsp_decisions_path else []
     actuations = _read_jsonl(actuation_path) if actuation_path else []
 
-    chains: Dict[str, Dict[str, Any]] = {}
+    chains: dict[str, dict[str, Any]] = {}
     srem_key_counts: Counter[str] = Counter()
     final_statuses: Counter[str] = Counter()
     rejection_reasons: Counter[str] = Counter()
     duplicate_reasons: Counter[str] = Counter()
-    invalid_transitions: List[Dict[str, str]] = []
+    invalid_transitions: list[dict[str, str]] = []
     orphan_ssem = 0
 
     for message in cits_messages:
@@ -90,7 +91,7 @@ def audit_protocol_lifecycle(
                 final_statuses["cancelled"] += 1
                 _transition_chain(chain, PriorityRequestState.CANCELLED.value, invalid_transitions)
 
-    decisions_by_request: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    decisions_by_request: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for decision in decisions:
         request_id = decision.get("request_id")
         if request_id:
@@ -137,7 +138,7 @@ def audit_protocol_lifecycle(
     # sequence_number em cada priorityRequestUpdate: só a seq mais recente de
     # cada pedido recebe o SSEM final. As seqs anteriores ficam marcadas como
     # supersedidas (contadas à parte) em vez de inflacionar missing_final_ssem.
-    latest_sequence_by_request: Dict[str, int] = {}
+    latest_sequence_by_request: dict[str, int] = {}
     for key, chain in chains.items():
         if chain["srem_count"] == 0:
             continue
@@ -206,13 +207,13 @@ def audit_protocol_lifecycle(
     }
 
 
-def _read_jsonl(path: str | Path | None) -> List[Dict[str, Any]]:
+def _read_jsonl(path: str | Path | None) -> list[dict[str, Any]]:
     if path is None:
         return []
     jsonl_path = Path(path)
     if not jsonl_path.exists():
         return []
-    records: List[Dict[str, Any]] = []
+    records: list[dict[str, Any]] = []
     for line in jsonl_path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
@@ -225,7 +226,7 @@ def _read_jsonl(path: str | Path | None) -> List[Dict[str, Any]]:
     return records
 
 
-def _new_chain(key: str) -> Dict[str, Any]:
+def _new_chain(key: str) -> dict[str, Any]:
     return {
         "request_key": key,
         "state": PriorityRequestState.CREATED.value,
@@ -247,9 +248,9 @@ def _new_chain(key: str) -> Dict[str, Any]:
 
 
 def _transition_chain(
-    chain: Dict[str, Any],
+    chain: dict[str, Any],
     target: str,
-    invalid_transitions: List[Dict[str, str]],
+    invalid_transitions: list[dict[str, str]],
 ) -> None:
     current = str(chain["state"])
     try:
@@ -260,12 +261,12 @@ def _transition_chain(
         )
 
 
-def _normalise_message_type(item: Dict[str, Any]) -> str:
+def _normalise_message_type(item: dict[str, Any]) -> str:
     raw = str(item.get("message_type") or "")
     return raw[:-5] if raw.endswith("_like") else raw
 
 
-def _split_request_key(key: str) -> tuple[Optional[str], Optional[int]]:
+def _split_request_key(key: str) -> tuple[str | None, int | None]:
     """Divide "station:request:seq" em ("station:request", seq)."""
     head, sep, sequence_text = str(key).rpartition(":")
     if not sep:
@@ -276,14 +277,14 @@ def _split_request_key(key: str) -> tuple[Optional[str], Optional[int]]:
         return None, None
 
 
-def _request_key_from_srem(item: Dict[str, Any]) -> Optional[str]:
+def _request_key_from_srem(item: dict[str, Any]) -> str | None:
     requests = item.get("requests") or []
     if not requests or not isinstance(requests[0], dict):
         return None
     return f"{item.get('station_id')}:{requests[0].get('request_id')}:{item.get('sequence_number')}"
 
 
-def _request_key_from_ssem(item: Dict[str, Any]) -> Optional[str]:
+def _request_key_from_ssem(item: dict[str, Any]) -> str | None:
     response = item.get("response") or {}
     if not isinstance(response, dict):
         return None
@@ -294,21 +295,21 @@ def _request_key_from_ssem(item: Dict[str, Any]) -> Optional[str]:
     )
 
 
-def _srem_request_type(item: Dict[str, Any]) -> str:
+def _srem_request_type(item: dict[str, Any]) -> str:
     requests = item.get("requests") or []
     if not requests or not isinstance(requests[0], dict):
         return ""
     return str(requests[0].get("request_type") or "")
 
 
-def _ssem_status(item: Dict[str, Any]) -> str:
+def _ssem_status(item: dict[str, Any]) -> str:
     response = item.get("response") or {}
     if isinstance(response, dict):
         return str(response.get("response_status") or item.get("status") or "")
     return str(item.get("status") or "")
 
 
-def _generation_time_ms(item: Dict[str, Any]) -> Optional[int]:
+def _generation_time_ms(item: dict[str, Any]) -> int | None:
     security = item.get("security") or {}
     if isinstance(security, dict) and isinstance(security.get("generation_time_ms"), int):
         return int(security["generation_time_ms"])
@@ -319,7 +320,7 @@ def _generation_time_ms(item: Dict[str, Any]) -> Optional[int]:
     return None
 
 
-def _latency_summary(values: Iterable[int]) -> Dict[str, Optional[float]]:
+def _latency_summary(values: Iterable[int]) -> dict[str, float | None]:
     items = list(values)
     if not items:
         return {"count": 0, "avg": None, "min": None, "max": None}

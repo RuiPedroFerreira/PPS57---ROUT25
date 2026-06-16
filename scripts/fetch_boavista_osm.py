@@ -20,9 +20,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from pathlib import Path
 import shutil
 import subprocess
+from pathlib import Path
 
 BBOX_S, BBOX_W, BBOX_N, BBOX_E = 41.156, -8.692, 41.170, -8.627
 DRIVABLE = (

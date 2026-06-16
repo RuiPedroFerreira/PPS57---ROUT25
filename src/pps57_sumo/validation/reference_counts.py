@@ -29,7 +29,8 @@ Sources (each fetched, hashed and timestamped by the fetch script):
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
+from typing import Any
 
 # M4: defusedxml em vez do stdlib — o feed de Madrid vem da internet, exactamente
 # a fronteira que a política de hardening XXE do repo existe para proteger.

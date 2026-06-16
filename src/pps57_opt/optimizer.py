@@ -3,14 +3,14 @@
 
 from __future__ import annotations
 
-from collections import Counter
-from dataclasses import dataclass
 import json
-from typing import Dict, Iterable, List, Optional
+from collections import Counter
+from collections.abc import Iterable
+from dataclasses import dataclass
 
 from pps57_cits.config import CITSConfig
-from pps57_tsp.config import TSPConfig
 from pps57_tsp.action_planner import decision_for_action
+from pps57_tsp.config import TSPConfig
 from pps57_tsp.engine import TSPDecisionEngine
 from pps57_tsp.models import DecisionStatus, TSPAction, TSPDecision
 from pps57_tsp.safety import TSPSafetyLayer
@@ -26,17 +26,17 @@ class OfflineOptimizationController:
     cits_config: CITSConfig
     tsp_config: TSPConfig
     optimization_config: OptimizationConfig
-    scenarios: Optional[List[OfflineScenario]] = None
+    scenarios: list[OfflineScenario] | None = None
 
     def __post_init__(self) -> None:
         self.engine = TSPDecisionEngine(self.cits_config, self.tsp_config)
-        self.event_dataset_load: Optional[Dict[str, object]] = None
+        self.event_dataset_load: dict[str, object] | None = None
 
-    def run(self) -> Dict[str, object]:
+    def run(self) -> dict[str, object]:
         scenarios = self.scenarios or self._load_event_scenarios()
-        all_candidates: List[CandidateEvaluation] = []
-        selected: List[CandidateEvaluation] = []
-        policy_rules: Dict[str, LearnedPolicyRule] = {}
+        all_candidates: list[CandidateEvaluation] = []
+        selected: list[CandidateEvaluation] = []
+        policy_rules: dict[str, LearnedPolicyRule] = {}
 
         for scenario in scenarios:
             candidates = self._evaluate_scenario(scenario)
@@ -59,7 +59,7 @@ class OfflineOptimizationController:
         self._write_outputs(scenarios, all_candidates, selected, list(policy_rules.values()))
         return self._summary(scenarios, all_candidates, selected, list(policy_rules.values()))
 
-    def _load_event_scenarios(self) -> List[OfflineScenario]:
+    def _load_event_scenarios(self) -> list[OfflineScenario]:
         path = self.optimization_config.path_from_root(
             self.optimization_config.logging.get(
                 "event_training_dataset", "outputs/event_training_dataset.jsonl"
@@ -76,7 +76,7 @@ class OfflineOptimizationController:
             )
         return scenarios
 
-    def _evaluate_scenario(self, scenario: OfflineScenario) -> List[CandidateEvaluation]:
+    def _evaluate_scenario(self, scenario: OfflineScenario) -> list[CandidateEvaluation]:
         baseline = self.engine.decide(scenario.request, scenario.signal_state, scenario.sim_time_s)
         baseline_candidate = self._evaluate_candidate(
             scenario,
@@ -151,7 +151,7 @@ class OfflineOptimizationController:
             notes=validation.notes,
         )
 
-    def _select_candidate(self, candidates: List[CandidateEvaluation]) -> CandidateEvaluation:
+    def _select_candidate(self, candidates: list[CandidateEvaluation]) -> CandidateEvaluation:
         allowed = [item for item in candidates if not item.is_safety_blocked]
         if not allowed:
             # Todos os candidatos foram bloqueados pela Safety Layer: devolve o
@@ -358,17 +358,17 @@ class OfflineOptimizationController:
 
     def _summary(
         self,
-        scenarios: List[OfflineScenario],
-        candidates: List[CandidateEvaluation],
-        selected: List[CandidateEvaluation],
-        rules: List[LearnedPolicyRule],
-    ) -> Dict[str, object]:
+        scenarios: list[OfflineScenario],
+        candidates: list[CandidateEvaluation],
+        selected: list[CandidateEvaluation],
+        rules: list[LearnedPolicyRule],
+    ) -> dict[str, object]:
         baseline_candidates = [
             item for item in candidates if item.policy_id == "baseline_tsp_decision_engine"
         ]
         unsafe_filtered = [item for item in candidates if item.is_safety_blocked]
-        selected_by_action: Dict[str, int] = {}
-        baseline_by_action: Dict[str, int] = {}
+        selected_by_action: dict[str, int] = {}
+        baseline_by_action: dict[str, int] = {}
         for item in selected:
             selected_by_action[item.action] = selected_by_action.get(item.action, 0) + 1
         for item in baseline_candidates:

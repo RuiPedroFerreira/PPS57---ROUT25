@@ -19,10 +19,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from pathlib import Path
 import shutil
 import subprocess
 import zipfile
+from pathlib import Path
 
 PORTAL = "https://opendata.porto.digital"
 DATASET_ID = "5275c986-592c-43f5-8f87-aabbd4e4f3a4"

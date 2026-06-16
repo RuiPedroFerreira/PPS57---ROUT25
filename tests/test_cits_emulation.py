@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-from copy import deepcopy
-from dataclasses import replace as dataclasses_replace
 import json
-from pathlib import Path
 import sys
 import unittest
+from copy import deepcopy
+from dataclasses import replace as dataclasses_replace
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from pps57_cits.broker import InMemoryMessageBroker
 from pps57_cits.audit import audit_protocol_lifecycle
+from pps57_cits.broker import InMemoryMessageBroker
 from pps57_cits.config import load_cits_config
 from pps57_cits.lifecycle import PriorityRequestState, transition_request_state
 from pps57_cits.map_spat import build_mapem_messages
@@ -663,8 +663,9 @@ class Package3CITSTestCase(unittest.TestCase):
     # ------------------------------------------------------------------
 
     def test_route_file_sortedness_guard(self) -> None:
-        from pps57_sumo.validate_project import validate_routes_sorted
         import tempfile
+
+        from pps57_sumo.validate_project import validate_routes_sorted
 
         with tempfile.TemporaryDirectory() as tmp:
             unsorted_path = Path(tmp) / "unsorted.rou.xml"
@@ -702,9 +703,10 @@ class Package3CITSTestCase(unittest.TestCase):
         self.assertTrue(tsp.get("decision_policy"))
 
     def test_safety_config_validation_rejects_inverted_green_extension(self) -> None:
-        from pps57_sumo.validate_project import validate_safety_configs
         import shutil
         import tempfile
+
+        from pps57_sumo.validate_project import validate_safety_configs
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_root = Path(tmp)
@@ -727,9 +729,10 @@ class Package3CITSTestCase(unittest.TestCase):
             self.assertIn("green_extension", str(ctx.exception))
 
     def test_safety_config_validation_rejects_weights_not_summing_to_one(self) -> None:
-        from pps57_sumo.validate_project import validate_safety_configs
         import shutil
         import tempfile
+
+        from pps57_sumo.validate_project import validate_safety_configs
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_root = Path(tmp)
@@ -751,9 +754,10 @@ class Package3CITSTestCase(unittest.TestCase):
             self.assertIn("weights", str(ctx.exception))
 
     def test_safety_config_validation_rejects_sumo_cits_control_mismatch(self) -> None:
-        from pps57_sumo.validate_project import validate_safety_configs
         import shutil
         import tempfile
+
+        from pps57_sumo.validate_project import validate_safety_configs
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_root = Path(tmp)
@@ -789,8 +793,9 @@ class Package3CITSTestCase(unittest.TestCase):
         (tmp_root / "configs/tsp_safety_config.json").write_text(json.dumps(tsp), encoding="utf-8")
 
     def test_safety_config_validation_rejects_priority_level_weights_wrong_class(self) -> None:
-        from pps57_sumo.validate_project import validate_safety_configs
         import tempfile
+
+        from pps57_sumo.validate_project import validate_safety_configs
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_root = Path(tmp)
@@ -806,8 +811,9 @@ class Package3CITSTestCase(unittest.TestCase):
             self.assertIn("priority_level_weights", str(ctx.exception))
 
     def test_safety_config_validation_rejects_priority_level_weights_out_of_range(self) -> None:
-        from pps57_sumo.validate_project import validate_safety_configs
         import tempfile
+
+        from pps57_sumo.validate_project import validate_safety_configs
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_root = Path(tmp)
@@ -819,8 +825,9 @@ class Package3CITSTestCase(unittest.TestCase):
             self.assertIn("priority_level_weights", str(ctx.exception))
 
     def test_safety_config_validation_rejects_invalid_actuating_action(self) -> None:
-        from pps57_sumo.validate_project import validate_safety_configs
         import tempfile
+
+        from pps57_sumo.validate_project import validate_safety_configs
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_root = Path(tmp)

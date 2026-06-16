@@ -4,10 +4,10 @@
 from __future__ import annotations
 
 import copy
-from dataclasses import replace
-from pathlib import Path
 import sys
 import unittest
+from dataclasses import replace
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -19,7 +19,6 @@ from pps57_cits.models import VehicleObservation
 from pps57_cits.obu import OBUEmulator
 from pps57_cits.schedule_plan import SchedulePlanProvider
 from pps57_cits.traci_adapter import TraciSimulationAdapter
-
 
 SERVICE_W = {
     "line_id": "STCP500",

@@ -5,20 +5,21 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from pps57_sumo.build_network import build_sumo_artifacts  # noqa: E402
-from pps57_sumo.build_network import sumo_environment  # noqa: E402
+from pps57_sumo.build_network import (
+    build_sumo_artifacts,  # noqa: E402
+    sumo_environment,  # noqa: E402
+)
 from pps57_sumo.parse_tripinfo import parse_tripinfo  # noqa: E402
-
 
 STRUCTURAL_WARNING_PATTERNS = (
     "has no connection",

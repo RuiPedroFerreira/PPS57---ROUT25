@@ -38,6 +38,7 @@ for entry in (str(SRC), str(SCRIPTS)):
         sys.path.insert(0, entry)
 
 from _evidence_common import auto_discovery_cits_config, auto_tsp_config  # noqa: E402
+
 from pps57_sumo.network_binding import build_network_binding  # noqa: E402
 from pps57_tsp.signal_control import (  # noqa: E402
     ControllerContract,

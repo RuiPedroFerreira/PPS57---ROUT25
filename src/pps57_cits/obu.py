@@ -11,8 +11,8 @@ o `priorityCancellation` quando o pedido em curso deixa de ser relevante
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, List, Optional, Tuple
 
 from .config import CITSConfig, IntersectionConfig, PriorityMovementConfig
 from .messages import (
@@ -23,8 +23,8 @@ from .messages import (
     Position3D,
     Requestor,
     RequestType,
-    SREMLike,
     SignalRequest,
+    SREMLike,
     StationType,
     build_security_envelope,
     derive_station_id,
@@ -46,21 +46,21 @@ class _RequestorState:
 
     vehicle_id: str
     sequence_number: int = 0
-    current_request_id: Optional[int] = None
-    current_intersection_alias: Optional[str] = None
-    current_message_id: Optional[str] = None
-    last_request_time_s: Optional[float] = None
+    current_request_id: int | None = None
+    current_intersection_alias: str | None = None
+    current_message_id: str | None = None
+    last_request_time_s: float | None = None
     next_request_id: int = 1  # 0 reservado para "sem pedido em curso"
 
 
 @dataclass
 class OBUEmulator:
     config: CITSConfig
-    state_by_vehicle: Dict[str, _RequestorState] = field(default_factory=dict)
+    state_by_vehicle: dict[str, _RequestorState] = field(default_factory=dict)
 
     def generate_requests(
         self, observations: Iterable[VehicleObservation], sim_time_s: float
-    ) -> List[SREMLike]:
+    ) -> list[SREMLike]:
         """Emite SREMs para o tick atual.
 
         Para cada veículo prioritário:
@@ -71,7 +71,7 @@ class OBUEmulator:
         observations_list = list(observations)
         observations_by_vehicle = {obs.vehicle_id: obs for obs in observations_list}
 
-        requests: List[SREMLike] = []
+        requests: list[SREMLike] = []
 
         # 1. Cancelar pedidos em curso para veículos que saíram do contexto.
         for vehicle_id, state in list(self.state_by_vehicle.items()):
@@ -104,7 +104,7 @@ class OBUEmulator:
 
     def _prune_departed_vehicles(
         self,
-        observations_by_vehicle: Dict[str, VehicleObservation],
+        observations_by_vehicle: dict[str, VehicleObservation],
         sim_time_s: float,
     ) -> None:
         retention_s = float(self.config.obu_policy.get("state_retention_s", 60.0))
@@ -119,7 +119,7 @@ class OBUEmulator:
 
     def generate_request(
         self, observation: VehicleObservation, sim_time_s: float
-    ) -> List[SREMLike]:
+    ) -> list[SREMLike]:
         """Entry-point por observação (testabilidade).
 
         Equivalente a uma iteração de `generate_requests` para esta observação,
@@ -134,7 +134,7 @@ class OBUEmulator:
 
     def _generate_request_or_update(
         self, observation: VehicleObservation, sim_time_s: float
-    ) -> Optional[SREMLike]:
+    ) -> SREMLike | None:
         if not self._is_priority_vehicle(observation):
             return None
 
@@ -329,7 +329,7 @@ class OBUEmulator:
 
     def _build_cancellation(
         self, state: _RequestorState, sim_time_s: float, reason: str
-    ) -> Optional[SREMLike]:
+    ) -> SREMLike | None:
         if state.current_intersection_alias is None or state.current_request_id is None:
             return None
         intersection = self.config.intersection_by_alias.get(state.current_intersection_alias)
@@ -397,9 +397,9 @@ class OBUEmulator:
 
     def _should_cancel(
         self,
-        observation: Optional[VehicleObservation],
+        observation: VehicleObservation | None,
         state: _RequestorState,
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         if state.current_request_id is None or state.current_intersection_alias is None:
             return False, None
         if observation is None:

@@ -3,27 +3,27 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
 import json
+from collections.abc import Iterable
+from pathlib import Path
+from typing import Any
 
 from pps57_tsp.models import DecisionStatus, TSPAction
 
-
-Row = Dict[str, object]
+Row = dict[str, object]
 
 
 def evaluate_decision_outcomes(
     *,
-    baseline_summary: Dict[str, Any],
-    rl_summary: Dict[str, Any],
-    baseline_decisions: Iterable[Dict[str, Any]],
-    baseline_actuations: Iterable[Dict[str, Any]],
-    rl_decisions: Iterable[Dict[str, Any]],
-    rl_actuations: Iterable[Dict[str, Any]],
-    baseline_kpis: Optional[Dict[str, Any]] = None,
-    rl_kpis: Optional[Dict[str, Any]] = None,
-) -> Dict[str, object]:
+    baseline_summary: dict[str, Any],
+    rl_summary: dict[str, Any],
+    baseline_decisions: Iterable[dict[str, Any]],
+    baseline_actuations: Iterable[dict[str, Any]],
+    rl_decisions: Iterable[dict[str, Any]],
+    rl_actuations: Iterable[dict[str, Any]],
+    baseline_kpis: dict[str, Any] | None = None,
+    rl_kpis: dict[str, Any] | None = None,
+) -> dict[str, object]:
     baseline_decision_list = list(baseline_decisions)
     rl_decision_list = list(rl_decisions)
     # Cada chave guarda a LISTA de decisões: múltiplas decisões para o mesmo
@@ -36,7 +36,7 @@ def evaluate_decision_outcomes(
     baseline_actuation_by_decision = _actuations_by_decision_id(baseline_actuations)
     rl_actuation_by_decision = _actuations_by_decision_id(rl_actuations)
 
-    rows: List[Row] = []
+    rows: list[Row] = []
     missing_baseline = 0
     missing_rl = 0
     for key in sorted(set(baseline_by_key) | set(rl_by_key)):
@@ -60,7 +60,7 @@ def evaluate_decision_outcomes(
             missing_rl += 1
             rows.append(_missing_row(key, "missing_rl", baseline))
 
-    verdict_counts: Dict[str, int] = {}
+    verdict_counts: dict[str, int] = {}
     for row in rows:
         verdict = str(row.get("verdict", "unknown"))
         verdict_counts[verdict] = verdict_counts.get(verdict, 0) + 1
@@ -87,17 +87,17 @@ def evaluate_decision_outcomes(
 
 def write_decision_outcome_evaluation(
     *,
-    baseline_summary: Dict[str, Any],
-    rl_summary: Dict[str, Any],
+    baseline_summary: dict[str, Any],
+    rl_summary: dict[str, Any],
     baseline_decision_log: str | Path,
     baseline_actuation_log: str | Path,
     rl_decision_log: str | Path,
     rl_actuation_log: str | Path,
     json_path: str | Path,
     markdown_path: str | Path,
-    baseline_kpis: Optional[Dict[str, Any]] = None,
-    rl_kpis: Optional[Dict[str, Any]] = None,
-) -> Dict[str, object]:
+    baseline_kpis: dict[str, Any] | None = None,
+    rl_kpis: dict[str, Any] | None = None,
+) -> dict[str, object]:
     payload = evaluate_decision_outcomes(
         baseline_summary=baseline_summary,
         rl_summary=rl_summary,
@@ -119,7 +119,7 @@ def write_decision_outcome_evaluation(
     return payload
 
 
-def render_outcome_markdown(payload: Dict[str, object]) -> str:
+def render_outcome_markdown(payload: dict[str, object]) -> str:
     rows = list(payload.get("rows", []))
     lines = [
         "# Decision Outcome Evaluation",
@@ -151,11 +151,11 @@ def render_outcome_markdown(payload: Dict[str, object]) -> str:
 
 
 def _evaluate_pair(
-    key: Tuple[float, str, str],
-    baseline: Dict[str, Any],
-    baseline_actuation: Dict[str, Any],
-    rl: Dict[str, Any],
-    rl_actuation: Dict[str, Any],
+    key: tuple[float, str, str],
+    baseline: dict[str, Any],
+    baseline_actuation: dict[str, Any],
+    rl: dict[str, Any],
+    rl_actuation: dict[str, Any],
 ) -> Row:
     baseline_status = str(baseline.get("status", ""))
     rl_status = str(rl.get("status", ""))
@@ -211,7 +211,7 @@ def _verdict(
     rl_applied: bool,
     safety_delta: str,
     actuation_delta: str,
-) -> Tuple[str, str]:
+) -> tuple[str, str]:
     if (
         rl_status == DecisionStatus.BLOCKED_BY_SAFETY.value
         and baseline_status != DecisionStatus.BLOCKED_BY_SAFETY.value
@@ -254,15 +254,15 @@ def _verdict(
 
 
 def _evaluate_kpis(
-    baseline_kpis: Optional[Dict[str, Any]], rl_kpis: Optional[Dict[str, Any]]
-) -> Dict[str, object]:
+    baseline_kpis: dict[str, Any] | None, rl_kpis: dict[str, Any] | None
+) -> dict[str, object]:
     if not baseline_kpis or not rl_kpis:
         return {
             "available": False,
             "reason": "No paired SUMO KPI reports were provided; network delay and collision impact remain inconclusive.",
             "rows": [],
         }
-    rows: List[Row] = []
+    rows: list[Row] = []
     for group in ["all_vehicles", "buses", "general_traffic"]:
         base_group = baseline_kpis.get(group, {})
         rl_group = rl_kpis.get(group, {})
@@ -278,7 +278,7 @@ def _evaluate_kpis(
     return {"available": True, "rows": rows}
 
 
-def _network_impact_verdict(kpi_evaluation: Dict[str, object]) -> str:
+def _network_impact_verdict(kpi_evaluation: dict[str, object]) -> str:
     if not kpi_evaluation.get("available"):
         return "inconclusive_without_kpis"
     rows = list(kpi_evaluation.get("rows", []))
@@ -294,7 +294,7 @@ def _network_impact_verdict(kpi_evaluation: Dict[str, object]) -> str:
     return "inconclusive_with_available_kpis"
 
 
-def _decision_key(item: Dict[str, Any]) -> Tuple[float, str, str]:
+def _decision_key(item: dict[str, Any]) -> tuple[float, str, str]:
     return (
         round(float(item.get("timestamp_s", 0.0)), 3),
         str(item.get("vehicle_id", "")),
@@ -303,19 +303,19 @@ def _decision_key(item: Dict[str, Any]) -> Tuple[float, str, str]:
 
 
 def _decisions_by_key(
-    items: Iterable[Dict[str, Any]],
-) -> Dict[Tuple[float, str, str], List[Dict[str, Any]]]:
-    grouped: Dict[Tuple[float, str, str], List[Dict[str, Any]]] = {}
+    items: Iterable[dict[str, Any]],
+) -> dict[tuple[float, str, str], list[dict[str, Any]]]:
+    grouped: dict[tuple[float, str, str], list[dict[str, Any]]] = {}
     for item in items:
         grouped.setdefault(_decision_key(item), []).append(item)
     return grouped
 
 
-def _collision_count(grouped: Dict[Tuple[float, str, str], List[Dict[str, Any]]]) -> int:
+def _collision_count(grouped: dict[tuple[float, str, str], list[dict[str, Any]]]) -> int:
     return sum(len(items) - 1 for items in grouped.values() if len(items) > 1)
 
 
-def _stable_subkey(item: Dict[str, Any]) -> Optional[str]:
+def _stable_subkey(item: dict[str, Any]) -> str | None:
     """Identificador estável entre corridas para alinhar decisões dentro de uma
     chave colidida. Usa-se `request_id` (correlation_token determinístico). O
     `decision_id` é um uuid4 gerado por decisão — único por corrida e portanto
@@ -328,12 +328,12 @@ def _stable_subkey(item: Dict[str, Any]) -> Optional[str]:
 
 
 def _pair_within_key(
-    baseline_items: List[Dict[str, Any]],
-    rl_items: List[Dict[str, Any]],
-) -> Tuple[
-    List[Tuple[Dict[str, Any], Dict[str, Any]]],
-    List[Dict[str, Any]],
-    List[Dict[str, Any]],
+    baseline_items: list[dict[str, Any]],
+    rl_items: list[dict[str, Any]],
+) -> tuple[
+    list[tuple[dict[str, Any], dict[str, Any]]],
+    list[dict[str, Any]],
+    list[dict[str, Any]],
 ]:
     """Empareja as decisões de uma chave (timestamp, veículo, TLS) pelo request_id
     estável, devolvendo (pares, baseline_sem_par, rl_sem_par).
@@ -343,8 +343,8 @@ def _pair_within_key(
     conhecido com outra sem ele. Quando duas decisões partilham timestamp, veículo,
     TLS *e* request_id (colisão dupla, rara) o posicional dentro desse sub-grupo é
     o melhor disponível, pois trata-se do mesmo pedido lógico."""
-    baseline_keyed: Dict[str, List[Dict[str, Any]]] = {}
-    baseline_unkeyed: List[Dict[str, Any]] = []
+    baseline_keyed: dict[str, list[dict[str, Any]]] = {}
+    baseline_unkeyed: list[dict[str, Any]] = []
     for item in baseline_items:
         sub = _stable_subkey(item)
         if sub is None:
@@ -352,8 +352,8 @@ def _pair_within_key(
         else:
             baseline_keyed.setdefault(sub, []).append(item)
 
-    rl_keyed: Dict[str, List[Dict[str, Any]]] = {}
-    rl_unkeyed: List[Dict[str, Any]] = []
+    rl_keyed: dict[str, list[dict[str, Any]]] = {}
+    rl_unkeyed: list[dict[str, Any]] = []
     for item in rl_items:
         sub = _stable_subkey(item)
         if sub is None:
@@ -361,9 +361,9 @@ def _pair_within_key(
         else:
             rl_keyed.setdefault(sub, []).append(item)
 
-    pairs: List[Tuple[Dict[str, Any], Dict[str, Any]]] = []
-    baseline_unpaired: List[Dict[str, Any]] = []
-    rl_unpaired: List[Dict[str, Any]] = []
+    pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    baseline_unpaired: list[dict[str, Any]] = []
+    rl_unpaired: list[dict[str, Any]] = []
 
     # Ordem determinística: sub-keys pela ordem de aparição no baseline, depois
     # as que só existem no RL.
@@ -386,11 +386,11 @@ def _pair_within_key(
     return pairs, baseline_unpaired, rl_unpaired
 
 
-def _actuations_by_decision_id(rows: Iterable[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+def _actuations_by_decision_id(rows: Iterable[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return {str(row.get("decision_id")): row for row in rows if row.get("decision_id")}
 
 
-def _missing_row(key: Tuple[float, str, str], verdict: str, item: Optional[Dict[str, Any]]) -> Row:
+def _missing_row(key: tuple[float, str, str], verdict: str, item: dict[str, Any] | None) -> Row:
     return {
         "key": "|".join([_fmt(key[0]), key[1], key[2]]),
         "timestamp_s": key[0],
@@ -424,7 +424,7 @@ def _actuation_delta(baseline_applied: bool, rl_applied: bool) -> str:
     return "same_actuation"
 
 
-def _summary_projection(summary: Dict[str, Any]) -> Dict[str, Any]:
+def _summary_projection(summary: dict[str, Any]) -> dict[str, Any]:
     return {
         "policy_mode": summary.get("policy_mode"),
         "total_decisions": summary.get("total_decisions"),
@@ -440,20 +440,20 @@ def _requires_actuation(action: str) -> bool:
     return action in {TSPAction.GREEN_EXTENSION.value, TSPAction.EARLY_GREEN.value}
 
 
-def _numeric_delta(left: Any, right: Any) -> Optional[float]:
+def _numeric_delta(left: Any, right: Any) -> float | None:
     if isinstance(left, (int, float)) and isinstance(right, (int, float)):
         return round(float(right) - float(left), 4)
     return None
 
 
-def _row_delta(rows: List[Row], metric: str) -> Optional[float]:
+def _row_delta(rows: list[Row], metric: str) -> float | None:
     for row in rows:
         if row.get("metric") == metric and isinstance(row.get("delta"), (int, float)):
             return float(row["delta"])
     return None
 
 
-def _read_jsonl(path: Path) -> List[Dict[str, Any]]:
+def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
     return [

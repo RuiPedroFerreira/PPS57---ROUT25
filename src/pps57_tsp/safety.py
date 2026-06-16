@@ -25,21 +25,25 @@ decisão é BLOQUEADA (fail-closed), nunca aprovada com defaults permissivos.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from pps57_cits.config import CITSConfig
 from pps57_cits.messages import OperatorPriorityClass
 from pps57_cits.models import SignalState
+from pps57_sumo.network_binding import NetworkBinding
 
 from .config import TSPConfig
 from .engine import TSPDecisionEngine
 from .models import DecisionStatus, SafetyValidationResult, TSPAction, TSPDecision
 from .util import (
     controlled_links_match_request as _controlled_links_match_request,
+)
+from .util import (
     lane_belongs_to_edge_set as _lane_belongs_to_edge_set,
+)
+from .util import (
     positive_float as _positive_float,
 )
-from pps57_sumo.network_binding import NetworkBinding
 
 if TYPE_CHECKING:  # import só para tipos: events importa request_store, não safety
     from .events import ActivePriorityEvent, PriorityEventManager
@@ -57,10 +61,10 @@ from .signal_control import (
 class TSPSafetyLayer:
     cits_config: CITSConfig
     tsp_config: TSPConfig
-    last_intervention_time_by_tls: Dict[str, float] = field(default_factory=dict)
-    consecutive_interventions_by_tls: Dict[str, int] = field(default_factory=dict)
-    recovery_debt_by_tls: Dict[str, float] = field(default_factory=dict)
-    recovery_debt_update_time_by_tls: Dict[str, float] = field(default_factory=dict)
+    last_intervention_time_by_tls: dict[str, float] = field(default_factory=dict)
+    consecutive_interventions_by_tls: dict[str, int] = field(default_factory=dict)
+    recovery_debt_by_tls: dict[str, float] = field(default_factory=dict)
+    recovery_debt_update_time_by_tls: dict[str, float] = field(default_factory=dict)
     # True após o controller reconciliar o controller contract com o programa
     # real e confirmar que as fases intergreen são intergreen (sem 'g').
     # Sem isto, não há prova de que truncar a fase corrente não compromete a
@@ -71,31 +75,31 @@ class TSPSafetyLayer:
     # data (authoritative), instead of the phase-disjointness heuristic. This is
     # what lets real (OSM, joined) intersections pass the conflict-matrix gate
     # without the blanket set_signal_program_verified(True) bypass.
-    network_binding: Optional[NetworkBinding] = None
+    network_binding: NetworkBinding | None = None
     # Tradução profile->contract dos ids de signal group (ver
     # signal_control.network_binding_aliases); sem ela, grupos com alias em
     # configs manuais nunca são ligados ao binding.
-    network_binding_aliases: Optional[Dict[str, Dict[str, str]]] = None
+    network_binding_aliases: dict[str, dict[str, str]] | None = None
     # v2.2 (opt-in): lifecycle de eventos de prioridade. Quando presente,
     # prestações do MESMO evento (tls, veículo, fase) não pagam cooldown nem
     # contam como novas intervenções; o orçamento cumulativo do evento fica
     # limitado a max_green_extension_s em _validate_green_extension.
-    event_lifecycle: Optional["PriorityEventManager"] = None
+    event_lifecycle: PriorityEventManager | None = None
     # Contratos são estáticos durante um run (mesma premissa do cache do
     # engine); cache por TLS evita reconstruir contrato + binding em cada
     # validate. Invalidado em set_network_binding.
-    _contract_cache: Dict[str, ControllerContract] = field(default_factory=dict, repr=False)
+    _contract_cache: dict[str, ControllerContract] = field(default_factory=dict, repr=False)
 
     def set_signal_program_verified(self, verified: bool) -> None:
         self.signal_program_verified = bool(verified)
 
-    def set_event_lifecycle(self, events: Optional["PriorityEventManager"]) -> None:
+    def set_event_lifecycle(self, events: PriorityEventManager | None) -> None:
         self.event_lifecycle = events
 
     def set_network_binding(
         self,
-        binding: Optional[NetworkBinding],
-        aliases_by_tls: Optional[Dict[str, Dict[str, str]]] = None,
+        binding: NetworkBinding | None,
+        aliases_by_tls: dict[str, dict[str, str]] | None = None,
     ) -> None:
         self.network_binding = binding
         self.network_binding_aliases = aliases_by_tls
@@ -231,7 +235,7 @@ class TSPSafetyLayer:
             return
         self.recovery_debt_by_tls[tls_id] = max(0.0, debt - float(returned_s))
 
-    def _continuation_event(self, decision: TSPDecision) -> Optional["ActivePriorityEvent"]:
+    def _continuation_event(self, decision: TSPDecision) -> ActivePriorityEvent | None:
         if self.event_lifecycle is None or decision.action != TSPAction.GREEN_EXTENSION.value:
             return None
         return self.event_lifecycle.active_event(
@@ -244,7 +248,7 @@ class TSPSafetyLayer:
         signal_state: SignalState,
         sim_time_s: float,
         notes: list[str],
-        continuation_event: Optional["ActivePriorityEvent"] = None,
+        continuation_event: ActivePriorityEvent | None = None,
     ) -> SafetyValidationResult:
         policy = self.tsp_config.decision_policy
         actuation = self.tsp_config.actuation
@@ -470,7 +474,7 @@ class TSPSafetyLayer:
         if sim_time_s - last >= window:
             self.reset_intervention_count(tls_id)
 
-    def _consecutive_reset_window_s(self) -> Optional[float]:
+    def _consecutive_reset_window_s(self) -> float | None:
         """Janela sem intervenções após a qual o contador consecutivo reseta.
 
         Default: 2x o cooldown — intervenções ao ritmo máximo permitido pelo
@@ -551,7 +555,7 @@ class TSPSafetyLayer:
 
     def _phase_sequence_clearance_check(
         self, signal_state: SignalState, decision: TSPDecision
-    ) -> Optional[str]:
+    ) -> str | None:
         """Devolve None se a transição é estruturalmente segura, ou o motivo do bloqueio.
 
         Verifica (a) que o verde-alvo é alcançável a partir da fase atual segundo
@@ -576,7 +580,7 @@ class TSPSafetyLayer:
         signal_state: SignalState,
         target_group: SignalGroupContract,
         contract: ControllerContract,
-    ) -> Optional[str]:
+    ) -> str | None:
         current = signal_state.current_phase_index
         if current is None:
             return "early_green_current_phase_unknown"
@@ -612,7 +616,7 @@ class TSPSafetyLayer:
         self,
         decision: TSPDecision,
         contract: ControllerContract,
-    ) -> Optional[SignalGroupContract]:
+    ) -> SignalGroupContract | None:
         if decision.target_signal_group_id:
             group = contract.signal_group_for_id(decision.target_signal_group_id)
             if group is not None:
@@ -621,7 +625,7 @@ class TSPSafetyLayer:
             return contract.signal_group_for_movement(decision.priority_movement_id)
         return None
 
-    def _required_safety_value(self, key: str) -> Optional[float]:
+    def _required_safety_value(self, key: str) -> float | None:
         """Lê um bound de segurança numérico; devolve None se ausente/inválido.
 
         O chamador deve tratar None como motivo de bloqueio (fail-closed): um
@@ -635,13 +639,13 @@ class TSPSafetyLayer:
         except (TypeError, ValueError):
             return None
 
-    def _optional_safety_value(self, key: str) -> Optional[float]:
+    def _optional_safety_value(self, key: str) -> float | None:
         """Mesmo parsing de _required_safety_value; contrato do chamador difere:
         None aqui significa "funcionalidade desligada", não motivo de bloqueio."""
         return self._required_safety_value(key)
 
     def _blocked(
-        self, decision: TSPDecision, reason: str, notes: Optional[list[str]] = None
+        self, decision: TSPDecision, reason: str, notes: list[str] | None = None
     ) -> SafetyValidationResult:
         safe = decision.copy_with(
             status=DecisionStatus.BLOCKED_BY_SAFETY.value, reason=reason, notes=list(notes or [])

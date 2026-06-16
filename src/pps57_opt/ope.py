@@ -25,9 +25,9 @@ sobreposição de suporte é baixa. Nunca recomputa reward no loop vivo.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
 import statistics
-from typing import Callable, Dict, List, Optional, Tuple
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, field
 
 from pps57_sumo.stats import mean_ci95
 
@@ -35,7 +35,7 @@ from .models import OfflineScenario
 
 # Uma política-alvo é uma função cenário -> ação proposta (ou None se a política
 # não tem regra para aquele estado). Mantém o OPE desacoplado de RuntimePolicy.
-TargetActionOf = Callable[[OfflineScenario], Optional[str]]
+TargetActionOf = Callable[[OfflineScenario], str | None]
 
 
 @dataclass(frozen=True)
@@ -46,13 +46,13 @@ class OPEReport:
     n_eligible: int
     n_matched: int
     coverage: float
-    estimate: Optional[float]
-    matched_mean_outcome: Optional[float]
-    confidence_interval: Optional[Tuple[Optional[float], Optional[float]]]
+    estimate: float | None
+    matched_mean_outcome: float | None
+    confidence_interval: tuple[float | None, float | None] | None
     assumed_deterministic_behavior_propensity: bool
-    notes: List[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, object]:
+    def to_dict(self) -> dict[str, object]:
         data = asdict(self)
         ci = data.get("confidence_interval")
         data["confidence_interval"] = list(ci) if ci is not None else None
@@ -67,7 +67,7 @@ ESTIMATED = "estimated"
 
 
 def evaluate_policy(
-    scenarios: List[OfflineScenario],
+    scenarios: list[OfflineScenario],
     target_action_of: TargetActionOf,
     *,
     min_coverage: float = 0.2,
@@ -120,8 +120,8 @@ def evaluate_policy(
 
     # IPS com propensão da behavior assumida = 1.0 (determinística): peso = 1 se a
     # ação-alvo coincide com a behavior, 0 caso contrário. term = peso * outcome.
-    ips_terms: List[float] = []
-    matched_outcomes: List[float] = []
+    ips_terms: list[float] = []
+    matched_outcomes: list[float] = []
     for scenario in eligible:
         target_action = target_action_of(scenario)
         outcome = float(scenario.realized_outcome)  # not None by construction

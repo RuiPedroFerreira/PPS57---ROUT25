@@ -27,12 +27,12 @@ serialização wire pertenceria a uma subclasse de ProtocolCodec no futuro.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import hashlib
 import json
 import logging
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, Optional, Tuple
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # evita custo/ciclo em runtime; só para type-checkers
     from .config import CITSConfig
@@ -50,13 +50,13 @@ class SchedulePlanProvider:
     dict do serviço em `public_transport.services`.
     """
 
-    services_by_line_code: Dict[str, Dict] = field(default_factory=dict)
+    services_by_line_code: dict[str, dict] = field(default_factory=dict)
     seed: int = 57
     schedule_delay_scale_s: float = 90.0
     headway_deviation_fraction: float = 0.25
 
     @classmethod
-    def from_config(cls, cits_config: "CITSConfig") -> Optional["SchedulePlanProvider"]:
+    def from_config(cls, cits_config: CITSConfig) -> SchedulePlanProvider | None:
         """Constrói o provider a partir do bloco `schedule_plan`; None se desligado.
 
         Lê o horário do ficheiro `timetable_source` (default
@@ -78,7 +78,7 @@ class SchedulePlanProvider:
             return None
         public_transport = raw.get("public_transport") if isinstance(raw, dict) else None
         services = public_transport.get("services") if isinstance(public_transport, dict) else None
-        services_by_line_code: Dict[str, Dict] = {}
+        services_by_line_code: dict[str, dict] = {}
         for service in services if isinstance(services, list) else []:
             if isinstance(service, dict) and service.get("line_code"):
                 services_by_line_code[str(service["line_code"])] = service
@@ -109,8 +109,8 @@ class SchedulePlanProvider:
         )
 
     def schedule_adherence_for(
-        self, observation: "VehicleObservation", sim_time_s: float
-    ) -> Optional[Tuple[float, float]]:
+        self, observation: VehicleObservation, sim_time_s: float
+    ) -> tuple[float, float] | None:
         """Devolve (schedule_delay_s, headway_deviation_s) ou None.
 
         None quando a linha não está no horário (a OBU recai então no proxy).
@@ -143,7 +143,7 @@ class SchedulePlanProvider:
         return schedule_delay_s, headway_deviation_s
 
     @staticmethod
-    def _scheduled_headway_s(service: Dict, sim_time_s: float) -> float:
+    def _scheduled_headway_s(service: dict, sim_time_s: float) -> float:
         """Headway agendado activo em sim_time_s (lê o headway_schedule por janela)."""
         windows = service.get("headway_schedule", [])
         if isinstance(windows, list):

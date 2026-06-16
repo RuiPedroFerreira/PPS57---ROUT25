@@ -13,9 +13,10 @@ import hashlib
 import json
 import math
 import random
-from pathlib import Path
 import sys
-from typing import Any, Dict, Iterable, List
+from collections.abc import Iterable
+from pathlib import Path
+from typing import Any
 from xml.dom import minidom
 from xml.etree import ElementTree as ET
 
@@ -69,11 +70,11 @@ def generate(
 
     nodes = ET.Element("nodes")
     edges = ET.Element("edges")
-    node_xy: Dict[str, tuple[float, float]] = {}
-    node_z: Dict[str, float] = {}
-    edge_defs: Dict[str, Dict[str, Any]] = {}
-    edge_lane_overrides: Dict[str, list[dict[str, Any]]] = {}
-    roundabout_arms: Dict[str, dict[str, str]] = {}
+    node_xy: dict[str, tuple[float, float]] = {}
+    node_z: dict[str, float] = {}
+    edge_defs: dict[str, dict[str, Any]] = {}
+    edge_lane_overrides: dict[str, list[dict[str, Any]]] = {}
+    roundabout_arms: dict[str, dict[str, str]] = {}
 
     network = config["network"]
     edge_widths = network.get("edge_widths", []) or []
@@ -278,7 +279,7 @@ def generate(
         major_priority,
     )
 
-    roundabout_ring_edges: Dict[str, list[str]] = {}
+    roundabout_ring_edges: dict[str, list[str]] = {}
     for inter in intersections:
         lanes = int(inter.get("minor_lanes", network.get("default_minor_lanes", 1)))
         inter_id = str(inter["id"])
@@ -391,7 +392,7 @@ def generate(
 
 def build_routes(
     config: dict, intersections: list[dict], terminals: dict[str, dict]
-) -> Dict[str, List[str]]:
+) -> dict[str, list[str]]:
     east_to_west = [f"{terminals['CITY_EAST']['id']}_{intersections[0]['id']}"]
     east_to_west.extend(f"{a['id']}_{b['id']}" for a, b in zip(intersections, intersections[1:]))
     east_to_west.append(f"{intersections[-1]['id']}_{terminals['ATLANTIC_WEST']['id']}")
@@ -477,7 +478,7 @@ def _add_roundabout_ring_edges(
 def _roundabout_corridor_neighbours(
     intersections: list[dict],
     terminals: dict[str, dict],
-) -> Dict[str, dict[str, str]]:
+) -> dict[str, dict[str, str]]:
     """CITY/ATLANTIC corridor neighbours of each ring roundabout.
 
     The roundabout's CITY arm is fed by the previous element along the corridor
@@ -486,7 +487,7 @@ def _roundabout_corridor_neighbours(
     config's actual ordering, not hardcoded ids.
     """
     ids = [str(inter["id"]) for inter in intersections]
-    neighbours: Dict[str, dict[str, str]] = {}
+    neighbours: dict[str, dict[str, str]] = {}
     for index, inter in enumerate(intersections):
         if str(inter.get("roundabout_model", "")) != "ring":
             continue
@@ -499,14 +500,14 @@ def _roundabout_corridor_neighbours(
 
 
 def _expand_roundabout_routes(
-    route_defs: Dict[str, List[str]],
+    route_defs: dict[str, list[str]],
     intersections: list[dict],
     terminals: dict[str, dict],
-) -> Dict[str, List[str]]:
+) -> dict[str, list[str]]:
     neighbours = _roundabout_corridor_neighbours(intersections, terminals)
     if not neighbours:
         return route_defs
-    expanded: Dict[str, List[str]] = {}
+    expanded: dict[str, list[str]] = {}
     for route_id, edges in route_defs.items():
         out: list[str] = []
         for index, edge_id in enumerate(edges):
@@ -574,7 +575,7 @@ def _roundabout_internal_path(
 
 
 def _add_turning_movement_routes(
-    route_defs: Dict[str, List[str]],
+    route_defs: dict[str, list[str]],
     intersections: list[dict],
     terminals: dict[str, dict],
 ) -> None:
@@ -606,12 +607,12 @@ def _add_turning_movement_routes(
         inter_id = inter["id"]
 
         # Edges reaching this intersection along the inbound (W→E) corridor.
-        edges_inbound_to: List[str] = [f"{atlantic_id}_{intersections[-1]['id']}"]
+        edges_inbound_to: list[str] = [f"{atlantic_id}_{intersections[-1]['id']}"]
         for k in range(last_idx, j, -1):
             edges_inbound_to.append(f"{intersections[k]['id']}_{intersections[k - 1]['id']}")
 
         # Edges reaching this intersection along the outbound (E→W) corridor.
-        edges_outbound_to: List[str] = [f"{city_id}_{intersections[0]['id']}"]
+        edges_outbound_to: list[str] = [f"{city_id}_{intersections[0]['id']}"]
         for k in range(j):
             edges_outbound_to.append(f"{intersections[k]['id']}_{intersections[k + 1]['id']}")
 
@@ -629,13 +630,13 @@ def _add_turning_movement_routes(
         ]
 
         # Edges leaving this intersection eastward toward CITY_EAST (inbound exit).
-        edges_to_city: List[str] = []
+        edges_to_city: list[str] = []
         for k in range(j, 0, -1):
             edges_to_city.append(f"{intersections[k]['id']}_{intersections[k - 1]['id']}")
         edges_to_city.append(f"{intersections[0]['id']}_{city_id}")
 
         # Edges leaving this intersection westward toward ATLANTIC_WEST (outbound exit).
-        edges_to_atlantic: List[str] = []
+        edges_to_atlantic: list[str] = []
         for k in range(j, last_idx):
             edges_to_atlantic.append(f"{intersections[k]['id']}_{intersections[k + 1]['id']}")
         edges_to_atlantic.append(f"{intersections[-1]['id']}_{atlantic_id}")
@@ -669,7 +670,7 @@ def _sidewalk_lane_offset(config: dict) -> int:
 
 
 def build_bus_stops(
-    config: dict, edge_defs: Dict[str, Dict[str, Any]], node_xy: Dict[str, tuple[float, float]]
+    config: dict, edge_defs: dict[str, dict[str, Any]], node_xy: dict[str, tuple[float, float]]
 ) -> ET.Element:
     root = _additional_root()
     lane_offset = _sidewalk_lane_offset(config)
@@ -722,7 +723,7 @@ def build_bus_stops(
 
 
 def build_detectors(
-    config: dict, edge_defs: Dict[str, Dict[str, Any]], node_xy: Dict[str, tuple[float, float]]
+    config: dict, edge_defs: dict[str, dict[str, Any]], node_xy: dict[str, tuple[float, float]]
 ) -> ET.Element:
     root = _additional_root()
     detector_cfg = config.get("detectors", {})
@@ -775,10 +776,10 @@ _VTYPE_SKIP_KEYS = _VTYPE_PARAM_KEYS  # attributes that need child elements, not
 
 def build_route_xml(
     config: dict,
-    route_defs: Dict[str, List[str]],
+    route_defs: dict[str, list[str]],
     *,
-    edge_defs: Dict[str, Dict[str, Any]] | None = None,
-    node_xy: Dict[str, tuple[float, float]] | None = None,
+    edge_defs: dict[str, dict[str, Any]] | None = None,
+    node_xy: dict[str, tuple[float, float]] | None = None,
 ) -> ET.Element:
     root = ET.Element(
         "routes",
@@ -1043,8 +1044,8 @@ def _bus_passenger_flow_to_xml(pax_flow: dict) -> tuple[ET.Element, float]:
 
 def build_parking_areas(
     config: dict,
-    edge_defs: Dict[str, Dict[str, Any]],
-    node_xy: Dict[str, tuple[float, float]],
+    edge_defs: dict[str, dict[str, Any]],
+    node_xy: dict[str, tuple[float, float]],
 ) -> ET.Element:
     root = _additional_root()
     lane_offset = _sidewalk_lane_offset(config)
@@ -1074,8 +1075,8 @@ def build_parking_areas(
 
 def build_calibrators(
     config: dict,
-    edge_defs: Dict[str, Dict[str, Any]],
-    node_xy: Dict[str, tuple[float, float]],
+    edge_defs: dict[str, dict[str, Any]],
+    node_xy: dict[str, tuple[float, float]],
 ) -> ET.Element:
     root = _additional_root()
     for cal in config.get("calibrators", []) or []:
@@ -1210,7 +1211,7 @@ def _service_departures(
             current += headway
 
 
-def _headway_at(intervals: List[tuple[float, float, float]], t: float, default: float) -> float:
+def _headway_at(intervals: list[tuple[float, float, float]], t: float, default: float) -> float:
     for begin, end, headway in intervals:
         if begin <= t < end:
             return headway
@@ -1247,7 +1248,7 @@ def _seed_for(base: int, *parts: Any) -> int:
     return int.from_bytes(digest, "big")
 
 
-def _expand_time_profile(flow: dict) -> List[dict]:
+def _expand_time_profile(flow: dict) -> list[dict]:
     """Expand a flow with a time_profile into a list of sub-flows.
 
     Each entry yields a sub-flow with id "{base}_t{i}", inherited attributes,
@@ -1260,7 +1261,7 @@ def _expand_time_profile(flow: dict) -> List[dict]:
         return [flow]
     base_id = str(flow.get("id", "flow"))
     base_period = float(flow.get("period", 0.0))
-    expanded: List[dict] = []
+    expanded: list[dict] = []
     for index, entry in enumerate(entries):
         sub = {key: value for key, value in flow.items() if key != "time_profile"}
         sub["id"] = f"{base_id}_t{index}"
@@ -1277,7 +1278,7 @@ def _expand_time_profile(flow: dict) -> List[dict]:
     return expanded
 
 
-def edge_length(attrs: Dict[str, Any], node_xy: Dict[str, tuple[float, float]]) -> float:
+def edge_length(attrs: dict[str, Any], node_xy: dict[str, tuple[float, float]]) -> float:
     x1, y1 = node_xy[str(attrs["from"])]
     x2, y2 = node_xy[str(attrs["to"])]
     return math.hypot(x2 - x1, y2 - y1)

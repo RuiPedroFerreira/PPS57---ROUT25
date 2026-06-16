@@ -8,16 +8,16 @@ and C-ITS/TSP summaries. It does not fabricate operational observations.
 
 from __future__ import annotations
 
-from collections import Counter
-from dataclasses import dataclass
 import json
+from collections import Counter
+from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any
 
 from pps57_sumo.parse_tripinfo import parse_tripinfo
 
-
-JsonDict = Dict[str, Any]
+JsonDict = dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -26,9 +26,9 @@ class DemonstratorRun:
     root: Path
     summary: JsonDict
     cits_summary: JsonDict
-    decisions: List[JsonDict]
-    actuations: List[JsonDict]
-    kpis: Optional[JsonDict]
+    decisions: list[JsonDict]
+    actuations: list[JsonDict]
+    kpis: JsonDict | None
 
 
 def load_demonstrator_run(root: str | Path, label: str) -> DemonstratorRun:
@@ -64,7 +64,7 @@ def build_demonstrator_report(
     baseline: DemonstratorRun,
     tsp: DemonstratorRun,
     tsp_controller: DemonstratorRun,
-    policy_optimization_summary: Optional[JsonDict] = None,
+    policy_optimization_summary: JsonDict | None = None,
 ) -> JsonDict:
     runs = {
         baseline.label: _run_payload(baseline),
@@ -211,7 +211,7 @@ def render_demonstrator_markdown(report: JsonDict) -> str:
     return "\n".join(lines)
 
 
-def _offline_counterfactuals(tsp_payload: JsonDict, policy_summary: Optional[JsonDict]) -> JsonDict:
+def _offline_counterfactuals(tsp_payload: JsonDict, policy_summary: JsonDict | None) -> JsonDict:
     """Join the runtime action mix against the offline optimizer counterfactuals.
 
     Reuses the EXISTING optimizer summary (baseline/selected by_action +
@@ -278,7 +278,7 @@ def _run_payload(run: DemonstratorRun) -> JsonDict:
     }
 
 
-def _kpi_delta(baseline: Optional[JsonDict], candidate: Optional[JsonDict]) -> JsonDict:
+def _kpi_delta(baseline: JsonDict | None, candidate: JsonDict | None) -> JsonDict:
     if not baseline or not candidate:
         return {"available": False, "rows": []}
     rows = []
@@ -363,8 +363,8 @@ def _verdict(comparisons: JsonDict) -> JsonDict:
     }
 
 
-def _limitations(*runs: DemonstratorRun) -> List[str]:
-    limitations: List[str] = []
+def _limitations(*runs: DemonstratorRun) -> list[str]:
+    limitations: list[str] = []
     if any(run.kpis is None for run in runs):
         limitations.append("At least one run has no parsed SUMO tripinfo/KPI artifact.")
     if not any(_controller_rejections(run.actuations) for run in runs):
@@ -378,7 +378,7 @@ def _limitations(*runs: DemonstratorRun) -> List[str]:
     return limitations
 
 
-def _load_kpis(root: Path, label: str) -> Optional[JsonDict]:
+def _load_kpis(root: Path, label: str) -> JsonDict | None:
     candidates = [
         root / f"reports/{label}_kpis.json",
         root / "reports/sumo_kpis.json",
@@ -394,32 +394,32 @@ def _load_kpis(root: Path, label: str) -> Optional[JsonDict]:
     return None
 
 
-def _read_json(path: Path) -> Optional[JsonDict]:
+def _read_json(path: Path) -> JsonDict | None:
     if not path.exists():
         return None
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _read_jsonl(path: Path) -> List[JsonDict]:
+def _read_jsonl(path: Path) -> list[JsonDict]:
     if not path.exists():
         return []
-    rows: List[JsonDict] = []
+    rows: list[JsonDict] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         if line.strip():
             rows.append(json.loads(line))
     return rows
 
 
-def _count_by(rows: Iterable[JsonDict], key: str) -> Dict[str, int]:
+def _count_by(rows: Iterable[JsonDict], key: str) -> dict[str, int]:
     return dict(Counter(str(row.get(key, "")) for row in rows if row.get(key) not in {None, ""}))
 
 
-def _summary_or_count(summary: JsonDict, key: str, fallback_rows: List[JsonDict]) -> int:
+def _summary_or_count(summary: JsonDict, key: str, fallback_rows: list[JsonDict]) -> int:
     value = summary.get(key)
     return int(value) if isinstance(value, int) else len(fallback_rows)
 
 
-def _controller_rejections(actuations: Iterable[JsonDict]) -> List[JsonDict]:
+def _controller_rejections(actuations: Iterable[JsonDict]) -> list[JsonDict]:
     rejected = []
     for item in actuations:
         response = item.get("controller_response")
@@ -438,14 +438,14 @@ def _controller_rejection_reason(item: JsonDict) -> str:
 
 
 def _per_tls(
-    decisions: List[JsonDict], actuations: List[JsonDict], controller_rejections: List[JsonDict]
-) -> Dict[str, JsonDict]:
+    decisions: list[JsonDict], actuations: list[JsonDict], controller_rejections: list[JsonDict]
+) -> dict[str, JsonDict]:
     tls_ids = {
         str(item.get("tls_id"))
         for item in [*decisions, *actuations, *controller_rejections]
         if item.get("tls_id")
     }
-    payload: Dict[str, JsonDict] = {}
+    payload: dict[str, JsonDict] = {}
     for tls_id in sorted(tls_ids):
         payload[tls_id] = {
             "decisions": sum(1 for item in decisions if item.get("tls_id") == tls_id),
@@ -476,7 +476,7 @@ def _applied_decision_ids(actuations: Iterable[JsonDict]) -> set[str]:
     }
 
 
-def _green_time(decisions: List[JsonDict], applied_ids: set[str]) -> JsonDict:
+def _green_time(decisions: list[JsonDict], applied_ids: set[str]) -> JsonDict:
     """Green seconds actually delivered to the network.
 
     Sums `extension_s` over decisions whose actuation was applied via TraCI
@@ -495,7 +495,7 @@ def _green_time(decisions: List[JsonDict], applied_ids: set[str]) -> JsonDict:
     }
 
 
-def _score_attribution(decisions: List[JsonDict], applied_ids: set[str]) -> Dict[str, float]:
+def _score_attribution(decisions: list[JsonDict], applied_ids: set[str]) -> dict[str, float]:
     """Mean per-objective contribution across decisions that actually actuated
     (applied via TraCI, not merely approved) — which objective (delay, headway,
     proximity, priority level) drove the score behind the network changes.
@@ -507,7 +507,7 @@ def _score_attribution(decisions: List[JsonDict], applied_ids: set[str]) -> Dict
     ]
     if not applied:
         return {}
-    totals: Dict[str, float] = {}
+    totals: dict[str, float] = {}
     for d in applied:
         for objective, comp in d["score_components"].items():
             contribution = comp.get("contribution") if isinstance(comp, dict) else None
@@ -527,7 +527,7 @@ def _evidence_paths(run: DemonstratorRun) -> JsonDict:
     }
 
 
-def _find_kpi_delta(comparison: JsonDict, group: str, metric: str) -> Optional[float]:
+def _find_kpi_delta(comparison: JsonDict, group: str, metric: str) -> float | None:
     for row in comparison.get("rows", []):
         if row.get("group") == group and row.get("metric") == metric:
             delta = row.get("delta")
@@ -535,7 +535,7 @@ def _find_kpi_delta(comparison: JsonDict, group: str, metric: str) -> Optional[f
     return None
 
 
-def _find_runtime_value(comparison: JsonDict, metric: str, column: str) -> Optional[float]:
+def _find_runtime_value(comparison: JsonDict, metric: str, column: str) -> float | None:
     for row in comparison.get("rows", []):
         if row.get("metric") == metric:
             value = row.get(column)
@@ -543,7 +543,7 @@ def _find_runtime_value(comparison: JsonDict, metric: str, column: str) -> Optio
     return None
 
 
-def _delta(left: Any, right: Any) -> Optional[float]:
+def _delta(left: Any, right: Any) -> float | None:
     if isinstance(left, bool) or isinstance(right, bool):
         return None
     if isinstance(left, (int, float)) and isinstance(right, (int, float)):
@@ -551,7 +551,7 @@ def _delta(left: Any, right: Any) -> Optional[float]:
     return None
 
 
-def _counter_section(title: str, values: JsonDict) -> List[str]:
+def _counter_section(title: str, values: JsonDict) -> list[str]:
     lines = [f"### {title}", ""]
     if not values:
         return [*lines, "None observed.", ""]

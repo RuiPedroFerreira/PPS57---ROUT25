@@ -3,12 +3,12 @@
 
 from __future__ import annotations
 
-from copy import deepcopy
-from pathlib import Path
 import sys
 import tempfile
 import unittest
 import zlib
+from copy import deepcopy
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"

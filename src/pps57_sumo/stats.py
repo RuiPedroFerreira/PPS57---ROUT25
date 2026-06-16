@@ -10,9 +10,8 @@ from __future__ import annotations
 
 import math
 import statistics
-from typing import Dict, List, Optional, Union
 
-T_CRITICAL_95: Dict[int, float] = {
+T_CRITICAL_95: dict[int, float] = {
     1: 12.706,
     2: 4.303,
     3: 3.182,
@@ -54,7 +53,7 @@ def t_critical_95(df: int) -> float:
     return 1.96  # df > 30: aproximação normal
 
 
-def mean_ci95(values: List[float]) -> Dict[str, Optional[Union[float, int]]]:
+def mean_ci95(values: list[float]) -> dict[str, float | int | None]:
     """Média e intervalo de confiança 95% (t de Student, stdev amostral)."""
     n = len(values)
     if n == 0:

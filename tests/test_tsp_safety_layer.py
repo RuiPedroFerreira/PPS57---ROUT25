@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import sys
+import unittest
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
-import sys
-import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -928,6 +928,7 @@ class Package4TSPTestCase(unittest.TestCase):
 
     def test_traci_adapter_selects_current_program_logic_for_verification(self) -> None:
         from types import SimpleNamespace
+
         from pps57_cits.traci_adapter import TraciSimulationAdapter
 
         class _TrafficLight:

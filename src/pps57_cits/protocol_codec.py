@@ -12,9 +12,9 @@ official ASN.1 modules, PKI validation and the selected transport stack.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
-from typing import Any, Dict, List, Protocol
+from dataclasses import dataclass
+from typing import Any, Protocol
 
 from .messages import (
     Approach,
@@ -29,9 +29,9 @@ from .messages import (
     SecurityEnvelope,
     SignalRequest,
     SPATEMLike,
+    SREMLike,
     SSEMAudit,
     SSEMLike,
-    SREMLike,
     ensure_cits_message_valid,
     validate_cits_message,
 )
@@ -49,9 +49,9 @@ class ProtocolCodec(Protocol):
 
     def encode(self, message: CITSMessage) -> str: ...
 
-    def decode(self, payload: str | bytes | Dict[str, Any]) -> CITSMessage: ...
+    def decode(self, payload: str | bytes | dict[str, Any]) -> CITSMessage: ...
 
-    def validate(self, message: CITSMessage) -> List[str]: ...
+    def validate(self, message: CITSMessage) -> list[str]: ...
 
 
 @dataclass(frozen=True)
@@ -76,7 +76,7 @@ class JsonSimulationCodec:
         except (TypeError, ValueError, KeyError) as exc:
             raise ProtocolCodecError(f"Invalid {self.profile_name} message: {exc}") from exc
 
-    def decode(self, payload: str | bytes | Dict[str, Any]) -> CITSMessage:
+    def decode(self, payload: str | bytes | dict[str, Any]) -> CITSMessage:
         try:
             if isinstance(payload, bytes):
                 raw = json.loads(payload.decode("utf-8"))
@@ -108,11 +108,11 @@ class JsonSimulationCodec:
         except (TypeError, ValueError, KeyError) as exc:
             raise ProtocolCodecError(f"Invalid {self.profile_name} payload: {exc}") from exc
 
-    def validate(self, message: CITSMessage) -> List[str]:
+    def validate(self, message: CITSMessage) -> list[str]:
         return validate_cits_message(message)
 
 
-def message_from_dict(payload: Dict[str, Any]) -> CITSMessage:
+def message_from_dict(payload: dict[str, Any]) -> CITSMessage:
     """Build a typed C-ITS message from the simulator JSON shape."""
 
     message_type = str(payload.get("message_type", ""))
@@ -172,7 +172,7 @@ def message_from_dict(payload: Dict[str, Any]) -> CITSMessage:
     raise ProtocolCodecError(f"Unsupported C-ITS message_type: {message_type!r}")
 
 
-def _common_kwargs(payload: Dict[str, Any]) -> Dict[str, Any]:
+def _common_kwargs(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "message_type": str(payload.get("message_type", "")),
         "station_id": int(payload.get("station_id", 0)),
@@ -215,7 +215,7 @@ def _position_or_none(payload: object) -> Position3D | None:
     return _position(payload) if isinstance(payload, dict) else None
 
 
-def _approach(payload: Dict[str, Any]) -> Approach:
+def _approach(payload: dict[str, Any]) -> Approach:
     return Approach(
         approach_id=str(payload.get("approach_id", "")),
         edge_id=str(payload.get("edge_id", "")),
@@ -225,7 +225,7 @@ def _approach(payload: Dict[str, Any]) -> Approach:
     )
 
 
-def _movement_event(payload: Dict[str, Any]) -> MovementEvent:
+def _movement_event(payload: dict[str, Any]) -> MovementEvent:
     likely = payload.get("likely_time_ms")
     return MovementEvent(
         signal_group_id=int(payload.get("signal_group_id", 0)),
@@ -237,7 +237,7 @@ def _movement_event(payload: Dict[str, Any]) -> MovementEvent:
     )
 
 
-def _signal_request(payload: Dict[str, Any]) -> SignalRequest:
+def _signal_request(payload: dict[str, Any]) -> SignalRequest:
     return SignalRequest(
         intersection_ref_id=int(payload.get("intersection_ref_id", 0)),
         request_id=int(payload.get("request_id", 0)),
