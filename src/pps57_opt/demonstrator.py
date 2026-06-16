@@ -243,6 +243,8 @@ def _run_payload(run: DemonstratorRun) -> JsonDict:
         ),
         "controller_rejection_by_reason": dict(Counter(_controller_rejection_reason(item) for item in controller_rejections)),
         "per_tls": _per_tls(run.decisions, run.actuations, controller_rejections),
+        "green_time": _green_time(run.decisions),
+        "score_attribution": _score_attribution(run.decisions),
     }
     return {
         "runtime": runtime,
@@ -424,6 +426,44 @@ def _per_tls(decisions: List[JsonDict], actuations: List[JsonDict], controller_r
             "controller_rejections": sum(1 for item in controller_rejections if item.get("tls_id") == tls_id),
         }
     return payload
+
+
+def _green_time(decisions: List[JsonDict]) -> JsonDict:
+    """Green seconds actually granted to the network.
+
+    Sums `extension_s` over APPROVED decisions only (those that passed the
+    Safety Layer and were applied), so this is the dose delivered — not merely
+    decided. Grounded entirely in the persisted decision log; nothing inferred.
+    """
+    approved = [d for d in decisions if d.get("status") == "approved"]
+    ext = [float(d.get("extension_s") or 0.0) for d in approved]
+    granting = [e for e in ext if e > 0]
+    return {
+        "applied_extension_s_total": round(sum(ext), 1),
+        "mean_extension_s": round(sum(granting) / len(granting), 1) if granting else 0.0,
+        "max_extension_s": round(max(ext), 1) if ext else 0.0,
+        "n_extensions": len(granting),
+    }
+
+
+def _score_attribution(decisions: List[JsonDict]) -> Dict[str, float]:
+    """Mean per-objective contribution across actuating (approved) decisions —
+    which objective (delay, headway, proximity, priority level) drove the
+    priority score that led to actuation. Reads `score_components.contribution`
+    already computed by the engine; nothing is recomputed here."""
+    actuating = [
+        d for d in decisions
+        if d.get("status") == "approved" and isinstance(d.get("score_components"), dict)
+    ]
+    if not actuating:
+        return {}
+    totals: Dict[str, float] = {}
+    for d in actuating:
+        for objective, comp in d["score_components"].items():
+            contribution = comp.get("contribution") if isinstance(comp, dict) else None
+            if isinstance(contribution, (int, float)):
+                totals[objective] = totals.get(objective, 0.0) + float(contribution)
+    return {objective: round(value / len(actuating), 4) for objective, value in totals.items()}
 
 
 def _evidence_paths(run: DemonstratorRun) -> JsonDict:
