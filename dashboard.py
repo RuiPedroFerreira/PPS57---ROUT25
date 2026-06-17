@@ -2273,55 +2273,9 @@ with tab_scenarios:
                     unsafe_allow_html=True,
                 )
 
-            # ── delta chart (overview) ──────────────────────────────────────────
-            if ddf.empty:
-                st.info("Sem par baseline + TSP para calcular o impacto por cenário.")
-            else:
-                cdf = ddf.sort_values("delta", ascending=sort_asc)
-                vals = cdf["delta"].tolist()
-                lo, hi = min(vals + [0.0]), max(vals + [0.0])
-                pad = max(3.0, (hi - lo) * 0.18)
-                fig_d = go.Figure(
-                    go.Bar(
-                        x=cdf["delta"],
-                        y=cdf["label"],
-                        orientation="h",
-                        marker_color=["#16a34a" if d < 0 else "#dc2626" for d in cdf["delta"]],
-                        texttemplate="%{x:.1f}%",
-                        textposition="outside",
-                        cliponaxis=False,
-                        hovertemplate="%{y}: %{x:+.1f}%<extra></extra>",
-                    )
-                )
-                fig_d.add_vline(x=0, line_color="#9ca3af", line_width=1.5, line_dash="dot")
-                fig_d.update_layout(
-                    paper_bgcolor="white",
-                    plot_bgcolor="#f8fafc",
-                    font={"family": "Inter, system-ui, sans-serif", "color": "#374151", "size": 11},
-                    margin={"l": 220, "r": 80, "t": 20, "b": 40},
-                    bargap=0.4,
-                    height=320,
-                    showlegend=False,
-                    xaxis_title="Δ% face ao baseline (negativo = melhoria)",
-                )
-                fig_d.update_xaxes(
-                    range=[lo - pad, hi + pad],
-                    gridcolor="#f1f5f9",
-                    linecolor="#e2e8f0",
-                    zeroline=False,
-                    tickfont={"size": 11},
-                )
-                fig_d.update_yaxes(
-                    title="", tickfont={"size": 13}, gridcolor="#f1f5f9", linecolor="#e2e8f0"
-                )
-                st.plotly_chart(fig_d, use_container_width=True, config={"displayModeBar": False})
-                st.caption(
-                    "*Verde = o TSP melhora o cenário; vermelho = piora. Mostra onde a "
-                    "prioridade semafórica traz mais valor (autocarros atrasados, bunching) "
-                    "e onde tem custo.*"
-                )
-
-            # ── divider + section label (overview → detail) ─────────────────────
+            # ── scenario detail — placed directly under the controls that drive
+            #    it. Order within: objective card + headline cards → all-scenarios
+            #    overview → this scenario's raw stats table + export. ─────────────
             st.markdown("---")
             st.markdown(
                 "<p style='font-size:11px;font-weight:600;letter-spacing:0.08em;"
@@ -2383,7 +2337,8 @@ with tab_scenarios:
             unit = KPI_META[sel_metric_key][1]
             unit_disp = unit if unit else "—"
 
-            if bval is None or tval is None or bval == 0:
+            detail_ok = not (bval is None or tval is None or bval == 0)
+            if not detail_ok:
                 st.info("Sem valores baseline + TSP para este cenário e métrica nesta classe.")
             else:
                 delta = (tval - bval) / abs(bval) * 100
@@ -2418,12 +2373,75 @@ with tab_scenarios:
                     )
                 else:
                     st.info(
-                        f"{n_seeds} seeds por arm — a tabela abaixo resume média e dispersão "
-                        "entre seeds."
+                        f"{n_seeds} seeds por arm — a tabela de estatísticas descritivas resume "
+                        "média e dispersão entre seeds."
                     )
 
-                # ── descriptive stats (cleaned) ────────────────────────────────
-                st.markdown("**Estatísticas descritivas**")
+            # ── all-scenarios overview (zoom out) — sits right after the selected
+            #    scenario's headline cards. Depends only on ddf, so it renders even
+            #    when the selected scenario has no paired data; the raw stats table
+            #    + export follow below. ───────────────────────────────────────────
+            st.markdown("---")
+            st.markdown(
+                "<p style='font-size:11px;font-weight:600;letter-spacing:0.08em;"
+                "color:#9ca3af;text-transform:uppercase;margin-bottom:0.5rem'>"
+                "VISÃO GERAL · COMPARAÇÃO ENTRE CENÁRIOS</p>",
+                unsafe_allow_html=True,
+            )
+            if ddf.empty:
+                st.info("Sem par baseline + TSP para calcular o impacto por cenário.")
+            else:
+                cdf = ddf.sort_values("delta", ascending=sort_asc)
+                vals = cdf["delta"].tolist()
+                lo, hi = min(vals + [0.0]), max(vals + [0.0])
+                pad = max(3.0, (hi - lo) * 0.18)
+                fig_d = go.Figure(
+                    go.Bar(
+                        x=cdf["delta"],
+                        y=cdf["label"],
+                        orientation="h",
+                        marker_color=["#16a34a" if d < 0 else "#dc2626" for d in cdf["delta"]],
+                        texttemplate="%{x:.1f}%",
+                        textposition="outside",
+                        cliponaxis=False,
+                        hovertemplate="%{y}: %{x:+.1f}%<extra></extra>",
+                    )
+                )
+                fig_d.add_vline(x=0, line_color="#9ca3af", line_width=1.5, line_dash="dot")
+                fig_d.update_layout(
+                    paper_bgcolor="white",
+                    plot_bgcolor="#f8fafc",
+                    font={"family": "Inter, system-ui, sans-serif", "color": "#374151", "size": 11},
+                    margin={"l": 220, "r": 80, "t": 20, "b": 40},
+                    bargap=0.4,
+                    height=320,
+                    showlegend=False,
+                    xaxis_title="Δ% face ao baseline (negativo = melhoria)",
+                )
+                fig_d.update_xaxes(
+                    range=[lo - pad, hi + pad],
+                    gridcolor="#f1f5f9",
+                    linecolor="#e2e8f0",
+                    zeroline=False,
+                    tickfont={"size": 11},
+                )
+                fig_d.update_yaxes(
+                    title="", tickfont={"size": 13}, gridcolor="#f1f5f9", linecolor="#e2e8f0"
+                )
+                st.plotly_chart(fig_d, use_container_width=True, config={"displayModeBar": False})
+                st.caption(
+                    "*Verde = o TSP melhora o cenário; vermelho = piora. Mostra onde a "
+                    "prioridade semafórica traz mais valor (autocarros atrasados, bunching) "
+                    "e onde tem custo.*"
+                )
+
+            # ── per-scenario raw stats + export (the selected scenario's numbers,
+            #    kept below the overview so the headline cards lead) ──────────────
+            if detail_ok:
+                st.markdown("---")
+                st.markdown(
+                    f"**Estatísticas descritivas · {label_map.get(selected_scenario, selected_scenario)}**"
+                )
                 u = f" ({unit})" if unit else ""
                 stats = (
                     sdf.groupby("Run type")["Valor"]
@@ -2447,7 +2465,6 @@ with tab_scenarios:
                     stats["Seeds"] = stats["Seeds"].astype(int)
                 st.dataframe(stats, hide_index=True, use_container_width=True)
 
-                # ── export (right-aligned) ─────────────────────────────────────
                 csv_bytes = stats.to_csv(index=False).encode("utf-8")
                 _, col_btn = st.columns([4, 1])
                 with col_btn:
