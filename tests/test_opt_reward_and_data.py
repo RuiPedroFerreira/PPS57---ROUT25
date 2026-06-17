@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-from dataclasses import replace
-from pathlib import Path
 import json
 import sys
 import tempfile
 import unittest
+from dataclasses import replace
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -35,7 +35,9 @@ class RewardShapeTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.cits = load_cits_config(ROOT / "configs/cits_v2x_config.json", root=ROOT)
         cls.tsp = load_tsp_config(ROOT / "configs/tsp_safety_config.json", root=ROOT)
-        cls.opt = load_policy_optimization_config(ROOT / "configs/policy_training_config.json", root=ROOT)
+        cls.opt = load_policy_optimization_config(
+            ROOT / "configs/policy_training_config.json", root=ROOT
+        )
         cls.controller = OfflineOptimizationController(
             cls.cits,
             cls.tsp,
@@ -44,14 +46,18 @@ class RewardShapeTests(unittest.TestCase):
         )
 
     def _scenario(self, scenario_id: str):
-        return next(item for item in build_offline_scenarios(self.cits) if item.scenario_id == scenario_id)
+        return next(
+            item for item in build_offline_scenarios(self.cits) if item.scenario_id == scenario_id
+        )
 
     def test_early_green_cost_scales_with_green_actually_truncated(self) -> None:
         # O custo do early_green deve crescer com o verde conflituante removido
         # (remaining - red_truncation_to_s), não ficar constante no valor-alvo
         # da truncagem.
         scenario = self._scenario("OPT_EARLY_GREEN_SAFE_RED")
-        baseline = self.controller.engine.decide(scenario.request, scenario.signal_state, scenario.sim_time_s)
+        baseline = self.controller.engine.decide(
+            scenario.request, scenario.signal_state, scenario.sim_time_s
+        )
         decision = decision_for_action(
             self.tsp,
             action=TSPAction.EARLY_GREEN.value,
@@ -82,7 +88,9 @@ class RewardShapeTests(unittest.TestCase):
         # Uma extensão que não cobre o défice de verde (o bus chega depois do
         # fim do verde estendido) não pode receber o benefício completo.
         scenario = self._scenario("OPT_GREEN_EXTENSION_SHORT_GREEN")
-        baseline = self.controller.engine.decide(scenario.request, scenario.signal_state, scenario.sim_time_s)
+        baseline = self.controller.engine.decide(
+            scenario.request, scenario.signal_state, scenario.sim_time_s
+        )
         extension = decision_for_action(
             self.tsp,
             action=TSPAction.GREEN_EXTENSION.value,
@@ -99,9 +107,15 @@ class RewardShapeTests(unittest.TestCase):
         needed_s = scenario.request.eta_to_stopline_s + buffer_s - remaining_s
         self.assertGreater(needed_s, 0.0)
 
-        reward_short = self.controller._reward(scenario, extension.copy_with(extension_s=needed_s / 4.0), "approved")
-        reward_full = self.controller._reward(scenario, extension.copy_with(extension_s=needed_s), "approved")
-        reward_over = self.controller._reward(scenario, extension.copy_with(extension_s=2.0 * needed_s), "approved")
+        reward_short = self.controller._reward(
+            scenario, extension.copy_with(extension_s=needed_s / 4.0), "approved"
+        )
+        reward_full = self.controller._reward(
+            scenario, extension.copy_with(extension_s=needed_s), "approved"
+        )
+        reward_over = self.controller._reward(
+            scenario, extension.copy_with(extension_s=2.0 * needed_s), "approved"
+        )
 
         # Cobrir o défice tem de valer mais do que poupar custo com uma
         # extensão insuficiente (antes a extensão curta ganhava sempre).

@@ -10,12 +10,13 @@ SUMO dependency cannot quietly leak across the seam.
 
 Scope: src/ (the library). Standalone scripts under scripts/ may use raw TraCI.
 """
+
 from __future__ import annotations
 
 import ast
-from pathlib import Path
 import sys
 import unittest
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -49,10 +50,13 @@ def _runtime_usages(path: Path) -> list:
                 and node.args[0].value.split(".")[0] in _RUNTIME_MODULES
             ):
                 hits.append((node.lineno, f"import_module({node.args[0].value!r})"))
-        elif isinstance(node, ast.Attribute):
-            # bare `traci.foo` / `libsumo.foo` module attribute access
-            if isinstance(node.value, ast.Name) and node.value.id in _RUNTIME_MODULES:
-                hits.append((node.lineno, f"{node.value.id}.{node.attr}"))
+        # bare `traci.foo` / `libsumo.foo` module attribute access
+        elif (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Name)
+            and node.value.id in _RUNTIME_MODULES
+        ):
+            hits.append((node.lineno, f"{node.value.id}.{node.attr}"))
     return hits
 
 

@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Tests for the deterministic schedule-adherence stand-in (P1)."""
+
 from __future__ import annotations
 
 import copy
-from dataclasses import replace
-from pathlib import Path
 import sys
 import unittest
+from dataclasses import replace
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -18,7 +19,6 @@ from pps57_cits.models import VehicleObservation
 from pps57_cits.obu import OBUEmulator
 from pps57_cits.schedule_plan import SchedulePlanProvider
 from pps57_cits.traci_adapter import TraciSimulationAdapter
-
 
 SERVICE_W = {
     "line_id": "STCP500",
@@ -38,18 +38,18 @@ SERVICE_W = {
 
 
 def make_obs(**overrides) -> VehicleObservation:
-    base = dict(
-        vehicle_id="bus_1",
-        vehicle_class="bus",
-        type_id="bus_12m",
-        line_id="STCP500_PROXY_W",
-        route_id="route_boavista_east_to_west",
-        edge_id="CITY_EAST_I1",
-        lane_id="CITY_EAST_I1_0",
-        lane_position_m=10.0,
-        lane_length_m=100.0,
-        speed_mps=5.0,
-    )
+    base = {
+        "vehicle_id": "bus_1",
+        "vehicle_class": "bus",
+        "type_id": "bus_12m",
+        "line_id": "STCP500_PROXY_W",
+        "route_id": "route_boavista_east_to_west",
+        "edge_id": "CITY_EAST_I1",
+        "lane_id": "CITY_EAST_I1_0",
+        "lane_position_m": 10.0,
+        "lane_length_m": 100.0,
+        "speed_mps": 5.0,
+    }
     base.update(overrides)
     return VehicleObservation(**base)
 
@@ -155,12 +155,16 @@ class ScheduleAdherenceIntegrationTestCase(unittest.TestCase):
 
     def test_obu_prefers_sourced_delay_over_waiting_proxy(self) -> None:
         obu = OBUEmulator(self.config)
-        sourced = make_obs(schedule_delay_s=80.0, waiting_time_s=200.0, schedule_adherence_sourced=True)
+        sourced = make_obs(
+            schedule_delay_s=80.0, waiting_time_s=200.0, schedule_adherence_sourced=True
+        )
         self.assertEqual(obu._effective_schedule_delay(sourced), 80.0)
 
     def test_obu_falls_back_to_proxy_when_not_sourced(self) -> None:
         obu = OBUEmulator(self.config)
-        proxy = make_obs(schedule_delay_s=0.0, waiting_time_s=200.0, schedule_adherence_sourced=False)
+        proxy = make_obs(
+            schedule_delay_s=0.0, waiting_time_s=200.0, schedule_adherence_sourced=False
+        )
         self.assertEqual(obu._effective_schedule_delay(proxy), 200.0)
 
     def test_adapter_leaves_observation_unchanged_when_disabled(self) -> None:

@@ -29,8 +29,11 @@ outputs/**/*.csv
 outputs/**/*.json
 outputs/**/*.jsonl
 outputs/**/*.log
+outputs/**/*.sumocfg
 reports/**/*.json
+reports/**/*.md
 sumo/network/*.net.xml
+sumo/outputs/
 
 # Editor / tooling metadata (downloads helpers, gh cache, etc.)
 .tools/

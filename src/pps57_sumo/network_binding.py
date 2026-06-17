@@ -29,11 +29,12 @@ It fabricates nothing: where the network genuinely carries no foe data for a
 group, the binding records ``conflict_source = "none"`` and the fail-closed gate
 correctly stays closed. Safety remains the final gate either way.
 """
+
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 # M4: defusedxml em vez do stdlib — net.xml pode vir de fontes externas (OSM).
 try:
@@ -48,7 +49,7 @@ from pps57_sumo.network_profile import (
 )
 
 
-def foe_local_indices(foes: str) -> List[int]:
+def foe_local_indices(foes: str) -> list[int]:
     """Local request indices set in a SUMO ``foes`` bitmask.
 
     SUMO writes the bitstring MSB-first: the rightmost character is request
@@ -62,9 +63,9 @@ def foe_local_indices(foes: str) -> List[int]:
 class SignalGroupBinding:
     signal_group_id: str
     tls_id: str
-    junction_ids: List[str]
-    request_indices: List[Tuple[str, int]]  # (junction_id, local request index)
-    conflicts_with: List[str]
+    junction_ids: list[str]
+    request_indices: list[tuple[str, int]]  # (junction_id, local request index)
+    conflicts_with: list[str]
     conflict_source: str  # "sumo_request_foes" | "none"
 
     @property
@@ -76,10 +77,10 @@ class SignalGroupBinding:
 @dataclass(frozen=True)
 class BoundTLS:
     tls_id: str
-    junction_ids: List[str]
-    signal_groups: Dict[str, SignalGroupBinding] = field(default_factory=dict)
+    junction_ids: list[str]
+    signal_groups: dict[str, SignalGroupBinding] = field(default_factory=dict)
 
-    def conflicts_for(self, signal_group_id: str) -> List[str]:
+    def conflicts_for(self, signal_group_id: str) -> list[str]:
         group = self.signal_groups.get(signal_group_id)
         return list(group.conflicts_with) if group else []
 
@@ -92,21 +93,21 @@ class BoundTLS:
 class NetworkBinding:
     network_file: str
     fingerprint: str
-    tls: Dict[str, BoundTLS] = field(default_factory=dict)
+    tls: dict[str, BoundTLS] = field(default_factory=dict)
 
-    def tls_ids(self) -> List[str]:
+    def tls_ids(self) -> list[str]:
         return sorted(self.tls)
 
-    def binding_for_tls(self, tls_id: str) -> Optional[BoundTLS]:
+    def binding_for_tls(self, tls_id: str) -> BoundTLS | None:
         return self.tls.get(tls_id)
 
-    def conflicts_for(self, tls_id: str, signal_group_id: str) -> List[str]:
+    def conflicts_for(self, tls_id: str, signal_group_id: str) -> list[str]:
         bound = self.tls.get(tls_id)
         return bound.conflicts_for(signal_group_id) if bound else []
 
-    def coverage_report(self) -> Dict[str, object]:
+    def coverage_report(self) -> dict[str, object]:
         """How completely the network's own conflict data binds the signal groups."""
-        per_tls: List[Dict[str, object]] = []
+        per_tls: list[dict[str, object]] = []
         total_groups = 0
         total_known = 0
         for tls_id in self.tls_ids():
@@ -138,7 +139,7 @@ class NetworkBinding:
 
 def _group_for_connection(
     profile: NetworkProfile, tls_id: str, connection: ConnectionProfile
-) -> Optional[str]:
+) -> str | None:
     """Signal-group id owning a controlled connection, via its (from,to) movement."""
     tls_profile = profile.tls_profile(tls_id)
     if tls_profile is None:
@@ -151,7 +152,7 @@ def _group_for_connection(
 
 def _read_junction_tables(
     net_path: Path,
-) -> Tuple[Dict[str, Dict[int, str]], Dict[str, Tuple[str, int]]]:
+) -> tuple[dict[str, dict[int, str]], dict[str, tuple[str, int]]]:
     """Read per-junction foes bitmasks and the ``intLanes`` slot map.
 
     Returns ``(requests, via_slots)``:
@@ -163,8 +164,8 @@ def _read_junction_tables(
       It must not be derived from the lane id's embedded numbers (internal *edge*
       index, shared by sibling lanes of multi-lane internal edges).
     """
-    requests: Dict[str, Dict[int, str]] = {}
-    via_slots: Dict[str, Tuple[str, int]] = {}
+    requests: dict[str, dict[int, str]] = {}
+    via_slots: dict[str, tuple[str, int]] = {}
     root = ET.fromstring(net_path.read_bytes())
     for junction in root.iter("junction"):
         jid = junction.get("id")
@@ -172,7 +173,7 @@ def _read_junction_tables(
             continue
         for slot_index, lane_id in enumerate((junction.get("intLanes") or "").split()):
             via_slots[lane_id] = (jid, slot_index)
-        by_index: Dict[int, str] = {}
+        by_index: dict[int, str] = {}
         for request in junction.findall("request"):
             idx = request.get("index")
             foes = request.get("foes", "")
@@ -186,24 +187,24 @@ def _read_junction_tables(
 def build_network_binding(
     net_path: str | Path,
     *,
-    additional_files: Optional[Iterable[str | Path]] = None,
+    additional_files: Iterable[str | Path] | None = None,
 ) -> NetworkBinding:
     """Bind signal groups to the SUMO net and read the authoritative conflict matrix."""
     path = Path(net_path)
     profile = load_network_profile(path, additional_files=additional_files)
     junction_requests, via_slots = _read_junction_tables(path)
 
-    tls_bindings: Dict[str, BoundTLS] = {}
+    tls_bindings: dict[str, BoundTLS] = {}
     for tls_id in profile.tls_ids():
         tls_profile = profile.tls_profile(tls_id)
         if tls_profile is None:
             continue
         # (junction, local request index) -> signal_group_id, for this TLS.
-        slot_to_group: Dict[Tuple[str, int], str] = {}
+        slot_to_group: dict[tuple[str, int], str] = {}
         # Seed every signal group up front so groups whose connections carry no
         # resolvable via are still *recorded* (conflict_source="none") instead of
         # silently dropped — keeping coverage_report honest.
-        group_slots: Dict[str, List[Tuple[str, int]]] = {
+        group_slots: dict[str, list[tuple[str, int]]] = {
             movement.signal_group_id: [] for movement in tls_profile.movements
         }
         for connection in tls_profile.connections:
@@ -217,11 +218,11 @@ def build_network_binding(
             group_slots.setdefault(group_id, []).append(slot)
 
         # Resolve each group's foes through the junction request bitmasks.
-        groups: Dict[str, SignalGroupBinding] = {}
+        groups: dict[str, SignalGroupBinding] = {}
         for group_id, slots in group_slots.items():
-            conflicts: Set[str] = set()
+            conflicts: set[str] = set()
             had_foe_data = False
-            junctions: Set[str] = set()
+            junctions: set[str] = set()
             for junction_id, req_idx in slots:
                 junctions.add(junction_id)
                 foes_by_index = junction_requests.get(junction_id)
@@ -241,7 +242,9 @@ def build_network_binding(
                 conflict_source="sumo_request_foes" if had_foe_data else "none",
             )
         tls_junctions = sorted({jid for slots in group_slots.values() for jid, _ in slots})
-        tls_bindings[tls_id] = BoundTLS(tls_id=tls_id, junction_ids=tls_junctions, signal_groups=groups)
+        tls_bindings[tls_id] = BoundTLS(
+            tls_id=tls_id, junction_ids=tls_junctions, signal_groups=groups
+        )
 
     return NetworkBinding(
         network_file=str(path),

@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Deterministic offline policy optimization with a mandatory safety filter."""
+
 from __future__ import annotations
 
-from collections import Counter
-from dataclasses import dataclass
 import json
-from typing import Dict, Iterable, List, Optional
+from collections import Counter
+from collections.abc import Iterable
+from dataclasses import dataclass
 
 from pps57_cits.config import CITSConfig
-from pps57_tsp.config import TSPConfig
 from pps57_tsp.action_planner import decision_for_action
+from pps57_tsp.config import TSPConfig
 from pps57_tsp.engine import TSPDecisionEngine
 from pps57_tsp.models import DecisionStatus, TSPAction, TSPDecision
 from pps57_tsp.safety import TSPSafetyLayer
@@ -25,17 +26,17 @@ class OfflineOptimizationController:
     cits_config: CITSConfig
     tsp_config: TSPConfig
     optimization_config: OptimizationConfig
-    scenarios: Optional[List[OfflineScenario]] = None
+    scenarios: list[OfflineScenario] | None = None
 
     def __post_init__(self) -> None:
         self.engine = TSPDecisionEngine(self.cits_config, self.tsp_config)
-        self.event_dataset_load: Optional[Dict[str, object]] = None
+        self.event_dataset_load: dict[str, object] | None = None
 
-    def run(self) -> Dict[str, object]:
+    def run(self) -> dict[str, object]:
         scenarios = self.scenarios or self._load_event_scenarios()
-        all_candidates: List[CandidateEvaluation] = []
-        selected: List[CandidateEvaluation] = []
-        policy_rules: Dict[str, LearnedPolicyRule] = {}
+        all_candidates: list[CandidateEvaluation] = []
+        selected: list[CandidateEvaluation] = []
+        policy_rules: dict[str, LearnedPolicyRule] = {}
 
         for scenario in scenarios:
             candidates = self._evaluate_scenario(scenario)
@@ -58,11 +59,15 @@ class OfflineOptimizationController:
         self._write_outputs(scenarios, all_candidates, selected, list(policy_rules.values()))
         return self._summary(scenarios, all_candidates, selected, list(policy_rules.values()))
 
-    def _load_event_scenarios(self) -> List[OfflineScenario]:
+    def _load_event_scenarios(self) -> list[OfflineScenario]:
         path = self.optimization_config.path_from_root(
-            self.optimization_config.logging.get("event_training_dataset", "outputs/event_training_dataset.jsonl")
+            self.optimization_config.logging.get(
+                "event_training_dataset", "outputs/event_training_dataset.jsonl"
+            )
         )
-        scenarios, load_report = load_event_training_dataset(path, self.tsp_config.actuating_actions())
+        scenarios, load_report = load_event_training_dataset(
+            path, self.tsp_config.actuating_actions()
+        )
         self.event_dataset_load = load_report
         if not scenarios:
             raise ValueError(
@@ -71,7 +76,7 @@ class OfflineOptimizationController:
             )
         return scenarios
 
-    def _evaluate_scenario(self, scenario: OfflineScenario) -> List[CandidateEvaluation]:
+    def _evaluate_scenario(self, scenario: OfflineScenario) -> list[CandidateEvaluation]:
         baseline = self.engine.decide(scenario.request, scenario.signal_state, scenario.sim_time_s)
         baseline_candidate = self._evaluate_candidate(
             scenario,
@@ -113,7 +118,9 @@ class OfflineOptimizationController:
             notes=[f"Offline policy candidate: {action}."],
         )
 
-    def _evaluate_candidate(self, scenario: OfflineScenario, *, policy_id: str, decision: TSPDecision) -> CandidateEvaluation:
+    def _evaluate_candidate(
+        self, scenario: OfflineScenario, *, policy_id: str, decision: TSPDecision
+    ) -> CandidateEvaluation:
         safety = TSPSafetyLayer(self.cits_config, self.tsp_config)
         if bool(self.optimization_config.offline_training.get("signal_program_verified", False)):
             safety.set_signal_program_verified(True)
@@ -121,9 +128,13 @@ class OfflineOptimizationController:
         # intervenções consecutivas) para exercitar caminhos com estado da
         # Safety Layer. Sem isto a optimização offline nunca testa cooldown.
         if scenario.initial_last_intervention_time_by_tls:
-            safety.last_intervention_time_by_tls.update(scenario.initial_last_intervention_time_by_tls)
+            safety.last_intervention_time_by_tls.update(
+                scenario.initial_last_intervention_time_by_tls
+            )
         if scenario.initial_consecutive_interventions_by_tls:
-            safety.consecutive_interventions_by_tls.update(scenario.initial_consecutive_interventions_by_tls)
+            safety.consecutive_interventions_by_tls.update(
+                scenario.initial_consecutive_interventions_by_tls
+            )
         validation = safety.validate(decision, scenario.signal_state, scenario.sim_time_s)
         safe_decision = validation.safe_decision
         reward = self._reward(scenario, safe_decision, validation.status)
@@ -140,7 +151,7 @@ class OfflineOptimizationController:
             notes=validation.notes,
         )
 
-    def _select_candidate(self, candidates: List[CandidateEvaluation]) -> CandidateEvaluation:
+    def _select_candidate(self, candidates: list[CandidateEvaluation]) -> CandidateEvaluation:
         allowed = [item for item in candidates if not item.is_safety_blocked]
         if not allowed:
             # Todos os candidatos foram bloqueados pela Safety Layer: devolve o
@@ -152,7 +163,9 @@ class OfflineOptimizationController:
         # (o antigo branch baseline_fallback_margin era inalcançável).
         return max(allowed, key=lambda item: item.reward)
 
-    def _reward(self, scenario: OfflineScenario, decision: TSPDecision, safety_status: str) -> float:
+    def _reward(
+        self, scenario: OfflineScenario, decision: TSPDecision, safety_status: str
+    ) -> float:
         reward_cfg = self.optimization_config.reward
         if safety_status == DecisionStatus.BLOCKED_BY_SAFETY.value:
             return -float(reward_cfg.get("unsafe_candidate_penalty", 1000))
@@ -162,9 +175,13 @@ class OfflineOptimizationController:
         if decision.priority_score < min_score and decision.requires_actuation:
             return -float(reward_cfg.get("reject_penalty", 20.0)) * 2
 
-        remaining = TSPDecisionEngine.remaining_phase_time_s(scenario.signal_state, scenario.sim_time_s)
+        remaining = TSPDecisionEngine.remaining_phase_time_s(
+            scenario.signal_state, scenario.sim_time_s
+        )
         remaining_s = float(remaining or 0.0)
-        required_green_s = request.eta_to_stopline_s + float(self.tsp_config.decision_policy.get("eta_arrival_buffer_s", 4))
+        required_green_s = request.eta_to_stopline_s + float(
+            self.tsp_config.decision_policy.get("eta_arrival_buffer_s", 4)
+        )
         # Floor the schedule delay at 0: an early bus (negative schedule_delay_s)
         # must not manufacture positive benefit, which would flip the NO_ACTION
         # insufficient-green penalty (-benefit * factor) into a reward and
@@ -234,16 +251,18 @@ class OfflineOptimizationController:
         if decision.action == TSPAction.REJECT.value:
             if decision.priority_score < min_score:
                 return float(reward_cfg.get("reject_below_min_score_bonus", 6.0))
-            return -float(reward_cfg.get("reject_penalty", 20.0)) - max(0.0, request.schedule_delay_s) / float(
-                reward_cfg.get("reject_schedule_delay_divisor", 20.0)
-            )
+            return -float(reward_cfg.get("reject_penalty", 20.0)) - max(
+                0.0, request.schedule_delay_s
+            ) / float(reward_cfg.get("reject_schedule_delay_divisor", 20.0))
 
         return float(reward_cfg.get("unsupported_action_fallback", -50.0))
 
     def _target_phase(self, decision: TSPDecision) -> int | None:
         if decision.target_phase_index is not None:
             return decision.target_phase_index
-        mapping = self.tsp_config.phase_mapping_for_movement(decision.priority_movement_id, decision.tls_id)
+        mapping = self.tsp_config.phase_mapping_for_movement(
+            decision.priority_movement_id, decision.tls_id
+        )
         raw = mapping.get("target_phase_index")
         try:
             return int(raw)
@@ -291,7 +310,9 @@ class OfflineOptimizationController:
         rules: Iterable[LearnedPolicyRule],
     ) -> None:
         sample_log = self.optimization_config.path_from_root(
-            self.optimization_config.logging.get("sample_log", "outputs/offline_policy_samples.jsonl")
+            self.optimization_config.logging.get(
+                "sample_log", "outputs/offline_policy_samples.jsonl"
+            )
         )
         candidate_log = self.optimization_config.path_from_root(
             self.optimization_config.logging.get("candidate_log", "outputs/policy_candidates.jsonl")
@@ -300,16 +321,23 @@ class OfflineOptimizationController:
             self.optimization_config.logging.get("policy_report", "reports/policy_report.json")
         )
         summary_report = self.optimization_config.path_from_root(
-            self.optimization_config.logging.get("summary_report", "reports/policy_optimization_summary.json")
+            self.optimization_config.logging.get(
+                "summary_report", "reports/policy_optimization_summary.json"
+            )
         )
         for path in [sample_log, candidate_log, policy_report, summary_report]:
             path.parent.mkdir(parents=True, exist_ok=True)
 
         sample_log.write_text(
-            "\n".join(json.dumps(item.to_dict(), ensure_ascii=False, sort_keys=True) for item in scenarios) + "\n",
+            "\n".join(
+                json.dumps(item.to_dict(), ensure_ascii=False, sort_keys=True) for item in scenarios
+            )
+            + "\n",
             encoding="utf-8",
         )
-        candidate_log.write_text("\n".join(item.to_json() for item in candidates) + "\n", encoding="utf-8")
+        candidate_log.write_text(
+            "\n".join(item.to_json() for item in candidates) + "\n", encoding="utf-8"
+        )
         policy_report.write_text(
             json.dumps(
                 {
@@ -330,15 +358,17 @@ class OfflineOptimizationController:
 
     def _summary(
         self,
-        scenarios: List[OfflineScenario],
-        candidates: List[CandidateEvaluation],
-        selected: List[CandidateEvaluation],
-        rules: List[LearnedPolicyRule],
-    ) -> Dict[str, object]:
-        baseline_candidates = [item for item in candidates if item.policy_id == "baseline_tsp_decision_engine"]
+        scenarios: list[OfflineScenario],
+        candidates: list[CandidateEvaluation],
+        selected: list[CandidateEvaluation],
+        rules: list[LearnedPolicyRule],
+    ) -> dict[str, object]:
+        baseline_candidates = [
+            item for item in candidates if item.policy_id == "baseline_tsp_decision_engine"
+        ]
         unsafe_filtered = [item for item in candidates if item.is_safety_blocked]
-        selected_by_action: Dict[str, int] = {}
-        baseline_by_action: Dict[str, int] = {}
+        selected_by_action: dict[str, int] = {}
+        baseline_by_action: dict[str, int] = {}
         for item in selected:
             selected_by_action[item.action] = selected_by_action.get(item.action, 0) + 1
         for item in baseline_candidates:
@@ -375,7 +405,9 @@ class OfflineOptimizationController:
             "override_count": len(blocked),
             "override_rate": round(len(blocked) / len(candidates), 4) if candidates else 0.0,
             "by_proposed_action": dict(sorted(Counter(item.action for item in blocked).items())),
-            "by_safety_reason": dict(sorted(Counter(item.safety_reason for item in blocked).items())),
+            "by_safety_reason": dict(
+                sorted(Counter(item.safety_reason for item in blocked).items())
+            ),
         }
 
         summary = {
@@ -389,7 +421,9 @@ class OfflineOptimizationController:
             "event_dataset_load": self.event_dataset_load,
             "candidate_count": len(candidates),
             "unsafe_candidates_filtered": len(unsafe_filtered),
-            "safety_filter_required": bool(self.optimization_config.safety.get("mandatory_filter", True)),
+            "safety_filter_required": bool(
+                self.optimization_config.safety.get("mandatory_filter", True)
+            ),
             "baseline_policy": "baseline_tsp_decision_engine",
             "optimized_policy": "offline_safe_policy_comparison",
             "baseline_reward": baseline_reward,
@@ -409,14 +443,34 @@ class OfflineOptimizationController:
             "selected_by_action": selected_by_action,
             "learned_rule_count": len(rules),
             "outputs": {
-                "sample_log": str(self.optimization_config.path_from_root(self.optimization_config.logging.get("sample_log"))),
-                "candidate_log": str(self.optimization_config.path_from_root(self.optimization_config.logging.get("candidate_log"))),
-                "policy_report": str(self.optimization_config.path_from_root(self.optimization_config.logging.get("policy_report"))),
-                "summary_report": str(self.optimization_config.path_from_root(self.optimization_config.logging.get("summary_report"))),
+                "sample_log": str(
+                    self.optimization_config.path_from_root(
+                        self.optimization_config.logging.get("sample_log")
+                    )
+                ),
+                "candidate_log": str(
+                    self.optimization_config.path_from_root(
+                        self.optimization_config.logging.get("candidate_log")
+                    )
+                ),
+                "policy_report": str(
+                    self.optimization_config.path_from_root(
+                        self.optimization_config.logging.get("policy_report")
+                    )
+                ),
+                "summary_report": str(
+                    self.optimization_config.path_from_root(
+                        self.optimization_config.logging.get("summary_report")
+                    )
+                ),
             },
         }
         summary_path = self.optimization_config.path_from_root(
-            self.optimization_config.logging.get("summary_report", "reports/policy_optimization_summary.json")
+            self.optimization_config.logging.get(
+                "summary_report", "reports/policy_optimization_summary.json"
+            )
         )
-        summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+        summary_path.write_text(
+            json.dumps(summary, indent=2, ensure_ascii=False, sort_keys=True), encoding="utf-8"
+        )
         return summary

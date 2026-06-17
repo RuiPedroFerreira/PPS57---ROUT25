@@ -6,16 +6,17 @@ netconvert version and output SHA-256 as provenance. Consumes the OSM extract fr
 scripts/fetch_boavista_osm.py; writes the net into the git-ignored .tools dir
 (OSM-derived, ODbL — not vendored).
 """
+
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -28,10 +29,21 @@ from pps57_sumo.environment import resolve_sumo_home  # noqa: E402
 # TLS, joined junctions/TLS. Real signal *locations* (from OSM), netconvert-default
 # *timings* (real signal plans are not openly available — an honest V4 limit).
 NETCONVERT_OPTIONS = [
-    "--geometry.remove", "--roundabouts.guess", "--ramps.guess",
-    "--junctions.join", "--tls.guess-signals", "--tls.discard-simple", "--tls.join",
-    "--keep-edges.by-vclass", "passenger", "--remove-edges.isolated",
-    "--no-turnarounds.tls", "--tls.default-type", "static", "--no-warnings", "true",
+    "--geometry.remove",
+    "--roundabouts.guess",
+    "--ramps.guess",
+    "--junctions.join",
+    "--tls.guess-signals",
+    "--tls.discard-simple",
+    "--tls.join",
+    "--keep-edges.by-vclass",
+    "passenger",
+    "--remove-edges.isolated",
+    "--no-turnarounds.tls",
+    "--tls.default-type",
+    "static",
+    "--no-warnings",
+    "true",
 ]
 
 
@@ -61,7 +73,9 @@ def _find_typemap() -> Path:
 
 def build(osm_path: Path, out_dir: Path) -> Path:
     if not osm_path.exists():
-        raise SystemExit(f"OSM extract not found at {osm_path}. Run scripts/fetch_boavista_osm.py first.")
+        raise SystemExit(
+            f"OSM extract not found at {osm_path}. Run scripts/fetch_boavista_osm.py first."
+        )
     if shutil.which("netconvert") is None:
         raise SystemExit("netconvert not found on PATH (activate .venv or install SUMO).")
 
@@ -70,8 +84,16 @@ def build(osm_path: Path, out_dir: Path) -> Path:
     _nc_ver = subprocess.run(["netconvert", "--version"], capture_output=True, text=True)
     version_lines = _nc_ver.stdout.splitlines() or _nc_ver.stderr.splitlines()
     version = version_lines[0] if version_lines else "netconvert (version unknown)"
-    cmd = ["netconvert", "--osm-files", str(osm_path), "-t", str(typemap),
-           "-o", str(net_path), *NETCONVERT_OPTIONS]
+    cmd = [
+        "netconvert",
+        "--osm-files",
+        str(osm_path),
+        "-t",
+        str(typemap),
+        "-o",
+        str(net_path),
+        *NETCONVERT_OPTIONS,
+    ]
     subprocess.run(cmd, check=True)
 
     provenance = {
@@ -81,7 +103,7 @@ def build(osm_path: Path, out_dir: Path) -> Path:
         "input_osm": os.path.relpath(str(osm_path), str(ROOT)),  # checkout-independent
         "net_sha256": _sha256(net_path),
         "note": "OSM traffic_signals -> static TLS (real signal LOCATIONS, netconvert-default TIMINGS; "
-                "real signal plans are not openly available).",
+        "real signal plans are not openly available).",
     }
     (out_dir / "NET_PROVENANCE.json").write_text(
         json.dumps(provenance, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
@@ -92,7 +114,9 @@ def build(osm_path: Path, out_dir: Path) -> Path:
     osm_prov_path = out_dir / "OSM_PROVENANCE.json"
     combined = {
         "phase_input": "real OSM Boavista geometry (V4)",
-        "osm": json.loads(osm_prov_path.read_text(encoding="utf-8")) if osm_prov_path.exists() else {},
+        "osm": json.loads(osm_prov_path.read_text(encoding="utf-8"))
+        if osm_prov_path.exists()
+        else {},
         "net": provenance,
     }
     (out_dir / "PROVENANCE.json").write_text(
@@ -103,8 +127,12 @@ def build(osm_path: Path, out_dir: Path) -> Path:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--osm", type=Path, default=ROOT / ".tools" / "boavista-osm" / "boavista.osm.xml")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--osm", type=Path, default=ROOT / ".tools" / "boavista-osm" / "boavista.osm.xml"
+    )
     parser.add_argument("--out-dir", type=Path, default=ROOT / ".tools" / "boavista-osm")
     args = parser.parse_args()
     build(args.osm, args.out_dir)

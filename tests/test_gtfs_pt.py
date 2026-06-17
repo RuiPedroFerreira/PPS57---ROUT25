@@ -6,13 +6,14 @@ logic (time parsing, weekday-service selection, headway computation, dwell
 detection) against the GTFS spec and hand-computed values. It is a logic fixture,
 NOT real STCP data, and asserts nothing about Porto.
 """
+
 from __future__ import annotations
 
-from pathlib import Path
 import sys
 import tempfile
 import unittest
 import zipfile
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -106,7 +107,9 @@ class ServiceSelectionTests(unittest.TestCase):
                 zf.writestr("trips.txt", _TRIPS)
                 zf.writestr("stop_times.txt", _STOP_TIMES)
                 zf.writestr("calendar_dates.txt", calendar_dates)
-            self.assertEqual(gtfs_pt.select_weekday_service_id(str(path), "NONEXISTENT"), "DIAS UTEIS")
+            self.assertEqual(
+                gtfs_pt.select_weekday_service_id(str(path), "NONEXISTENT"), "DIAS UTEIS"
+            )
 
     def test_calendar_txt_weekday_service(self) -> None:
         # Standard GTFS: regular weekly service in calendar.txt (no calendar_dates.txt).
@@ -152,7 +155,9 @@ class ExtractTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as tmp:
             feed = _make_feed(Path(tmp), stop_times)
-            result = gtfs_pt.extract_corridor_headways(feed, ["999"], windows={"am_peak": (7 * 3600, 9 * 3600)})
+            result = gtfs_pt.extract_corridor_headways(
+                feed, ["999"], windows={"am_peak": (7 * 3600, 9 * 3600)}
+            )
         direction = result["lines"]["999"]["directions"]["0"]
         self.assertEqual(direction["weekday_trips"], 2)  # captured despite sequence starting at 5
         self.assertAlmostEqual(direction["windows"]["am_peak"]["median_headway_min"], 12.0)

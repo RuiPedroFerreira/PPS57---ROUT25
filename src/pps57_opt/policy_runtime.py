@@ -4,17 +4,17 @@
 The runtime only proposes decisions. Every proposal still goes through the
 Safety Layer inside the TSP controller before actuation.
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional
 
 from pps57_cits.messages import SREMLike
 from pps57_cits.models import NetworkStateSnapshot, SignalState
-from pps57_tsp.config import TSPConfig
 from pps57_tsp.action_planner import decision_for_action
+from pps57_tsp.config import TSPConfig
 from pps57_tsp.models import TSPDecision
 
 from .state import state_bucket_for_context
@@ -33,19 +33,19 @@ class RuntimePolicyRule:
 @dataclass
 class RuntimePolicy:
     tsp_config: TSPConfig
-    rules: Dict[str, RuntimePolicyRule]
+    rules: dict[str, RuntimePolicyRule]
     policy_id: str = "offline_safe_policy_comparison"
     algorithm: str = "deterministic_policy_rules"
     is_reinforcement_learning: bool = False
     training_environment: str = "offline_policy_export"
     safety_filter_required: bool = True
-    source_path: Optional[Path] = None
+    source_path: Path | None = None
 
     @classmethod
-    def load(cls, tsp_config: TSPConfig, path: str | Path) -> "RuntimePolicy":
+    def load(cls, tsp_config: TSPConfig, path: str | Path) -> RuntimePolicy:
         source = Path(path)
         payload = json.loads(source.read_text(encoding="utf-8"))
-        rules: Dict[str, RuntimePolicyRule] = {}
+        rules: dict[str, RuntimePolicyRule] = {}
         for item in payload.get("rules", []):
             if not isinstance(item, dict):
                 continue
@@ -87,7 +87,7 @@ class RuntimePolicy:
         occupancy: float = 0.0,
         spillback_risk: bool = False,
         network_state: NetworkStateSnapshot | None = None,
-        seconds_since_last_intervention_s: Optional[float] = None,
+        seconds_since_last_intervention_s: float | None = None,
     ) -> TSPDecision:
         if network_state is not None:
             active_request_count = network_state.active_request_count
@@ -176,7 +176,7 @@ def state_bucket_for(
     waiting_time_s: float = 0.0,
     occupancy: float = 0.0,
     spillback_risk: bool = False,
-    seconds_since_last_intervention_s: Optional[float] = None,
+    seconds_since_last_intervention_s: float | None = None,
 ) -> str:
     return state_bucket_for_context(
         tsp_config,

@@ -7,11 +7,12 @@ over a vehicle's trip are therefore the SUM of its per-step observations.
 Sustainability claims (TSP reduces CO2, fuel use, etc.) are only verifiable once
 this file is parsed — otherwise the KPIs are absent from the run summary.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 from statistics import mean
-from typing import Any, Dict
+from typing import Any
 
 try:
     from defusedxml import ElementTree as ET  # type: ignore[import-untyped]
@@ -22,17 +23,17 @@ except ImportError:  # pragma: no cover - exercised in minimal CI images.
 METRICS = ("CO2", "CO", "NOx", "PMx", "HC", "fuel", "electricity")
 
 
-def parse_emissions(path: Path | None) -> Dict[str, Any]:
+def parse_emissions(path: Path | None) -> dict[str, Any]:
     """Return aggregated emission/fuel KPIs for vehicles in a SUMO emission file.
 
     Missing or empty file => ``{"available": False}`` (callers can skip cleanly).
     """
-    out: Dict[str, Any] = {"available": False, "source": str(path) if path else None}
+    out: dict[str, Any] = {"available": False, "source": str(path) if path else None}
     if path is None or not Path(path).exists():
         return out
 
-    per_vehicle: Dict[str, Dict[str, float]] = {}
-    per_vehicle_type: Dict[str, str] = {}
+    per_vehicle: dict[str, dict[str, float]] = {}
+    per_vehicle_type: dict[str, str] = {}
 
     try:
         for _event, elem in ET.iterparse(str(path), events=("end",)):
@@ -66,9 +67,9 @@ def parse_emissions(path: Path | None) -> Dict[str, Any]:
     out["available"] = True
     out["vehicle_count"] = len(per_vehicle)
 
-    totals: Dict[str, float] = {metric: 0.0 for metric in METRICS}
-    samples: Dict[str, list[float]] = {metric: [] for metric in METRICS}
-    for vid, values in per_vehicle.items():
+    totals: dict[str, float] = dict.fromkeys(METRICS, 0.0)
+    samples: dict[str, list[float]] = {metric: [] for metric in METRICS}
+    for _vid, values in per_vehicle.items():
         for metric in METRICS:
             value = values.get(metric)
             if value is None:
@@ -83,7 +84,7 @@ def parse_emissions(path: Path | None) -> Dict[str, Any]:
 
     bus_ids = [vid for vid in per_vehicle if vid.startswith("bus_")]
     if bus_ids:
-        bus_totals = {metric: 0.0 for metric in METRICS}
+        bus_totals = dict.fromkeys(METRICS, 0.0)
         for vid in bus_ids:
             for metric in METRICS:
                 bus_totals[metric] += per_vehicle[vid].get(metric, 0.0)

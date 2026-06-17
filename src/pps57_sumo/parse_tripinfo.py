@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Parse SUMO tripinfo output and generate baseline KPIs."""
+
 from __future__ import annotations
 
 import argparse
 import json
 from pathlib import Path
 from statistics import mean
+
 # M4: defusedxml em vez do stdlib — tripinfo vem de simulações externas.
 try:
     from defusedxml import ElementTree as ET  # type: ignore[import-untyped]
@@ -50,28 +52,30 @@ def parse_tripinfo(path: Path) -> dict:
             or vehicle_type_lc.startswith("bus")
             or vehicle_type_lc in {"stcp_bus", "transit_bus"}
         )
-        is_emergency = (
-            vehicle_id.startswith(("ev_", "emergency_"))
-            or vehicle_type_lc in {"emergency_vehicle", "emergency"}
-        )
+        is_emergency = vehicle_id.startswith(("ev_", "emergency_")) or vehicle_type_lc in {
+            "emergency_vehicle",
+            "emergency",
+        }
         is_priority = is_bus or is_emergency
-        rows.append({
-            "id": vehicle_id,
-            "vType": vehicle_type,
-            "is_bus": is_bus,
-            "is_emergency": is_emergency,
-            "is_priority": is_priority,
-            "line_key": _line_key(vehicle_id),
-            "direction": _direction_key(vehicle_id),
-            "depart": _num(node.attrib.get("depart")),
-            "arrival": _num(node.attrib.get("arrival")),
-            "duration": _num(node.attrib.get("duration")),
-            "routeLength": _num(node.attrib.get("routeLength")),
-            "waitingTime": _num(node.attrib.get("waitingTime")),
-            "timeLoss": _num(node.attrib.get("timeLoss")),
-            "departDelay": _num(node.attrib.get("departDelay")),
-            "waitingCount": _num(node.attrib.get("waitingCount")),
-        })
+        rows.append(
+            {
+                "id": vehicle_id,
+                "vType": vehicle_type,
+                "is_bus": is_bus,
+                "is_emergency": is_emergency,
+                "is_priority": is_priority,
+                "line_key": _line_key(vehicle_id),
+                "direction": _direction_key(vehicle_id),
+                "depart": _num(node.attrib.get("depart")),
+                "arrival": _num(node.attrib.get("arrival")),
+                "duration": _num(node.attrib.get("duration")),
+                "routeLength": _num(node.attrib.get("routeLength")),
+                "waitingTime": _num(node.attrib.get("waitingTime")),
+                "timeLoss": _num(node.attrib.get("timeLoss")),
+                "departDelay": _num(node.attrib.get("departDelay")),
+                "waitingCount": _num(node.attrib.get("waitingCount")),
+            }
+        )
 
     def group(field: str | None, expected: bool | None = None) -> list[dict]:
         if field is None:
@@ -84,12 +88,16 @@ def parse_tripinfo(path: Path) -> dict:
             "mean_duration_s": _mean([r["duration"] for r in items]),
             "p95_duration_s": _percentile([r["duration"] for r in items], 0.95),
             "mean_route_length_m": _mean([r["routeLength"] for r in items]),
-            "mean_speed_mps": _mean([
-                (r["routeLength"] / r["duration"])
-                if r["routeLength"] is not None and r["duration"] is not None and r["duration"] > 0
-                else None
-                for r in items
-            ]),
+            "mean_speed_mps": _mean(
+                [
+                    (r["routeLength"] / r["duration"])
+                    if r["routeLength"] is not None
+                    and r["duration"] is not None
+                    and r["duration"] > 0
+                    else None
+                    for r in items
+                ]
+            ),
             "mean_waiting_time_s": _mean([r["waitingTime"] for r in items]),
             "mean_time_loss_s": _mean([r["timeLoss"] for r in items]),
             "mean_depart_delay_s": _mean([r["departDelay"] for r in items]),

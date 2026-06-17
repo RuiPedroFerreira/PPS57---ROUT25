@@ -5,9 +5,8 @@ Runtime optimization/training loads event-derived scenarios from SUMO/TraCI logs
 These fixtures are injected explicitly by tests and are not a production data
 source.
 """
-from __future__ import annotations
 
-from typing import List
+from __future__ import annotations
 
 from pps57_cits.config import CITSConfig, IntersectionConfig
 from pps57_cits.messages import OperatorPriorityClass, SREMLike, synth_srem
@@ -16,7 +15,7 @@ from pps57_cits.models import SignalState
 from .models import OfflineScenario
 
 
-def build_offline_scenarios(config: CITSConfig) -> List[OfflineScenario]:
+def build_offline_scenarios(config: CITSConfig) -> list[OfflineScenario]:
     intersections = {item.tls_id: item for item in config.intersections}
     return [
         OfflineScenario(
@@ -24,16 +23,24 @@ def build_offline_scenarios(config: CITSConfig) -> List[OfflineScenario]:
             description="Delayed public-transport vehicle reaches the stop line near the end of the priority movement green.",
             expected_case="green_extension",
             sim_time_s=100.0,
-            request=_request(intersections["I2"], edge_id="I1_I2", lane_id="I1_I2_0", eta=16.0, distance=160.0),
-            signal_state=_state(intersections["I2"], phase=0, ryg="GGrr", next_switch=102.0, spent=33.0),
+            request=_request(
+                intersections["I2"], edge_id="I1_I2", lane_id="I1_I2_0", eta=16.0, distance=160.0
+            ),
+            signal_state=_state(
+                intersections["I2"], phase=0, ryg="GGrr", next_switch=102.0, spent=33.0
+            ),
         ),
         OfflineScenario(
             scenario_id="OPT_NO_ACTION_GREEN_SUFFICIENT",
             description="Current green covers ETA plus buffer without intervention.",
             expected_case="no_action",
             sim_time_s=100.0,
-            request=_request(intersections["I4"], edge_id="I3_I4", lane_id="I3_I4_0", eta=10.0, distance=80.0),
-            signal_state=_state(intersections["I4"], phase=0, ryg="GGrr", next_switch=140.0, spent=5.0),
+            request=_request(
+                intersections["I4"], edge_id="I3_I4", lane_id="I3_I4_0", eta=10.0, distance=80.0
+            ),
+            signal_state=_state(
+                intersections["I4"], phase=0, ryg="GGrr", next_switch=140.0, spent=5.0
+            ),
         ),
         OfflineScenario(
             scenario_id="OPT_EARLY_GREEN_SAFE_RED",
@@ -47,7 +54,9 @@ def build_offline_scenarios(config: CITSConfig) -> List[OfflineScenario]:
                 eta=18.0,
                 distance=171.0,
             ),
-            signal_state=_state(intersections["I6"], phase=2, ryg="rrGG", next_switch=125.0, spent=20.0),
+            signal_state=_state(
+                intersections["I6"], phase=2, ryg="rrGG", next_switch=125.0, spent=20.0
+            ),
         ),
         OfflineScenario(
             scenario_id="OPT_REEVALUATE_TOO_CLOSE",
@@ -61,7 +70,9 @@ def build_offline_scenarios(config: CITSConfig) -> List[OfflineScenario]:
                 eta=9.0,
                 distance=85.5,
             ),
-            signal_state=_state(intersections["I6"], phase=2, ryg="rrGG", next_switch=125.0, spent=20.0),
+            signal_state=_state(
+                intersections["I6"], phase=2, ryg="rrGG", next_switch=125.0, spent=20.0
+            ),
         ),
         OfflineScenario(
             scenario_id="OPT_REJECT_LOW_SCORE",
@@ -77,31 +88,45 @@ def build_offline_scenarios(config: CITSConfig) -> List[OfflineScenario]:
                 delay=0.0,
                 priority=OperatorPriorityClass.NOMINAL.value,
             ),
-            signal_state=_state(intersections["I2"], phase=0, ryg="GGrr", next_switch=102.0, spent=33.0),
+            signal_state=_state(
+                intersections["I2"], phase=0, ryg="GGrr", next_switch=102.0, spent=33.0
+            ),
         ),
         OfflineScenario(
             scenario_id="OPT_YELLOW_TRANSITION_BLOCK",
             description="Current phase is yellow; every actuation must be filtered.",
             expected_case="safety_filter",
             sim_time_s=100.0,
-            request=_request(intersections["I2"], edge_id="I1_I2", lane_id="I1_I2_0", eta=16.0, distance=160.0),
-            signal_state=_state(intersections["I2"], phase=1, ryg="yyrr", next_switch=103.0, spent=1.0),
+            request=_request(
+                intersections["I2"], edge_id="I1_I2", lane_id="I1_I2_0", eta=16.0, distance=160.0
+            ),
+            signal_state=_state(
+                intersections["I2"], phase=1, ryg="yyrr", next_switch=103.0, spent=1.0
+            ),
         ),
         OfflineScenario(
             scenario_id="OPT_MAX_GREEN_REACHED",
             description="Total green is already at the limit; extension must be filtered.",
             expected_case="safety_filter",
             sim_time_s=100.0,
-            request=_request(intersections["I2"], edge_id="I1_I2", lane_id="I1_I2_0", eta=16.0, distance=160.0),
-            signal_state=_state(intersections["I2"], phase=0, ryg="GGrr", next_switch=102.0, spent=53.0),
+            request=_request(
+                intersections["I2"], edge_id="I1_I2", lane_id="I1_I2_0", eta=16.0, distance=160.0
+            ),
+            signal_state=_state(
+                intersections["I2"], phase=0, ryg="GGrr", next_switch=102.0, spent=53.0
+            ),
         ),
         OfflineScenario(
             scenario_id="OPT_COOLDOWN_ACTIVE",
             description="Previous intervention cooldown is still active; extension must be filtered.",
             expected_case="safety_filter",
             sim_time_s=100.0,
-            request=_request(intersections["I2"], edge_id="I1_I2", lane_id="I1_I2_0", eta=16.0, distance=160.0),
-            signal_state=_state(intersections["I2"], phase=0, ryg="GGrr", next_switch=130.0, spent=10.0),
+            request=_request(
+                intersections["I2"], edge_id="I1_I2", lane_id="I1_I2_0", eta=16.0, distance=160.0
+            ),
+            signal_state=_state(
+                intersections["I2"], phase=0, ryg="GGrr", next_switch=130.0, spent=10.0
+            ),
             initial_last_intervention_time_by_tls={"I2": 95.0},
         ),
         OfflineScenario(
@@ -109,8 +134,12 @@ def build_offline_scenarios(config: CITSConfig) -> List[OfflineScenario]:
             description="The TLS has reached its consecutive intervention limit; extension must be filtered.",
             expected_case="safety_filter",
             sim_time_s=100.0,
-            request=_request(intersections["I2"], edge_id="I1_I2", lane_id="I1_I2_0", eta=16.0, distance=160.0),
-            signal_state=_state(intersections["I2"], phase=0, ryg="GGrr", next_switch=130.0, spent=10.0),
+            request=_request(
+                intersections["I2"], edge_id="I1_I2", lane_id="I1_I2_0", eta=16.0, distance=160.0
+            ),
+            signal_state=_state(
+                intersections["I2"], phase=0, ryg="GGrr", next_switch=130.0, spent=10.0
+            ),
             initial_consecutive_interventions_by_tls={"I2": 2},
         ),
         OfflineScenario(
@@ -126,7 +155,9 @@ def build_offline_scenarios(config: CITSConfig) -> List[OfflineScenario]:
                 distance=180.0,
                 delay=90.0,
             ),
-            signal_state=_state(intersections["I5"], phase=0, ryg="GGrr", next_switch=102.0, spent=33.0),
+            signal_state=_state(
+                intersections["I5"], phase=0, ryg="GGrr", next_switch=102.0, spent=33.0
+            ),
             active_request_count=3,
             queue_vehicle_count=14,
             halted_vehicle_count=10,
@@ -174,7 +205,9 @@ def _request(
     )
 
 
-def _state(intersection: IntersectionConfig, *, phase: int, ryg: str, next_switch: float, spent: float) -> SignalState:
+def _state(
+    intersection: IntersectionConfig, *, phase: int, ryg: str, next_switch: float, spent: float
+) -> SignalState:
     return SignalState(
         intersection_id=intersection.intersection_id,
         tls_id=intersection.tls_id,

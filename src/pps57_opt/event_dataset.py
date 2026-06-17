@@ -5,24 +5,25 @@ Lê JSONL no shape ETSI-aligned actual (`MessageType.SREM/SPATEM/...`). Logs
 gerados pela versão v0.3 do protocolo (`SREM_like`/`SPATEM_like` com campos
 top-level) **não são** compatíveis e devem ser regenerados.
 """
+
 from __future__ import annotations
 
-from collections import Counter
-from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
 import json
+from collections import Counter
+from collections.abc import Iterable
+from pathlib import Path
+from typing import Any
 
 from pps57_cits.messages import (
     MessageType,
-    SREMLike,
     SPATEMLike,
+    SREMLike,
 )
 from pps57_cits.models import SignalState
 from pps57_cits.protocol_codec import JsonSimulationCodec, ProtocolCodecError
 from pps57_tsp.models import DEFAULT_ACTUATING_ACTIONS
 
 from .models import OfflineScenario
-
 
 _CITS_CODEC = JsonSimulationCodec()
 
@@ -32,34 +33,34 @@ def build_event_training_rows(
     cits_log: str | Path,
     decision_log: str | Path,
     actuation_log: str | Path,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     cits_rows = list(_read_jsonl(Path(cits_log)))
     # Os SREMs novos têm `correlation_token` derivado de
     # (station_id, request_id, sequence_number) — usamos como chave.
-    requests: Dict[str, Dict[str, Any]] = {}
+    requests: dict[str, dict[str, Any]] = {}
     for item in cits_rows:
         if item.get("message_type") != MessageType.SREM.value:
             continue
         token = _correlation_token_from_payload(item)
         if token:
             requests[token] = item
-    spatem_rows = [item for item in cits_rows if item.get("message_type") == MessageType.SPATEM.value]
-    decisions = [
-        item
-        for item in _read_jsonl(Path(decision_log))
-        if item.get("request_id")
+    spatem_rows = [
+        item for item in cits_rows if item.get("message_type") == MessageType.SPATEM.value
     ]
+    decisions = [item for item in _read_jsonl(Path(decision_log)) if item.get("request_id")]
     actuations_by_decision = {
         str(item.get("decision_id")): item
         for item in _read_jsonl(Path(actuation_log))
         if item.get("decision_id")
     }
 
-    rows: List[Dict[str, Any]] = []
+    rows: list[dict[str, Any]] = []
     for decision in decisions:
         request = requests.get(str(decision.get("request_id")), {})
         actuation = actuations_by_decision.get(str(decision.get("decision_id")), {})
-        signal_state = _latest_spatem(spatem_rows, str(decision.get("tls_id")), _float(decision.get("timestamp_s")))
+        signal_state = _latest_spatem(
+            spatem_rows, str(decision.get("tls_id")), _float(decision.get("timestamp_s"))
+        )
         rows.append(
             {
                 "request_id": decision.get("request_id"),
@@ -97,7 +98,7 @@ def write_event_training_dataset(
     decision_log: str | Path,
     actuation_log: str | Path,
     output_path: str | Path,
-) -> Dict[str, object]:
+) -> dict[str, object]:
     rows = build_event_training_rows(
         cits_log=cits_log,
         decision_log=decision_log,
@@ -105,7 +106,10 @@ def write_event_training_dataset(
     )
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text("\n".join(json.dumps(row, ensure_ascii=False, sort_keys=True) for row in rows) + "\n", encoding="utf-8")
+    output.write_text(
+        "\n".join(json.dumps(row, ensure_ascii=False, sort_keys=True) for row in rows) + "\n",
+        encoding="utf-8",
+    )
     return {
         "row_count": len(rows),
         "output_path": str(output),
@@ -117,8 +121,8 @@ def write_event_training_dataset(
 
 def load_event_training_dataset(
     path: str | Path,
-    intervention_actions: Optional[Iterable[str]] = None,
-) -> Tuple[List[OfflineScenario], Dict[str, object]]:
+    intervention_actions: Iterable[str] | None = None,
+) -> tuple[list[OfflineScenario], dict[str, object]]:
     """Load optimization/RL scenarios from SUMO/TraCI event-derived rows.
 
     Strict loader: rows sem o SREM original, sem o estado SPATEM-derivado, com
@@ -137,19 +141,23 @@ def load_event_training_dataset(
 
     raw_rows = list(_read_jsonl(Path(path)))
     raw_rows.sort(key=lambda row: _float(row.get("timestamp_s") or 0.0))
-    last_applied_intervention_by_tls: Dict[str, float] = {}
+    last_applied_intervention_by_tls: dict[str, float] = {}
     intervention_actions = (
         set(intervention_actions)
         if intervention_actions is not None
         else set(DEFAULT_ACTUATING_ACTIONS)
     )
 
-    scenarios: List[OfflineScenario] = []
+    scenarios: list[OfflineScenario] = []
     skipped_by_reason: Counter[str] = Counter()
     for index, row in enumerate(raw_rows):
         request_payload = row.get("request") if isinstance(row.get("request"), dict) else {}
-        signal_payload = row.get("signal_state") if isinstance(row.get("signal_state"), dict) else {}
-        network_state = row.get("network_state") if isinstance(row.get("network_state"), dict) else {}
+        signal_payload = (
+            row.get("signal_state") if isinstance(row.get("signal_state"), dict) else {}
+        )
+        network_state = (
+            row.get("network_state") if isinstance(row.get("network_state"), dict) else {}
+        )
         if not request_payload or not signal_payload or not network_state:
             skipped_by_reason["missing_request_signal_or_network_state"] += 1
             _maybe_record_intervention(row, last_applied_intervention_by_tls, intervention_actions)
@@ -171,7 +179,9 @@ def load_event_training_dataset(
         scenario_id = str(row.get("decision_id") or row.get("request_id") or f"event_{index}")
         tls_id = str(row.get("tls_id") or request.tls_id)
         last_intervention = last_applied_intervention_by_tls.get(tls_id)
-        seconds_since = None if last_intervention is None else max(0.0, timestamp_s - last_intervention)
+        seconds_since = (
+            None if last_intervention is None else max(0.0, timestamp_s - last_intervention)
+        )
         scenarios.append(
             OfflineScenario(
                 scenario_id=f"EVENT_{scenario_id}",
@@ -188,13 +198,15 @@ def load_event_training_dataset(
                 occupancy=network_metrics["occupancy"],
                 spillback_risk=network_metrics["spillback_risk"],
                 seconds_since_last_intervention_s=seconds_since,
-                behavior_policy_action=(str(row["action"]) if row.get("action") is not None else None),
+                behavior_policy_action=(
+                    str(row["action"]) if row.get("action") is not None else None
+                ),
                 realized_outcome=_optional_float(row.get("realized_outcome")),
             )
         )
         _maybe_record_intervention(row, last_applied_intervention_by_tls, intervention_actions)
 
-    load_report: Dict[str, object] = {
+    load_report: dict[str, object] = {
         "source_path": str(path),
         "row_count": len(raw_rows),
         "scenario_count": len(scenarios),
@@ -206,14 +218,14 @@ def load_event_training_dataset(
 
 def load_event_training_scenarios(
     path: str | Path,
-    intervention_actions: Optional[Iterable[str]] = None,
-) -> List[OfflineScenario]:
+    intervention_actions: Iterable[str] | None = None,
+) -> list[OfflineScenario]:
     """Backward-compatible wrapper that discards the load report."""
     scenarios, _ = load_event_training_dataset(path, intervention_actions)
     return scenarios
 
 
-def _network_metrics(network_state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _network_metrics(network_state: dict[str, Any]) -> dict[str, Any] | None:
     try:
         return {
             "active_request_count": int(network_state["active_request_count"]),
@@ -229,8 +241,8 @@ def _network_metrics(network_state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def _maybe_record_intervention(
-    row: Dict[str, Any],
-    tracker: Dict[str, float],
+    row: dict[str, Any],
+    tracker: dict[str, float],
     intervention_actions: set[str],
 ) -> None:
     if not bool(row.get("applied")):
@@ -245,10 +257,10 @@ def _maybe_record_intervention(
     tracker[tls_id] = ts
 
 
-def _read_jsonl(path: Path) -> Iterable[Dict[str, Any]]:
+def _read_jsonl(path: Path) -> Iterable[dict[str, Any]]:
     if not path.exists():
         return []
-    rows: List[Dict[str, Any]] = []
+    rows: list[dict[str, Any]] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
@@ -256,7 +268,9 @@ def _read_jsonl(path: Path) -> Iterable[Dict[str, Any]]:
     return rows
 
 
-def _latest_spatem(spatem_rows: List[Dict[str, Any]], tls_id: str, timestamp_s: float) -> Dict[str, Any]:
+def _latest_spatem(
+    spatem_rows: list[dict[str, Any]], tls_id: str, timestamp_s: float
+) -> dict[str, Any]:
     candidates = [
         item
         for item in spatem_rows
@@ -267,7 +281,7 @@ def _latest_spatem(spatem_rows: List[Dict[str, Any]], tls_id: str, timestamp_s: 
     return max(candidates, key=_message_time_s)
 
 
-def _correlation_token_from_payload(payload: Dict[str, Any]) -> str:
+def _correlation_token_from_payload(payload: dict[str, Any]) -> str:
     """Reconstrói o `correlation_token` (station:request:seq) de um SREM JSONL."""
     station_id = payload.get("station_id")
     requests = payload.get("requests") or []
@@ -277,7 +291,7 @@ def _correlation_token_from_payload(payload: Dict[str, Any]) -> str:
     return f"{station_id}:{requests[0].get('request_id')}:{sequence_number}"
 
 
-def _srem_from_payload(payload: Dict[str, Any]) -> SREMLike:
+def _srem_from_payload(payload: dict[str, Any]) -> SREMLike:
     """Reconstrói um SREMLike validado a partir do JSONL serializado."""
     message = _CITS_CODEC.decode(payload)
     if not isinstance(message, SREMLike):
@@ -285,14 +299,12 @@ def _srem_from_payload(payload: Dict[str, Any]) -> SREMLike:
     return message
 
 
-def _signal_state_from_payload(payload: Dict[str, Any], request: SREMLike) -> SignalState:
+def _signal_state_from_payload(payload: dict[str, Any], request: SREMLike) -> SignalState:
     spatem = _spatem_from_payload(payload)
     controlled_lanes = payload.get("controlled_lanes")
     # O SPATEM novo tem `intersection_alias` em vez de `intersection_id`.
     intersection_alias = (
-        spatem.intersection_alias
-        or payload.get("intersection_id")
-        or request.intersection_id
+        spatem.intersection_alias or payload.get("intersection_id") or request.intersection_id
     )
     return SignalState(
         intersection_id=str(intersection_alias),
@@ -303,21 +315,23 @@ def _signal_state_from_payload(payload: Dict[str, Any], request: SREMLike) -> Si
         if payload.get("current_phase_index") is not None
         else None,
         current_program_id=_optional_text(payload.get("current_program_id")),
-        red_yellow_green_state=_optional_text(spatem.debug_sumo_state or payload.get("red_yellow_green_state")),
+        red_yellow_green_state=_optional_text(
+            spatem.debug_sumo_state or payload.get("red_yellow_green_state")
+        ),
         next_switch_s=_optional_float(payload.get("next_switch_s")),
         spent_duration_s=_optional_float(payload.get("spent_duration_s")),
         controlled_lanes=list(controlled_lanes) if isinstance(controlled_lanes, list) else [],
     )
 
 
-def _spatem_from_payload(payload: Dict[str, Any]) -> SPATEMLike:
+def _spatem_from_payload(payload: dict[str, Any]) -> SPATEMLike:
     message = _CITS_CODEC.decode(payload)
     if not isinstance(message, SPATEMLike):
         raise ProtocolCodecError(f"Expected SPATEM payload, got {message.message_type!r}")
     return message
 
 
-def _merge_signal_context(signal_payload: Dict[str, Any], row: Dict[str, Any]) -> Dict[str, Any]:
+def _merge_signal_context(signal_payload: dict[str, Any], row: dict[str, Any]) -> dict[str, Any]:
     merged = dict(signal_payload)
     for key in (
         "current_phase_index",
@@ -334,15 +348,15 @@ def _merge_signal_context(signal_payload: Dict[str, Any], row: Dict[str, Any]) -
     return merged
 
 
-def _network_state_from_notes(notes: Any) -> Dict[str, Any]:
+def _network_state_from_notes(notes: Any) -> dict[str, Any]:
     if not isinstance(notes, list):
         return {}
     prefix = "network_state="
     for note in notes:
         if not isinstance(note, str) or not note.startswith(prefix):
             continue
-        payload: Dict[str, Any] = {}
-        for item in note[len(prefix):].split(","):
+        payload: dict[str, Any] = {}
+        for item in note[len(prefix) :].split(","):
             if ":" not in item:
                 continue
             key, value = item.split(":", 1)
@@ -379,7 +393,7 @@ def _float(value: Any) -> float:
     return float(value)
 
 
-def _message_time_s(payload: Dict[str, Any]) -> float:
+def _message_time_s(payload: dict[str, Any]) -> float:
     if payload.get("timestamp_s") is not None:
         return _float(payload.get("timestamp_s"))
     if payload.get("moy") is not None and payload.get("timestamp_ms") is not None:
@@ -387,13 +401,13 @@ def _message_time_s(payload: Dict[str, Any]) -> float:
     return 0.0
 
 
-def _optional_float(value: Any) -> Optional[float]:
+def _optional_float(value: Any) -> float | None:
     if value is None:
         return None
     return float(value)
 
 
-def _optional_text(value: Any) -> Optional[str]:
+def _optional_text(value: Any) -> str | None:
     if value is None:
         return None
     return str(value)

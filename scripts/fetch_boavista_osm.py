@@ -14,14 +14,15 @@ Bounding box: derived from Nominatim-sourced corridor endpoints
 expanded with a small margin -> (S, W, N, E) = (41.156, -8.692, 41.170, -8.627).
 OSM is a live database; the SHA-256 below pins the exact snapshot we used.
 """
+
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
-from pathlib import Path
 import shutil
 import subprocess
+from pathlib import Path
 
 BBOX_S, BBOX_W, BBOX_N, BBOX_E = 41.156, -8.692, 41.170, -8.627
 DRIVABLE = (
@@ -78,15 +79,33 @@ def _download(out: Path) -> None:
         # --fail: without it curl exits 0 on HTTP errors, saving the error body as if it
         # were data, and --retry-all-errors never sees HTTP-level errors to retry.
         result = subprocess.run(
-            ["curl", "-sS", "--fail", "--max-time", "90", "--retry", "2", "--retry-all-errors",
-             "-A", USER_AGENT, "-o", str(tmp), endpoint, "--data-urlencode", f"data={OVERPASS_QUERY}"],
-            capture_output=True, text=True,
+            [
+                "curl",
+                "-sS",
+                "--fail",
+                "--max-time",
+                "90",
+                "--retry",
+                "2",
+                "--retry-all-errors",
+                "-A",
+                USER_AGENT,
+                "-o",
+                str(tmp),
+                endpoint,
+                "--data-urlencode",
+                f"data={OVERPASS_QUERY}",
+            ],
+            capture_output=True,
+            text=True,
         )
         if result.returncode == 0 and tmp.exists() and _is_valid_osm(tmp.read_bytes()):
             tmp.replace(out)
             return
     tmp.unlink(missing_ok=True)
-    raise SystemExit("Overpass fetch failed on all endpoints (try again later; servers can be busy)")
+    raise SystemExit(
+        "Overpass fetch failed on all endpoints (try again later; servers can be busy)"
+    )
 
 
 def fetch(out_dir: Path, allow_drift: bool = False) -> Path:
@@ -114,7 +133,9 @@ def fetch(out_dir: Path, allow_drift: bool = False) -> Path:
                 message + " Re-run with --allow-drift to reproduce on the current geometry, "
                 "then update EXPECTED_SHA256 to re-pin."
             )
-        print("WARNING: " + message + " Proceeding (--allow-drift); update EXPECTED_SHA256 to re-pin.")
+        print(
+            "WARNING: " + message + " Proceeding (--allow-drift); update EXPECTED_SHA256 to re-pin."
+        )
 
     provenance = {
         "source": "OpenStreetMap via Overpass API",
@@ -135,11 +156,16 @@ def fetch(out_dir: Path, allow_drift: bool = False) -> Path:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--out-dir", type=Path, default=ROOT / ".tools" / "boavista-osm")
-    parser.add_argument("--allow-drift", action="store_true",
-                        help="proceed if the live OSM extract no longer matches the pinned sha "
-                             "(reproduce the pipeline on the current Boavista geometry)")
+    parser.add_argument(
+        "--allow-drift",
+        action="store_true",
+        help="proceed if the live OSM extract no longer matches the pinned sha "
+        "(reproduce the pipeline on the current Boavista geometry)",
+    )
     args = parser.parse_args()
     fetch(args.out_dir, allow_drift=args.allow_drift)
 

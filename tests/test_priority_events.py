@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Testes do PriorityEventManager (v2.2, lifecycle check-in/check-out)."""
+
 from __future__ import annotations
 
-from pathlib import Path
 import sys
 import unittest
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -31,24 +32,24 @@ class _RecordingSignalControl:
 
 
 def _extension_decision(**overrides) -> TSPDecision:
-    payload = dict(
-        timestamp_s=100.0,
-        request_id="r1",
-        vehicle_id="bus_1",
-        intersection_id="I2",
-        tls_id="I2",
-        rsu_id="RSU",
-        action="green_extension",
-        status="approved",
-        reason="extend",
-        priority_score=0.5,
-        eta_to_stopline_s=16.0,
-        schedule_delay_s=60.0,
-        headway_deviation_s=0.0,
-        current_phase_index=0,
-        current_next_switch_s=110.0,
-        extension_s=4.0,
-    )
+    payload = {
+        "timestamp_s": 100.0,
+        "request_id": "r1",
+        "vehicle_id": "bus_1",
+        "intersection_id": "I2",
+        "tls_id": "I2",
+        "rsu_id": "RSU",
+        "action": "green_extension",
+        "status": "approved",
+        "reason": "extend",
+        "priority_score": 0.5,
+        "eta_to_stopline_s": 16.0,
+        "schedule_delay_s": 60.0,
+        "headway_deviation_s": 0.0,
+        "current_phase_index": 0,
+        "current_next_switch_s": 110.0,
+        "extension_s": 4.0,
+    }
     payload.update(overrides)
     return TSPDecision(**payload)
 
@@ -67,7 +68,9 @@ def _state(tls_id: str = "I2", phase: int = 0, *, next_switch_s, spent_s=5.0) ->
     )
 
 
-def _cleared_store(vehicle_id: str = "bus_1", tls_id: str = "I2", status: str = "cleared") -> PriorityRequestStore:
+def _cleared_store(
+    vehicle_id: str = "bus_1", tls_id: str = "I2", status: str = "cleared"
+) -> PriorityRequestStore:
     request = synth_srem(
         sim_time_s=100.0,
         vehicle_id=vehicle_id,

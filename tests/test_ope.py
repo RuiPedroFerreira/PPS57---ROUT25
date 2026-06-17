@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """P4 off-policy evaluation substrate + shared stats parity."""
+
 from __future__ import annotations
 
-from pathlib import Path
 import sys
 import unittest
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -100,7 +101,9 @@ class StatsParityTestCase(unittest.TestCase):
     def test_mean_ci95_matches_run_sumo_scenario_alias(self) -> None:
         import importlib.util
 
-        spec = importlib.util.spec_from_file_location("rss_stats", ROOT / "scripts" / "run_sumo_scenario.py")
+        spec = importlib.util.spec_from_file_location(
+            "rss_stats", ROOT / "scripts" / "run_sumo_scenario.py"
+        )
         rss = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(rss)
         values = [10.0, 12.0, 11.0, 9.0, 13.0]

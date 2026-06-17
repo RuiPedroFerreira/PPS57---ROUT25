@@ -24,10 +24,11 @@ stopline), devolvendo o verde não usado à transversal. Aqui:
 Opt-in por config: ``actuation.priority_event_lifecycle_enabled``; com o flag
 ausente o comportamento é byte-idêntico (sem eventos, decisão one-shot v2.1).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from pps57_cits.config import CITSConfig
 from pps57_cits.models import SignalState
@@ -59,7 +60,7 @@ class ActivePriorityEvent:
 class PriorityEventManager:
     cits_config: CITSConfig
     tsp_config: TSPConfig
-    events_by_key: Dict[str, ActivePriorityEvent] = field(default_factory=dict)
+    events_by_key: dict[str, ActivePriorityEvent] = field(default_factory=dict)
     opened_count: int = 0
     closed_natural_count: int = 0
     checkout_termination_count: int = 0
@@ -70,8 +71,8 @@ class PriorityEventManager:
         return bool(self.tsp_config.actuation.get("priority_event_lifecycle_enabled", False))
 
     def active_event(
-        self, tls_id: str, vehicle_id: str, phase_index: Optional[int]
-    ) -> Optional[ActivePriorityEvent]:
+        self, tls_id: str, vehicle_id: str, phase_index: int | None
+    ) -> ActivePriorityEvent | None:
         """Evento ativo para (tls, veículo) na MESMA fase, ou None.
 
         A fase tem de coincidir: se a fase avançou, o evento antigo já não
@@ -113,16 +114,16 @@ class PriorityEventManager:
 
     def step(
         self,
-        signal_states: Dict[str, SignalState],
+        signal_states: dict[str, SignalState],
         request_store: PriorityRequestStore,
         signal_control: SignalControlAdapter,
-        safety: "TSPSafetyLayer",
-        compensation: "GreenCompensationManager",
+        safety: TSPSafetyLayer,
+        compensation: GreenCompensationManager,
         sim_time_s: float,
         *,
         apply_actuation: bool,
-        skip_tls: Optional[set] = None,
-    ) -> List[ActuationResult]:
+        skip_tls: set | None = None,
+    ) -> list[ActuationResult]:
         """Fecha eventos: check-out devolve verde não usado; fase avançada fecha.
 
         ``skip_tls``: TLS comandados neste passo (TSP ou compensação) ficam de
@@ -132,7 +133,7 @@ class PriorityEventManager:
         """
         if not self.enabled:
             return []
-        results: List[ActuationResult] = []
+        results: list[ActuationResult] = []
         for key, event in list(self.events_by_key.items()):
             state = signal_states.get(event.tls_id)
             if state is None:
@@ -153,7 +154,12 @@ class PriorityEventManager:
                 # caso em que a fase entretanto termina).
                 continue
             result = self._terminate_at_checkout(
-                event, state, signal_control, safety, compensation, sim_time_s,
+                event,
+                state,
+                signal_control,
+                safety,
+                compensation,
+                sim_time_s,
                 apply_actuation=apply_actuation,
             )
             del self.events_by_key[key]
@@ -167,12 +173,12 @@ class PriorityEventManager:
         event: ActivePriorityEvent,
         state: SignalState,
         signal_control: SignalControlAdapter,
-        safety: "TSPSafetyLayer",
-        compensation: "GreenCompensationManager",
+        safety: TSPSafetyLayer,
+        compensation: GreenCompensationManager,
         sim_time_s: float,
         *,
         apply_actuation: bool,
-    ) -> Optional[ActuationResult]:
+    ) -> ActuationResult | None:
         current_remaining_s = max(0.0, float(state.next_switch_s) - sim_time_s)
         # Invariante de segurança: repõe o fim ORIGINAL da fase, nunca antes —
         # a fase nunca fica mais curta do que o plano base já a fazia.
@@ -205,7 +211,7 @@ class PriorityEventManager:
             },
         )
 
-    def summary(self) -> Dict[str, object]:
+    def summary(self) -> dict[str, object]:
         return {
             "enabled": self.enabled,
             "opened": self.opened_count,

@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Tests for P2 state enrichment: configurable ETA, real back-of-queue, spillback."""
+
 from __future__ import annotations
 
 import copy
-from dataclasses import replace
-from pathlib import Path
 import sys
 import unittest
+from dataclasses import replace
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -19,18 +20,18 @@ from pps57_cits.traci_adapter import TraciSimulationAdapter
 
 
 def make_obs(**overrides) -> VehicleObservation:
-    base = dict(
-        vehicle_id="bus_1",
-        vehicle_class="bus",
-        type_id="bus_12m",
-        line_id="STCP500_PROXY_W",
-        route_id="r",
-        edge_id="I1_I2",
-        lane_id="I1_I2_0",
-        lane_position_m=550.0,
-        lane_length_m=650.0,
-        speed_mps=10.0,
-    )
+    base = {
+        "vehicle_id": "bus_1",
+        "vehicle_class": "bus",
+        "type_id": "bus_12m",
+        "line_id": "STCP500_PROXY_W",
+        "route_id": "r",
+        "edge_id": "I1_I2",
+        "lane_id": "I1_I2_0",
+        "lane_position_m": 550.0,
+        "lane_length_m": 650.0,
+        "speed_mps": 10.0,
+    }
     base.update(overrides)
     return VehicleObservation(**base)
 
@@ -50,7 +51,9 @@ class EtaParamsTestCase(unittest.TestCase):
         self.assertAlmostEqual(obs.eta_to_stopline_s, expected)
 
     def test_custom_eta_params_change_result(self) -> None:
-        slow = make_obs(speed_mps=0.0, waiting_time_s=999.0, eta_params=EtaParams(waiting_cap_s=30.0))
+        slow = make_obs(
+            speed_mps=0.0, waiting_time_s=999.0, eta_params=EtaParams(waiting_cap_s=30.0)
+        )
         distance = slow.distance_to_stopline_m
         expected = distance / 8.0 + 0.0 + min(999.0, 30.0)
         self.assertAlmostEqual(slow.eta_to_stopline_s, expected)
@@ -121,7 +124,10 @@ class AdapterConfigWiringTestCase(unittest.TestCase):
 
     def test_malformed_scalar_falls_back_to_default(self) -> None:
         raw = copy.deepcopy(self.config.raw)
-        raw["state_estimation"] = {"eta_free_flow_speed_mps": "oops", "spillback_occupancy_threshold": "bad"}
+        raw["state_estimation"] = {
+            "eta_free_flow_speed_mps": "oops",
+            "spillback_occupancy_threshold": "bad",
+        }
         adapter = TraciSimulationAdapter(replace(self.config, raw=raw))
         self.assertEqual(adapter._eta_params.free_flow_speed_mps, 8.0)
         self.assertEqual(adapter._spillback_occupancy, 0.75)

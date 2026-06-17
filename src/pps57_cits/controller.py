@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """C-ITS/V2X emulation controller."""
+
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
-from typing import Dict, Iterable, List, Optional
+from collections.abc import Iterable
+from dataclasses import dataclass
 
 from .broker import InMemoryMessageBroker
 from .config import CITSConfig
@@ -27,16 +28,20 @@ class CITSEmulationController:
         )
         self.obu = OBUEmulator(self.config)
         self.rsu_agents = build_rsu_agents(self.config)
-        self.publish_codec_failures: Dict[str, int] = {}
+        self.publish_codec_failures: dict[str, int] = {}
 
-    def run_with_sumo(self, steps: Optional[int] = None, sumo_binary: str = "sumo", gui: bool = False) -> Dict[str, object]:
+    def run_with_sumo(
+        self, steps: int | None = None, sumo_binary: str = "sumo", gui: bool = False
+    ) -> dict[str, object]:
         """Executa a emulação ligada ao SUMO via TraCI.
 
         Este método exige SUMO instalado e a rede já compilada com netconvert.
         """
         adapter = TraciSimulationAdapter(self.config, sumo_binary=sumo_binary, gui=gui)
         summary = IncrementalCITSSummary()
-        log_path = self.config.path_from_root(self.config.logging.get("message_log", "outputs/cits_messages.jsonl"))
+        log_path = self.config.path_from_root(
+            self.config.logging.get("message_log", "outputs/cits_messages.jsonl")
+        )
 
         adapter.start()  # propaga TraciUnavailableError
 
@@ -48,7 +53,7 @@ class CITSEmulationController:
                 mapem = build_mapem_messages(self.config, sim_time_s=0.0)
                 self._publish_log_collect(mapem, logger, summary)
                 self._write_snapshots(mapem, [])
-                latest_spatem: List[CITSMessage] = []
+                latest_spatem: list[CITSMessage] = []
 
                 step_count = 0
                 while adapter.min_expected_number() > 0:
@@ -84,7 +89,9 @@ class CITSEmulationController:
         finally:
             adapter.close()
 
-        summary_path = self.config.path_from_root(self.config.logging.get("summary_report", "reports/cits_emulation_summary.json"))
+        summary_path = self.config.path_from_root(
+            self.config.logging.get("summary_report", "reports/cits_emulation_summary.json")
+        )
         return write_summary_dict(
             summary_path,
             summary.to_dict(),
@@ -121,17 +128,27 @@ class CITSEmulationController:
             self.broker.publish(message)
             summary.add(message)
 
-    def _process_rsu_queues(self, sim_time_s: float) -> List[SSEMLike]:
-        responses: List[SSEMLike] = []
+    def _process_rsu_queues(self, sim_time_s: float) -> list[SSEMLike]:
+        responses: list[SSEMLike] = []
         for rsu_id, agent in self.rsu_agents.items():
             messages = self.broker.consume(rsu_id)
             responses.extend(agent.handle_messages(messages, sim_time_s))
         return responses
 
-    def _write_snapshots(self, mapem: List[CITSMessage], spatem: List[CITSMessage]) -> None:
-        mapem_path = self.config.path_from_root(self.config.logging.get("mapem_snapshot", "outputs/cits_mapem_snapshot.json"))
-        spatem_path = self.config.path_from_root(self.config.logging.get("spatem_snapshot", "outputs/cits_spatem_snapshot.json"))
+    def _write_snapshots(self, mapem: list[CITSMessage], spatem: list[CITSMessage]) -> None:
+        mapem_path = self.config.path_from_root(
+            self.config.logging.get("mapem_snapshot", "outputs/cits_mapem_snapshot.json")
+        )
+        spatem_path = self.config.path_from_root(
+            self.config.logging.get("spatem_snapshot", "outputs/cits_spatem_snapshot.json")
+        )
         mapem_path.parent.mkdir(parents=True, exist_ok=True)
         spatem_path.parent.mkdir(parents=True, exist_ok=True)
-        mapem_path.write_text(json.dumps([message.to_dict() for message in mapem], indent=2, ensure_ascii=False), encoding="utf-8")
-        spatem_path.write_text(json.dumps([message.to_dict() for message in spatem], indent=2, ensure_ascii=False), encoding="utf-8")
+        mapem_path.write_text(
+            json.dumps([message.to_dict() for message in mapem], indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        spatem_path.write_text(
+            json.dumps([message.to_dict() for message in spatem], indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )

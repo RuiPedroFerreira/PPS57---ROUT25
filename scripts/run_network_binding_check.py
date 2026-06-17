@@ -21,6 +21,7 @@ group the network genuinely leaves without foe data still fail-closes. Safety
 remains the final gate. Evidence is written to
 ``docs/validation/networkbinding_boavista_check.json``.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -37,6 +38,7 @@ for entry in (str(SRC), str(SCRIPTS)):
         sys.path.insert(0, entry)
 
 from _evidence_common import auto_discovery_cits_config, auto_tsp_config  # noqa: E402
+
 from pps57_sumo.network_binding import build_network_binding  # noqa: E402
 from pps57_tsp.signal_control import (  # noqa: E402
     ControllerContract,
@@ -59,17 +61,27 @@ def _fail_close_groups(contracts) -> list[dict]:
     for contract in contracts:
         for group in contract.signal_groups.values():
             if signal_group_lacks_conflict_matrix(group):
-                tripped.append({"tls_id": contract.tls_id, "signal_group_id": group.signal_group_id})
+                tripped.append(
+                    {"tls_id": contract.tls_id, "signal_group_id": group.signal_group_id}
+                )
     return tripped
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--net", type=Path, default=WORK / "boavista.net.xml")
-    parser.add_argument("--out", type=Path, default=ROOT / "docs" / "validation" / "networkbinding_boavista_check.json")
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=ROOT / "docs" / "validation" / "networkbinding_boavista_check.json",
+    )
     args = parser.parse_args()
     if not args.net.exists():
-        raise SystemExit(f"Missing {args.net}. Run the V4 build first (scripts/build_boavista_network.py).")
+        raise SystemExit(
+            f"Missing {args.net}. Run the V4 build first (scripts/build_boavista_network.py)."
+        )
 
     cits = auto_discovery_cits_config(args.net)
     tsp = auto_tsp_config(ROOT)
@@ -107,15 +119,20 @@ def main() -> None:
         ],
         "fail_close_groups_before_sample": before[:20],
         "fail_close_groups_after": after,
-        "verdict": "pass" if (len(before) > 0 and len(after) == 0) else (
-            "noop" if len(before) == 0 else "review"),
+        "verdict": "pass"
+        if (len(before) > 0 and len(after) == 0)
+        else ("noop" if len(before) == 0 else "review"),
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+    args.out.write_text(
+        json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
     print(f"NetworkBinding check — {len(contracts)} TLS, {total_groups} signal groups")
-    print(f"  fail-close groups: before={len(before)}  after={len(after)}  "
-          f"(binding coverage {coverage['coverage_fraction']*100:.1f}%)")
+    print(
+        f"  fail-close groups: before={len(before)}  after={len(after)}  "
+        f"(binding coverage {coverage['coverage_fraction'] * 100:.1f}%)"
+    )
     print(f"  verdict: {report['verdict']}  -> {args.out}")
     if report["verdict"] == "review":
         raise SystemExit(1)

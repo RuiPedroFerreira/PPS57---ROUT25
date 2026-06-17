@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Compare SUMO KPI JSON files for baseline vs RL runs."""
+
 from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"

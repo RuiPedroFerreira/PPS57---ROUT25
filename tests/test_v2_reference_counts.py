@@ -8,11 +8,12 @@ about Porto: this suite proves the V2 instrument parses real payloads correctly
 and applies the documented plausibility gate, nothing more. The real Madrid/DfT
 numbers live only in the fetched payloads and the committed evidence report.
 """
+
 from __future__ import annotations
 
-from pathlib import Path
 import sys
 import unittest
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -20,7 +21,6 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from pps57_sumo.validation import reference_counts as rc  # noqa: E402
-
 
 MADRID_XML = (
     "﻿<pms>\n"
@@ -44,8 +44,18 @@ DFT_PAYLOAD = {
     "data": [
         {"local_authority_id": 3, "road_category": "PA", "year": 2024, "all_motor_vehicles": 1000},
         {"local_authority_id": 3, "road_category": "TA", "year": 2024, "all_motor_vehicles": 2000},
-        {"local_authority_id": 3, "road_category": "TM", "year": 2024, "all_motor_vehicles": 9999},  # motorway: excluded
-        {"local_authority_id": 3, "road_category": "PA", "year": 2019, "all_motor_vehicles": 500},   # wrong year
+        {
+            "local_authority_id": 3,
+            "road_category": "TM",
+            "year": 2024,
+            "all_motor_vehicles": 9999,
+        },  # motorway: excluded
+        {
+            "local_authority_id": 3,
+            "road_category": "PA",
+            "year": 2019,
+            "all_motor_vehicles": 500,
+        },  # wrong year
     ]
 }
 

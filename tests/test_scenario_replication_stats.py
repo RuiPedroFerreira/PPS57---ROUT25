@@ -2,21 +2,24 @@
 """Testa as estatísticas de réplicas multi-seed do runner de cenários:
 intervalo de confiança 95% (t de Student) e teste de significância emparelhado
 por seed sobre o KPI de timeLoss dos autocarros."""
+
 from __future__ import annotations
 
 import importlib.util
 import json
-from pathlib import Path
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-_SPEC = importlib.util.spec_from_file_location("run_sumo_scenario", ROOT / "scripts" / "run_sumo_scenario.py")
+_SPEC = importlib.util.spec_from_file_location(
+    "run_sumo_scenario", ROOT / "scripts" / "run_sumo_scenario.py"
+)
 rss = importlib.util.module_from_spec(_SPEC)
 assert _SPEC and _SPEC.loader
 _SPEC.loader.exec_module(rss)
@@ -65,7 +68,9 @@ class PairedSignificanceTestCase(unittest.TestCase):
             tmp_path = Path(tmp)
             base = self._run_with_seeds(tmp_path, "b", {57: 40, 58: 42, 59: 41, 60: 39, 61: 43})
             cand = self._run_with_seeds(tmp_path, "c", {57: 30, 58: 31, 59: 29, 60: 32, 61: 28})
-            sig = rss._paired_significance(base, cand, "buses", "mean_time_loss_s", lower_is_better=True)
+            sig = rss._paired_significance(
+                base, cand, "buses", "mean_time_loss_s", lower_is_better=True
+            )
         self.assertIsNotNone(sig)
         self.assertEqual(sig["verdict"], "significant_improvement")
         self.assertEqual(sig["n"], 5)
@@ -77,7 +82,9 @@ class PairedSignificanceTestCase(unittest.TestCase):
             # melhorias mistas em torno de zero -> IC95 inclui zero
             base = self._run_with_seeds(tmp_path, "b", {57: 40, 58: 40, 59: 40, 60: 40, 61: 40})
             cand = self._run_with_seeds(tmp_path, "c", {57: 41, 58: 39, 59: 42, 60: 38, 61: 40})
-            sig = rss._paired_significance(base, cand, "buses", "mean_time_loss_s", lower_is_better=True)
+            sig = rss._paired_significance(
+                base, cand, "buses", "mean_time_loss_s", lower_is_better=True
+            )
         self.assertIsNotNone(sig)
         self.assertEqual(sig["verdict"], "inconclusive_ci_includes_zero")
 
@@ -87,7 +94,9 @@ class PairedSignificanceTestCase(unittest.TestCase):
             base = self._run_with_seeds(tmp_path, "b", {57: 40, 58: 42})
             cand = self._run_with_seeds(tmp_path, "c", {99: 30})  # nenhum seed comum
             self.assertIsNone(
-                rss._paired_significance(base, cand, "buses", "mean_time_loss_s", lower_is_better=True)
+                rss._paired_significance(
+                    base, cand, "buses", "mean_time_loss_s", lower_is_better=True
+                )
             )
 
     def test_single_seed_runs_have_no_significance_block(self) -> None:
@@ -120,8 +129,16 @@ class RelativeInsertionGateTestCase(unittest.TestCase):
         }
         reasons = ["sumo_max_waiting_to_insert_gt_threshold"] if reasons is None else reasons
         runs = {
-            "baseline": {"seed": 57, "kpis": "base.json", "run_verdict": {"status": "pass", "reasons": []}},
-            "tsp_actuation": {"seed": 57, "kpis": "cand.json", "run_verdict": {"status": "fail", "reasons": list(reasons)}},
+            "baseline": {
+                "seed": 57,
+                "kpis": "base.json",
+                "run_verdict": {"status": "pass", "reasons": []},
+            },
+            "tsp_actuation": {
+                "seed": 57,
+                "kpis": "cand.json",
+                "run_verdict": {"status": "fail", "reasons": list(reasons)},
+            },
         }
         return runs, store
 
@@ -146,7 +163,9 @@ class RelativeInsertionGateTestCase(unittest.TestCase):
         )
         rss.apply_relative_insertion_gate(runs, load_kpis=store.get)
         self.assertEqual(runs["tsp_actuation"]["run_verdict"]["status"], "fail")
-        self.assertEqual(runs["tsp_actuation"]["run_verdict"]["reasons"], ["sumo_collisions_gt_threshold"])
+        self.assertEqual(
+            runs["tsp_actuation"]["run_verdict"]["reasons"], ["sumo_collisions_gt_threshold"]
+        )
 
     def test_baseline_keeps_absolute_gate(self) -> None:
         # O gate absoluto do baseline não é relativizado (validade material).
@@ -155,7 +174,10 @@ class RelativeInsertionGateTestCase(unittest.TestCase):
             "baseline": {
                 "seed": 57,
                 "kpis": "base.json",
-                "run_verdict": {"status": "fail", "reasons": ["sumo_max_waiting_to_insert_gt_threshold"]},
+                "run_verdict": {
+                    "status": "fail",
+                    "reasons": ["sumo_max_waiting_to_insert_gt_threshold"],
+                },
             }
         }
         rss.apply_relative_insertion_gate(runs, load_kpis=store.get)
@@ -167,7 +189,10 @@ class RelativeInsertionGateTestCase(unittest.TestCase):
             "run_verdict": {"status": "pass", "reasons": []},
             "replication_summaries": [
                 {"seed": 57, "run_verdict": {"status": "pass", "reasons": []}},
-                {"seed": 58, "run_verdict": {"status": "fail", "reasons": ["sumo_teleports_gt_threshold"]}},
+                {
+                    "seed": 58,
+                    "run_verdict": {"status": "fail", "reasons": ["sumo_teleports_gt_threshold"]},
+                },
             ],
         }
         rss.apply_relative_insertion_gate({"baseline": run}, load_kpis=lambda _: None)

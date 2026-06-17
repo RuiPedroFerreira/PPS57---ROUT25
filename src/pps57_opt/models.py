@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Modelos para avaliação offline de políticas TSP otimizadas."""
+
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
 import json
-from typing import Any, Dict, List, Optional
+from dataclasses import asdict, dataclass, field
+from typing import Any
 
 from pps57_tsp.models import TSPDecision
 
@@ -19,8 +20,8 @@ class OfflineScenario:
     signal_state: Any
     # M7: estado inicial opcional para exercitar caminhos com estado na Safety
     # Layer (cooldown, consecutive_interventions). Cada chave mapeia tls_id -> valor.
-    initial_last_intervention_time_by_tls: Dict[str, float] = field(default_factory=dict)
-    initial_consecutive_interventions_by_tls: Dict[str, int] = field(default_factory=dict)
+    initial_last_intervention_time_by_tls: dict[str, float] = field(default_factory=dict)
+    initial_consecutive_interventions_by_tls: dict[str, int] = field(default_factory=dict)
     active_request_count: int = 1
     queue_vehicle_count: int = 0
     halted_vehicle_count: int = 0
@@ -28,15 +29,15 @@ class OfflineScenario:
     waiting_time_s: float = 0.0
     occupancy: float = 0.0
     spillback_risk: bool = False
-    seconds_since_last_intervention_s: Optional[float] = None
+    seconds_since_last_intervention_s: float | None = None
     # P4 (OPE inputs). behavior_policy_action: ação que a política em execução
     # de facto tomou no log (a "behavior policy"). realized_outcome: KPI por-
     # decisão observado, quando existir no event row — hoje ausente no corpus,
     # logo None e o OPE devolve honestamente "inconclusive_without_outcomes".
-    behavior_policy_action: Optional[str] = None
-    realized_outcome: Optional[float] = None
+    behavior_policy_action: str | None = None
+    realized_outcome: float | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "scenario_id": self.scenario_id,
             "description": self.description,
@@ -44,8 +45,12 @@ class OfflineScenario:
             "sim_time_s": self.sim_time_s,
             "request": self.request.to_dict(),
             "signal_state": asdict(self.signal_state),
-            "initial_last_intervention_time_by_tls": dict(self.initial_last_intervention_time_by_tls),
-            "initial_consecutive_interventions_by_tls": dict(self.initial_consecutive_interventions_by_tls),
+            "initial_last_intervention_time_by_tls": dict(
+                self.initial_last_intervention_time_by_tls
+            ),
+            "initial_consecutive_interventions_by_tls": dict(
+                self.initial_consecutive_interventions_by_tls
+            ),
             "active_request_count": self.active_request_count,
             "queue_vehicle_count": self.queue_vehicle_count,
             "halted_vehicle_count": self.halted_vehicle_count,
@@ -70,13 +75,13 @@ class CandidateEvaluation:
     safety_reason: str
     selected: bool
     safe_decision: TSPDecision
-    notes: List[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
 
     @property
     def is_safety_blocked(self) -> bool:
         return self.safety_status == "blocked_by_safety"
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "scenario_id": self.scenario_id,
             "state_bucket": self.state_bucket,
@@ -103,5 +108,5 @@ class LearnedPolicyRule:
     safety_status: str
     safety_reason: str
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)

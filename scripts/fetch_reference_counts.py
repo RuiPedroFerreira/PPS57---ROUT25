@@ -28,6 +28,7 @@ Sources
     local authorities. Open Government Licence v3.0. A given survey year is
     stable, so its SHA-256 pins the snapshot.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -121,7 +122,9 @@ def resolve_madrid_catalogue_resource() -> dict:
     """
     payload = json.loads(_get(MADRID_CATALOGUE_DATASET_API))
     if not payload.get("success"):
-        raise SystemExit("datos.madrid.es package_show returned success=false — cannot resolve the catalogue.")
+        raise SystemExit(
+            "datos.madrid.es package_show returned success=false — cannot resolve the catalogue."
+        )
     resources = (payload.get("result") or {}).get("resources") or []
     # Every CSV in this dataset is a monthly point-location snapshot (ZIP/XLSX are
     # the same data in other formats), but only recent months carry the
@@ -135,7 +138,11 @@ def resolve_madrid_catalogue_resource() -> dict:
             "refusing to fall back to a stale pinned snapshot."
         )
     newest = max(candidates, key=lambda res: str(res.get("created", "")))
-    return {"url": str(newest["url"]), "created": str(newest.get("created", "")), "id": str(newest.get("id", ""))}
+    return {
+        "url": str(newest["url"]),
+        "created": str(newest.get("created", "")),
+        "id": str(newest.get("id", "")),
+    }
 
 
 def fetch_madrid(out_dir: Path, catalogue_url: str | None = None) -> dict:
@@ -143,7 +150,12 @@ def fetch_madrid(out_dir: Path, catalogue_url: str | None = None) -> dict:
     if b"<intensidad>" not in intensity:
         raise SystemExit("Madrid feed returned no <intensidad> elements — refusing to fabricate.")
     if catalogue_url:
-        resource = {"url": catalogue_url, "created": None, "id": None, "note": "overridden via --madrid-catalogue-url"}
+        resource = {
+            "url": catalogue_url,
+            "created": None,
+            "id": None,
+            "note": "overridden via --madrid-catalogue-url",
+        }
     else:
         resource = resolve_madrid_catalogue_resource()
     catalogue = _get(resource["url"])
@@ -255,7 +267,7 @@ def load_existing_provenance(path: Path) -> dict | None:
         raise SystemExit(
             f"Existing provenance is not valid JSON ({path}): {exc}. "
             "Delete it and re-fetch ALL sources rather than overwriting silently."
-        )
+        ) from exc
     if not isinstance(existing, dict):
         raise SystemExit(f"Existing provenance has unexpected shape ({path}): expected an object.")
     return existing
@@ -276,7 +288,9 @@ def merge_provenance(existing: dict | None, fetched_sources: dict, *, fetched_at
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--out", type=Path, default=OUT_DIR)
     parser.add_argument(
         "--madrid-catalogue-url",
@@ -297,19 +311,26 @@ def main() -> None:
         fetched_sources["madrid"] = fetch_madrid(args.out, args.madrid_catalogue_url)
         m = fetched_sources["madrid"]
         cov = m["feed_catalogue_coverage"]
-        print(f"  madrid: feed {m['feed_timestamp']}  {m['intensity_bytes']} B  sha {m['intensity_sha256'][:12]}…")
-        print(f"  madrid catalogue: {m['catalogue_url'].rsplit('/', 1)[-1]}  "
-              f"join {cov['in_catalogue']}/{cov['feed_valid_detectors']} detectors (coverage {cov['coverage']})")
+        print(
+            f"  madrid: feed {m['feed_timestamp']}  {m['intensity_bytes']} B  sha {m['intensity_sha256'][:12]}…"
+        )
+        print(
+            f"  madrid catalogue: {m['catalogue_url'].rsplit('/', 1)[-1]}  "
+            f"join {cov['in_catalogue']}/{cov['feed_valid_detectors']} detectors (coverage {cov['coverage']})"
+        )
     if not args.skip_dft:
         print(f"Fetching UK DfT AADF (year {args.dft_year}) for {len(args.dft_cities)} cities…")
         fetched_sources["dft"] = fetch_dft(args.out, args.dft_cities, args.dft_year)
         d = fetched_sources["dft"]
-        print(f"  dft: {d['records_total']} rows across {len(d['local_authorities'])} LAs  sha {d['sha256'][:12]}…")
+        print(
+            f"  dft: {d['records_total']} rows across {len(d['local_authorities'])} LAs  sha {d['sha256'][:12]}…"
+        )
 
     existing = load_existing_provenance(args.out / "provenance.json")
     provenance = merge_provenance(existing, fetched_sources, fetched_at_utc=_now_iso())
     (args.out / "provenance.json").write_text(
-        json.dumps(provenance, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8"
+        json.dumps(provenance, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
     )
     print(f"Provenance → {args.out / 'provenance.json'}")
 
