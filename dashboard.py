@@ -877,10 +877,15 @@ if "active_tab" not in st.session_state:
 
 # ── global vehicle-class filter ───────────────────────────────────────────────
 # The filter lives in the drawer, but it is computed here at module level so the
-# topbar pill and every tab can read it whether or not the drawer is open. The
-# selectbox owns the "drawer_class_select" key; we seed it once (so the value
-# survives while the drawer is closed) and reset it if a data refresh changed the
-# option labels — vehicle counts are baked into each label.
+# topbar pill and every tab can read it whether or not the drawer is open.
+#
+# The selectbox is only mounted while the drawer is open, so its widget key
+# ("drawer_class_select") can't be the source of truth: Streamlit garbage-collects
+# the state of widgets that aren't rendered on a run, so the first interaction
+# after closing the drawer would drop the key and silently reset the filter to the
+# default. The canonical value therefore lives in a plain (non-widget) session key
+# that survives every run; the widget is seeded from it via `index` and writes
+# back through `on_change`.
 cls_counts = {key: class_vehicle_count(key) for key, _ in VEHICLE_CLASSES}
 cls_label_map = {f"{label} ({cls_counts[key]})": key for key, label in VEHICLE_CLASSES}
 CLASS_OPTIONS = list(cls_label_map.keys())
@@ -889,11 +894,18 @@ CLASS_OPTIONS = list(cls_label_map.keys())
 # hides what the TSP does. Fall back to "Todos" only if there are no buses.
 _default_key = "buses" if cls_counts.get("buses", 0) else "all_vehicles"
 _default_display = next(d for d, k in cls_label_map.items() if k == _default_key)
-if st.session_state.get("drawer_class_select") not in CLASS_OPTIONS:
-    st.session_state.drawer_class_select = _default_display
-selected_class = st.session_state.drawer_class_select
+# Re-seed when unset or when a data refresh changed the option labels (vehicle
+# counts are baked into each label).
+if st.session_state.get("vehicle_class_display") not in CLASS_OPTIONS:
+    st.session_state.vehicle_class_display = _default_display
+selected_class = st.session_state.vehicle_class_display
 vehicle_cls = cls_label_map[selected_class]
 vehicle_cls_label = next(lbl for k, lbl in VEHICLE_CLASSES if k == vehicle_cls)
+
+
+def _sync_vehicle_class() -> None:
+    """Persist the drawer selectbox choice into the non-widget session key."""
+    st.session_state.vehicle_class_display = st.session_state.drawer_class_select
 
 # ── drawer navigation model + system status ───────────────────────────────────
 
@@ -989,7 +1001,9 @@ if st.session_state.drawer_open:
             st.selectbox(
                 "Classe de veículo",
                 options=CLASS_OPTIONS,
+                index=CLASS_OPTIONS.index(selected_class),
                 key="drawer_class_select",
+                on_change=_sync_vehicle_class,
                 label_visibility="collapsed",
                 help="Classe de veículo aplicada a todos os KPIs e gráficos; o número é a "
                 "contagem de veículos. Abre em Autocarros (onde o TSP actua); muda para "
@@ -1322,8 +1336,10 @@ elif _active == "KPIs":
                 if bus_display in cls_label_map:
 
                     def _focus_buses(target=bus_display):
-                        # drives the drawer's class selectbox (single source of truth)
-                        st.session_state["drawer_class_select"] = target
+                        # write the canonical (non-widget) key — the drawer's
+                        # selectbox isn't mounted here, so its widget key would be
+                        # garbage-collected before the next run reads it.
+                        st.session_state["vehicle_class_display"] = target
 
                     st.button(
                         "Ver autocarros",
