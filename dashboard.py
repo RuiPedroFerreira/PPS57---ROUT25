@@ -17,6 +17,8 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
+import yaml
 
 ROOT = Path(__file__).parent
 REPORTS = ROOT / "reports"
@@ -212,12 +214,8 @@ section.main > div { padding-top: 1rem; }
 .kpi-delta.kpi-bad  { color:#dc2626; }
 .kpi-delta.kpi-flat { color:#6b7280; }
 
-/* footer navigation chips */
-.footer-chip { border:1px solid #e5e7eb; border-radius:10px; padding:1rem 1.25rem;
-               cursor:pointer; transition:background 0.15s; background:#ffffff; height:100%; }
-.footer-chip:hover { background:#f9fafb; }
-.footer-chip .fc-label { font-size:14px; font-weight:700; color:#0f172a; margin:0 0 4px; }
-.footer-chip .fc-desc  { font-size:12px; color:#64748b; margin:0; line-height:1.45; }
+/* footer navigation chips live inside a components.html iframe (see tab_resumo);
+   their styles are inlined there, so no parent CSS is needed here. */
 
 /* expanders — clean white card with a subtle hover (app-wide: sidebar + tabs) */
 [data-testid="stExpander"] details {
@@ -332,6 +330,22 @@ def load_json(path: Path) -> dict | None:
     if not path.exists():
         return None
     return _read_json(str(path), path.stat().st_mtime)
+
+
+@st.cache_data(show_spinner=False)
+def _read_yaml(path_str: str, mtime: float) -> dict | None:
+    # `mtime` participates in the cache key so the entry refreshes on edit (see _read_json).
+    try:
+        return yaml.safe_load(Path(path_str).read_text())
+    except (yaml.YAMLError, OSError):
+        return None
+
+
+def load_yaml(path: Path) -> dict | None:
+    """Cached YAML loader — invalidates automatically when the file changes."""
+    if not path.exists():
+        return None
+    return _read_yaml(str(path), path.stat().st_mtime)
 
 
 @st.cache_data(show_spinner=False)
@@ -1207,23 +1221,55 @@ with tab_resumo:
                     "Vê o separador **Cenários → emergency_vehicle_conflict** para o caso de emergência."
                 )
 
-        # ── navigation hint (visual chips; tab switching not wired) ───────────
+        # ── navigation chips: click jumps to the matching tab ─────────────────
+        # st.tabs has no programmatic-switch API (Streamlit 1.36), so the chips
+        # render inside a components.html iframe and click the real tab button
+        # (matched by its visible label) in the parent document. Fully client-side
+        # — no rerun, instant switch. Labels MUST match the st.tabs() labels above.
         section("Explorar em detalhe")
-        n1, n2, n3 = st.columns(3)
-        n1.markdown(
-            '<div class="footer-chip"><div class="fc-label">KPIs →</div>'
-            '<div class="fc-desc">Comparação detalhada entre cenários, por classe e métrica.</div></div>',
-            unsafe_allow_html=True,
+        nav_items = [
+            ("KPIs", "Comparação detalhada entre cenários, por classe e métrica."),
+            ("Decisão", "O que o algoritmo decidiu e porquê."),
+            ("Cenários", "Impacto do TSP nas 8 situações operacionais."),
+        ]
+        nav_chips = "".join(
+            f'<div class="footer-chip" role="button" tabindex="0" '
+            f"onclick=\"goTab('{label}')\" "
+            f"onkeydown=\"if(event.key==='Enter'||event.key===' '){{event.preventDefault();goTab('{label}')}}\">"
+            f'<div class="fc-label">{label} →</div>'
+            f'<div class="fc-desc">{desc}</div></div>'
+            for label, desc in nav_items
         )
-        n2.markdown(
-            '<div class="footer-chip"><div class="fc-label">Decisão →</div>'
-            '<div class="fc-desc">O que o algoritmo decidiu e porquê.</div></div>',
-            unsafe_allow_html=True,
-        )
-        n3.markdown(
-            '<div class="footer-chip"><div class="fc-label">Cenários →</div>'
-            '<div class="fc-desc">Impacto do TSP nas 8 situações operacionais.</div></div>',
-            unsafe_allow_html=True,
+        components.html(
+            f"""
+            <style>
+              * {{ box-sizing:border-box; }}
+              body {{ margin:0; font-family:"Source Sans Pro",-apple-system,system-ui,sans-serif; }}
+              .nav-grid {{ display:grid; gap:1rem; grid-template-columns:repeat(3,1fr); }}
+              .footer-chip {{ border:1px solid #e5e7eb; border-radius:10px; padding:1rem 1.25rem;
+                              cursor:pointer; background:#fff; min-width:0; height:100%;
+                              transition:background .15s,border-color .15s,box-shadow .15s; }}
+              .footer-chip:hover {{ background:#f9fafb; border-color:#cbd5e1;
+                                    box-shadow:0 1px 3px rgba(15,23,42,.06); }}
+              .footer-chip:focus-visible {{ outline:2px solid #2563eb; outline-offset:2px; }}
+              .fc-label {{ font-size:14px; font-weight:700; color:#0f172a; margin:0 0 4px; }}
+              .fc-desc  {{ font-size:12px; color:#64748b; margin:0; line-height:1.45; }}
+            </style>
+            <div class="nav-grid">{nav_chips}</div>
+            <script>
+              function goTab(label) {{
+                const tabs = window.parent.document.querySelectorAll('button[role="tab"]');
+                for (const t of tabs) {{
+                  if (t.innerText.trim() === label) {{
+                    t.click();
+                    window.parent.scrollTo({{ top: 0, behavior: "smooth" }});
+                    return;
+                  }}
+                }}
+              }}
+            </script>
+            """,
+            height=120,
         )
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2070,6 +2116,20 @@ with tab_scenarios:
 .stat-positive { color:#16a34a; }
 .stat-negative { color:#dc2626; }
 .stat-neutral { color:#111827; }
+.scen-obj { border:1px solid #e5e7eb; border-left:4px solid #2563eb; border-radius:12px;
+            padding:1.1rem 1.3rem; background:#fbfcfe; margin:0.25rem 0 1.1rem; }
+.scen-obj-head { display:flex; align-items:center; gap:0.65rem; margin-bottom:0.35rem; }
+.scen-obj-icon { font-size:26px; line-height:1; }
+.scen-obj-desc { font-size:15px; font-weight:600; color:#0f172a; line-height:1.4; }
+.scen-obj-row { margin-top:0.75rem; }
+.scen-obj-lbl { font-size:11px; font-weight:700; letter-spacing:0.07em; text-transform:uppercase;
+                color:#2563eb; margin-bottom:0.2rem; }
+.scen-obj-lbl.muted { color:#94a3b8; }
+.scen-obj-txt { font-size:13.5px; color:#334155; line-height:1.55; margin:0; }
+.scen-obj-txt.muted { color:#64748b; }
+.scen-obj-chips { display:flex; flex-wrap:wrap; gap:0.4rem; margin-top:0.85rem; }
+.scen-chip { background:#eef2ff; color:#4338ca; border:1px solid #e0e7ff; border-radius:99px;
+             padding:0.18rem 0.65rem; font-size:11.5px; font-weight:500; }
 </style>
 """,
                 unsafe_allow_html=True,
@@ -2091,6 +2151,50 @@ with tab_scenarios:
                 "cross_traffic_pressure": "Pressão tráfego cruzado",
                 "delayed_bus_westbound": "Autocarro atrasado sentido Oeste",
             }
+            # Per-scenario glyph — purely presentational, keyed by scenario id.
+            scen_icon = {
+                "baseline_am_peak": "🌅",
+                "baseline_off_peak": "🌙",
+                "congested_am_peak": "🚦",
+                "cross_traffic_pressure": "🔀",
+                "delayed_bus_westbound": "🚌",
+                "bunched_buses": "🚏",
+                "emergency_vehicle_conflict": "🚑",
+                "congested_delayed_bus": "🛑",
+            }
+            # PT labels for the catalog's kpi_focus tokens (localisation of the
+            # source-of-truth keys, not new data). Unknown tokens fall back to a
+            # de-snake-cased form below.
+            kpi_focus_pt = {
+                "bus_time_loss": "Perda de tempo do autocarro",
+                "general_traffic_delay": "Atraso do tráfego geral",
+                "queue_baseline": "Filas (referência)",
+                "travel_time_variability": "Variabilidade do tempo de viagem",
+                "unnecessary_interventions": "Intervenções desnecessárias",
+                "low_delay_regime": "Regime de baixo atraso",
+                "bus_headway": "Headway dos autocarros",
+                "tsp_under_saturation": "TSP em saturação",
+                "general_traffic_penalty": "Penalização do tráfego geral",
+                "queue_spillback": "Spillback de filas",
+                "cross_street_queues": "Filas nas transversais",
+                "blocked_by_safety": "Bloqueado pela safety layer",
+                "controller_rejections": "Rejeições do controlador",
+                "bus_vs_general_tradeoff": "Trade-off autocarro vs geral",
+                "westbound_bus_delay": "Atraso do autocarro (sentido Oeste)",
+                "priority_request_rate": "Taxa de pedidos de prioridade",
+                "green_extension_effect": "Efeito da extensão de verde",
+                "headway_variability": "Variabilidade de headway",
+                "bus_bunching": "Bunching de autocarros",
+                "second_bus_priority_suppression": "Supressão de prioridade ao 2.º autocarro",
+                "emergency_travel_time": "Tempo de viagem da emergência",
+                "priority_hierarchy": "Hierarquia de prioridades",
+                "bus_priority_preemption": "Preempção da prioridade ao autocarro",
+                "bus_time_loss_under_saturation": "Perda de tempo do autocarro em saturação",
+            }
+            # Scenario objectives come straight from the catalog (configs/) — the
+            # single source of truth — so the dashboard never invents descriptions.
+            scen_catalog = load_yaml(ROOT / "configs" / "scenario_catalog.yaml") or {}
+            scen_meta = scen_catalog.get("scenarios") or {}
 
             # Lower-is-better metrics only: keeps the "negativo = melhoria" framing and
             # the green=Δ<0 colouring valid. Speed is excluded here on purpose (it would
@@ -2230,6 +2334,45 @@ with tab_scenarios:
             st.markdown(
                 f"#### {label_map.get(selected_scenario, selected_scenario)} · {selected_metric}"
             )
+
+            # ── dynamic objective card (what this scenario is for) ──────────────
+            # Reacts to the "Cenário (detalhe)" selectbox; content is read verbatim
+            # from the scenario catalog so it stays in sync with the source of truth.
+            meta = scen_meta.get(selected_scenario) or {}
+            if meta:
+                rows_html = ""
+                if meta.get("expected_use"):
+                    rows_html += (
+                        '<div class="scen-obj-row"><div class="scen-obj-lbl">Objetivo</div>'
+                        f'<p class="scen-obj-txt">{meta["expected_use"].strip()}</p></div>'
+                    )
+                if meta.get("realism_basis"):
+                    rows_html += (
+                        '<div class="scen-obj-row"><div class="scen-obj-lbl muted">'
+                        'Porquê é realista</div>'
+                        f'<p class="scen-obj-txt muted">{meta["realism_basis"].strip()}</p></div>'
+                    )
+                chips_html = ""
+                focus = meta.get("kpi_focus") or []
+                if focus:
+                    chips = "".join(
+                        f'<span class="scen-chip">'
+                        f'{kpi_focus_pt.get(k, k.replace("_", " ").capitalize())}</span>'
+                        for k in focus
+                    )
+                    chips_html = (
+                        '<div class="scen-obj-row"><div class="scen-obj-lbl muted">Foco de KPIs'
+                        f'</div><div class="scen-obj-chips">{chips}</div></div>'
+                    )
+                icon = scen_icon.get(selected_scenario, "📊")
+                desc = (meta.get("description") or "").strip()
+                st.markdown(
+                    '<div class="scen-obj">'
+                    f'<div class="scen-obj-head"><span class="scen-obj-icon">{icon}</span>'
+                    f'<span class="scen-obj-desc">{desc}</span></div>'
+                    f"{rows_html}{chips_html}</div>",
+                    unsafe_allow_html=True,
+                )
 
             sdf = df_all[
                 (df_all["Cenário"] == selected_scenario) & (df_all["metric_key"] == sel_metric_key)

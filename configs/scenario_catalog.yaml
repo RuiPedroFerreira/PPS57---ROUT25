@@ -1,70 +1,70 @@
 scenario_set: pps57_porto_boavista_tsp_demo_v05
 metadata:
   city: Porto
-  corridor: Avenida da Boavista / Casa da Musica - Praca do Imperio - Castelo do Queijo
+  corridor: Avenida da Boavista / Casa da Música - Praça do Império - Castelo do Queijo
   alignment_level: controlled_sumo_base_proxy
   base_config: configs/sumo_scenario_base.json
   simulation_duration_s: 7200
   notes: >
-    Catalogo orientado a demonstracao do impacto do TSP decision engine. Cada
-    cenario e uma situacao operacional distinta; o impacto mede-se dentro do
-    proprio cenario, comparando o par baseline (sem TSP) vs tsp_actuation com
+    Catálogo orientado à demonstração do impacto do TSP decision engine. Cada
+    cenário é uma situação operacional distinta; o impacto mede-se dentro do
+    próprio cenário, comparando o par baseline (sem TSP) vs tsp_actuation com
     seeds emparelhadas. Toda a procura deriva do envelope am_peak calibrado
-    (HCM) por factores de escala; nenhum cenario introduz numeros de procura
-    sem origem rastreavel. Substitui o catalogo v04 de validacao/sensibilidade
-    (envelopes low/high, meteorologia, penetracao AV, incidentes estocasticos),
-    cujos perfis foram removidos junto com a fase de validacao.
+    (HCM) por factores de escala; nenhum cenário introduz números de procura
+    sem origem rastreável. Substitui o catálogo v04 de validação/sensibilidade
+    (envelopes low/high, meteorologia, penetração AV, incidentes estocásticos),
+    cujos perfis foram removidos junto com a fase de validação.
 
 scenarios:
   baseline_am_peak:
-    description: Ponta da manha tipica sem eventos especiais - o caso de demonstracao central.
+    description: Ponta da manhã típica sem eventos especiais - o caso de demonstração central.
     realism_basis: >
       Janela de 2 horas, eixo principal dominante, procura inbound mais forte e
-      headways TP de 10-15 minutos plausiveis para uma arterial urbana de
+      headways TP de 10-15 minutos plausíveis para uma arterial urbana de
       entrada na cidade. Usa o envelope operacional calibrado para que a
-      referencia nao fique dominada por backlog de insercao SUMO.
+      referência não fique dominada por backlog de inserção SUMO.
     kpi_focus:
       - bus_time_loss
       - general_traffic_delay
       - queue_baseline
       - travel_time_variability
     expected_use: >
-      Resposta a pergunta principal da demo: quanto ganha o TP num pico normal
-      e quanto custa ao trafego geral.
+      Resposta à pergunta principal da demo: quanto ganha o TP num pico normal
+      e quanto custa ao tráfego geral.
 
   baseline_off_peak:
     description: Fora de ponta em regime fluido - o TSP deve intervir pouco.
     realism_basis: >
-      Procura geral reduzida e headways TP mais espacados representam periodos
-      intermedios onde os autocarros raramente acumulam atraso semaforico.
+      Procura geral reduzida e headways TP mais espaçados representam períodos
+      intermédios onde os autocarros raramente acumulam atraso semafórico.
     kpi_focus:
       - unnecessary_interventions
       - low_delay_regime
       - bus_headway
     expected_use: >
-      Demonstrar disciplina do motor de decisao: poucas intervencoes e impacto
-      lateral nulo quando nao ha atraso a recuperar.
+      Demonstrar disciplina do motor de decisão: poucas intervenções e impacto
+      lateral nulo quando não há atraso a recuperar.
 
   congested_am_peak:
-    description: Pico saturado (grau de saturacao perto de 0.95) - stress-test do TSP.
+    description: Pico saturado (grau de saturação perto de 0.95) - stress-test do TSP.
     realism_basis: >
       Picos reais de uma arterial urbana excedem frequentemente a capacidade
       num ou em ambos os sentidos. Com filas a atingir os detectores de
-      jusante, extensoes de verde tem custo real nas transversais.
+      jusante, extensões de verde têm custo real nas transversais.
     kpi_focus:
       - tsp_under_saturation
       - bus_time_loss
       - general_traffic_penalty
       - queue_spillback
     expected_use: >
-      Mostrar se os ganhos do TP sobrevivem a saturacao e a que custo; regiao
+      Mostrar se os ganhos do TP sobrevivem à saturação e a que custo; região
       onde a safety layer deve bloquear mais pedidos.
 
   cross_traffic_pressure:
-    description: Pressao transversal em Bessa e Praca do Imperio.
+    description: Pressão transversal em Bessa e Praça do Império.
     realism_basis: >
-      Transversais podem ficar dominantes por escolas, servicos ou
-      redistribuicao local; o cenario cria conflito directo entre prioridade ao
+      Transversais podem ficar dominantes por escolas, serviços ou
+      redistribuição local; o cenário cria conflito directo entre prioridade ao
       corredor e filas laterais.
     kpi_focus:
       - cross_street_queues
@@ -72,14 +72,14 @@ scenarios:
       - controller_rejections
       - bus_vs_general_tradeoff
     expected_use: >
-      Demonstrar rejeicoes fundamentadas: o valor do motor esta tanto no que
+      Demonstrar rejeições fundamentadas: o valor do motor está tanto no que
       recusa como no que concede.
 
   delayed_bus_westbound:
-    description: Autocarro atrasado no sentido cidade-mar - o caso canonico de TSP.
+    description: Autocarro atrasado no sentido cidade-mar - o caso canónico de TSP.
     realism_basis: >
-      Dwell mais elevado em paragens intermedias e procura maior no sentido
-      westbound criam atraso operacional observavel dentro da simulacao, sem
+      Dwell mais elevado em paragens intermédias e procura maior no sentido
+      westbound criam atraso operacional observável dentro da simulação, sem
       injectar atraso artificial externo.
     kpi_focus:
       - westbound_bus_delay
@@ -87,13 +87,13 @@ scenarios:
       - green_extension_effect
     expected_use: >
       Mostrar o mecanismo central: atraso real gera pedidos, pedidos geram
-      extensoes de verde, extensoes recuperam parte do atraso.
+      extensões de verde, extensões recuperam parte do atraso.
 
   bunched_buses:
-    description: Dois autocarros demasiado proximos no mesmo sentido.
+    description: Dois autocarros demasiado próximos no mesmo sentido.
     realism_basis: >
-      Headways irregulares sao comuns em corredores urbanos quando uma viagem
-      perde tempo em paragens; offsets proximos reproduzem bunching
+      Headways irregulares são comuns em corredores urbanos quando uma viagem
+      perde tempo em paragens; offsets próximos reproduzem bunching
       operacional.
     kpi_focus:
       - headway_variability
@@ -104,29 +104,29 @@ scenarios:
       dar verde ao segundo autocarro agrava o bunching.
 
   emergency_vehicle_conflict:
-    description: Veiculo de emergencia concorre com transporte publico.
+    description: Veículo de emergência concorre com transporte público.
     realism_basis: >
-      Um evento deterministico a meio da janela permite validar a hierarquia de
-      prioridades sem contaminar os KPIs do resto do periodo.
+      Um evento determinístico a meio da janela permite validar a hierarquia de
+      prioridades sem contaminar os KPIs do resto do período.
     kpi_focus:
       - emergency_travel_time
       - priority_hierarchy
       - bus_priority_preemption
     expected_use: >
-      Demonstrar a hierarquia emergencia > TP > trafego geral num unico
-      episodio observavel.
+      Demonstrar a hierarquia emergência > TP > tráfego geral num único
+      episódio observável.
 
   congested_delayed_bus:
     description: Autocarro atrasado num corredor saturado - onde a prioridade vale mais e custa mais.
     realism_basis: >
       Combina a procura saturada de congested_am_peak com os overrides de
-      servico e dwell calibrados de delayed_bus_westbound; nao introduz novos
-      numeros de procura. E a interseccao dos dois regimes ja justificados.
+      serviço e dwell calibrados de delayed_bus_westbound; não introduz novos
+      números de procura. É a intersecção dos dois regimes já justificados.
     kpi_focus:
       - bus_time_loss_under_saturation
       - green_extension_effect
       - general_traffic_penalty
       - queue_spillback
     expected_use: >
-      Cenario de fronteira da demo: maximo valor potencial do TSP contra
-      maximo risco de penalizar o resto da rede.
+      Cenário de fronteira da demo: máximo valor potencial do TSP contra
+      máximo risco de penalizar o resto da rede.
