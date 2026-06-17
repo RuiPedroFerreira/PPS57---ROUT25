@@ -6,16 +6,17 @@ The demonstrator compares:
 - TSP direct TraCI actuation;
 - TSP through the simulated controller contract.
 """
+
 from __future__ import annotations
 
 import argparse
-from copy import deepcopy
-from datetime import datetime
 import json
-from pathlib import Path
 import shutil
 import subprocess
 import sys
+from copy import deepcopy
+from datetime import datetime
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -29,11 +30,10 @@ from pps57_opt.demonstrator import (  # noqa: E402
     load_demonstrator_run,
     write_demonstrator_report,
 )
-from pps57_sumo.parse_tripinfo import parse_tripinfo  # noqa: E402
 from pps57_sumo.build_network import build_sumo_artifacts, sumo_environment  # noqa: E402
+from pps57_sumo.parse_tripinfo import parse_tripinfo  # noqa: E402
 from pps57_tsp.config import TSPConfig, load_tsp_config  # noqa: E402
 from pps57_tsp.controller import TSPControlController  # noqa: E402
-
 
 SNAPSHOT_PATHS = (
     "outputs/tripinfo.xml",
@@ -48,24 +48,52 @@ SNAPSHOT_PATHS = (
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the SUMO/TraCI TSP demonstrator and write evidence reports.")
-    parser.add_argument("--config", default="configs/cits_v2x_config.json", help="Base C-ITS configuration.")
-    parser.add_argument("--tsp-config", default="configs/tsp_safety_config.json", help="TSP/Safety Layer configuration.")
-    parser.add_argument("--policy-config", default=None, help="Accepted for platform command compatibility; not used.")
+    parser = argparse.ArgumentParser(
+        description="Run the SUMO/TraCI TSP demonstrator and write evidence reports."
+    )
+    parser.add_argument(
+        "--config", default="configs/cits_v2x_config.json", help="Base C-ITS configuration."
+    )
+    parser.add_argument(
+        "--tsp-config",
+        default="configs/tsp_safety_config.json",
+        help="TSP/Safety Layer configuration.",
+    )
+    parser.add_argument(
+        "--policy-config",
+        default=None,
+        help="Accepted for platform command compatibility; not used.",
+    )
     parser.add_argument("--steps", type=int, default=7200, help="SUMO/TraCI steps for TSP runs.")
     parser.add_argument("--sumo-binary", default="sumo", help="SUMO binary for TraCI.")
-    parser.add_argument("--no-actuation", action="store_true", help="Calculate TSP decisions without applying commands.")
-    parser.add_argument("--baseline-root", default=None, help="Existing SUMO baseline snapshot root.")
+    parser.add_argument(
+        "--no-actuation",
+        action="store_true",
+        help="Calculate TSP decisions without applying commands.",
+    )
+    parser.add_argument(
+        "--baseline-root", default=None, help="Existing SUMO baseline snapshot root."
+    )
     parser.add_argument("--tsp-root", default=None, help="Existing TSP direct snapshot root.")
-    parser.add_argument("--controller-root", default=None, help="Existing TSP controller snapshot root.")
-    parser.add_argument("--report-only", action="store_true", help="Do not run SUMO; require the three snapshot roots.")
+    parser.add_argument(
+        "--controller-root", default=None, help="Existing TSP controller snapshot root."
+    )
+    parser.add_argument(
+        "--report-only",
+        action="store_true",
+        help="Do not run SUMO; require the three snapshot roots.",
+    )
     parser.add_argument(
         "--snapshot-root",
         default=None,
         help="Root for generated snapshots. Defaults to outputs/demonstrator/run-YYYYmmdd-HHMMSS.",
     )
-    parser.add_argument("--json-out", default="reports/tsp_demonstrator_report.json", help="JSON report output.")
-    parser.add_argument("--md-out", default="reports/tsp_demonstrator_report.md", help="Markdown report output.")
+    parser.add_argument(
+        "--json-out", default="reports/tsp_demonstrator_report.json", help="JSON report output."
+    )
+    parser.add_argument(
+        "--md-out", default="reports/tsp_demonstrator_report.md", help="Markdown report output."
+    )
     return parser.parse_args()
 
 
@@ -76,7 +104,9 @@ def main() -> int:
     snapshot_root = _snapshot_root(args.snapshot_root)
 
     if args.report_only and not (args.baseline_root and args.tsp_root and args.controller_root):
-        raise SystemExit("--report-only requires --baseline-root, --tsp-root, and --controller-root.")
+        raise SystemExit(
+            "--report-only requires --baseline-root, --tsp-root, and --controller-root."
+        )
 
     baseline_root = _path_from_root(args.baseline_root) if args.baseline_root else None
     tsp_root = _path_from_root(args.tsp_root) if args.tsp_root else None
@@ -103,12 +133,16 @@ def main() -> int:
             print("[DEMO] Running TSP through simulated controller contract.")
             _run_tsp(cits_config, _with_controller_simulation(tsp_config, enabled=True), args)
             _write_current_kpis("tsp_controller")
-            controller_root = _snapshot_artifacts(snapshot_root / "tsp_controller", "tsp_controller")
+            controller_root = _snapshot_artifacts(
+                snapshot_root / "tsp_controller", "tsp_controller"
+            )
     except TraciUnavailableError as exc:
         print(f"Erro TraCI/SUMO: {exc}", file=sys.stderr)
         return 2
     except subprocess.CalledProcessError as exc:
-        print(f"Command failed with exit code {exc.returncode}: {' '.join(exc.cmd)}", file=sys.stderr)
+        print(
+            f"Command failed with exit code {exc.returncode}: {' '.join(exc.cmd)}", file=sys.stderr
+        )
         return exc.returncode
 
     # Best-effort: junta os contrafactuais offline do optimizer se o resumo
@@ -118,7 +152,9 @@ def main() -> int:
     policy_optimization_summary = None
     if policy_summary_path.exists():
         try:
-            policy_optimization_summary = json.loads(policy_summary_path.read_text(encoding="utf-8"))
+            policy_optimization_summary = json.loads(
+                policy_summary_path.read_text(encoding="utf-8")
+            )
         except (OSError, ValueError):
             policy_optimization_summary = None
 
@@ -200,7 +236,9 @@ def _build_network(*, tls_type: str) -> None:
     # patch after netconvert. The demonstrator currently uses static TLS only;
     # keep the argument for API compatibility with older calls.
     if tls_type != "static":
-        raise ValueError(f"Unsupported demonstrator tls_type={tls_type!r}; use the scenario runner for actuated builds.")
+        raise ValueError(
+            f"Unsupported demonstrator tls_type={tls_type!r}; use the scenario runner for actuated builds."
+        )
     build_sumo_artifacts(config, root=ROOT, base_dir=Path("sumo"))
 
 

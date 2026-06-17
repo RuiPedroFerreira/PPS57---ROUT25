@@ -5,10 +5,11 @@ because of congestion at the entry edges. Tracking this matters because heavy
 TSP intervention can starve cross-streets enough to back up insertions; without
 this KPI, capacity loss would be invisible in the tripinfo-derived metrics.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 # M4: defusedxml em vez do stdlib — summary/statistics vêm de simulações
 # externas e podem conter DTD/entidades maliciosas (XXE/billion-laughs).
@@ -22,8 +23,8 @@ except ImportError:  # pragma: no cover - exercised in minimal CI images.
         """Unreachable stub — defusedxml not installed, so its exceptions cannot fire."""
 
 
-def parse_insertion_kpis(summary_path: Path | None, statistics_path: Path | None) -> Dict[str, Any]:
-    out: Dict[str, Any] = {
+def parse_insertion_kpis(summary_path: Path | None, statistics_path: Path | None) -> dict[str, Any]:
+    out: dict[str, Any] = {
         "summary_available": False,
         "statistics_available": False,
     }

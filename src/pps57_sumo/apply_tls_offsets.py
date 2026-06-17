@@ -37,11 +37,12 @@ for an arterial. Without the all-red step the signal jumps directly from
 yellow to the perpendicular green, eliminating the safety clearance interval
 that PT engineering practice (and the HCM intergreen calculation) requires.
 """
+
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 from xml.etree import ElementTree as ET
 
 # M4: net.xml/overrides podem vir de fontes externas (OSM) -> endurece o parsing
@@ -320,9 +321,7 @@ def _strip_concurrent_ped_clearance_phases(
 
     role_counts = {"main_green": 0, "cross_green": 0}
     for phase in tl_logic.findall("phase"):
-        role = _classify_phase_role(
-            phase.attrib.get("state", ""), main_links, cross_links
-        )
+        role = _classify_phase_role(phase.attrib.get("state", ""), main_links, cross_links)
         if role in role_counts:
             role_counts[role] += 1
     for role, count in role_counts.items():
@@ -348,7 +347,7 @@ def _is_ped_clearance_of(
     """
     if len(candidate_state) != len(original_state):
         return False
-    for i, (c, o) in enumerate(zip(candidate_state, original_state)):
+    for i, (c, o) in enumerate(zip(candidate_state, original_state, strict=False)):
         if i in ped_set:
             if c == o:
                 continue
@@ -512,7 +511,13 @@ def _classify_phase_role(
     if cross_y > 0 and cross_g == 0 and main_g == 0 and main_y == 0:
         return "cross_yellow"
     # No main/cross signalling — must be a ped-only phase if there are any G's.
-    if main_g == 0 and main_y == 0 and cross_g == 0 and cross_y == 0 and any(c in ("G", "g") for c in state):
+    if (
+        main_g == 0
+        and main_y == 0
+        and cross_g == 0
+        and cross_y == 0
+        and any(c in ("G", "g") for c in state)
+    ):
         return "pedestrian"
     return None
 

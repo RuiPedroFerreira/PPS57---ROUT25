@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """C-ITS, TSP decision engine, Safety Layer, and actuation controller."""
+
 from __future__ import annotations
 
+import sys
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-import sys
-from typing import Dict, Iterable, List, Optional
 
 from pps57_cits.broker import InMemoryMessageBroker
 from pps57_cits.config import CITSConfig
@@ -18,8 +19,8 @@ from pps57_cits.messages import (
     OperatorPriorityClass,
     PrioritizationResponse,
     ResponseStatus,
-    SSEMAudit,
     SREMLike,
+    SSEMAudit,
     SSEMLike,
     StationType,
     build_security_envelope,
@@ -35,8 +36,8 @@ from pps57_opt.policy_runtime import RuntimePolicy
 from pps57_sumo.network_binding import NetworkBinding, build_network_binding
 
 from .actuator import TraciTSPActuator
-from .config import TSPConfig
 from .compensation import GreenCompensationManager
+from .config import TSPConfig
 from .corridor_arbiter import CorridorArbiter
 from .engine import TSPDecisionEngine
 from .events import PriorityEventManager
@@ -61,7 +62,7 @@ class TSPControlController:
     cits_config: CITSConfig
     tsp_config: TSPConfig
     policy_mode: str = "baseline"
-    policy_report_path: Optional[str] = None
+    policy_report_path: str | None = None
 
     def __post_init__(self) -> None:
         self.broker = InMemoryMessageBroker(
@@ -74,9 +75,9 @@ class TSPControlController:
         # NetworkBinding autoritativo (junction <request foes>) construído UMA
         # vez aqui e partilhado por contratos, verificação e Safety Layer — uma
         # única fonte de verdade, como em scripts/run_network_binding_check.py.
-        self.network_binding: Optional[NetworkBinding] = None
-        self.network_binding_aliases: Optional[Dict[str, Dict[str, str]]] = None
-        self.network_binding_error: Optional[str] = None
+        self.network_binding: NetworkBinding | None = None
+        self.network_binding_aliases: dict[str, dict[str, str]] | None = None
+        self.network_binding_error: str | None = None
         self._bind_network()
         self.safety.set_network_binding(
             self.network_binding, aliases_by_tls=self.network_binding_aliases
@@ -93,7 +94,7 @@ class TSPControlController:
         self.request_store = PriorityRequestStore(
             ttl_s=float(self.cits_config.obu_policy.get("request_lifecycle_ttl_s", 30.0))
         )
-        self.runtime_policy: Optional[RuntimePolicy] = None
+        self.runtime_policy: RuntimePolicy | None = None
         if self.policy_mode in {"optimized", "rl"}:
             raw_path = self.policy_report_path or self._default_policy_report_path()
             if raw_path:
@@ -103,16 +104,16 @@ class TSPControlController:
 
     def run_with_sumo(
         self,
-        steps: Optional[int] = None,
+        steps: int | None = None,
         sumo_binary: str = "sumo",
         gui: bool = False,
         apply_actuation: bool = True,
-    ) -> Dict[str, object]:
+    ) -> dict[str, object]:
         adapter = TraciSimulationAdapter(self.cits_config, sumo_binary=sumo_binary, gui=gui)
         cits_summary = IncrementalCITSSummary()
-        decisions: List[TSPDecision] = []
-        actuations: List[ActuationResult] = []
-        compensations: List[ActuationResult] = []
+        decisions: list[TSPDecision] = []
+        actuations: list[ActuationResult] = []
+        compensations: list[ActuationResult] = []
 
         adapter.start()  # propaga TraciUnavailableError
 
@@ -121,9 +122,15 @@ class TSPControlController:
         # abertura dos loggers. Caso contrário o processo ficava órfão a segurar
         # a porta TraCI e colidia com a run seguinte.
         try:
-            cits_log_path = self.cits_config.path_from_root(self.cits_config.logging.get("message_log", "outputs/cits_messages.jsonl"))
-            decision_log_path = self.tsp_config.path_from_root(self.tsp_config.logging.get("decision_log", "outputs/tsp_decisions.jsonl"))
-            actuation_log_path = self.tsp_config.path_from_root(self.tsp_config.logging.get("actuation_log", "outputs/tsp_actuation.jsonl"))
+            cits_log_path = self.cits_config.path_from_root(
+                self.cits_config.logging.get("message_log", "outputs/cits_messages.jsonl")
+            )
+            decision_log_path = self.tsp_config.path_from_root(
+                self.tsp_config.logging.get("decision_log", "outputs/tsp_decisions.jsonl")
+            )
+            actuation_log_path = self.tsp_config.path_from_root(
+                self.tsp_config.logging.get("actuation_log", "outputs/tsp_actuation.jsonl")
+            )
 
             # C3/C4: reconciliar o mapeamento de fases configurado com o programa
             # semafórico realmente carregado e detetar TLS atuados (o motor assume
@@ -141,7 +148,9 @@ class TSPControlController:
             verification_problems = self._verify_signal_programs(signal_control)
             effective_actuation = apply_actuation and not verification_problems
             if verification_problems and apply_actuation:
-                print("[SAFETY] Atuação TraCI desativada: verificação do programa semafórico falhou:")
+                print(
+                    "[SAFETY] Atuação TraCI desativada: verificação do programa semafórico falhou:"
+                )
                 for problem in verification_problems:
                     print(f"  - {problem}")
             # Propaga o resultado da verificação para a Safety Layer poder enforçar
@@ -150,7 +159,11 @@ class TSPControlController:
             actuator = TraciTSPActuator(adapter=signal_control, apply_actuation=effective_actuation)
 
             step_count = 0
-            with CITSJsonlLogger(cits_log_path) as cits_logger, TSPJsonlLogger(decision_log_path) as decision_logger, TSPJsonlLogger(actuation_log_path) as actuation_logger:
+            with (
+                CITSJsonlLogger(cits_log_path) as cits_logger,
+                TSPJsonlLogger(decision_log_path) as decision_logger,
+                TSPJsonlLogger(actuation_log_path) as actuation_logger,
+            ):
                 mapem = build_mapem_messages(self.cits_config, sim_time_s=0.0)
                 self._publish_log_collect(mapem, cits_logger, cits_summary)
                 while adapter.min_expected_number() > 0:
@@ -171,7 +184,9 @@ class TSPControlController:
                         intersection.tls_id: adapter.read_signal_state(intersection, sim_time_s)
                         for intersection in self.cits_config.signal_controlled_intersections
                     }
-                    spatem = [build_spatem_message_from_state(state) for state in signal_states.values()]
+                    spatem = [
+                        build_spatem_message_from_state(state) for state in signal_states.values()
+                    ]
                     self._publish_log_collect(spatem, cits_logger, cits_summary)
 
                     observations = adapter.read_vehicle_observations()
@@ -240,7 +255,9 @@ class TSPControlController:
         finally:
             adapter.close()
 
-        summary_path = self.tsp_config.path_from_root(self.tsp_config.logging.get("summary_report", "reports/tsp_emulation_summary.json"))
+        summary_path = self.tsp_config.path_from_root(
+            self.tsp_config.logging.get("summary_report", "reports/tsp_emulation_summary.json")
+        )
         cits_summary_dict = cits_summary.to_dict()
         return write_tsp_summary(
             summary_path,
@@ -286,16 +303,16 @@ class TSPControlController:
         self,
         *,
         responses: Iterable[SSEMLike],
-        requests_by_id: Dict[str, SREMLike],
-        signal_states: Dict[str, SignalState],
-        network_states: Optional[Dict[str, NetworkStateSnapshot]] = None,
+        requests_by_id: dict[str, SREMLike],
+        signal_states: dict[str, SignalState],
+        network_states: dict[str, NetworkStateSnapshot] | None = None,
         actuator: TraciTSPActuator,
         sim_time_s: float,
         decision_logger: TSPJsonlLogger,
         actuation_logger: TSPJsonlLogger,
-        decisions: List[TSPDecision],
-        actuations: List[ActuationResult],
-    ) -> List[SSEMLike]:
+        decisions: list[TSPDecision],
+        actuations: list[ActuationResult],
+    ) -> list[SSEMLike]:
         # M6: invariante explícita "no máximo 1 intervenção por TLS por passo".
         # Até aqui isto dependia implicitamente do efeito colateral do cooldown
         # (frágil e silenciosamente quebrado em modo no-actuation/downgraded, onde
@@ -312,19 +329,23 @@ class TSPControlController:
                 request = self.request_store.get_by_request_id(response.request_id)
                 if request is not None:
                     resolved_requests_by_id[response.request_id] = request
-        active_requests_by_tls: Dict[str, int] = {}
+        active_requests_by_tls: dict[str, int] = {}
         response_list = sorted(
             response_list,
-            key=lambda response: _response_priority_sort_key(response, resolved_requests_by_id, self.cits_config),
+            key=lambda response: _response_priority_sort_key(
+                response, resolved_requests_by_id, self.cits_config
+            ),
         )
-        final_responses: List[SSEMLike] = []
+        final_responses: list[SSEMLike] = []
 
         for response in response_list:
             if response.status != ResponseStatus.PROCESSING.value:
                 continue
             request = resolved_requests_by_id.get(response.request_id)
             if request is not None:
-                active_requests_by_tls[request.tls_id] = active_requests_by_tls.get(request.tls_id, 0) + 1
+                active_requests_by_tls[request.tls_id] = (
+                    active_requests_by_tls.get(request.tls_id, 0) + 1
+                )
 
         for response in response_list:
             if response.status != ResponseStatus.PROCESSING.value:
@@ -365,7 +386,8 @@ class TSPControlController:
             )
             if self.runtime_policy is None and network_states and request.tls_id in network_states:
                 proposed = proposed.copy_with(
-                    notes=list(proposed.notes) + [_network_state_note(network_states[request.tls_id])]
+                    notes=list(proposed.notes)
+                    + [_network_state_note(network_states[request.tls_id])]
                 )
             # P6: árbitro de corredor (cross-TLS), pré-Safety e downgrade-only.
             # Só corre para ações atuáveis; no-op completo se o bloco `corridor`
@@ -404,7 +426,11 @@ class TSPControlController:
                     command="none",
                     reason=ReasonCode.SUPERSEDED_BY_EARLIER_INTERVENTION_SAME_STEP.value,
                 )
-            elif proposed.requires_actuation and arbiter_outcome is not None and not arbiter_outcome.allow:
+            elif (
+                proposed.requires_actuation
+                and arbiter_outcome is not None
+                and not arbiter_outcome.allow
+            ):
                 # Defer do árbitro de corredor: desce para NOT_ACTUABLE e salta a
                 # atuação (como a supressão). A Safety Layer continua a ser o
                 # portão final — um pedido deferido nunca chega a APPROVED.
@@ -412,7 +438,9 @@ class TSPControlController:
                     status=DecisionStatus.NOT_ACTUABLE.value,
                     reason=arbiter_outcome.reason_code,
                     notes=list(proposed.notes)
-                    + ["Corridor arbiter deferiu o pedido antes da Safety Layer (downgrade-only; nunca aprova)."],
+                    + [
+                        "Corridor arbiter deferiu o pedido antes da Safety Layer (downgrade-only; nunca aprova)."
+                    ],
                 )
                 result = ActuationResult(
                     decision_id=safe_decision.decision_id,
@@ -500,10 +528,16 @@ class TSPControlController:
         actuation: ActuationResult,
         sim_time_s: float,
     ) -> SSEMLike:
-        response_ttl_ms = int(round(float(self.cits_config.rsu_policy.get("response_ttl_s", 15)) * 1000))
+        response_ttl_ms = int(
+            round(float(self.cits_config.rsu_policy.get("response_ttl_s", 15)) * 1000)
+        )
         moy, timestamp_ms, generation_delta = sim_time_to_cdd(sim_time_s)
         status = _final_response_status(decision, actuation)
-        rejection_reason = None if status == ResponseStatus.GRANTED.value else _final_rejection_reason(decision, actuation)
+        rejection_reason = (
+            None
+            if status == ResponseStatus.GRANTED.value
+            else _final_rejection_reason(decision, actuation)
+        )
         primary = request.requests[0] if request.requests else None
         response = PrioritizationResponse(
             request_id=primary.request_id if primary is not None else 0,
@@ -556,7 +590,7 @@ class TSPControlController:
             logger.write(message)
             summary.add(message)
 
-    def _verify_signal_programs(self, adapter: SignalControlAdapter) -> List[str]:
+    def _verify_signal_programs(self, adapter: SignalControlAdapter) -> list[str]:
         """Verifica contratos de controlador contra o programa semafórico real.
 
         Fail-closed: se o programa não puder ser lido, ou se algum índice de fase
@@ -569,10 +603,9 @@ class TSPControlController:
             return adapter.verify_controller_contracts(contracts)
         return TraciSignalControlAdapter(adapter).verify_controller_contracts(contracts)  # type: ignore[arg-type]
 
-    def _signal_controlled_contracts(self) -> List[ControllerContract]:
+    def _signal_controlled_contracts(self) -> list[ControllerContract]:
         signal_controlled_tls = {
-            intersection.tls_id
-            for intersection in self.cits_config.signal_controlled_intersections
+            intersection.tls_id for intersection in self.cits_config.signal_controlled_intersections
         }
         contracts = [
             contract
@@ -619,20 +652,24 @@ class TSPControlController:
     def _read_network_states(
         self,
         adapter: TraciSimulationAdapter,
-        signal_states: Dict[str, SignalState],
+        signal_states: dict[str, SignalState],
         responses: Iterable[SSEMLike],
-        requests_by_id: Dict[str, SREMLike],
+        requests_by_id: dict[str, SREMLike],
         sim_time_s: float,
-    ) -> Dict[str, NetworkStateSnapshot]:
-        active_requests_by_tls: Dict[str, int] = {}
+    ) -> dict[str, NetworkStateSnapshot]:
+        active_requests_by_tls: dict[str, int] = {}
         for response in responses:
             if response.status != ResponseStatus.PROCESSING.value:
                 continue
-            request = requests_by_id.get(response.request_id) or self.request_store.get_by_request_id(response.request_id)
+            request = requests_by_id.get(
+                response.request_id
+            ) or self.request_store.get_by_request_id(response.request_id)
             if request is not None:
-                active_requests_by_tls[request.tls_id] = active_requests_by_tls.get(request.tls_id, 0) + 1
+                active_requests_by_tls[request.tls_id] = (
+                    active_requests_by_tls.get(request.tls_id, 0) + 1
+                )
 
-        snapshots: Dict[str, NetworkStateSnapshot] = {}
+        snapshots: dict[str, NetworkStateSnapshot] = {}
         for intersection in self.cits_config.signal_controlled_intersections:
             signal_state = signal_states.get(intersection.tls_id)
             if signal_state is None:
@@ -645,13 +682,13 @@ class TSPControlController:
             )
         return snapshots
 
-    def _default_policy_report_path(self) -> Optional[str]:
+    def _default_policy_report_path(self) -> str | None:
         runtime_cfg = self.tsp_config.raw.get("policy_runtime", {})
         if self.policy_mode == "rl":
             return runtime_cfg.get("rl_policy_report", "reports/tabular_q_policy_report.json")
         return runtime_cfg.get("policy_report", "reports/policy_report.json")
 
-    def _runtime_policy_summary(self) -> Dict[str, object]:
+    def _runtime_policy_summary(self) -> dict[str, object]:
         if self.runtime_policy is None:
             return {
                 "loaded": False,
@@ -667,11 +704,13 @@ class TSPControlController:
             "training_environment": self.runtime_policy.training_environment,
             "safety_filter_required": self.runtime_policy.safety_filter_required,
             "rule_count": len(self.runtime_policy.rules),
-            "source_path": str(self.runtime_policy.source_path) if self.runtime_policy.source_path else None,
+            "source_path": str(self.runtime_policy.source_path)
+            if self.runtime_policy.source_path
+            else None,
         }
 
-    def _process_rsu_queues(self, sim_time_s: float) -> List[SSEMLike]:
-        responses: List[SSEMLike] = []
+    def _process_rsu_queues(self, sim_time_s: float) -> list[SSEMLike]:
+        responses: list[SSEMLike] = []
         for rsu_id, agent in self.rsu_agents.items():
             messages = self.broker.consume(rsu_id)
             responses.extend(agent.handle_messages(messages, sim_time_s))
@@ -723,7 +762,7 @@ def _granted_strategy_for_decision(decision: TSPDecision, status: str) -> str:
 
 def _response_priority_sort_key(
     response: SSEMLike,
-    requests_by_id: Dict[str, SREMLike],
+    requests_by_id: dict[str, SREMLike],
     cits_config: CITSConfig,
 ) -> tuple[int, float, float, str]:
     request = requests_by_id.get(response.request_id)

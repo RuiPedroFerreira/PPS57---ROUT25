@@ -26,9 +26,11 @@ Sources (each fetched, hashed and timestamped by the fetch script):
     like-for-like comparison and is reported as a corroborating second-country
     band. Licence: Open Government Licence v3.0.
 """
+
 from __future__ import annotations
 
-from typing import Any, Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
+from typing import Any
 
 # M4: defusedxml em vez do stdlib — o feed de Madrid vem da internet, exactamente
 # a fronteira que a política de hardening XXE do repo existe para proteger.
@@ -140,7 +142,8 @@ def madrid_feed_catalogue_coverage(xml_text: str, catalogue: Mapping[int, str]) 
     matches the live feed instead of dropping readings quietly.
     """
     feed_ids = {
-        det_id for pm in _valid_madrid_pms(xml_text)
+        det_id
+        for pm in _valid_madrid_pms(xml_text)
         if (det_id := _madrid_detector_id(pm)) is not None
     }
     matched = sum(1 for det_id in feed_ids if det_id in catalogue)
@@ -154,10 +157,7 @@ def madrid_feed_catalogue_coverage(xml_text: str, catalogue: Mapping[int, str]) 
 
 def _dft_records(payload: Any) -> Iterable[Mapping[str, Any]]:
     """Yield record dicts from a DfT API page (``{"data": [...]}``) or a bare list."""
-    if isinstance(payload, Mapping):
-        data = payload.get("data", [])
-    else:
-        data = payload
+    data = payload.get("data", []) if isinstance(payload, Mapping) else payload
     for rec in data or []:
         if isinstance(rec, Mapping):
             yield rec
@@ -277,7 +277,9 @@ def evaluate_demand_envelope(
                 "percentile": key,
                 "corridor_veh_h": corridor_value,
                 "reference_band_veh_h": [round(low, 1), round(high, 1)],
-                "per_city_veh_h": {name: round(val, 1) for name, val in sorted(city_values.items())},
+                "per_city_veh_h": {
+                    name: round(val, 1) for name, val in sorted(city_values.items())
+                },
                 "inside": bool(inside),
             }
         )

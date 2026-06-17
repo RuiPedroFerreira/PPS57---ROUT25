@@ -6,6 +6,7 @@ source-traced goodness-of-fit metrics (GEH, RMSE, flow/travel-time criteria) and
 config-driven acceptance gates that compare SUMO outputs against real counts,
 AVL/GTFS observations and reference scenarios. It fabricates no data.
 """
+
 from __future__ import annotations
 
 from pps57_sumo.validation import acceptance, metrics, reference_counts

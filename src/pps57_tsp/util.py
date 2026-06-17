@@ -7,9 +7,8 @@ drift que já produziu um bug real neste pacote (colisão de prefixo de edge,
 M1). Fonte única; os módulos importam com alias `_nome` para manter os
 call-sites inalterados.
 """
-from __future__ import annotations
 
-from typing import Optional
+from __future__ import annotations
 
 
 def positive_float(mapping: dict, key: str, default: float) -> float:
@@ -30,7 +29,7 @@ def non_negative_float(mapping: dict, key: str, default: float) -> float:
     return value if value >= 0 else default
 
 
-def optional_float(value: object) -> Optional[float]:
+def optional_float(value: object) -> float | None:
     """float(value) ou None se ausente/inválido (semântica opcional, fail-closed).
 
     bool é subclasse de int: um `true/false` por engano não deve virar um
@@ -49,7 +48,7 @@ def float_or_default(value: object, default: float) -> float:
     return parsed if parsed is not None else default
 
 
-def lane_belongs_to_edge_set(lane_id: Optional[str], edges: set[str]) -> bool:
+def lane_belongs_to_edge_set(lane_id: str | None, edges: set[str]) -> bool:
     """Lane SUMO `<edge>_<index>` pertence a `edges` sse extracted-edge ∈ edges.
 
     O sufixo numérico obrigatório protege contra colisões de prefixo
@@ -63,7 +62,9 @@ def lane_belongs_to_edge_set(lane_id: Optional[str], edges: set[str]) -> bool:
     return edge in edges
 
 
-def controlled_links_match_request(links_for_signal: object, lane_id: str, next_edge_id: str) -> bool:
+def controlled_links_match_request(
+    links_for_signal: object, lane_id: str, next_edge_id: str
+) -> bool:
     """True se algum link controlado liga a lane do pedido à edge seguinte.
 
     Sem next_edge basta a lane de entrada; com next_edge o link tem de sair

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Build an offline learning JSONL dataset from generated event logs."""
+
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import sys
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -15,7 +16,9 @@ from pps57_opt.event_dataset import write_event_training_dataset  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Create event-based learning rows from C-ITS/TSP logs.")
+    parser = argparse.ArgumentParser(
+        description="Create event-based learning rows from C-ITS/TSP logs."
+    )
     parser.add_argument("--cits-log", default="outputs/cits_messages.jsonl")
     parser.add_argument("--decision-log", default="outputs/tsp_decisions.jsonl")
     parser.add_argument("--actuation-log", default="outputs/tsp_actuation.jsonl")

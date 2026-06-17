@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Shared construction of TSP action proposals from a baseline decision."""
+
 from __future__ import annotations
 
 from pps57_cits.util import optional_int as _optional_int
@@ -24,7 +25,11 @@ def decision_for_action(
         target_phase = _optional_int(mapping.get("target_phase_index"))
 
     if action == TSPAction.GREEN_EXTENSION.value:
-        extension_s = baseline.extension_s if baseline.extension_s > 0 else _positive_float(policy, "green_extension_default_s", 8.0)
+        extension_s = (
+            baseline.extension_s
+            if baseline.extension_s > 0
+            else _positive_float(policy, "green_extension_default_s", 8.0)
+        )
         return baseline.copy_with(
             action=action,
             status=DecisionStatus.PROPOSED.value,

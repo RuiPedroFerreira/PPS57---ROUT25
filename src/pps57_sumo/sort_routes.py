@@ -9,6 +9,7 @@ silenciosamente autocarros fora de ordem temporal.
 Uso:
     python -m pps57_sumo.sort_routes [--routes sumo/routes/routes.rou.xml]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,7 +32,14 @@ def find_sumo_sort_routes() -> Path:
             return candidate
     sumo_bin = shutil.which("sumo")
     if sumo_bin:
-        candidate = Path(sumo_bin).resolve().parents[1] / "share" / "sumo" / "tools" / "route" / "sort_routes.py"
+        candidate = (
+            Path(sumo_bin).resolve().parents[1]
+            / "share"
+            / "sumo"
+            / "tools"
+            / "route"
+            / "sort_routes.py"
+        )
         if candidate.exists():
             return candidate
     raise SystemExit(

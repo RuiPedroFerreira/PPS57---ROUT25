@@ -19,16 +19,16 @@ Convenções de mapeamento ao CDD (ETSI TS 102 894-2):
 - `position.lat/lon`  em 1e-7 graus (CDD ReferencePosition).
 - `*_time_ms`         milissegundos (CDD TimeMark/MilliSecond).
 """
+
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
-from enum import Enum
 import hashlib
 import json
-from typing import Any, Dict, List, Optional
-from uuid import uuid4
 import zlib
-
+from dataclasses import asdict, dataclass, field
+from enum import Enum
+from typing import Any
+from uuid import uuid4
 
 # ---------------------------------------------------------------------------
 # Enums alinhados com ETSI TS 103 301 / TS 102 894-2 / ISO 19091.
@@ -191,7 +191,7 @@ class SecurityEnvelope:
 
     signer_id: str
     certificate_id: str
-    signature_b64: Optional[str]
+    signature_b64: str | None
     generation_time_ms: int
     valid_until_ms: int
 
@@ -206,11 +206,11 @@ class MovementEvent:
     """
 
     signal_group_id: int
-    event_state: str            # EventState value
-    min_end_time_ms: int        # ms a partir do `generation_time_ms`
+    event_state: str  # EventState value
+    min_end_time_ms: int  # ms a partir do `generation_time_ms`
     max_end_time_ms: int
-    likely_time_ms: Optional[int] = None
-    confidence: int = 0         # 0..15 (CDD TimeConfidence)
+    likely_time_ms: int | None = None
+    confidence: int = 0  # 0..15 (CDD TimeConfidence)
 
 
 @dataclass
@@ -225,8 +225,8 @@ class Approach:
     approach_id: str
     edge_id: str
     direction: str
-    priority_movement_ids: List[str] = field(default_factory=list)
-    lane_ids: List[str] = field(default_factory=list)
+    priority_movement_ids: list[str] = field(default_factory=list)
+    lane_ids: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -238,13 +238,13 @@ class Requestor:
     """
 
     station_id: int
-    station_type: int                    # StationType
-    basic_vehicle_role: str              # BasicVehicleRole
+    station_type: int  # StationType
+    basic_vehicle_role: str  # BasicVehicleRole
     position: Position3D
     heading_deg: float
     speed_mps: float
-    route_name: Optional[str] = None     # GTFS line, ex.: "STCP500"
-    operational_vehicle_id: str = ""     # extensão simulador
+    route_name: str | None = None  # GTFS line, ex.: "STCP500"
+    operational_vehicle_id: str = ""  # extensão simulador
 
 
 @dataclass
@@ -256,13 +256,13 @@ class SignalRequest:
     """
 
     intersection_ref_id: int
-    request_id: int                # CDD uint8 0..255
-    request_type: str              # RequestType
+    request_id: int  # CDD uint8 0..255
+    request_type: str  # RequestType
     in_bound_lane_id: str
     out_bound_lane_id: str
-    eta_min_minute: int            # minute-of-year do ETA min
-    eta_min_second_ms: int         # ms no minuto
-    duration_ms: int               # TTL do pedido
+    eta_min_minute: int  # minute-of-year do ETA min
+    eta_min_second_ms: int  # ms no minuto
+    duration_ms: int  # TTL do pedido
 
 
 @dataclass
@@ -272,8 +272,8 @@ class PrioritizationResponse:
     request_id: int
     sequence_number: int
     requestor_station_id: int
-    response_status: str                       # ResponseStatus
-    granted_signal_group: Optional[int] = None
+    response_status: str  # ResponseStatus
+    granted_signal_group: int | None = None
     valid_until_ms: int = 0
 
 
@@ -288,9 +288,9 @@ class SSEMAudit:
     """
 
     granted_strategy: str = GrantedStrategy.NONE.value
-    rejection_reason: Optional[str] = None
+    rejection_reason: str | None = None
     confidence: float = 1.0
-    notes: List[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -315,12 +315,12 @@ class OperatorTelemetry:
     operator_priority_class: str = OperatorPriorityClass.NOMINAL.value
     line_id: str = ""
     route_id: str = ""
-    intersection_alias: str = ""           # "I1" — referência operacional
-    tls_id: str = ""                       # SUMO TLS id
-    rsu_id: str = ""                       # broker alias
-    priority_movement_id: str = ""         # entrada no catálogo do operador
+    intersection_alias: str = ""  # "I1" — referência operacional
+    tls_id: str = ""  # SUMO TLS id
+    rsu_id: str = ""  # broker alias
+    priority_movement_id: str = ""  # entrada no catálogo do operador
     target_signal_group_id_hint: str = ""  # hint do OBU; RSU não fica vinculado
-    cancellation_reason: str = ""          # extensão, só usada em priorityCancellation
+    cancellation_reason: str = ""  # extensão, só usada em priorityCancellation
 
 
 # ---------------------------------------------------------------------------
@@ -342,17 +342,17 @@ class CITSMessage:
     message_type: str
     station_id: int
     station_type: int
-    source_id: str                # extensão broker
-    destination_id: str           # extensão broker
+    source_id: str  # extensão broker
+    destination_id: str  # extensão broker
     generation_delta_time_ms: int
-    moy: int                      # minute of year
-    timestamp_ms: int             # ms no minuto corrente
+    moy: int  # minute of year
+    timestamp_ms: int  # ms no minuto corrente
     security: SecurityEnvelope
     message_id: str = field(default_factory=lambda: str(uuid4()))
     protocol_version: str = "0.4.0"
-    correlation_id: Optional[str] = None
+    correlation_id: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return normalise_for_json(asdict(self))
 
     def to_json(self) -> str:
@@ -369,13 +369,13 @@ class MAPEMLike(CITSMessage):
     """MapData / MAPEM (ETSI TS 103 301-2 / ISO 19091)."""
 
     intersection_ref_id: int = 0
-    intersection_alias: str = ""             # operacional, ex. "I1"
+    intersection_alias: str = ""  # operacional, ex. "I1"
     intersection_name: str = ""
-    tls_id: str = ""                         # SUMO TLS id
+    tls_id: str = ""  # SUMO TLS id
     rsu_id: str = ""
-    revision: int = 0                        # campo obrigatório na MAP standard
-    ref_point: Optional[Position3D] = None   # ETSI ReferencePosition
-    approaches: List[Approach] = field(default_factory=list)
+    revision: int = 0  # campo obrigatório na MAP standard
+    ref_point: Position3D | None = None  # ETSI ReferencePosition
+    approaches: list[Approach] = field(default_factory=list)
 
 
 @dataclass
@@ -391,9 +391,9 @@ class SPATEMLike(CITSMessage):
     intersection_alias: str = ""
     tls_id: str = ""
     revision: int = 0
-    movement_events: List[MovementEvent] = field(default_factory=list)
-    intersection_status: Dict[str, bool] = field(default_factory=dict)
-    debug_sumo_state: Optional[str] = None   # extensão simulador, não-standard
+    movement_events: list[MovementEvent] = field(default_factory=list)
+    intersection_status: dict[str, bool] = field(default_factory=dict)
+    debug_sumo_state: str | None = None  # extensão simulador, não-standard
 
 
 @dataclass
@@ -411,10 +411,10 @@ class SREMLike(CITSMessage):
     """
 
     sequence_number: int = 0
-    requests: List[SignalRequest] = field(default_factory=list)
-    requestor: Optional[Requestor] = None
-    operator_telemetry: Optional[OperatorTelemetry] = None
-    expires_at_s: Optional[float] = None
+    requests: list[SignalRequest] = field(default_factory=list)
+    requestor: Requestor | None = None
+    operator_telemetry: OperatorTelemetry | None = None
+    expires_at_s: float | None = None
 
     # ------------------------------------------------------------------
     # Acessos ergonómicos (não-serializados; propriedades, não campos).
@@ -498,7 +498,9 @@ class SREMLike(CITSMessage):
 
     @property
     def target_signal_group_id(self) -> str:
-        return self.operator_telemetry.target_signal_group_id_hint if self.operator_telemetry else ""
+        return (
+            self.operator_telemetry.target_signal_group_id_hint if self.operator_telemetry else ""
+        )
 
     @property
     def current_lane_id(self) -> str:
@@ -532,7 +534,7 @@ class SSEMLike(CITSMessage):
     intersection_alias: str = ""
     tls_id: str = ""
     rsu_id: str = ""
-    response: Optional[PrioritizationResponse] = None
+    response: PrioritizationResponse | None = None
     audit: SSEMAudit = field(default_factory=SSEMAudit)
 
     @property
@@ -564,7 +566,7 @@ class SSEMLike(CITSMessage):
 # ---------------------------------------------------------------------------
 
 
-def validate_cits_message(message: CITSMessage) -> List[str]:
+def validate_cits_message(message: CITSMessage) -> list[str]:
     """Return structural validation errors for a simulated C-ITS PDU.
 
     This is intentionally a simulation-profile validator, not an ASN.1 or PKI
@@ -572,7 +574,7 @@ def validate_cits_message(message: CITSMessage) -> List[str]:
     and payload shape so producers/consumers share one contract before the RSU
     applies operational policy such as TTL, identity and eligibility.
     """
-    errors: List[str] = []
+    errors: list[str] = []
     _validate_common_message(message, errors)
 
     if message.message_type == MessageType.MAPEM.value:
@@ -606,7 +608,7 @@ def ensure_cits_message_valid(message: CITSMessage) -> None:
         raise ValueError("; ".join(errors))
 
 
-def _validate_common_message(message: CITSMessage, errors: List[str]) -> None:
+def _validate_common_message(message: CITSMessage, errors: list[str]) -> None:
     if message.message_type not in _enum_values(MessageType):
         errors.append("message_type_unsupported")
     if message.protocol_version != "0.4.0":
@@ -632,7 +634,7 @@ def _validate_common_message(message: CITSMessage, errors: List[str]) -> None:
     _validate_security(message.security, errors)
 
 
-def _validate_security(security: Optional[SecurityEnvelope], errors: List[str]) -> None:
+def _validate_security(security: SecurityEnvelope | None, errors: list[str]) -> None:
     if security is None:
         errors.append("security_missing")
         return
@@ -646,8 +648,10 @@ def _validate_security(security: Optional[SecurityEnvelope], errors: List[str]) 
         errors.append("security.valid_until_ms_invalid")
 
 
-def _validate_mapem(message: MAPEMLike, errors: List[str]) -> None:
-    _validate_intersection_fields(message.intersection_ref_id, message.intersection_alias, message.tls_id, errors)
+def _validate_mapem(message: MAPEMLike, errors: list[str]) -> None:
+    _validate_intersection_fields(
+        message.intersection_ref_id, message.intersection_alias, message.tls_id, errors
+    )
     if message.revision < 0:
         errors.append("mapem.revision_negative")
     if message.ref_point is not None:
@@ -664,8 +668,10 @@ def _validate_mapem(message: MAPEMLike, errors: List[str]) -> None:
             errors.append(f"{prefix}.direction_missing")
 
 
-def _validate_spatem(message: SPATEMLike, errors: List[str]) -> None:
-    _validate_intersection_fields(message.intersection_ref_id, message.intersection_alias, message.tls_id, errors)
+def _validate_spatem(message: SPATEMLike, errors: list[str]) -> None:
+    _validate_intersection_fields(
+        message.intersection_ref_id, message.intersection_alias, message.tls_id, errors
+    )
     if message.revision < 0:
         errors.append("spatem.revision_negative")
     if not message.movement_events:
@@ -692,7 +698,7 @@ def _validate_spatem(message: SPATEMLike, errors: List[str]) -> None:
         errors.append("spatem.intersection_status_unknown_flags")
 
 
-def _validate_srem(message: SREMLike, errors: List[str]) -> None:
+def _validate_srem(message: SREMLike, errors: list[str]) -> None:
     if not _in_range(message.sequence_number, 0, 65535):
         errors.append("srem.sequence_number_out_of_range")
     if not message.requests:
@@ -705,7 +711,10 @@ def _validate_srem(message: SREMLike, errors: List[str]) -> None:
             errors.append(f"{prefix}.request_id_out_of_range")
         if request.request_type not in _enum_values(RequestType):
             errors.append(f"{prefix}.request_type_unsupported")
-        if request.request_type != RequestType.PRIORITY_CANCELLATION.value and not request.in_bound_lane_id:
+        if (
+            request.request_type != RequestType.PRIORITY_CANCELLATION.value
+            and not request.in_bound_lane_id
+        ):
             errors.append(f"{prefix}.in_bound_lane_id_missing")
         if not _in_range(request.eta_min_minute, 0, 527040):
             errors.append(f"{prefix}.eta_min_minute_out_of_range")
@@ -754,8 +763,10 @@ def _validate_srem(message: SREMLike, errors: List[str]) -> None:
         errors.append("srem.expires_at_s_negative")
 
 
-def _validate_ssem(message: SSEMLike, errors: List[str]) -> None:
-    _validate_intersection_fields(message.intersection_ref_id, message.intersection_alias, message.tls_id, errors)
+def _validate_ssem(message: SSEMLike, errors: list[str]) -> None:
+    _validate_intersection_fields(
+        message.intersection_ref_id, message.intersection_alias, message.tls_id, errors
+    )
     if not message.rsu_id:
         errors.append("ssem.rsu_id_missing")
     response = message.response
@@ -770,11 +781,16 @@ def _validate_ssem(message: SSEMLike, errors: List[str]) -> None:
             errors.append("ssem.response.requestor_station_id_out_of_range")
         if response.response_status not in _enum_values(ResponseStatus):
             errors.append("ssem.response.response_status_unsupported")
-        if response.granted_signal_group is not None and not _in_range(response.granted_signal_group, 1, 255):
+        if response.granted_signal_group is not None and not _in_range(
+            response.granted_signal_group, 1, 255
+        ):
             errors.append("ssem.response.granted_signal_group_out_of_range")
         if response.valid_until_ms < 0:
             errors.append("ssem.response.valid_until_ms_negative")
-        if response.response_status == ResponseStatus.REJECTED.value and not message.audit.rejection_reason:
+        if (
+            response.response_status == ResponseStatus.REJECTED.value
+            and not message.audit.rejection_reason
+        ):
             errors.append("ssem.audit.rejection_reason_missing_for_rejected")
     if message.audit.granted_strategy not in _enum_values(GrantedStrategy):
         errors.append("ssem.audit.granted_strategy_unsupported")
@@ -786,7 +802,7 @@ def _validate_intersection_fields(
     intersection_ref_id: int,
     intersection_alias: str,
     tls_id: str,
-    errors: List[str],
+    errors: list[str],
 ) -> None:
     if not _in_range(intersection_ref_id, 0, 65535):
         errors.append("intersection_ref_id_out_of_range")
@@ -796,7 +812,7 @@ def _validate_intersection_fields(
         errors.append("tls_id_missing")
 
 
-def _validate_position(position: Position3D, prefix: str, errors: List[str]) -> None:
+def _validate_position(position: Position3D, prefix: str, errors: list[str]) -> None:
     if not _in_range(position.latitude_e7, -900000000, 900000000):
         errors.append(f"{prefix}.latitude_e7_out_of_range")
     if not _in_range(position.longitude_e7, -1800000000, 1800000000):
@@ -893,17 +909,17 @@ def build_security_envelope(
 # SUMO link state char -> EventState ETSI.
 # Referências: SUMO TLS state characters
 # (https://sumo.dlr.de/docs/Simulation/Traffic_Lights.html#tllogic_attributes)
-_SUMO_TO_EVENT_STATE: Dict[str, str] = {
+_SUMO_TO_EVENT_STATE: dict[str, str] = {
     "r": EventState.STOP_AND_REMAIN.value,
     "R": EventState.STOP_AND_REMAIN.value,
     "y": EventState.PERMISSIVE_CLEARANCE.value,
     "Y": EventState.PROTECTED_CLEARANCE.value,
     "g": EventState.PERMISSIVE_MOVEMENT_ALLOWED.value,
     "G": EventState.PROTECTED_MOVEMENT_ALLOWED.value,
-    "s": EventState.STOP_THEN_PROCEED.value,           # right-turn-on-red: parar e avançar com cautela
-    "u": EventState.PRE_MOVEMENT.value,                # red-yellow, transição p/ verde
+    "s": EventState.STOP_THEN_PROCEED.value,  # right-turn-on-red: parar e avançar com cautela
+    "u": EventState.PRE_MOVEMENT.value,  # red-yellow, transição p/ verde
     "O": EventState.DARK.value,
-    "o": EventState.CAUTION_CONFLICTING_TRAFFIC.value, # amarelo pisca
+    "o": EventState.CAUTION_CONFLICTING_TRAFFIC.value,  # amarelo pisca
 }
 
 
@@ -941,7 +957,7 @@ def synth_srem(
     request_type: str = "priorityRequest",
     request_id: int = 1,
     sequence_number: int = 1,
-    expires_at_s: Optional[float] = None,
+    expires_at_s: float | None = None,
     ttl_s: float = 30.0,
     signed: bool = False,
 ) -> SREMLike:

@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Evaluate baseline vs RL decision outcomes conservatively."""
+
 from __future__ import annotations
 
 import argparse
 import json
 import shutil
-from pathlib import Path
 import sys
 import tempfile
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -24,18 +25,57 @@ from pps57_tsp.controller import TSPControlController  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Evaluate whether RL TSP decisions are safer, worse, or inconclusive.")
-    parser.add_argument("--config", default="configs/cits_v2x_config.json", help="Base C-ITS configuration.")
-    parser.add_argument("--tsp-config", default="configs/tsp_safety_config.json", help="TSP/Safety Layer configuration.")
-    parser.add_argument("--policy-config", default="configs/policy_training_config.json", help="RL training configuration.")
-    parser.add_argument("--policy-report", default="reports/tabular_q_policy_report.json", help="Exported RL policy report.")
-    parser.add_argument("--steps", type=int, default=7200, help="SUMO/TraCI steps when generating fresh paired runs.")
+    parser = argparse.ArgumentParser(
+        description="Evaluate whether RL TSP decisions are safer, worse, or inconclusive."
+    )
+    parser.add_argument(
+        "--config", default="configs/cits_v2x_config.json", help="Base C-ITS configuration."
+    )
+    parser.add_argument(
+        "--tsp-config",
+        default="configs/tsp_safety_config.json",
+        help="TSP/Safety Layer configuration.",
+    )
+    parser.add_argument(
+        "--policy-config",
+        default="configs/policy_training_config.json",
+        help="RL training configuration.",
+    )
+    parser.add_argument(
+        "--policy-report",
+        default="reports/tabular_q_policy_report.json",
+        help="Exported RL policy report.",
+    )
+    parser.add_argument(
+        "--steps",
+        type=int,
+        default=7200,
+        help="SUMO/TraCI steps when generating fresh paired runs.",
+    )
     parser.add_argument("--sumo-binary", default="sumo", help="SUMO binary for TraCI.")
-    parser.add_argument("--no-actuation", action="store_true", help="Calculate decisions without applying TraCI commands.")
-    parser.add_argument("--train-rl", action="store_true", help="Train/export the RL policy before evaluating.")
-    parser.add_argument("--baseline-root", type=Path, default=None, help="Existing baseline run root with reports/ and outputs/.")
-    parser.add_argument("--rl-root", type=Path, default=None, help="Existing RL run root with reports/ and outputs/.")
-    parser.add_argument("--baseline-kpis", type=Path, default=None, help="Optional baseline SUMO KPI JSON.")
+    parser.add_argument(
+        "--no-actuation",
+        action="store_true",
+        help="Calculate decisions without applying TraCI commands.",
+    )
+    parser.add_argument(
+        "--train-rl", action="store_true", help="Train/export the RL policy before evaluating."
+    )
+    parser.add_argument(
+        "--baseline-root",
+        type=Path,
+        default=None,
+        help="Existing baseline run root with reports/ and outputs/.",
+    )
+    parser.add_argument(
+        "--rl-root",
+        type=Path,
+        default=None,
+        help="Existing RL run root with reports/ and outputs/.",
+    )
+    parser.add_argument(
+        "--baseline-kpis", type=Path, default=None, help="Optional baseline SUMO KPI JSON."
+    )
     parser.add_argument("--rl-kpis", type=Path, default=None, help="Optional RL SUMO KPI JSON.")
     parser.add_argument("--json-out", default="reports/decision_outcome_evaluation.json")
     parser.add_argument("--md-out", default="reports/decision_outcome_evaluation.md")
@@ -69,15 +109,27 @@ def main() -> int:
                 cits_config,
                 tsp_config,
                 policy_mode="baseline",
-            ).run_with_sumo(steps=args.steps, sumo_binary=args.sumo_binary, apply_actuation=not args.no_actuation)
+            ).run_with_sumo(
+                steps=args.steps,
+                sumo_binary=args.sumo_binary,
+                apply_actuation=not args.no_actuation,
+            )
             _copy_tsp_artifacts(ROOT, baseline_root)
             if args.train_rl or not policy_report.exists():
                 write_event_training_dataset(
-                    cits_log=cits_config.path_from_root(cits_config.logging.get("message_log", "outputs/cits_messages.jsonl")),
-                    decision_log=tsp_config.path_from_root(tsp_config.logging.get("decision_log", "outputs/tsp_decisions.jsonl")),
-                    actuation_log=tsp_config.path_from_root(tsp_config.logging.get("actuation_log", "outputs/tsp_actuation.jsonl")),
+                    cits_log=cits_config.path_from_root(
+                        cits_config.logging.get("message_log", "outputs/cits_messages.jsonl")
+                    ),
+                    decision_log=tsp_config.path_from_root(
+                        tsp_config.logging.get("decision_log", "outputs/tsp_decisions.jsonl")
+                    ),
+                    actuation_log=tsp_config.path_from_root(
+                        tsp_config.logging.get("actuation_log", "outputs/tsp_actuation.jsonl")
+                    ),
                     output_path=optimization_config.path_from_root(
-                        optimization_config.logging.get("event_training_dataset", "outputs/event_training_dataset.jsonl")
+                        optimization_config.logging.get(
+                            "event_training_dataset", "outputs/event_training_dataset.jsonl"
+                        )
                     ),
                 )
                 TabularQLearningController(cits_config, tsp_config, optimization_config).run()
@@ -86,7 +138,11 @@ def main() -> int:
                 tsp_config,
                 policy_mode="rl",
                 policy_report_path=str(policy_report),
-            ).run_with_sumo(steps=args.steps, sumo_binary=args.sumo_binary, apply_actuation=not args.no_actuation)
+            ).run_with_sumo(
+                steps=args.steps,
+                sumo_binary=args.sumo_binary,
+                apply_actuation=not args.no_actuation,
+            )
             _copy_tsp_artifacts(ROOT, rl_root)
             payload = _write(
                 baseline_root=baseline_root,
@@ -118,8 +174,12 @@ def _evaluate_existing_roots(
     baseline_kpis: dict | None,
     rl_kpis: dict | None,
 ) -> dict:
-    baseline_summary = json.loads((baseline_root / "reports/tsp_emulation_summary.json").read_text(encoding="utf-8"))
-    rl_summary = json.loads((rl_root / "reports/tsp_emulation_summary.json").read_text(encoding="utf-8"))
+    baseline_summary = json.loads(
+        (baseline_root / "reports/tsp_emulation_summary.json").read_text(encoding="utf-8")
+    )
+    rl_summary = json.loads(
+        (rl_root / "reports/tsp_emulation_summary.json").read_text(encoding="utf-8")
+    )
     return _write(
         baseline_root=baseline_root,
         rl_root=rl_root,

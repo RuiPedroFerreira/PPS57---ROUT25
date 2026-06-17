@@ -7,22 +7,24 @@ signal-program-derived conflict matrix from a SUMO ``net.xml``. The safety
 layer still owns final approval; this module only removes hard-coded phase and
 lane assumptions from imported maps.
 """
+
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
-from functools import lru_cache
 import hashlib
-from pathlib import Path
 import re
 import xml.etree.ElementTree as ET
-from typing import Dict, Iterable, List, Optional, Tuple
+from collections.abc import Iterable
+from dataclasses import asdict, dataclass, field
+from functools import lru_cache
+from pathlib import Path
 
 # M4: net.xml/additional podem vir de fontes externas (OSM) -> endurece o
 # parsing de input não-confiável contra XXE/expansão de entidades. A
 # anotação/construção com `ET.Element` mantém-se do stdlib (defusedxml não a
 # expõe e não processa input).
 try:
-    from defusedxml.ElementTree import fromstring as _safe_fromstring, parse as _safe_parse
+    from defusedxml.ElementTree import fromstring as _safe_fromstring
+    from defusedxml.ElementTree import parse as _safe_parse
 except ImportError:  # pragma: no cover - exercised in minimal CI images.
     _safe_fromstring = ET.fromstring
     _safe_parse = ET.parse
@@ -45,8 +47,8 @@ class ConnectionProfile:
     link_index: int
     from_edge: str
     to_edge: str
-    from_lane_index: Optional[int]
-    to_lane_index: Optional[int]
+    from_lane_index: int | None
+    to_lane_index: int | None
     direction: str = ""
     state: str = ""
     via: str = ""
@@ -72,20 +74,20 @@ class MovementProfile:
     from_edge: str
     to_edge: str
     direction: str
-    controlled_lanes: List[str]
-    link_indices: List[int]
-    green_phase_indices: List[int]
-    protected_green_phase_indices: List[int]
-    permissive_green_phase_indices: List[int]
-    target_phase_index: Optional[int]
-    conflicts_with: List[str] = field(default_factory=list)
+    controlled_lanes: list[str]
+    link_indices: list[int]
+    green_phase_indices: list[int]
+    protected_green_phase_indices: list[int]
+    permissive_green_phase_indices: list[int]
+    target_phase_index: int | None
+    conflicts_with: list[str] = field(default_factory=list)
 
     @property
-    def approach_edges(self) -> List[str]:
+    def approach_edges(self) -> list[str]:
         return [self.from_edge]
 
     @property
-    def egress_edges(self) -> List[str]:
+    def egress_edges(self) -> list[str]:
         return [self.to_edge]
 
 
@@ -96,20 +98,20 @@ class TLSProfile:
     tls_type: str
     offset_s: float
     junction_type: str
-    phases: List[PhaseProfile]
-    connections: List[ConnectionProfile]
-    movements: List[MovementProfile]
+    phases: list[PhaseProfile]
+    connections: list[ConnectionProfile]
+    movements: list[MovementProfile]
 
     @property
-    def phase_sequence(self) -> List[int]:
+    def phase_sequence(self) -> list[int]:
         return [phase.index for phase in self.phases]
 
     @property
-    def service_green_phase_indices(self) -> List[int]:
+    def service_green_phase_indices(self) -> list[int]:
         return [phase.index for phase in self.phases if phase.has_green]
 
     @property
-    def intergreen_phase_indices(self) -> List[int]:
+    def intergreen_phase_indices(self) -> list[int]:
         return [phase.index for phase in self.phases if not phase.has_green]
 
     @property
@@ -117,14 +119,26 @@ class TLSProfile:
         return sum(phase.duration_s for phase in self.phases)
 
     @property
-    def controlled_lanes(self) -> List[str]:
-        return sorted({connection.controlled_lane for connection in self.connections if connection.controlled_lane})
+    def controlled_lanes(self) -> list[str]:
+        return sorted(
+            {
+                connection.controlled_lane
+                for connection in self.connections
+                if connection.controlled_lane
+            }
+        )
 
     @property
-    def incoming_edges(self) -> List[str]:
-        return sorted({connection.from_edge for connection in self.connections if not connection.from_edge.startswith(":")})
+    def incoming_edges(self) -> list[str]:
+        return sorted(
+            {
+                connection.from_edge
+                for connection in self.connections
+                if not connection.from_edge.startswith(":")
+            }
+        )
 
-    def movement_for_edges(self, from_edge: str, to_edge: str = "") -> Optional[MovementProfile]:
+    def movement_for_edges(self, from_edge: str, to_edge: str = "") -> MovementProfile | None:
         candidates = [movement for movement in self.movements if movement.from_edge == from_edge]
         if to_edge:
             exact = [movement for movement in candidates if movement.to_edge == to_edge]
@@ -150,21 +164,23 @@ class DetectorProfile:
 class NetworkProfile:
     network_file: str
     fingerprint: str
-    tls_profiles: Dict[str, TLSProfile]
-    detectors: List[DetectorProfile] = field(default_factory=list)
+    tls_profiles: dict[str, TLSProfile]
+    detectors: list[DetectorProfile] = field(default_factory=list)
 
-    def tls_ids(self) -> List[str]:
+    def tls_ids(self) -> list[str]:
         return sorted(self.tls_profiles)
 
-    def tls_profile(self, tls_id: str) -> Optional[TLSProfile]:
+    def tls_profile(self, tls_id: str) -> TLSProfile | None:
         return self.tls_profiles.get(tls_id)
 
-    def to_dict(self) -> Dict[str, object]:
+    def to_dict(self) -> dict[str, object]:
         return asdict(self)
 
 
 class NetworkProfileBuilder:
-    def __init__(self, network_file: str | Path, *, additional_files: Optional[Iterable[str | Path]] = None) -> None:
+    def __init__(
+        self, network_file: str | Path, *, additional_files: Iterable[str | Path] | None = None
+    ) -> None:
         self.network_file = Path(network_file)
         self.additional_files = [Path(path) for path in additional_files or []]
 
@@ -183,11 +199,13 @@ class NetworkProfileBuilder:
         tl_logics = self._read_tl_logics(root)
         connections_by_tls = self._read_connections(root)
 
-        tls_profiles: Dict[str, TLSProfile] = {}
+        tls_profiles: dict[str, TLSProfile] = {}
         for tls_id in sorted(set(tl_logics) | set(connections_by_tls)):
             logic = tl_logics.get(tls_id, {})
             phases = list(logic.get("phases", []))
-            connections = sorted(connections_by_tls.get(tls_id, []), key=lambda item: item.link_index)
+            connections = sorted(
+                connections_by_tls.get(tls_id, []), key=lambda item: item.link_index
+            )
             movements = _build_movements(tls_id, phases, connections)
             tls_profiles[tls_id] = TLSProfile(
                 tls_id=tls_id,
@@ -208,13 +226,13 @@ class NetworkProfileBuilder:
             detectors=detectors,
         )
 
-    def _read_tl_logics(self, root: ET.Element) -> Dict[str, Dict[str, object]]:
-        result: Dict[str, Dict[str, object]] = {}
+    def _read_tl_logics(self, root: ET.Element) -> dict[str, dict[str, object]]:
+        result: dict[str, dict[str, object]] = {}
         for tl_logic in root.iter("tlLogic"):
             tls_id = str(tl_logic.get("id", ""))
             if not tls_id or tls_id in result:
                 continue
-            phases: List[PhaseProfile] = []
+            phases: list[PhaseProfile] = []
             for index, phase in enumerate(tl_logic.findall("phase")):
                 phases.append(
                     PhaseProfile(
@@ -231,8 +249,8 @@ class NetworkProfileBuilder:
             }
         return result
 
-    def _read_connections(self, root: ET.Element) -> Dict[str, List[ConnectionProfile]]:
-        result: Dict[str, List[ConnectionProfile]] = {}
+    def _read_connections(self, root: ET.Element) -> dict[str, list[ConnectionProfile]]:
+        result: dict[str, list[ConnectionProfile]] = {}
         for connection in root.iter("connection"):
             tls_id = str(connection.get("tl", ""))
             link_index = _optional_int(connection.get("linkIndex"))
@@ -255,8 +273,8 @@ class NetworkProfileBuilder:
             )
         return result
 
-    def _read_detectors(self) -> List[DetectorProfile]:
-        detectors: List[DetectorProfile] = []
+    def _read_detectors(self) -> list[DetectorProfile]:
+        detectors: list[DetectorProfile] = []
         for path in self.additional_files:
             if not path.exists():
                 continue
@@ -282,7 +300,7 @@ class NetworkProfileBuilder:
 def load_network_profile(
     network_file: str | Path,
     *,
-    additional_files: Optional[Iterable[str | Path]] = None,
+    additional_files: Iterable[str | Path] | None = None,
 ) -> NetworkProfile:
     path = Path(network_file).resolve()
     add_paths = tuple(str(Path(item).resolve()) for item in additional_files or [])
@@ -295,7 +313,7 @@ def _load_network_profile_cached(
     network_file: str,
     mtime_ns: int,
     size: int,
-    additional_files: Tuple[str, ...],
+    additional_files: tuple[str, ...],
 ) -> NetworkProfile:
     del mtime_ns, size
     return NetworkProfileBuilder(network_file, additional_files=additional_files).build()
@@ -310,16 +328,16 @@ def edge_from_lane(lane_id: str) -> str:
 
 def _build_movements(
     tls_id: str,
-    phases: List[PhaseProfile],
-    connections: List[ConnectionProfile],
-) -> List[MovementProfile]:
-    grouped: Dict[Tuple[str, str], List[ConnectionProfile]] = {}
+    phases: list[PhaseProfile],
+    connections: list[ConnectionProfile],
+) -> list[MovementProfile]:
+    grouped: dict[tuple[str, str], list[ConnectionProfile]] = {}
     for connection in connections:
         if connection.from_edge.startswith(":") or connection.to_edge.startswith(":"):
             continue
         grouped.setdefault((connection.from_edge, connection.to_edge), []).append(connection)
 
-    draft: List[MovementProfile] = []
+    draft: list[MovementProfile] = []
     for (from_edge, to_edge), group in sorted(grouped.items()):
         link_indices = sorted({connection.link_index for connection in group})
         green_phases, protected_phases, permissive_phases = _green_phase_sets(phases, link_indices)
@@ -366,12 +384,12 @@ def _build_movements(
 
 
 def _green_phase_sets(
-    phases: List[PhaseProfile],
-    link_indices: List[int],
-) -> Tuple[List[int], List[int], List[int]]:
-    green: List[int] = []
-    protected: List[int] = []
-    permissive: List[int] = []
+    phases: list[PhaseProfile],
+    link_indices: list[int],
+) -> tuple[list[int], list[int], list[int]]:
+    green: list[int] = []
+    protected: list[int] = []
+    permissive: list[int] = []
     for phase in phases:
         chars = [phase.state[index] for index in link_indices if 0 <= index < len(phase.state)]
         if any(ch.lower() == "g" for ch in chars):
@@ -384,15 +402,15 @@ def _green_phase_sets(
 
 
 def _target_phase(
-    phases: List[PhaseProfile],
-    link_indices: List[int],
-    candidate_indices: List[int],
-) -> Optional[int]:
+    phases: list[PhaseProfile],
+    link_indices: list[int],
+    candidate_indices: list[int],
+) -> int | None:
     if not candidate_indices:
         return None
     phase_by_index = {phase.index: phase for phase in phases}
 
-    def score(index: int) -> Tuple[int, int, float, int]:
+    def score(index: int) -> tuple[int, int, float, int]:
         phase = phase_by_index.get(index)
         state = phase.state if phase is not None else ""
         chars = [state[item] for item in link_indices if 0 <= item < len(state)]
@@ -404,8 +422,8 @@ def _target_phase(
     return max(candidate_indices, key=score)
 
 
-def _movement_conflicts(movements: List[MovementProfile]) -> Dict[str, List[str]]:
-    result: Dict[str, List[str]] = {movement.signal_group_id: [] for movement in movements}
+def _movement_conflicts(movements: list[MovementProfile]) -> dict[str, list[str]]:
+    result: dict[str, list[str]] = {movement.signal_group_id: [] for movement in movements}
     for left in movements:
         left_green = set(left.green_phase_indices)
         for right in movements:
@@ -417,7 +435,7 @@ def _movement_conflicts(movements: List[MovementProfile]) -> Dict[str, List[str]
     return {key: sorted(set(values)) for key, values in result.items()}
 
 
-def _best_movement(movements: List[MovementProfile]) -> MovementProfile:
+def _best_movement(movements: list[MovementProfile]) -> MovementProfile:
     return max(
         movements,
         key=lambda movement: (
@@ -429,7 +447,7 @@ def _best_movement(movements: List[MovementProfile]) -> MovementProfile:
     )
 
 
-def _movement_direction(from_edge: str, to_edge: str, connections: List[ConnectionProfile]) -> str:
+def _movement_direction(from_edge: str, to_edge: str, connections: list[ConnectionProfile]) -> str:
     directions = {connection.direction for connection in connections if connection.direction}
     if len(directions) == 1:
         return next(iter(directions))
@@ -444,7 +462,7 @@ def _safe_id(value: str) -> str:
     return safe or "unknown"
 
 
-def _optional_int(value: object) -> Optional[int]:
+def _optional_int(value: object) -> int | None:
     try:
         return int(str(value))
     except (TypeError, ValueError):

@@ -7,13 +7,14 @@ proves the evidence instruments (provenance merge/hash gates, the configured V2
 gate rule, the zero-flow accounting, the shared auto-config and the fail-close
 predicate) behave as documented, nothing more.
 """
+
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -30,7 +31,10 @@ import run_network_binding_check  # noqa: E402
 import run_tsp_demo  # noqa: E402
 import run_v2_demand_validation as run_v2  # noqa: E402
 
-from pps57_sumo.validation.acceptance import evaluate_tsp_face_validity, load_validation_config  # noqa: E402
+from pps57_sumo.validation.acceptance import (  # noqa: E402
+    evaluate_tsp_face_validity,
+    load_validation_config,
+)
 from pps57_tsp.signal_control import (  # noqa: E402
     ControllerContract,
     SignalGroupContract,
@@ -177,7 +181,9 @@ class GateRuleDispatchTests(unittest.TestCase):
 class SharedEvidenceConfigTests(unittest.TestCase):
     def test_all_three_scripts_share_the_same_builders(self) -> None:
         for module in (run_tsp_demo, run_network_binding_check, empirical_network_profile_check):
-            self.assertIs(module.auto_discovery_cits_config, _evidence_common.auto_discovery_cits_config)
+            self.assertIs(
+                module.auto_discovery_cits_config, _evidence_common.auto_discovery_cits_config
+            )
             self.assertIs(module.auto_tsp_config, _evidence_common.auto_tsp_config)
 
     def test_auto_tsp_config_keeps_the_demo_decision_policy(self) -> None:
@@ -185,7 +191,12 @@ class SharedEvidenceConfigTests(unittest.TestCase):
         policy = tsp.raw["decision_policy"]
         self.assertEqual(
             policy["weights"],
-            {"schedule_delay": 0.45, "headway_deviation": 0.2, "proximity": 0.2, "priority_level": 0.15},
+            {
+                "schedule_delay": 0.45,
+                "headway_deviation": 0.2,
+                "proximity": 0.2,
+                "priority_level": 0.15,
+            },
         )
         self.assertFalse(tsp.raw["actuation"]["allow_direct_phase_jump"])
         self.assertEqual(
@@ -203,11 +214,18 @@ class SharedEvidenceConfigTests(unittest.TestCase):
 
 def _contract(groups: dict) -> ControllerContract:
     return ControllerContract(
-        tls_id="tls1", adapter_type="sumo_traci", fixed_time_required=True,
-        allowed_actions=["green_extension"], phase_sequence=[0, 1],
-        service_green_phase_indices=[0], intergreen_phase_indices=[1],
-        min_yellow_s=3.0, min_all_red_s=None, expected_cycle_s=None,
-        pedestrian_phase_required=False, pedestrian_phase_indices=[],
+        tls_id="tls1",
+        adapter_type="sumo_traci",
+        fixed_time_required=True,
+        allowed_actions=["green_extension"],
+        phase_sequence=[0, 1],
+        service_green_phase_indices=[0],
+        intergreen_phase_indices=[1],
+        min_yellow_s=3.0,
+        min_all_red_s=None,
+        expected_cycle_s=None,
+        pedestrian_phase_required=False,
+        pedestrian_phase_indices=[],
         signal_groups=groups,
     )
 
@@ -274,12 +292,7 @@ MADRID_SNAPSHOT_XML = (
     "  <pm><idelem>3</idelem><intensidad>400</intensidad><error>N</error></pm>\n"
     "</pms>\n"
 )
-MADRID_SNAPSHOT_CSV = (
-    '"tipo_elem";"distrito";"id"\n'
-    '"URB";4;1\n'
-    '"URB";4;2\n'
-    '"URB";4;3\n'
-)
+MADRID_SNAPSHOT_CSV = '"tipo_elem";"distrito";"id"\n"URB";4;1\n"URB";4;2\n"URB";4;3\n'
 
 
 class MadridBandSourceTests(unittest.TestCase):
@@ -295,9 +308,16 @@ class MadridBandSourceTests(unittest.TestCase):
             (raw_dir / "madrid_pm.xml").write_text(MADRID_SNAPSHOT_XML, encoding="utf-8")
             (raw_dir / "madrid_catalogue.csv").write_text(MADRID_SNAPSHOT_CSV, encoding="utf-8")
             (raw_dir / "provenance.json").write_text(
-                json.dumps({"sources": {"madrid": {
-                    "feed_timestamp": "10/06/2026 16:20:06", "intensity_sha256": "ab" * 32,
-                }}}),
+                json.dumps(
+                    {
+                        "sources": {
+                            "madrid": {
+                                "feed_timestamp": "10/06/2026 16:20:06",
+                                "intensity_sha256": "ab" * 32,
+                            }
+                        }
+                    }
+                ),
                 encoding="utf-8",
             )
             band = build_reference_corridor.load_madrid_band(raw_dir)
@@ -327,7 +347,9 @@ class FaceValidityAnchorsTests(unittest.TestCase):
         anchors = report["published_corridor_anchors_pct"]
         expected = {
             key: value
-            for key, value in config["tsp_face_validity"]["corridor_travel_time_anchors_pct"].items()
+            for key, value in config["tsp_face_validity"][
+                "corridor_travel_time_anchors_pct"
+            ].items()
             if key != "source"
         }
         self.assertEqual(anchors["anchors"], expected)

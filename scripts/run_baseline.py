@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Build and run the PPS57 Porto/Boavista SUMO base scenario."""
+
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-import json
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -42,7 +43,16 @@ def main() -> None:
     config = apply_scenario_profile(base_config, "baseline_am_peak")
     artifacts = build_sumo_artifacts(config, root=ROOT, base_dir=Path("sumo"))
     run(["sumo", "-c", str(artifacts.sumocfg_file), "--duration-log.statistics"])
-    run([sys.executable, "src/pps57_sumo/parse_tripinfo.py", "--tripinfo", "outputs/tripinfo.xml", "--out", "reports/baseline_kpis.json"])
+    run(
+        [
+            sys.executable,
+            "src/pps57_sumo/parse_tripinfo.py",
+            "--tripinfo",
+            "outputs/tripinfo.xml",
+            "--out",
+            "reports/baseline_kpis.json",
+        ]
+    )
 
 
 if __name__ == "__main__":

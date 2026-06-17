@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Logging JSONL e geração de resumo para a emulação C-ITS."""
+
 from __future__ import annotations
 
 import json
 import os
 from pathlib import Path
-from typing import IO, Dict, List, Optional
+from typing import IO
 
 from .messages import CITSMessage, ResponseStatus
 from .protocol_codec import JsonSimulationCodec, ProtocolCodec
@@ -23,7 +24,7 @@ class CITSJsonlLogger:
     def __init__(self, path: str | Path, codec: ProtocolCodec | None = None) -> None:
         self.path = Path(path)
         self.codec = codec or JsonSimulationCodec()
-        self._handle: Optional[IO[str]] = None
+        self._handle: IO[str] | None = None
 
     def write(self, message: CITSMessage) -> None:
         if self._handle is None:
@@ -35,7 +36,7 @@ class CITSJsonlLogger:
             self._handle.close()
             self._handle = None
 
-    def __enter__(self) -> "CITSJsonlLogger":
+    def __enter__(self) -> CITSJsonlLogger:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._handle = self.path.open("w", encoding="utf-8", buffering=1)
         return self
@@ -54,11 +55,11 @@ class IncrementalCITSSummary:
 
     def __init__(self) -> None:
         self.total = 0
-        self.by_type: Dict[str, int] = {}
+        self.by_type: dict[str, int] = {}
         self.request_ids: set[str] = set()
         self.vehicle_ids: set[str] = set()
         self.rsu_ids: set[str] = set()
-        self.processing = 0      # SSEM com response_status=processing (era "acknowledged")
+        self.processing = 0  # SSEM com response_status=processing (era "acknowledged")
         self.rejected = 0
         self.granted = 0
         self.cancelled = 0
@@ -93,7 +94,7 @@ class IncrementalCITSSummary:
                 # cancelamento devolvido pelo RSU como ack idempotente
                 self.cancelled += 1
 
-    def to_dict(self) -> Dict[str, object]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "total_messages": self.total,
             "by_type": dict(self.by_type),
@@ -110,7 +111,7 @@ class IncrementalCITSSummary:
         }
 
 
-def summarise_messages(messages: List[CITSMessage]) -> Dict[str, object]:
+def summarise_messages(messages: list[CITSMessage]) -> dict[str, object]:
     """Resumo batch das mensagens C-ITS.
 
     É um wrapper fino sobre `IncrementalCITSSummary` para que as duas vias
@@ -123,7 +124,9 @@ def summarise_messages(messages: List[CITSMessage]) -> Dict[str, object]:
     return summary.to_dict()
 
 
-def write_summary_dict(path: str | Path, summary: Dict[str, object], extra: Dict[str, object] | None = None) -> Dict[str, object]:
+def write_summary_dict(
+    path: str | Path, summary: dict[str, object], extra: dict[str, object] | None = None
+) -> dict[str, object]:
     """Escreve um resumo já calculado, normalmente agregado incrementalmente.
 
     Escreve atomicamente via `.tmp` + `os.replace`: um crash a meio da

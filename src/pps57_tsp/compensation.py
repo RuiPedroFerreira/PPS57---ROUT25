@@ -25,10 +25,10 @@ estendida; na ativação seguinte dessa fase, encurta-se a fase em prestações
 (``compensation_max_per_cycle_s``) nunca abaixo do ``min_green_s`` da safety
 (fail-closed sem o bound). Opt-in: ``actuation.coordination_recovery_enabled``.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
 
 from pps57_cits.config import CITSConfig
 from pps57_cits.models import SignalState
@@ -36,20 +36,21 @@ from pps57_cits.models import SignalState
 from .config import TSPConfig
 from .models import ActuationResult, ReasonCode, TSPAction, TSPDecision
 from .signal_control import SignalControlAdapter
-from .util import float_or_default as _float_or_default, optional_float as _optional_float
+from .util import float_or_default as _float_or_default
+from .util import optional_float as _optional_float
 
 
 @dataclass
 class GreenCompensationManager:
     cits_config: CITSConfig
     tsp_config: TSPConfig
-    owed_s_by_tls_phase: Dict[str, Dict[int, float]] = field(default_factory=dict)
+    owed_s_by_tls_phase: dict[str, dict[int, float]] = field(default_factory=dict)
     # v2.2: verde a RECLAMAR (encurtar) à fase estendida, por (tls, fase) — o
     # simétrico do owed, para re-alinhar o ciclo depois de green extensions.
-    reclaim_s_by_tls_phase: Dict[str, Dict[int, float]] = field(default_factory=dict)
+    reclaim_s_by_tls_phase: dict[str, dict[int, float]] = field(default_factory=dict)
     granted_s_total: float = 0.0
     reclaimed_s_total: float = 0.0
-    _last_phase_by_tls: Dict[str, Optional[int]] = field(default_factory=dict)
+    _last_phase_by_tls: dict[str, int | None] = field(default_factory=dict)
 
     @property
     def enabled(self) -> bool:
@@ -112,13 +113,13 @@ class GreenCompensationManager:
 
     def step(
         self,
-        signal_states: Dict[str, SignalState],
+        signal_states: dict[str, SignalState],
         signal_control: SignalControlAdapter,
         sim_time_s: float,
         *,
         apply_actuation: bool,
-        skip_tls: Optional[set] = None,
-    ) -> List[ActuationResult]:
+        skip_tls: set | None = None,
+    ) -> list[ActuationResult]:
         """Paga prestações de compensação nas transições de fase deste passo.
 
         ``skip_tls``: TLS com atuação TSP neste passo ficam de fora — o
@@ -135,7 +136,7 @@ class GreenCompensationManager:
             self.cits_config.safety_constraints.get("max_total_green_s")
         )
         min_green = _optional_float(self.cits_config.safety_constraints.get("min_green_s"))
-        results: List[ActuationResult] = []
+        results: list[ActuationResult] = []
         for tls_id, state in signal_states.items():
             current = state.current_phase_index
             previous = self._last_phase_by_tls.get(tls_id)
@@ -161,15 +162,27 @@ class GreenCompensationManager:
             # mesma fase, se existir, fica pendente para a ativação seguinte —
             # nunca se combinam dois comandos absolutos no mesmo passo.
             result = self._pay_compensation(
-                tls_id, int(current), remaining_s, spent_s,
-                max_per_cycle_s, max_total_green, sim_time_s,
-                signal_control, apply_actuation,
+                tls_id,
+                int(current),
+                remaining_s,
+                spent_s,
+                max_per_cycle_s,
+                max_total_green,
+                sim_time_s,
+                signal_control,
+                apply_actuation,
             )
             if result is None:
                 result = self._reclaim_extension(
-                    tls_id, int(current), remaining_s, spent_s,
-                    max_per_cycle_s, min_green, sim_time_s,
-                    signal_control, apply_actuation,
+                    tls_id,
+                    int(current),
+                    remaining_s,
+                    spent_s,
+                    max_per_cycle_s,
+                    min_green,
+                    sim_time_s,
+                    signal_control,
+                    apply_actuation,
                 )
             if result is not None:
                 results.append(result)
@@ -182,11 +195,11 @@ class GreenCompensationManager:
         remaining_s: float,
         spent_s: float,
         max_per_cycle_s: float,
-        max_total_green: Optional[float],
+        max_total_green: float | None,
         sim_time_s: float,
         signal_control: SignalControlAdapter,
         apply_actuation: bool,
-    ) -> Optional[ActuationResult]:
+    ) -> ActuationResult | None:
         if not self.enabled or max_total_green is None:
             return None  # fail-closed: sem max_total_green não há bound de alargamento
         owed_by_phase = self.owed_s_by_tls_phase.get(tls_id)
@@ -227,11 +240,11 @@ class GreenCompensationManager:
         remaining_s: float,
         spent_s: float,
         max_per_cycle_s: float,
-        min_green: Optional[float],
+        min_green: float | None,
         sim_time_s: float,
         signal_control: SignalControlAdapter,
         apply_actuation: bool,
-    ) -> Optional[ActuationResult]:
+    ) -> ActuationResult | None:
         if not self.recovery_enabled or min_green is None:
             return None  # fail-closed: sem min_green não há bound seguro de encurtamento
         reclaim_by_phase = self.reclaim_s_by_tls_phase.get(tls_id)
@@ -266,7 +279,7 @@ class GreenCompensationManager:
             },
         )
 
-    def summary(self) -> Dict[str, object]:
+    def summary(self) -> dict[str, object]:
         owed_remaining = {
             tls_id: {str(phase): round(value, 3) for phase, value in phases.items() if value > 0}
             for tls_id, phases in self.owed_s_by_tls_phase.items()

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Audit C-ITS/TSP protocol lifecycle JSONL artifacts."""
+
 from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -20,7 +21,9 @@ def main() -> None:
     parser.add_argument("--cits", type=Path, default=ROOT / "outputs/cits_messages.jsonl")
     parser.add_argument("--decisions", type=Path, default=ROOT / "outputs/tsp_decisions.jsonl")
     parser.add_argument("--actuations", type=Path, default=ROOT / "outputs/tsp_actuation.jsonl")
-    parser.add_argument("--output", type=Path, default=ROOT / "reports/protocol_lifecycle_audit.json")
+    parser.add_argument(
+        "--output", type=Path, default=ROOT / "reports/protocol_lifecycle_audit.json"
+    )
     args = parser.parse_args()
 
     report = audit_protocol_lifecycle(args.cits, args.decisions, args.actuations)

@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -43,9 +43,13 @@ class TSPDemonstratorTestCase(unittest.TestCase):
             self.assertEqual(report["verdict"]["status"], "passes_primary_demonstrator_goal")
             self.assertEqual(controller_runtime["blocked_by_safety"], 1)
             self.assertEqual(controller_runtime["controller_rejections"], 1)
-            self.assertEqual(controller_runtime["safety_block_by_reason"]["missing_conflict_matrix"], 1)
             self.assertEqual(
-                controller_runtime["controller_rejection_by_reason"]["controller_locked_manual_mode"],
+                controller_runtime["safety_block_by_reason"]["missing_conflict_matrix"], 1
+            )
+            self.assertEqual(
+                controller_runtime["controller_rejection_by_reason"][
+                    "controller_locked_manual_mode"
+                ],
                 1,
             )
             self.assertEqual(controller_runtime["per_tls"]["I1"]["safety_blocks"], 1)

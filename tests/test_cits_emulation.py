@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-from copy import deepcopy
-from dataclasses import replace as dataclasses_replace
 import json
-from pathlib import Path
 import sys
 import unittest
+from copy import deepcopy
+from dataclasses import replace as dataclasses_replace
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from pps57_cits.broker import InMemoryMessageBroker
 from pps57_cits.audit import audit_protocol_lifecycle
+from pps57_cits.broker import InMemoryMessageBroker
 from pps57_cits.config import load_cits_config
 from pps57_cits.lifecycle import PriorityRequestState, transition_request_state
 from pps57_cits.map_spat import build_mapem_messages
@@ -69,9 +69,7 @@ class Package3CITSTestCase(unittest.TestCase):
         mapem = build_mapem_messages(self.config, sim_time_s=0.0)
         i6 = next(message for message in mapem if message.intersection_alias == "I6")
         self.assertTrue(i6.approaches)
-        self.assertTrue(
-            all(not approach.priority_movement_ids for approach in i6.approaches)
-        )
+        self.assertTrue(all(not approach.priority_movement_ids for approach in i6.approaches))
 
     def test_cits_validator_accepts_eligible_srem(self) -> None:
         self.assertEqual(validate_cits_message(_eligible_srem()), [])
@@ -348,9 +346,7 @@ class Package3CITSTestCase(unittest.TestCase):
                 )
                 response = rsu.evaluate_request(request, sim_time_s=101.0)
                 self.assertEqual(response.status, ResponseStatus.REJECTED.value)
-                self.assertEqual(
-                    response.reason, "emergency_priority_class_not_emergency_identity"
-                )
+                self.assertEqual(response.reason, "emergency_priority_class_not_emergency_identity")
 
     def test_rsu_rejects_emergency_class_from_unlisted_emergency_prefix(self) -> None:
         # P2 (PR #57): num trust store em modo `prefix_allowlist`, o prefixo
@@ -375,9 +371,7 @@ class Package3CITSTestCase(unittest.TestCase):
                 )
                 response = rsu.evaluate_request(request, sim_time_s=101.0)
                 self.assertEqual(response.status, ResponseStatus.REJECTED.value)
-                self.assertEqual(
-                    response.reason, "emergency_priority_class_not_emergency_identity"
-                )
+                self.assertEqual(response.reason, "emergency_priority_class_not_emergency_identity")
 
     def test_rsu_rejects_emergency_identity_with_inconsistent_role(self) -> None:
         # Coerência secundária: uma identidade de emergência AUTORIZADA (na
@@ -396,9 +390,7 @@ class Package3CITSTestCase(unittest.TestCase):
         )
         response = rsu.evaluate_request(request, sim_time_s=101.0)
         self.assertEqual(response.status, ResponseStatus.REJECTED.value)
-        self.assertEqual(
-            response.reason, "emergency_priority_class_without_emergency_role"
-        )
+        self.assertEqual(response.reason, "emergency_priority_class_without_emergency_role")
 
     def test_rsu_does_not_start_vehicle_cooldown_on_forward_only_ack(self) -> None:
         # Forwarding to the TSP engine is not a granted priority intervention.
@@ -671,16 +663,14 @@ class Package3CITSTestCase(unittest.TestCase):
     # ------------------------------------------------------------------
 
     def test_route_file_sortedness_guard(self) -> None:
-        from pps57_sumo.validate_project import validate_routes_sorted
         import tempfile
+
+        from pps57_sumo.validate_project import validate_routes_sorted
 
         with tempfile.TemporaryDirectory() as tmp:
             unsorted_path = Path(tmp) / "unsorted.rou.xml"
             unsorted_path.write_text(
-                '<routes>'
-                '<vehicle id="v1" depart="10"/>'
-                '<vehicle id="v2" depart="5"/>'
-                '</routes>',
+                '<routes><vehicle id="v1" depart="10"/><vehicle id="v2" depart="5"/></routes>',
                 encoding="utf-8",
             )
             with self.assertRaises(SystemExit) as ctx:
@@ -690,12 +680,12 @@ class Package3CITSTestCase(unittest.TestCase):
 
             sorted_path = Path(tmp) / "sorted.rou.xml"
             sorted_path.write_text(
-                '<routes>'
+                "<routes>"
                 '<flow id="f1" begin="0"/>'
                 '<vehicle id="v1" depart="5"/>'
                 '<flow id="f2" begin="10"/>'
                 '<vehicle id="v2" depart="20"/>'
-                '</routes>',
+                "</routes>",
                 encoding="utf-8",
             )
             validate_routes_sorted(sorted_path)  # must not raise
@@ -713,15 +703,21 @@ class Package3CITSTestCase(unittest.TestCase):
         self.assertTrue(tsp.get("decision_policy"))
 
     def test_safety_config_validation_rejects_inverted_green_extension(self) -> None:
-        from pps57_sumo.validate_project import validate_safety_configs
         import shutil
         import tempfile
+
+        from pps57_sumo.validate_project import validate_safety_configs
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_root = Path(tmp)
             (tmp_root / "configs").mkdir()
-            shutil.copy(ROOT / "configs/sumo_scenario_base.json", tmp_root / "configs/sumo_scenario_base.json")
-            shutil.copy(ROOT / "configs/cits_v2x_config.json", tmp_root / "configs/cits_v2x_config.json")
+            shutil.copy(
+                ROOT / "configs/sumo_scenario_base.json",
+                tmp_root / "configs/sumo_scenario_base.json",
+            )
+            shutil.copy(
+                ROOT / "configs/cits_v2x_config.json", tmp_root / "configs/cits_v2x_config.json"
+            )
             tsp = json.loads((ROOT / "configs/tsp_safety_config.json").read_text(encoding="utf-8"))
             tsp["decision_policy"]["green_extension_min_s"] = 20
             tsp["decision_policy"]["green_extension_max_s"] = 12
@@ -733,15 +729,21 @@ class Package3CITSTestCase(unittest.TestCase):
             self.assertIn("green_extension", str(ctx.exception))
 
     def test_safety_config_validation_rejects_weights_not_summing_to_one(self) -> None:
-        from pps57_sumo.validate_project import validate_safety_configs
         import shutil
         import tempfile
+
+        from pps57_sumo.validate_project import validate_safety_configs
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_root = Path(tmp)
             (tmp_root / "configs").mkdir()
-            shutil.copy(ROOT / "configs/sumo_scenario_base.json", tmp_root / "configs/sumo_scenario_base.json")
-            shutil.copy(ROOT / "configs/cits_v2x_config.json", tmp_root / "configs/cits_v2x_config.json")
+            shutil.copy(
+                ROOT / "configs/sumo_scenario_base.json",
+                tmp_root / "configs/sumo_scenario_base.json",
+            )
+            shutil.copy(
+                ROOT / "configs/cits_v2x_config.json", tmp_root / "configs/cits_v2x_config.json"
+            )
             tsp = json.loads((ROOT / "configs/tsp_safety_config.json").read_text(encoding="utf-8"))
             tsp["decision_policy"]["weights"]["schedule_delay"] = 0.9
             (tmp_root / "configs/tsp_safety_config.json").write_text(
@@ -752,15 +754,21 @@ class Package3CITSTestCase(unittest.TestCase):
             self.assertIn("weights", str(ctx.exception))
 
     def test_safety_config_validation_rejects_sumo_cits_control_mismatch(self) -> None:
-        from pps57_sumo.validate_project import validate_safety_configs
         import shutil
         import tempfile
+
+        from pps57_sumo.validate_project import validate_safety_configs
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_root = Path(tmp)
             (tmp_root / "configs").mkdir()
-            shutil.copy(ROOT / "configs/sumo_scenario_base.json", tmp_root / "configs/sumo_scenario_base.json")
-            shutil.copy(ROOT / "configs/tsp_safety_config.json", tmp_root / "configs/tsp_safety_config.json")
+            shutil.copy(
+                ROOT / "configs/sumo_scenario_base.json",
+                tmp_root / "configs/sumo_scenario_base.json",
+            )
+            shutil.copy(
+                ROOT / "configs/tsp_safety_config.json", tmp_root / "configs/tsp_safety_config.json"
+            )
             cits = json.loads((ROOT / "configs/cits_v2x_config.json").read_text(encoding="utf-8"))
             for intersection in cits["intersections"]:
                 if intersection["intersection_id"] == "I6":
@@ -776,13 +784,18 @@ class Package3CITSTestCase(unittest.TestCase):
         import shutil
 
         (tmp_root / "configs").mkdir()
-        shutil.copy(ROOT / "configs/sumo_scenario_base.json", tmp_root / "configs/sumo_scenario_base.json")
-        shutil.copy(ROOT / "configs/cits_v2x_config.json", tmp_root / "configs/cits_v2x_config.json")
+        shutil.copy(
+            ROOT / "configs/sumo_scenario_base.json", tmp_root / "configs/sumo_scenario_base.json"
+        )
+        shutil.copy(
+            ROOT / "configs/cits_v2x_config.json", tmp_root / "configs/cits_v2x_config.json"
+        )
         (tmp_root / "configs/tsp_safety_config.json").write_text(json.dumps(tsp), encoding="utf-8")
 
     def test_safety_config_validation_rejects_priority_level_weights_wrong_class(self) -> None:
-        from pps57_sumo.validate_project import validate_safety_configs
         import tempfile
+
+        from pps57_sumo.validate_project import validate_safety_configs
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_root = Path(tmp)
@@ -798,8 +811,9 @@ class Package3CITSTestCase(unittest.TestCase):
             self.assertIn("priority_level_weights", str(ctx.exception))
 
     def test_safety_config_validation_rejects_priority_level_weights_out_of_range(self) -> None:
-        from pps57_sumo.validate_project import validate_safety_configs
         import tempfile
+
+        from pps57_sumo.validate_project import validate_safety_configs
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_root = Path(tmp)
@@ -811,8 +825,9 @@ class Package3CITSTestCase(unittest.TestCase):
             self.assertIn("priority_level_weights", str(ctx.exception))
 
     def test_safety_config_validation_rejects_invalid_actuating_action(self) -> None:
-        from pps57_sumo.validate_project import validate_safety_configs
         import tempfile
+
+        from pps57_sumo.validate_project import validate_safety_configs
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_root = Path(tmp)
@@ -828,7 +843,9 @@ class Package3CITSTestCase(unittest.TestCase):
         from pps57_tsp.models import DEFAULT_ACTUATING_ACTIONS
 
         configured = load_tsp_config(ROOT / "configs/tsp_safety_config.json", root=ROOT)
-        self.assertEqual(configured.actuating_actions(), frozenset({"green_extension", "early_green"}))
+        self.assertEqual(
+            configured.actuating_actions(), frozenset({"green_extension", "early_green"})
+        )
 
         # Ausência da chave recai no default em código (comportamento idêntico ao literal antigo).
         empty = TSPConfig(root=ROOT, raw={"decision_policy": {}})
@@ -848,23 +865,23 @@ class Package3CITSTestCase(unittest.TestCase):
 
 def _eligible_srem(**overrides) -> SREMLike:
     """Constrói um SREM elegível (alta-prioridade, ETA na janela, destinado a I2/RSU_BOAVISTA_02)."""
-    params = dict(
-        sim_time_s=100.0,
-        vehicle_id="bus_1",
-        intersection_alias="I2",
-        tls_id="I2",
-        rsu_id="RSU_BOAVISTA_02",
-        lane_id="I1_I2_0",
-        line_id="STCP500_PROXY_W",
-        route_id="route_boavista_east_to_west",
-        eta_to_stopline_s=15.0,
-        distance_to_stopline_m=150.0,
-        speed_mps=10.0,
-        schedule_delay_s=90.0,
-        headway_deviation_s=0.0,
-        operator_priority_class=OperatorPriorityClass.HIGH_DELAY.value,
-        ttl_s=30.0,
-    )
+    params = {
+        "sim_time_s": 100.0,
+        "vehicle_id": "bus_1",
+        "intersection_alias": "I2",
+        "tls_id": "I2",
+        "rsu_id": "RSU_BOAVISTA_02",
+        "lane_id": "I1_I2_0",
+        "line_id": "STCP500_PROXY_W",
+        "route_id": "route_boavista_east_to_west",
+        "eta_to_stopline_s": 15.0,
+        "distance_to_stopline_m": 150.0,
+        "speed_mps": 10.0,
+        "schedule_delay_s": 90.0,
+        "headway_deviation_s": 0.0,
+        "operator_priority_class": OperatorPriorityClass.HIGH_DELAY.value,
+        "ttl_s": 30.0,
+    }
     params.update(overrides)
     return synth_srem(**params)
 

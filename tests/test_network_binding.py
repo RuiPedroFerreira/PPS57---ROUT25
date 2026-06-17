@@ -7,6 +7,7 @@ the source of truth). They assert the binding reads the network's own conflict
 data correctly — in particular the case the phase-disjointness heuristic gets
 wrong: two *permissive* movements that share a green phase but physically cross.
 """
+
 from __future__ import annotations
 
 import json
@@ -103,9 +104,8 @@ NOVIA_NET = """<?xml version="1.0" encoding="UTF-8"?>
 
 
 def _write_net(text: str) -> Path:
-    handle = tempfile.NamedTemporaryFile("w", suffix=".net.xml", delete=False)
-    handle.write(text)
-    handle.close()
+    with tempfile.NamedTemporaryFile("w", suffix=".net.xml", delete=False) as handle:
+        handle.write(text)
     return Path(handle.name)
 
 
@@ -169,11 +169,18 @@ class BindingTests(unittest.TestCase):
 
 def _contract_with_group(group: SignalGroupContract) -> ControllerContract:
     return ControllerContract(
-        tls_id="J", adapter_type="sumo_traci", fixed_time_required=False,
-        allowed_actions=["green_extension"], phase_sequence=[0, 1],
-        service_green_phase_indices=[0], intergreen_phase_indices=[1],
-        min_yellow_s=None, min_all_red_s=None, expected_cycle_s=None,
-        pedestrian_phase_required=False, pedestrian_phase_indices=[],
+        tls_id="J",
+        adapter_type="sumo_traci",
+        fixed_time_required=False,
+        allowed_actions=["green_extension"],
+        phase_sequence=[0, 1],
+        service_green_phase_indices=[0],
+        intergreen_phase_indices=[1],
+        min_yellow_s=None,
+        min_all_red_s=None,
+        expected_cycle_s=None,
+        pedestrian_phase_required=False,
+        pedestrian_phase_indices=[],
         signal_groups={group.signal_group_id: group},
     )
 
@@ -182,7 +189,9 @@ class ApplyBindingTests(unittest.TestCase):
     def test_apply_fills_conflicts_and_flag(self) -> None:
         net = _write_net(PERMISSIVE_NET)
         binding = build_network_binding(net)
-        group = SignalGroupContract(signal_group_id=G1, phase_index=0, movement_ids=["m"], conflicts_with=[])
+        group = SignalGroupContract(
+            signal_group_id=G1, phase_index=0, movement_ids=["m"], conflicts_with=[]
+        )
         self.assertFalse(group.conflict_matrix_known)
         bound = apply_network_binding([_contract_with_group(group)], binding)[0]
         out = bound.signal_groups[G1]
@@ -237,22 +246,29 @@ def _auto_cits_config(net: Path):
     payload = {
         "sumo": {"network": str(net)},
         "network_discovery": {
-            "enabled": True, "augment_missing_intersections": True,
+            "enabled": True,
+            "augment_missing_intersections": True,
             "auto_generate_priority_movements": True,
-            "priority_vehicle_classes": ["public_transport"], "rsu_id_prefix": "RSU_AUTO_",
+            "priority_vehicle_classes": ["public_transport"],
+            "rsu_id_prefix": "RSU_AUTO_",
         },
-        "obu_policy": {}, "rsu_policy": {},
+        "obu_policy": {},
+        "rsu_policy": {},
         "safety_constraints": {
-            "min_green_s": 8, "max_green_extension_s": 12, "max_total_green_s": 55,
-            "yellow_s": 3, "all_red_s": 0,
-            "pedestrian_clearance_must_not_be_shortened": True, "never_skip_yellow_or_all_red": True,
-            "max_consecutive_priority_interventions_per_tls": 2, "cooldown_after_priority_s": 90,
+            "min_green_s": 8,
+            "max_green_extension_s": 12,
+            "max_total_green_s": 55,
+            "yellow_s": 3,
+            "all_red_s": 0,
+            "pedestrian_clearance_must_not_be_shortened": True,
+            "never_skip_yellow_or_all_red": True,
+            "max_consecutive_priority_interventions_per_tls": 2,
+            "cooldown_after_priority_s": 90,
         },
         "intersections": [],
     }
-    handle = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
-    json.dump(payload, handle)
-    handle.close()
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+        json.dump(payload, handle)
     config_path = Path(handle.name)
     try:
         return load_cits_config(config_path, root=config_path.parent)
@@ -261,13 +277,25 @@ def _auto_cits_config(net: Path):
 
 
 def _auto_tsp_config() -> TSPConfig:
-    return TSPConfig(root=ROOT, raw={
-        "decision_policy": {"min_priority_score": 0.0},
-        "actuation": {"allow_green_extension": True, "allow_red_truncation": True},
-        "network_profile": {"enabled": True, "prefer_generated_contracts_for_unknown_tls": True},
-        "controller_contracts": {"default": {"adapter_type": "sumo_traci", "fixed_time_required": True,
-                                             "allowed_actions": ["green_extension", "early_green"]}},
-        "phase_mapping": {}})
+    return TSPConfig(
+        root=ROOT,
+        raw={
+            "decision_policy": {"min_priority_score": 0.0},
+            "actuation": {"allow_green_extension": True, "allow_red_truncation": True},
+            "network_profile": {
+                "enabled": True,
+                "prefer_generated_contracts_for_unknown_tls": True,
+            },
+            "controller_contracts": {
+                "default": {
+                    "adapter_type": "sumo_traci",
+                    "fixed_time_required": True,
+                    "allowed_actions": ["green_extension", "early_green"],
+                }
+            },
+            "phase_mapping": {},
+        },
+    )
 
 
 class ControllerWiringTests(unittest.TestCase):
@@ -327,15 +355,25 @@ class VerifierFailCloseTests(unittest.TestCase):
         self.adapter = TraciSignalControlAdapter(adapter=_FakeAdapter())
 
     def test_unknown_empty_matrix_fail_closes(self) -> None:
-        group = SignalGroupContract(signal_group_id="g", phase_index=0, movement_ids=["m"],
-                                    conflicts_with=[], conflict_matrix_known=False)
+        group = SignalGroupContract(
+            signal_group_id="g",
+            phase_index=0,
+            movement_ids=["m"],
+            conflicts_with=[],
+            conflict_matrix_known=False,
+        )
         problems = self.adapter.verify_controller_contracts([_contract_with_group(group)])
         self.assertTrue(any("sem matriz de conflitos" in p for p in problems), problems)
 
     def test_known_empty_matrix_does_not_fail_close(self) -> None:
         # Genuinely conflict-free group: empty conflicts but authoritatively known.
-        group = SignalGroupContract(signal_group_id="g", phase_index=0, movement_ids=["m"],
-                                    conflicts_with=[], conflict_matrix_known=True)
+        group = SignalGroupContract(
+            signal_group_id="g",
+            phase_index=0,
+            movement_ids=["m"],
+            conflicts_with=[],
+            conflict_matrix_known=True,
+        )
         problems = self.adapter.verify_controller_contracts([_contract_with_group(group)])
         self.assertFalse(any("sem matriz de conflitos" in p for p in problems), problems)
 

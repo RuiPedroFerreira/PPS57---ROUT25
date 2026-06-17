@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Logging JSONL e resumo para decisões/atuações TSP."""
+
 from __future__ import annotations
 
 import json
 import os
 from pathlib import Path
-from typing import IO, Dict, List, Optional
+from typing import IO
 
 from .models import ActuationResult, DecisionStatus, TSPAction, TSPDecision
 
@@ -16,7 +17,7 @@ class TSPJsonlLogger:
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
-        self._handle: Optional[IO[str]] = None
+        self._handle: IO[str] | None = None
 
     def write(self, item: TSPDecision | ActuationResult) -> None:
         if self._handle is None:
@@ -28,7 +29,7 @@ class TSPJsonlLogger:
             self._handle.close()
             self._handle = None
 
-    def __enter__(self) -> "TSPJsonlLogger":
+    def __enter__(self) -> TSPJsonlLogger:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._handle = self.path.open("w", encoding="utf-8", buffering=1)
         return self
@@ -37,9 +38,11 @@ class TSPJsonlLogger:
         self.close()
 
 
-def summarise_tsp(decisions: List[TSPDecision], actuations: List[ActuationResult]) -> Dict[str, object]:
-    by_action: Dict[str, int] = {}
-    by_status: Dict[str, int] = {}
+def summarise_tsp(
+    decisions: list[TSPDecision], actuations: list[ActuationResult]
+) -> dict[str, object]:
+    by_action: dict[str, int] = {}
+    by_status: dict[str, int] = {}
     for decision in decisions:
         by_action[decision.action] = by_action.get(decision.action, 0) + 1
         by_status[decision.status] = by_status.get(decision.status, 0) + 1
@@ -68,10 +71,10 @@ def summarise_tsp(decisions: List[TSPDecision], actuations: List[ActuationResult
 
 def write_tsp_summary(
     path: str | Path,
-    decisions: List[TSPDecision],
-    actuations: List[ActuationResult],
-    extra: Dict[str, object] | None = None,
-) -> Dict[str, object]:
+    decisions: list[TSPDecision],
+    actuations: list[ActuationResult],
+    extra: dict[str, object] | None = None,
+) -> dict[str, object]:
     """Escrita atómica do resumo (`.tmp` + `os.replace`): crash a meio da
     serialização não deixa um JSON parcial no lugar do anterior."""
     summary = summarise_tsp(decisions, actuations)

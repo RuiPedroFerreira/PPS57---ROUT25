@@ -7,14 +7,14 @@ auto-discovered TSP request through the decision engine and safety layer. With
 ``--apply-actuation`` it also applies the approved setPhaseDuration command and
 records the real SUMO phase sequence that follows.
 """
+
 from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import sys
-from typing import Any, Dict
-
+from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -24,10 +24,16 @@ for entry in (str(SRC), str(SCRIPTS)):
         sys.path.insert(0, entry)
 
 from _evidence_common import auto_discovery_cits_config, auto_tsp_config  # noqa: E402
+
 from pps57_cits.messages import OperatorPriorityClass, synth_srem  # noqa: E402
 from pps57_cits.models import SignalState  # noqa: E402
 from pps57_sumo.environment import apply_sumo_environment  # noqa: E402
-from pps57_sumo.network_profile import MovementProfile, NetworkProfile, TLSProfile, load_network_profile  # noqa: E402
+from pps57_sumo.network_profile import (  # noqa: E402
+    MovementProfile,
+    NetworkProfile,
+    TLSProfile,
+    load_network_profile,
+)
 from pps57_tsp.config import TSPConfig  # noqa: E402
 from pps57_tsp.engine import TSPDecisionEngine  # noqa: E402
 from pps57_tsp.safety import TSPSafetyLayer  # noqa: E402
@@ -41,9 +47,13 @@ def main() -> None:
     parser.add_argument("--from-edge", default="")
     parser.add_argument("--to-edge", default="")
     parser.add_argument("--sim-time", type=float, default=10.0)
-    parser.add_argument("--traci-port", type=int, default=None,
-                        help="TraCI port; default: a free port via the shared resolver "
-                             "(TRACI_PORT, else an OS-assigned free port, else a fixed fallback port).")
+    parser.add_argument(
+        "--traci-port",
+        type=int,
+        default=None,
+        help="TraCI port; default: a free port via the shared resolver "
+        "(TRACI_PORT, else an OS-assigned free port, else a fixed fallback port).",
+    )
     parser.add_argument("--sumo-binary", default="sumo")
     parser.add_argument("--apply-actuation", action="store_true")
     parser.add_argument("--output", type=Path)
@@ -55,6 +65,7 @@ def main() -> None:
         # when ephemeral-port probing is unavailable (restricted environments),
         # falls back to scanning fixed ports instead of returning None/raising.
         from pps57_cits.traci_adapter import _resolve_traci_port
+
         traci_port = _resolve_traci_port()
 
     network = args.network if args.network.is_absolute() else ROOT / args.network
@@ -87,7 +98,7 @@ def run_check(
     traci_port: int,
     sumo_binary: str,
     apply_actuation: bool,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     apply_sumo_environment()
     import traci  # imported lazily so static imports work without SUMO tools
 
@@ -133,9 +144,9 @@ def run_check(
         traci.close()
 
 
-def _compare_profile_to_traci(profile: NetworkProfile, traci_module: Any) -> Dict[str, Any]:
+def _compare_profile_to_traci(profile: NetworkProfile, traci_module: Any) -> dict[str, Any]:
     mismatches: list[str] = []
-    checked: list[Dict[str, Any]] = []
+    checked: list[dict[str, Any]] = []
     for tls_id in sorted(traci_module.trafficlight.getIDList()):
         tls = profile.tls_profile(tls_id)
         if tls is None:
@@ -146,7 +157,10 @@ def _compare_profile_to_traci(profile: NetworkProfile, traci_module: Any) -> Dic
             mismatches.append(f"{tls_id}: no TraCI program logic")
             continue
         current_program = str(traci_module.trafficlight.getProgram(tls_id))
-        logic = next((item for item in logics if str(getattr(item, "programID", "")) == current_program), logics[0])
+        logic = next(
+            (item for item in logics if str(getattr(item, "programID", "")) == current_program),
+            logics[0],
+        )
         traci_states = [str(phase.state) for phase in logic.phases]
         traci_durations = [float(phase.duration) for phase in logic.phases]
         profile_states = [phase.state for phase in tls.phases]
@@ -154,7 +168,7 @@ def _compare_profile_to_traci(profile: NetworkProfile, traci_module: Any) -> Dic
         if traci_states != profile_states:
             mismatches.append(f"{tls_id}: phase states mismatch")
         if len(traci_durations) != len(profile_durations) or any(
-            abs(a - b) > 1e-6 for a, b in zip(traci_durations, profile_durations)
+            abs(a - b) > 1e-6 for a, b in zip(traci_durations, profile_durations, strict=False)
         ):
             mismatches.append(f"{tls_id}: phase durations mismatch")
         controlled_links = traci_module.trafficlight.getControlledLinks(tls_id)
@@ -181,7 +195,9 @@ def _select_movement(
     from_edge: str,
     to_edge: str,
 ) -> tuple[TLSProfile, MovementProfile]:
-    tls_candidates = [profile.tls_profile(tls_id)] if tls_id else list(profile.tls_profiles.values())
+    tls_candidates = (
+        [profile.tls_profile(tls_id)] if tls_id else list(profile.tls_profiles.values())
+    )
     for tls in tls_candidates:
         if tls is None:
             continue
@@ -196,7 +212,9 @@ def _select_movement(
                 continue
             if _has_intergreen_between(tls, current_phase, movement.target_phase_index):
                 return tls, movement
-    raise SystemExit("No suitable movement found with target phase reachable through an intergreen phase.")
+    raise SystemExit(
+        "No suitable movement found with target phase reachable through an intergreen phase."
+    )
 
 
 def _run_tsp_probe(
@@ -209,7 +227,7 @@ def _run_tsp_probe(
     movement: MovementProfile,
     sim_time_s: float,
     apply_actuation: bool,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     intersection = cits.tls_to_intersection[tls.tls_id]
     cits_movement = next(
         item
@@ -241,7 +259,11 @@ def _run_tsp_probe(
     if apply_actuation and validation.approved:
         duration = float(validation.safe_decision.phase_duration_s or 0.0)
         traci.trafficlight.setPhaseDuration(tls.tls_id, duration)
-        for target_time in (sim_time_s + duration, sim_time_s + duration + 1.0, sim_time_s + duration + 4.0):
+        for target_time in (
+            sim_time_s + duration,
+            sim_time_s + duration + 1.0,
+            sim_time_s + duration + 4.0,
+        ):
             traci.simulationStep(target_time)
             phase_trace.append(_phase_sample(traci, tls.tls_id, target_time))
     return {
@@ -284,7 +306,9 @@ def _run_tsp_probe(
     }
 
 
-def _signal_state_from_traci(traci_module: Any, tls_id: str, rsu_id: str, sim_time_s: float) -> SignalState:
+def _signal_state_from_traci(
+    traci_module: Any, tls_id: str, rsu_id: str, sim_time_s: float
+) -> SignalState:
     return SignalState(
         intersection_id=tls_id,
         tls_id=tls_id,
@@ -300,7 +324,7 @@ def _signal_state_from_traci(traci_module: Any, tls_id: str, rsu_id: str, sim_ti
     )
 
 
-def _phase_sample(traci_module: Any, tls_id: str, sim_time_s: float) -> Dict[str, Any]:
+def _phase_sample(traci_module: Any, tls_id: str, sim_time_s: float) -> dict[str, Any]:
     return {
         "time_s": round(sim_time_s, 3),
         "phase": int(traci_module.trafficlight.getPhase(tls_id)),

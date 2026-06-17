@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Lifecycle tracking for active priority requests."""
+
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Dict, Iterable
 
 from pps57_cits.messages import SREMLike
 from pps57_cits.models import VehicleObservation
@@ -22,7 +23,7 @@ class PriorityRequestState:
 @dataclass
 class PriorityRequestStore:
     ttl_s: float = 30.0
-    states_by_key: Dict[str, PriorityRequestState] = field(default_factory=dict)
+    states_by_key: dict[str, PriorityRequestState] = field(default_factory=dict)
     cleared_count: int = 0
     expired_count: int = 0
     granted_count: int = 0
@@ -47,7 +48,9 @@ class PriorityRequestStore:
         key = self._key(request.vehicle_id, request.tls_id)
         state = self.states_by_key.get(key)
         if state is None:
-            state = PriorityRequestState(request=request, first_seen_s=sim_time_s, last_seen_s=sim_time_s)
+            state = PriorityRequestState(
+                request=request, first_seen_s=sim_time_s, last_seen_s=sim_time_s
+            )
             self.states_by_key[key] = state
         if state.status != "granted":
             self.granted_count += 1
@@ -59,7 +62,9 @@ class PriorityRequestStore:
         key = self._key(request.vehicle_id, request.tls_id)
         state = self.states_by_key.get(key)
         if state is None:
-            state = PriorityRequestState(request=request, first_seen_s=sim_time_s, last_seen_s=sim_time_s)
+            state = PriorityRequestState(
+                request=request, first_seen_s=sim_time_s, last_seen_s=sim_time_s
+            )
             self.states_by_key[key] = state
         state.request = request
         state.status = "cleared"
@@ -83,7 +88,9 @@ class PriorityRequestStore:
                 return state.request
         return None
 
-    def update_from_observations(self, observations: Iterable[VehicleObservation], sim_time_s: float) -> None:
+    def update_from_observations(
+        self, observations: Iterable[VehicleObservation], sim_time_s: float
+    ) -> None:
         observed_by_vehicle = {item.vehicle_id: item for item in observations}
         for key, state in list(self.states_by_key.items()):
             if state.status in {"cleared", "expired"}:
@@ -109,7 +116,11 @@ class PriorityRequestStore:
                 self._expire_if_needed(key, state, sim_time_s)
 
     def to_summary(self) -> dict[str, object]:
-        active = [state for state in self.states_by_key.values() if state.status not in {"cleared", "expired"}]
+        active = [
+            state
+            for state in self.states_by_key.values()
+            if state.status not in {"cleared", "expired"}
+        ]
         by_status: dict[str, int] = {}
         for state in self.states_by_key.values():
             by_status[state.status] = by_status.get(state.status, 0) + 1

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Atuador TSP para SUMO/TraCI."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -15,7 +16,9 @@ class TraciTSPActuator:
     adapter: SignalControlAdapter
     apply_actuation: bool = True
 
-    def apply(self, decision: TSPDecision, signal_state: SignalState, sim_time_s: float) -> ActuationResult:
+    def apply(
+        self, decision: TSPDecision, signal_state: SignalState, sim_time_s: float
+    ) -> ActuationResult:
         if decision.status != DecisionStatus.APPROVED.value or not decision.requires_actuation:
             return ActuationResult(
                 decision_id=decision.decision_id,
@@ -117,7 +120,9 @@ class TraciTSPActuator:
         )
 
 
-def _command_for_decision(decision: TSPDecision, signal_state: SignalState, sim_time_s: float) -> tuple[str, dict]:
+def _command_for_decision(
+    decision: TSPDecision, signal_state: SignalState, sim_time_s: float
+) -> tuple[str, dict]:
     if decision.action == TSPAction.GREEN_EXTENSION.value:
         remaining_s = 0.0
         if signal_state.next_switch_s is not None:

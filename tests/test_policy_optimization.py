@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-from dataclasses import replace
-from pathlib import Path
 import json
 import sys
 import tempfile
 import unittest
+from dataclasses import replace
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -22,9 +22,9 @@ from pps57_opt.optimizer import OfflineOptimizationController
 from pps57_opt.outcome_evaluator import write_decision_outcome_evaluation
 from pps57_opt.policy_runtime import RuntimePolicy
 from pps57_opt.rl_trainer import TabularQLearningController
-from pps57_tsp.engine import TSPDecisionEngine
 from pps57_tsp.config import load_tsp_config
 from pps57_tsp.controller import TSPControlController
+from pps57_tsp.engine import TSPDecisionEngine
 
 
 class PolicyOptimizationTestCase(unittest.TestCase):
@@ -32,7 +32,9 @@ class PolicyOptimizationTestCase(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.cits = load_cits_config(ROOT / "configs/cits_v2x_config.json", root=ROOT)
         cls.tsp = load_tsp_config(ROOT / "configs/tsp_safety_config.json", root=ROOT)
-        cls.opt = load_policy_optimization_config(ROOT / "configs/policy_training_config.json", root=ROOT)
+        cls.opt = load_policy_optimization_config(
+            ROOT / "configs/policy_training_config.json", root=ROOT
+        )
 
     def _isolated_opt(self, tmp_root: Path):
         return replace(self.opt, root=tmp_root)
@@ -86,7 +88,9 @@ class PolicyOptimizationTestCase(unittest.TestCase):
                 self._isolated_opt(tmp_root),
                 scenarios=self._unit_scenarios(),
             ).run()
-            policy = json.loads((tmp_root / "reports/policy_report.json").read_text(encoding="utf-8"))
+            policy = json.loads(
+                (tmp_root / "reports/policy_report.json").read_text(encoding="utf-8")
+            )
             self.assertTrue(policy["safety_filter_required"])
             for item in policy["selected_decisions"]:
                 self.assertNotEqual(item["safety_status"], "blocked_by_safety")
@@ -100,11 +104,17 @@ class PolicyOptimizationTestCase(unittest.TestCase):
                 self._isolated_opt(tmp_root),
                 scenarios=self._unit_scenarios(),
             ).run()
-            policy = json.loads((tmp_root / "reports/policy_report.json").read_text(encoding="utf-8"))
-            candidate_log = (tmp_root / "outputs/policy_candidates.jsonl").read_text(encoding="utf-8")
+            policy = json.loads(
+                (tmp_root / "reports/policy_report.json").read_text(encoding="utf-8")
+            )
+            candidate_log = (tmp_root / "outputs/policy_candidates.jsonl").read_text(
+                encoding="utf-8"
+            )
             self.assertIn("cooldown_after_priority_active", candidate_log)
             self.assertIn("max_consecutive_priority_interventions_reached", candidate_log)
-            selected_by_scenario = {item["scenario_id"]: item for item in policy["selected_decisions"]}
+            selected_by_scenario = {
+                item["scenario_id"]: item for item in policy["selected_decisions"]
+            }
             self.assertNotEqual(
                 selected_by_scenario["OPT_COOLDOWN_ACTIVE"]["safety_status"],
                 "approved",
@@ -123,8 +133,12 @@ class PolicyOptimizationTestCase(unittest.TestCase):
                 self._isolated_opt(tmp_root),
                 scenarios=self._unit_scenarios(),
             ).run()
-            policy = json.loads((tmp_root / "reports/policy_report.json").read_text(encoding="utf-8"))
-            selected = {item["scenario_id"]: item["action"] for item in policy["selected_decisions"]}
+            policy = json.loads(
+                (tmp_root / "reports/policy_report.json").read_text(encoding="utf-8")
+            )
+            selected = {
+                item["scenario_id"]: item["action"] for item in policy["selected_decisions"]
+            }
             self.assertEqual(selected["OPT_NO_ACTION_GREEN_SUFFICIENT"], "no_action")
             self.assertEqual(selected["OPT_REEVALUATE_TOO_CLOSE"], "reevaluate_next_cycle")
             self.assertEqual(selected["OPT_REJECT_LOW_SCORE"], "reject")
@@ -142,7 +156,8 @@ class PolicyOptimizationTestCase(unittest.TestCase):
             self.assertGreater(len(runtime_policy.rules), 0)
 
             scenario = next(
-                item for item in build_offline_scenarios(self.cits)
+                item
+                for item in build_offline_scenarios(self.cits)
                 if item.scenario_id == "OPT_NO_ACTION_GREEN_SUFFICIENT"
             )
             baseline = TSPDecisionEngine(self.cits, self.tsp).decide(
@@ -174,15 +189,20 @@ class PolicyOptimizationTestCase(unittest.TestCase):
             self.assertGreater(summary["learned_rule_count"], 0)
             self.assertTrue((tmp_root / "reports/tabular_q_policy_report.json").exists())
             self.assertTrue((tmp_root / "reports/rl_training_summary.json").exists())
-            policy = json.loads((tmp_root / "reports/tabular_q_policy_report.json").read_text(encoding="utf-8"))
+            policy = json.loads(
+                (tmp_root / "reports/tabular_q_policy_report.json").read_text(encoding="utf-8")
+            )
             pressure_rule = next(
-                item for item in policy["rules"]
+                item
+                for item in policy["rules"]
                 if item["source_scenario_id"] == "OPT_HIGH_TRAFFIC_PRESSURE_REEVALUATE"
             )
             self.assertEqual(pressure_rule["action"], "reevaluate_next_cycle")
             self.assertIn("traffic_pressure_high", pressure_rule["state_bucket"])
 
-    def test_tabular_q_learning_summary_declares_effective_algorithm_and_decayed_epsilon(self) -> None:
+    def test_tabular_q_learning_summary_declares_effective_algorithm_and_decayed_epsilon(
+        self,
+    ) -> None:
         # Honestidade: o "Q-learning" com gamma=0 e sem transições é, na prática,
         # um bandit contextual com epsilon-greedy. O summary deve declarar isso
         # *e* deve haver evidência de que o loop de episódios fez algo (epsilon
@@ -220,12 +240,16 @@ class PolicyOptimizationTestCase(unittest.TestCase):
                 scenarios=scenarios,
             )
             controller.run()
-            policy = json.loads((tmp_root / "reports/tabular_q_policy_report.json").read_text(encoding="utf-8"))
+            policy = json.loads(
+                (tmp_root / "reports/tabular_q_policy_report.json").read_text(encoding="utf-8")
+            )
             scenario_by_id = {s.scenario_id: s for s in scenarios}
             for rule in policy["rules"]:
                 source_id = rule["source_scenario_id"]
                 self.assertTrue(source_id, msg=f"rule sem source_scenario_id: {rule}")
-                self.assertIn(source_id, scenario_by_id, msg=f"source_scenario_id inválido: {source_id}")
+                self.assertIn(
+                    source_id, scenario_by_id, msg=f"source_scenario_id inválido: {source_id}"
+                )
                 actual_bucket = controller.optimizer._state_bucket(scenario_by_id[source_id])
                 self.assertEqual(
                     actual_bucket,
@@ -239,7 +263,9 @@ class PolicyOptimizationTestCase(unittest.TestCase):
         # sempre em `intervention_unknown`. Agora a inferência deve discriminar.
         from pps57_opt.policy_runtime import state_bucket_for
 
-        scenario = next(s for s in self._unit_scenarios() if s.scenario_id == "OPT_NO_ACTION_GREEN_SUFFICIENT")
+        scenario = next(
+            s for s in self._unit_scenarios() if s.scenario_id == "OPT_NO_ACTION_GREEN_SUFFICIENT"
+        )
         bucket_unknown = state_bucket_for(
             self.tsp,
             scenario.request,
@@ -286,7 +312,9 @@ class PolicyOptimizationTestCase(unittest.TestCase):
             assert controller.runtime_policy is not None
             self.assertTrue(controller.runtime_policy.is_reinforcement_learning)
             self.assertEqual(controller.runtime_policy.algorithm, "tabular_q_learning")
-            self.assertEqual(controller.runtime_policy.training_environment, "event_derived_sumo_traci_scenarios")
+            self.assertEqual(
+                controller.runtime_policy.training_environment, "event_derived_sumo_traci_scenarios"
+            )
             self.assertTrue(controller.runtime_policy.safety_filter_required)
 
     def test_runtime_policy_uses_sumo_network_snapshot_features(self) -> None:
@@ -312,9 +340,12 @@ class PolicyOptimizationTestCase(unittest.TestCase):
                     },
                 },
             )
-            runtime_policy = RuntimePolicy.load(tsp_suppress, tmp_root / "reports/tabular_q_policy_report.json")
+            runtime_policy = RuntimePolicy.load(
+                tsp_suppress, tmp_root / "reports/tabular_q_policy_report.json"
+            )
             scenario = next(
-                item for item in build_offline_scenarios(self.cits)
+                item
+                for item in build_offline_scenarios(self.cits)
                 if item.scenario_id == "OPT_HIGH_TRAFFIC_PRESSURE_REEVALUATE"
             )
             baseline = TSPDecisionEngine(self.cits, self.tsp).decide(
@@ -402,7 +433,9 @@ class PolicyOptimizationTestCase(unittest.TestCase):
             self.assertTrue(rl_summary["runtime_policy_loaded"])
             self.assertTrue(rl_summary["runtime_policy"]["is_reinforcement_learning"])
             self.assertEqual(rl_summary["runtime_policy"]["algorithm"], "tabular_q_learning")
-            self.assertEqual(rl_summary["runtime_policy"]["source_path"], "reports/tabular_q_policy_report.json")
+            self.assertEqual(
+                rl_summary["runtime_policy"]["source_path"], "reports/tabular_q_policy_report.json"
+            )
 
             self.assertGreater(baseline_summary["total_decisions"], 0)
             self.assertEqual(baseline_summary["total_decisions"], rl_summary["total_decisions"])
@@ -424,7 +457,10 @@ class PolicyOptimizationTestCase(unittest.TestCase):
             self.assertLess(comparison_by_metric["action:green_extension"]["delta"], 0)
             self.assertGreater(comparison_by_metric["action:reevaluate_next_cycle"]["delta"], 0)
             self.assertIn("rl_algorithm", comparison_metrics)
-            self.assertIn("| Metric | Baseline | RL | Delta RL-Baseline |", (tmp_root / "ab_comparison_summary.md").read_text(encoding="utf-8"))
+            self.assertIn(
+                "| Metric | Baseline | RL | Delta RL-Baseline |",
+                (tmp_root / "ab_comparison_summary.md").read_text(encoding="utf-8"),
+            )
             self.assertEqual(
                 rl_summary["applied_events"],
                 sum(1 for item in rl_actuations if item["applied"]),
@@ -459,15 +495,15 @@ class PolicyOptimizationTestCase(unittest.TestCase):
 
 def _read_jsonl(path: Path) -> list[dict[str, object]]:
     return [
-        json.loads(line)
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
     ]
 
 
 def _write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(json.dumps(row, sort_keys=True) for row in rows) + "\n", encoding="utf-8")
+    path.write_text(
+        "\n".join(json.dumps(row, sort_keys=True) for row in rows) + "\n", encoding="utf-8"
+    )
 
 
 def _summary(

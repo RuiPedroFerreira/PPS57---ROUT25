@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Scenario profile loading and validation for PPS57 SUMO runs."""
+
 from __future__ import annotations
 
-from copy import deepcopy
 import hashlib
 import math
 import random
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -43,14 +44,24 @@ def apply_scenario_profile(base_config: dict[str, Any], scenario_id: str | None)
     config["scenario_profile"] = {
         key: deepcopy(value)
         for key, value in profile.items()
-        if key in {"description", "justification", "kpi_focus", "expected_behaviour", "tags", "random_seeds"}
+        if key
+        in {
+            "description",
+            "justification",
+            "kpi_focus",
+            "expected_behaviour",
+            "tags",
+            "random_seeds",
+        }
     }
     if "simulation_end_s" in profile:
         config["simulation_end_s"] = profile["simulation_end_s"]
     if "random_seed" in profile:
         config["random_seed"] = profile["random_seed"]
 
-    demand_profile = str(profile.get("demand_profile", config.get("active_demand_profile", "am_peak")))
+    demand_profile = str(
+        profile.get("demand_profile", config.get("active_demand_profile", "am_peak"))
+    )
     config["active_demand_profile"] = demand_profile
     config["demand_profiles"] = resolve_demand_profiles(config.get("demand_profiles", {}))
 
@@ -104,7 +115,13 @@ def resolve_demand_profiles(profiles: dict[str, Any]) -> dict[str, Any]:
             parent = resolve_one(str(profile["derived_from"]))
             flows = _derive_flows(parent.get("flows", []), profile, profile_name=name)
             derived = deepcopy(parent)
-            derived.update({key: deepcopy(value) for key, value in profile.items() if key not in {"derived_from", "flows"}})
+            derived.update(
+                {
+                    key: deepcopy(value)
+                    for key, value in profile.items()
+                    if key not in {"derived_from", "flows"}
+                }
+            )
             derived["flows"] = flows
             resolved[name] = derived
         else:
@@ -117,7 +134,9 @@ def resolve_demand_profiles(profiles: dict[str, Any]) -> dict[str, Any]:
     return resolved
 
 
-def validate_scenario_catalog(base_config: dict[str, Any], catalog: dict[str, Any]) -> list[dict[str, Any]]:
+def validate_scenario_catalog(
+    base_config: dict[str, Any], catalog: dict[str, Any]
+) -> list[dict[str, Any]]:
     """Validate all catalog scenarios against the generator config.
 
     Returns lightweight summaries used by tests and static validation.
@@ -126,12 +145,16 @@ def validate_scenario_catalog(base_config: dict[str, Any], catalog: dict[str, An
     profile_ids = set(base_config.get("scenario_profiles", {}))
     for scenario_id, entry in catalog.get("scenarios", {}).items():
         if scenario_id not in profile_ids:
-            raise ScenarioConfigError(f"Catalog scenario '{scenario_id}' has no matching scenario_profiles entry.")
+            raise ScenarioConfigError(
+                f"Catalog scenario '{scenario_id}' has no matching scenario_profiles entry."
+            )
         if not isinstance(entry, dict):
             raise ScenarioConfigError(f"Catalog scenario '{scenario_id}' must be a mapping.")
         for key in ("description", "realism_basis", "kpi_focus"):
             if not entry.get(key):
-                raise ScenarioConfigError(f"Catalog scenario '{scenario_id}' missing required field '{key}'.")
+                raise ScenarioConfigError(
+                    f"Catalog scenario '{scenario_id}' missing required field '{key}'."
+                )
         config = apply_scenario_profile(base_config, scenario_id)
         summaries.append(scenario_summary(config))
     return summaries
@@ -147,7 +170,9 @@ def scenario_summary(config: dict[str, Any]) -> dict[str, Any]:
         "active_demand_profile": config.get("active_demand_profile"),
         "flow_count": sum(_expanded_flow_count(flow) for flow in flows),
         "estimated_car_departures": sum(_estimated_flow_departures(flow) for flow in flows),
-        "estimated_bus_departures": sum(_estimated_service_departures(service, config) for service in services),
+        "estimated_bus_departures": sum(
+            _estimated_service_departures(service, config) for service in services
+        ),
         "event_count": len(events),
         "kpi_focus": config.get("scenario_profile", {}).get("kpi_focus", []),
     }
@@ -158,7 +183,9 @@ def validate_scenario_config(config: dict[str, Any], *, scenario_id: str | None 
     profiles = resolve_demand_profiles(config.get("demand_profiles", {}))
     demand_profile = str(config.get("active_demand_profile", ""))
     if demand_profile not in profiles:
-        raise ScenarioConfigError(f"{context}: active demand profile '{demand_profile}' is not defined.")
+        raise ScenarioConfigError(
+            f"{context}: active demand profile '{demand_profile}' is not defined."
+        )
 
     route_edges = _known_route_edges(config)
     route_ids = set(route_edges)
@@ -171,7 +198,9 @@ def validate_scenario_config(config: dict[str, Any], *, scenario_id: str | None 
         if period <= 0:
             raise ScenarioConfigError(f"{context}: flow {flow.get('id')} must have period > 0.")
         if flow.get("route") not in route_ids:
-            raise ScenarioConfigError(f"{context}: flow {flow.get('id')} references unknown route {flow.get('route')}.")
+            raise ScenarioConfigError(
+                f"{context}: flow {flow.get('id')} references unknown route {flow.get('route')}."
+            )
         for index, entry in enumerate(flow.get("time_profile", []) or []):
             entry_context = f"{context}: flow {flow.get('id')} time_profile[{index}]"
             _validate_time_window(entry, context=entry_context)
@@ -189,28 +218,47 @@ def validate_scenario_config(config: dict[str, Any], *, scenario_id: str | None 
             lo = float(spec.get("min", 0))
             hi = float(spec.get("max", mean + 3 * std if std else mean))
             if mean <= 0:
-                raise ScenarioConfigError(f"{context}: stop {stop.get('id')} dwell_s.mean must be > 0.")
+                raise ScenarioConfigError(
+                    f"{context}: stop {stop.get('id')} dwell_s.mean must be > 0."
+                )
             if std < 0:
-                raise ScenarioConfigError(f"{context}: stop {stop.get('id')} dwell_s.std must be >= 0.")
+                raise ScenarioConfigError(
+                    f"{context}: stop {stop.get('id')} dwell_s.std must be >= 0."
+                )
             if lo > hi:
-                raise ScenarioConfigError(f"{context}: stop {stop.get('id')} dwell_s.min must be <= dwell_s.max.")
+                raise ScenarioConfigError(
+                    f"{context}: stop {stop.get('id')} dwell_s.min must be <= dwell_s.max."
+                )
         elif float(spec) <= 0:
             raise ScenarioConfigError(f"{context}: stop {stop.get('id')} dwell_s must be > 0.")
 
     for service in config.get("public_transport", {}).get("services", []):
         _validate_time_window(
-            {"begin": service.get("begin_s", config.get("simulation_begin_s", 0)), "end": service.get("end_s", config.get("simulation_end_s", 7200))},
+            {
+                "begin": service.get("begin_s", config.get("simulation_begin_s", 0)),
+                "end": service.get("end_s", config.get("simulation_end_s", 7200)),
+            },
             context=f"{context}: service {service.get('line_id')} {service.get('direction')}",
         )
         if float(service.get("headway_s", 0)) <= 0:
-            raise ScenarioConfigError(f"{context}: service {service.get('line_id')} {service.get('direction')} must have headway_s > 0.")
+            raise ScenarioConfigError(
+                f"{context}: service {service.get('line_id')} {service.get('direction')} must have headway_s > 0."
+            )
         if service.get("route") not in route_ids:
-            raise ScenarioConfigError(f"{context}: service {service.get('line_id')} references unknown route {service.get('route')}.")
-        unknown_stops = [stop_id for stop_id in service.get("stops", []) if str(stop_id) not in stop_ids]
+            raise ScenarioConfigError(
+                f"{context}: service {service.get('line_id')} references unknown route {service.get('route')}."
+            )
+        unknown_stops = [
+            stop_id for stop_id in service.get("stops", []) if str(stop_id) not in stop_ids
+        ]
         if unknown_stops:
-            raise ScenarioConfigError(f"{context}: service {service.get('line_id')} references unknown stops: {unknown_stops}")
+            raise ScenarioConfigError(
+                f"{context}: service {service.get('line_id')} references unknown stops: {unknown_stops}"
+            )
         if float(service.get("terminus_jitter_s", 0)) < 0:
-            raise ScenarioConfigError(f"{context}: service {service.get('line_id')} {service.get('direction')} terminus_jitter_s must be >= 0.")
+            raise ScenarioConfigError(
+                f"{context}: service {service.get('line_id')} {service.get('direction')} terminus_jitter_s must be >= 0."
+            )
         for index, entry in enumerate(service.get("headway_schedule", []) or []):
             entry_context = f"{context}: service {service.get('line_id')} {service.get('direction')} headway_schedule[{index}]"
             entry_window = {"begin": entry.get("begin_s", 0), "end": entry.get("end_s", 0)}
@@ -223,29 +271,43 @@ def validate_scenario_config(config: dict[str, Any], *, scenario_id: str | None 
     for event in config.get("events", []):
         event_route = str(event.get("route", ""))
         if event_route not in route_ids:
-            raise ScenarioConfigError(f"{context}: event {event.get('id')} references unknown route {event.get('route')}.")
+            raise ScenarioConfigError(
+                f"{context}: event {event.get('id')} references unknown route {event.get('route')}."
+            )
         depart = float(event.get("depart", 0))
         begin = float(config.get("simulation_begin_s", 0))
         end = float(config.get("simulation_end_s", 7200))
         if not begin <= depart <= end:
-            raise ScenarioConfigError(f"{context}: event {event.get('id')} departs outside simulation window.")
+            raise ScenarioConfigError(
+                f"{context}: event {event.get('id')} departs outside simulation window."
+            )
         if str(event.get("type", "")) == "stopped_vehicle":
             stop_edge = str(event.get("stop_edge", ""))
             if not stop_edge:
-                raise ScenarioConfigError(f"{context}: event {event.get('id')} must define stop_edge.")
+                raise ScenarioConfigError(
+                    f"{context}: event {event.get('id')} must define stop_edge."
+                )
             if stop_edge not in set(route_edges.get(event_route, [])):
                 raise ScenarioConfigError(
                     f"{context}: event {event.get('id')} stop_edge {stop_edge} is not on route {event_route}."
                 )
 
 
-def _derive_flows(parent_flows: list[dict[str, Any]], profile: dict[str, Any], *, profile_name: str) -> list[dict[str, Any]]:
+def _derive_flows(
+    parent_flows: list[dict[str, Any]], profile: dict[str, Any], *, profile_name: str
+) -> list[dict[str, Any]]:
     period_scale = float(profile.get("period_scale", 1.0))
     if period_scale <= 0:
         raise ScenarioConfigError(f"Demand profile {profile_name}: period_scale must be > 0.")
-    flow_period_scale = {str(key): float(value) for key, value in profile.get("flow_period_scale", {}).items()}
-    route_period_scale = {str(key): float(value) for key, value in profile.get("route_period_scale", {}).items()}
-    flow_period_override = {str(key): float(value) for key, value in profile.get("flow_period_override", {}).items()}
+    flow_period_scale = {
+        str(key): float(value) for key, value in profile.get("flow_period_scale", {}).items()
+    }
+    route_period_scale = {
+        str(key): float(value) for key, value in profile.get("route_period_scale", {}).items()
+    }
+    flow_period_override = {
+        str(key): float(value) for key, value in profile.get("flow_period_override", {}).items()
+    }
     flow_updates = {str(item["id"]): item for item in profile.get("flow_updates", [])}
     remove_flows = {str(item) for item in profile.get("remove_flows", [])}
     id_suffix = str(profile.get("id_suffix", profile_name))
@@ -261,7 +323,9 @@ def _derive_flows(parent_flows: list[dict[str, Any]], profile: dict[str, Any], *
         scale *= route_period_scale.get(str(flow.get("route")), 1.0)
         scale *= flow_period_scale.get(flow_id, flow_period_scale.get(canonical_flow_id, 1.0))
         if scale <= 0:
-            raise ScenarioConfigError(f"Demand profile {profile_name}: flow scale for {flow_id} must be > 0.")
+            raise ScenarioConfigError(
+                f"Demand profile {profile_name}: flow scale for {flow_id} must be > 0."
+            )
         flow["_base_id"] = canonical_flow_id
         flow["id"] = f"{canonical_flow_id}_{id_suffix}"
         flow["period"] = round(float(flow["period"]) * scale, 3)
@@ -277,7 +341,9 @@ def _derive_flows(parent_flows: list[dict[str, Any]], profile: dict[str, Any], *
             flow["begin"] = profile["begin"]
         if "end" in profile:
             flow["end"] = profile["end"]
-        override_period = flow_period_override.get(flow_id, flow_period_override.get(canonical_flow_id))
+        override_period = flow_period_override.get(
+            flow_id, flow_period_override.get(canonical_flow_id)
+        )
         if override_period is not None:
             flow["period"] = override_period
             flow.pop("time_profile", None)
@@ -335,13 +401,19 @@ def _apply_vehicle_overrides(config: dict[str, Any], profile: dict[str, Any]) ->
         if "decel_multiplier" in merged and "decel" in vtype:
             vtype["decel"] = round(float(vtype["decel"]) * float(merged["decel_multiplier"]), 3)
             if "emergencyDecel" in vtype:
-                vtype["emergencyDecel"] = round(float(vtype["emergencyDecel"]) * float(merged["decel_multiplier"]), 3)
+                vtype["emergencyDecel"] = round(
+                    float(vtype["emergencyDecel"]) * float(merged["decel_multiplier"]), 3
+                )
         if "min_gap_multiplier" in merged and "minGap" in vtype:
             vtype["minGap"] = round(float(vtype["minGap"]) * float(merged["min_gap_multiplier"]), 3)
         if "max_speed_multiplier" in merged and "maxSpeed" in vtype:
-            vtype["maxSpeed"] = round(float(vtype["maxSpeed"]) * float(merged["max_speed_multiplier"]), 3)
+            vtype["maxSpeed"] = round(
+                float(vtype["maxSpeed"]) * float(merged["max_speed_multiplier"]), 3
+            )
         if "speed_factor_multiplier" in merged:
-            vtype["speedFactor"] = _scale_speed_factor(vtype.get("speedFactor"), float(merged["speed_factor_multiplier"]))
+            vtype["speedFactor"] = _scale_speed_factor(
+                vtype.get("speedFactor"), float(merged["speed_factor_multiplier"])
+            )
 
 
 def _scale_speed_factor(spec: Any, multiplier: float) -> Any:
@@ -360,7 +432,7 @@ def _scale_speed_factor(spec: Any, multiplier: float) -> Any:
         return round(float(spec) * multiplier, 4)
     text = str(spec).strip()
     if text.startswith("normc(") and text.endswith(")"):
-        body = text[len("normc("):-1]
+        body = text[len("normc(") : -1]
         parts = [p.strip() for p in body.split(",")]
         if len(parts) == 4:
             try:
@@ -395,7 +467,11 @@ def _apply_vehicle_distribution_overrides(config: dict[str, Any], profile: dict[
     if not isinstance(overrides, dict) or not overrides:
         return
     distributions = config.get("vehicle_type_distributions", [])
-    known_vtype_ids = {str(vt["id"]) for vt in config.get("vehicle_types", []) if isinstance(vt, dict) and "id" in vt}
+    known_vtype_ids = {
+        str(vt["id"])
+        for vt in config.get("vehicle_types", [])
+        if isinstance(vt, dict) and "id" in vt
+    }
     for dist in distributions:
         if not isinstance(dist, dict):
             continue
@@ -431,7 +507,9 @@ def _validate_vehicle_type_distributions(config: dict[str, Any], *, context: str
         if not dist_id:
             raise ScenarioConfigError(f"{dist_context}.id is required.")
         if dist_id in seen_ids:
-            raise ScenarioConfigError(f"{context}: duplicate vehicle_type_distribution id '{dist_id}'.")
+            raise ScenarioConfigError(
+                f"{context}: duplicate vehicle_type_distribution id '{dist_id}'."
+            )
         seen_ids.add(dist_id)
         components = distribution.get("components")
         if not isinstance(components, list) or not components:
@@ -443,11 +521,15 @@ def _validate_vehicle_type_distributions(config: dict[str, Any], *, context: str
                 raise ScenarioConfigError(f"{component_context} must be a mapping.")
             type_id = str(component.get("type", ""))
             if type_id not in known_vtype_ids:
-                raise ScenarioConfigError(f"{component_context} references unknown vType '{type_id}'.")
+                raise ScenarioConfigError(
+                    f"{component_context} references unknown vType '{type_id}'."
+                )
             try:
                 probability = float(component.get("probability"))
             except (TypeError, ValueError) as exc:
-                raise ScenarioConfigError(f"{component_context}.probability must be numeric.") from exc
+                raise ScenarioConfigError(
+                    f"{component_context}.probability must be numeric."
+                ) from exc
             if not 0.0 <= probability <= 1.0:
                 raise ScenarioConfigError(f"{component_context}.probability must be within [0, 1].")
             probability_sum += probability
@@ -565,10 +647,9 @@ def _apply_public_transport_overrides(config: dict[str, Any], profile: dict[str,
 def _service_matches(service: dict[str, Any], override: dict[str, Any]) -> bool:
     if "line_code" in override:
         return str(service.get("line_code")) == str(override["line_code"])
-    return (
-        str(service.get("line_id")) == str(override.get("line_id"))
-        and str(service.get("direction")) == str(override.get("direction"))
-    )
+    return str(service.get("line_id")) == str(override.get("line_id")) and str(
+        service.get("direction")
+    ) == str(override.get("direction"))
 
 
 def _known_route_edges(config: dict[str, Any]) -> dict[str, list[str]]:
@@ -584,7 +665,10 @@ def _known_route_edges(config: dict[str, Any]) -> dict[str, list[str]]:
     }
     if intersections and "CITY_EAST" in terminals and "ATLANTIC_WEST" in terminals:
         return build_routes(config, intersections, terminals)
-    return {str(item["id"]): [str(edge) for edge in item["edges"]] for item in config.get("routes", []) or []}
+    return {
+        str(item["id"]): [str(edge) for edge in item["edges"]]
+        for item in config.get("routes", []) or []
+    }
 
 
 def _validate_time_window(item: dict[str, Any], *, context: str) -> None:
@@ -652,7 +736,9 @@ def _estimated_service_departures(service: dict[str, Any], config: dict[str, Any
     return max(0, math.ceil((end - first) / headway))
 
 
-def _headway_at_departure(intervals: list[tuple[float, float, float]], depart_s: float, default: float) -> float:
+def _headway_at_departure(
+    intervals: list[tuple[float, float, float]], depart_s: float, default: float
+) -> float:
     for begin, end, headway in intervals:
         if begin <= depart_s < end:
             return headway

@@ -2,28 +2,28 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from pps57_sumo.apply_tls_offsets import apply_tls_offsets  # noqa: E402
+from pps57_sumo.build_network import build_sumo_artifacts  # noqa: E402
+from pps57_sumo.detector_kpis import parse_detector_kpis  # noqa: E402
 from pps57_sumo.generate_plain_corridor import (  # noqa: E402
     _service_departures,
     build_route_xml,
     build_tls_offsets,
     generate,
 )
-from pps57_sumo.build_network import build_sumo_artifacts  # noqa: E402
-from pps57_sumo.detector_kpis import parse_detector_kpis  # noqa: E402
-from pps57_sumo.parse_tripinfo import parse_tripinfo  # noqa: E402
-from pps57_sumo.parse_insertion import parse_insertion_kpis  # noqa: E402
 from pps57_sumo.parse_emissions import parse_emissions  # noqa: E402
-from pps57_sumo.apply_tls_offsets import apply_tls_offsets  # noqa: E402
+from pps57_sumo.parse_insertion import parse_insertion_kpis  # noqa: E402
+from pps57_sumo.parse_tripinfo import parse_tripinfo  # noqa: E402
 from pps57_sumo.scenarios import (  # noqa: E402
     ScenarioConfigError,
     apply_scenario_profile,
@@ -42,7 +42,9 @@ from run_sumo_scenario import _effective_end_s, compare_kpis, run_verdict  # noq
 class SumoScenarioProfilesTestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.base = json.loads((ROOT / "configs/sumo_scenario_base.json").read_text(encoding="utf-8"))
+        cls.base = json.loads(
+            (ROOT / "configs/sumo_scenario_base.json").read_text(encoding="utf-8")
+        )
         cls.catalog = load_catalog(ROOT / "configs/scenario_catalog.yaml")
 
     def test_catalog_scenarios_have_matching_valid_profiles(self) -> None:
@@ -67,7 +69,9 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
             apply_scenario_profile(self.base, "baseline_am_peak")["active_demand_profile"],
             "am_peak_operational",
         )
-        self.assertLess(operational_peak["estimated_car_departures"], raw_peak["estimated_car_departures"])
+        self.assertLess(
+            operational_peak["estimated_car_departures"], raw_peak["estimated_car_departures"]
+        )
 
     def test_scenario_summary_counts_scheduled_bus_departures(self) -> None:
         for scenario_id in ("baseline_am_peak", "baseline_off_peak", "congested_delayed_bus"):
@@ -178,7 +182,9 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
             flow["id"]: flow
             for flow in congested["demand_profiles"][congested["active_demand_profile"]]["flows"]
         }
-        inbound = next(flow for flow in flows.values() if flow["route"] == "route_boavista_west_to_east")
+        inbound = next(
+            flow for flow in flows.values() if flow["route"] == "route_boavista_west_to_east"
+        )
         self.assertLess(float(inbound["period"]), 7.5)
 
     def test_actuated_tls_type_propagates_to_generated_nodes(self) -> None:
@@ -188,15 +194,14 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
         # tls_type=actuated numa cópia do config e confirmamos a propagação.
         cfg = json.loads(json.dumps(self.base))
         traffic_lights = [
-            inter for inter in cfg["network"]["intersections"]
+            inter
+            for inter in cfg["network"]["intersections"]
             if inter.get("type") == "traffic_light"
         ]
         self.assertGreaterEqual(len(traffic_lights), 2)
         actuated_inter = traffic_lights[0]
         actuated_inter["tls_type"] = "actuated"
-        static_inter = next(
-            inter for inter in traffic_lights if "tls_type" not in inter
-        )
+        static_inter = next(inter for inter in traffic_lights if "tls_type" not in inter)
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             generate(
@@ -207,10 +212,14 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
                 detectors_output=tmp_path / "detectors.add.xml",
             )
             nod_text = (tmp_path / "corredor.nod.xml").read_text(encoding="utf-8")
-        actuated_line = next(line for line in nod_text.splitlines() if f'id="{actuated_inter["id"]}"' in line)
+        actuated_line = next(
+            line for line in nod_text.splitlines() if f'id="{actuated_inter["id"]}"' in line
+        )
         self.assertIn('tlType="actuated"', actuated_line)
         # Static intersections must NOT carry a tlType attribute on the node.
-        static_line = next(line for line in nod_text.splitlines() if f'id="{static_inter["id"]}"' in line)
+        static_line = next(
+            line for line in nod_text.splitlines() if f'id="{static_inter["id"]}"' in line
+        )
         self.assertNotIn("tlType=", static_line)
 
     def test_sumocfg_emits_actuated_flags_only_when_needed(self) -> None:
@@ -229,7 +238,8 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
         # para exercitar a emissão do flag runtime jam-threshold.
         with_actuated = json.loads(json.dumps(self.base))
         first_tl = next(
-            inter for inter in with_actuated["network"]["intersections"]
+            inter
+            for inter in with_actuated["network"]["intersections"]
             if inter.get("type") == "traffic_light"
         )
         first_tl["tls_type"] = "actuated"
@@ -271,8 +281,7 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
             self.assertIn(node, edg_text)
         # Ring lanes upgraded from 1 to 2 — match on the ring edge specifically.
         ring_line = next(
-            line for line in edg_text.splitlines()
-            if 'id="RB_I6_CITY_TO_NORTH"' in line
+            line for line in edg_text.splitlines() if 'id="RB_I6_CITY_TO_NORTH"' in line
         )
         self.assertIn('numLanes="2"', ring_line)
 
@@ -305,7 +314,9 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
         self.assertIn("car_cacc", types)
         self.assertIn("car_acc_ev", types)
         self.assertIn("car_cacc_ev", types)
-        automated_share = sum(prob for typ, prob in types.items() if typ.startswith(("car_acc", "car_cacc")))
+        automated_share = sum(
+            prob for typ, prob in types.items() if typ.startswith(("car_acc", "car_cacc"))
+        )
         electric_automated_share = types["car_acc_ev"] + types["car_cacc_ev"]
         self.assertGreater(automated_share, 0.5)
         self.assertGreater(electric_automated_share, 0.0)
@@ -427,7 +438,11 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
     def test_turning_movements_flows_validate_against_known_routes(self) -> None:
         cfg = apply_scenario_profile(self.base, "baseline_am_peak")
         flows = cfg["demand_profiles"][cfg["active_demand_profile"]]["flows"]
-        turn_flow_ids = {flow["id"] for flow in flows if "turn" in flow["id"] or "_to_city" in flow["id"] or "_to_atlantic" in flow["id"]}
+        turn_flow_ids = {
+            flow["id"]
+            for flow in flows
+            if "turn" in flow["id"] or "_to_city" in flow["id"] or "_to_atlantic" in flow["id"]
+        }
         # 8 turn flows per intersection * 7 intersections = 56.
         self.assertEqual(len(turn_flow_ids), 56)
 
@@ -464,8 +479,12 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
     def test_mainline_periods_scaled_to_hcm_credible_window(self) -> None:
         """Path C lite: mainline base periods scaled up so peak demand falls in HCM range."""
         am_peak = self.base["demand_profiles"]["am_peak"]
-        inbound = next(f for f in am_peak["flows"] if f["id"] == "flow_car_inbound_west_to_east_am_peak")
-        outbound = next(f for f in am_peak["flows"] if f["id"] == "flow_car_outbound_east_to_west_am_peak")
+        inbound = next(
+            f for f in am_peak["flows"] if f["id"] == "flow_car_inbound_west_to_east_am_peak"
+        )
+        outbound = next(
+            f for f in am_peak["flows"] if f["id"] == "flow_car_outbound_east_to_west_am_peak"
+        )
         # Inbound period must produce ~720 veh/h base (5s) and peak ~935 (5/1.30 = 3.85s -> 935 veh/h).
         self.assertLessEqual(float(inbound["period"]), 5.5)
         self.assertGreaterEqual(float(inbound["period"]), 4.5)
@@ -497,6 +516,7 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
         cfg_text = (ROOT / "sumo/corredor.sumocfg").read_text(encoding="utf-8")
         # additional-files line must not load calibrators.add.xml.
         import re
+
         m = re.search(r'<additional-files\s+value="([^"]+)"', cfg_text)
         self.assertIsNotNone(m)
         loaded = (m.group(1) if m else "").split(",")
@@ -505,7 +525,8 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
     def test_each_signalised_intersection_has_tls_program(self) -> None:
         cfg = apply_scenario_profile(self.base, "baseline_am_peak")
         tls_intersections = [
-            inter for inter in cfg["network"]["intersections"]
+            inter
+            for inter in cfg["network"]["intersections"]
             if inter.get("type") == "traffic_light"
         ]
         self.assertEqual(len(tls_intersections), 6)
@@ -513,8 +534,12 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
             program = inter.get("tls_program")
             self.assertIsInstance(program, dict, msg=inter["id"])
             required_keys = (
-                "green_main_s", "yellow_main_s", "all_red_main_to_cross_s",
-                "green_minor_s", "yellow_minor_s", "all_red_cross_to_main_s",
+                "green_main_s",
+                "yellow_main_s",
+                "all_red_main_to_cross_s",
+                "green_minor_s",
+                "yellow_minor_s",
+                "all_red_cross_to_main_s",
             )
             for required in required_keys:
                 self.assertIn(required, program, msg=inter["id"])
@@ -544,12 +569,14 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
         # I1..I5, I7 are signalised; I6 became priority.
         self.assertEqual(set(tls_elements), {"I1", "I2", "I3", "I4", "I5", "I7"})
         base_roles = [
-            "main_green", "main_yellow", "all_red_main_to_cross",
-            "cross_green", "cross_yellow", "all_red_cross_to_main",
+            "main_green",
+            "main_yellow",
+            "all_red_main_to_cross",
+            "cross_green",
+            "cross_yellow",
+            "all_red_cross_to_main",
         ]
-        intersections_by_id = {
-            inter["id"]: inter for inter in cfg["network"]["intersections"]
-        }
+        intersections_by_id = {inter["id"]: inter for inter in cfg["network"]["intersections"]}
         for tls_id, elem in tls_elements.items():
             phase_roles = [p.attrib["role"] for p in elem.findall("phase")]
             program = intersections_by_id[tls_id].get("tls_program", {})
@@ -575,16 +602,23 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
         curbside_stops = {stop["id"] for stop in stops if not stop["bay"]}
         # Major terminals/landmarks have physical bays; intermediate stops are curbside.
         for expected_bay in (
-            "bs_casa_musica_w", "bs_casa_musica_e",
-            "bs_serralves_w", "bs_serralves_e",
-            "bs_praca_imperio_w", "bs_praca_imperio_e",
-            "bs_castelo_queijo_w", "bs_castelo_queijo_e",
+            "bs_casa_musica_w",
+            "bs_casa_musica_e",
+            "bs_serralves_w",
+            "bs_serralves_e",
+            "bs_praca_imperio_w",
+            "bs_praca_imperio_e",
+            "bs_castelo_queijo_w",
+            "bs_castelo_queijo_e",
         ):
             self.assertIn(expected_bay, bay_stops)
         for expected_curbside in (
-            "bs_bessa_w", "bs_bessa_e",
-            "bs_antunes_guimaraes_w", "bs_antunes_guimaraes_e",
-            "bs_marechal_w", "bs_marechal_e",
+            "bs_bessa_w",
+            "bs_bessa_e",
+            "bs_antunes_guimaraes_w",
+            "bs_antunes_guimaraes_e",
+            "bs_marechal_w",
+            "bs_marechal_e",
         ):
             self.assertIn(expected_curbside, curbside_stops)
 
@@ -608,9 +642,10 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
         # generated <stop> and group them by stop id to verify bay-equipped stops carry parking
         # while curbside stops do not.
         import re
+
         bay_stop_ids: set[str] = set()
         curbside_stop_ids: set[str] = set()
-        for match in re.finditer(r'<stop\s+([^/]+)/>', routes_xml):
+        for match in re.finditer(r"<stop\s+([^/]+)/>", routes_xml):
             attrs = match.group(1)
             stop_match = re.search(r'busStop="(bs_[a-z_]+)"', attrs)
             if not stop_match:
@@ -621,25 +656,36 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
             else:
                 curbside_stop_ids.add(stop_id)
         for expected_bay in (
-            "bs_casa_musica_w", "bs_casa_musica_e",
-            "bs_serralves_w", "bs_serralves_e",
-            "bs_praca_imperio_w", "bs_praca_imperio_e",
-            "bs_castelo_queijo_w", "bs_castelo_queijo_e",
+            "bs_casa_musica_w",
+            "bs_casa_musica_e",
+            "bs_serralves_w",
+            "bs_serralves_e",
+            "bs_praca_imperio_w",
+            "bs_praca_imperio_e",
+            "bs_castelo_queijo_w",
+            "bs_castelo_queijo_e",
         ):
             self.assertIn(expected_bay, bay_stop_ids)
             self.assertNotIn(expected_bay, curbside_stop_ids)
         for expected_curbside in (
-            "bs_bessa_w", "bs_bessa_e",
-            "bs_antunes_guimaraes_w", "bs_antunes_guimaraes_e",
-            "bs_marechal_w", "bs_marechal_e",
+            "bs_bessa_w",
+            "bs_bessa_e",
+            "bs_antunes_guimaraes_w",
+            "bs_antunes_guimaraes_e",
+            "bs_marechal_w",
+            "bs_marechal_e",
         ):
             self.assertIn(expected_curbside, curbside_stop_ids)
             self.assertNotIn(expected_curbside, bay_stop_ids)
 
     def test_main_flows_use_smooth_multi_step_ramp(self) -> None:
         am_peak = self.base["demand_profiles"]["am_peak"]
-        inbound = next(f for f in am_peak["flows"] if f["id"] == "flow_car_inbound_west_to_east_am_peak")
-        outbound = next(f for f in am_peak["flows"] if f["id"] == "flow_car_outbound_east_to_west_am_peak")
+        inbound = next(
+            f for f in am_peak["flows"] if f["id"] == "flow_car_inbound_west_to_east_am_peak"
+        )
+        outbound = next(
+            f for f in am_peak["flows"] if f["id"] == "flow_car_outbound_east_to_west_am_peak"
+        )
         for flow in (inbound, outbound):
             tp = flow["time_profile"]
             # At least 7 segments — replaces the previous 3-step coarse profile so demand ramp is
@@ -648,7 +694,7 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
             # Time profile must cover the full 0–7200 window contiguously.
             self.assertEqual(float(tp[0]["begin"]), 0.0)
             self.assertEqual(float(tp[-1]["end"]), 7200.0)
-            for prev, curr in zip(tp, tp[1:]):
+            for prev, curr in zip(tp, tp[1:], strict=False):
                 self.assertEqual(float(prev["end"]), float(curr["begin"]))
             # The peak scale must be the largest and occur in the middle 1/3 of the window.
             peak_entry = max(tp, key=lambda entry: float(entry["scale"]))
@@ -658,6 +704,7 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
 
     def test_turning_movement_routes_terminate_correctly(self) -> None:
         from pps57_sumo.generate_plain_corridor import build_routes
+
         cfg = apply_scenario_profile(self.base, "baseline_am_peak")
         intersections = cfg["network"]["intersections"]
         terminals = {t["id"]: t for t in cfg["network"]["terminals"]}
@@ -743,11 +790,11 @@ class SumoKpiParsingTestCase(unittest.TestCase):
                 '<timestep time="0">'
                 '<vehicle id="car_1" type="car" CO2="100" fuel="40" NOx="5" />'
                 '<vehicle id="bus_STCP500_W_0000" type="bus_12m" CO2="500" fuel="180" NOx="20" />'
-                '</timestep>'
+                "</timestep>"
                 '<timestep time="60">'
                 '<vehicle id="car_1" type="car" CO2="700" fuel="280" NOx="35" />'
                 '<vehicle id="bus_STCP500_W_0000" type="bus_12m" CO2="3500" fuel="1260" NOx="140" />'
-                '</timestep>'
+                "</timestep>"
                 "</emission-export>",
                 encoding="utf-8",
             )
@@ -811,12 +858,12 @@ class SumoKpiParsingTestCase(unittest.TestCase):
             self.assertIn("tlsOffsetOverrides", tls_offsets)
             self.assertIn('id="I2"', tls_offsets)
             # Bus-only lane child elements present on edges
-            self.assertIn("allow=\"bus emergency taxi\"", edges)
+            self.assertIn('allow="bus emergency taxi"', edges)
             # I6 roundabout emits a circulating ring and routes through it.
             self.assertIn("RB_I6_CITY_TO_NORTH", edges)
             self.assertIn("RB_I6_NORTH_TO_ATLANTIC", routes)
             # Elevation z attribute present on nodes
-            self.assertIn("z=\"95.00\"", nodes)
+            self.assertIn('z="95.00"', nodes)
             # Edge width attribute present
             self.assertIn("width=", edges)
 
@@ -826,18 +873,18 @@ class SumoKpiParsingTestCase(unittest.TestCase):
             net = tmp_path / "corredor.net.xml"
             net.write_text(
                 '<?xml version="1.0"?>'
-                '<net>'
+                "<net>"
                 '<tlLogic id="I2" programID="0" offset="0" type="static"><phase duration="30" state="G"/></tlLogic>'
                 '<tlLogic id="I3" programID="0" offset="0" type="static"><phase duration="30" state="G"/></tlLogic>'
-                '</net>',
+                "</net>",
                 encoding="utf-8",
             )
             overrides = tmp_path / "tls.add.xml"
             overrides.write_text(
-                '<tlsOffsetOverrides>'
+                "<tlsOffsetOverrides>"
                 '<tls id="I2" offset_s="42"/>'
                 '<tls id="I3" offset_s="13"/>'
-                '</tlsOffsetOverrides>',
+                "</tlsOffsetOverrides>",
                 encoding="utf-8",
             )
             modified = apply_tls_offsets(net, overrides)
@@ -855,13 +902,13 @@ class SumoKpiParsingTestCase(unittest.TestCase):
         """
         net_path.write_text(
             '<?xml version="1.0"?>'
-            '<net>'
+            "<net>"
             '<tlLogic id="I2" programID="0" offset="0" type="static">'
             '<phase duration="42" state="rrrGGGgrrrGGGg"/>'
             '<phase duration="3"  state="rrryyyyrrryyyy"/>'
             '<phase duration="42" state="GGgrrrrGGgrrrr"/>'
             '<phase duration="3"  state="yyyrrrryyyrrrr"/>'
-            '</tlLogic>'
+            "</tlLogic>"
             '<connection from="N_I2_I2" to="I2_I1" tl="I2" linkIndex="0"/>'
             '<connection from="N_I2_I2" to="I2_S_I2" tl="I2" linkIndex="1"/>'
             '<connection from="N_I2_I2" to="I2_I3" tl="I2" linkIndex="2"/>'
@@ -876,7 +923,7 @@ class SumoKpiParsingTestCase(unittest.TestCase):
             '<connection from="I1_I2" to="I2_I3" tl="I2" linkIndex="11"/>'
             '<connection from="I1_I2" to="I2_I3" tl="I2" linkIndex="12"/>'
             '<connection from="I1_I2" to="I2_N_I2" tl="I2" linkIndex="13"/>'
-            '</net>',
+            "</net>",
             encoding="utf-8",
         )
 
@@ -888,19 +935,20 @@ class SumoKpiParsingTestCase(unittest.TestCase):
             self._write_synthetic_i2_net(net)
             overrides = tmp_path / "tls.add.xml"
             overrides.write_text(
-                '<tlsOffsetOverrides>'
+                "<tlsOffsetOverrides>"
                 '<tls id="I2" offset_s="38">'
                 '<phase role="main_green" duration_s="52"/>'
                 '<phase role="main_yellow" duration_s="3"/>'
                 '<phase role="cross_green" duration_s="32"/>'
                 '<phase role="cross_yellow" duration_s="3"/>'
-                '</tls>'
-                '</tlsOffsetOverrides>',
+                "</tls>"
+                "</tlsOffsetOverrides>",
                 encoding="utf-8",
             )
             modified = apply_tls_offsets(net, overrides)
             self.assertEqual(modified, 1)
             from xml.etree import ElementTree as ET
+
             tl = ET.parse(net).getroot().find("tlLogic")
             assert tl is not None
             self.assertEqual(tl.attrib["offset"], "38.0")
@@ -917,7 +965,7 @@ class SumoKpiParsingTestCase(unittest.TestCase):
             self._write_synthetic_i2_net(net)
             overrides = tmp_path / "tls.add.xml"
             overrides.write_text(
-                '<tlsOffsetOverrides>'
+                "<tlsOffsetOverrides>"
                 '<tls id="I2" offset_s="38">'
                 '<phase role="main_green" duration_s="51"/>'
                 '<phase role="main_yellow" duration_s="3"/>'
@@ -925,13 +973,14 @@ class SumoKpiParsingTestCase(unittest.TestCase):
                 '<phase role="cross_green" duration_s="31"/>'
                 '<phase role="cross_yellow" duration_s="3"/>'
                 '<phase role="all_red_cross_to_main" duration_s="1"/>'
-                '</tls>'
-                '</tlsOffsetOverrides>',
+                "</tls>"
+                "</tlsOffsetOverrides>",
                 encoding="utf-8",
             )
             modified = apply_tls_offsets(net, overrides)
             self.assertEqual(modified, 1)
             from xml.etree import ElementTree as ET
+
             tl = ET.parse(net).getroot().find("tlLogic")
             assert tl is not None
             phases = tl.findall("phase")
@@ -956,7 +1005,7 @@ class SumoKpiParsingTestCase(unittest.TestCase):
             self._write_synthetic_i2_net(net)
             overrides = tmp_path / "tls.add.xml"
             overrides.write_text(
-                '<tlsOffsetOverrides>'
+                "<tlsOffsetOverrides>"
                 '<tls id="I2" offset_s="38">'
                 '<phase role="main_green" duration_s="51"/>'
                 '<phase role="main_yellow" duration_s="3"/>'
@@ -964,18 +1013,21 @@ class SumoKpiParsingTestCase(unittest.TestCase):
                 '<phase role="cross_green" duration_s="31"/>'
                 '<phase role="cross_yellow" duration_s="3"/>'
                 '<phase role="all_red_cross_to_main" duration_s="1"/>'
-                '</tls>'
-                '</tlsOffsetOverrides>',
+                "</tls>"
+                "</tlsOffsetOverrides>",
                 encoding="utf-8",
             )
             apply_tls_offsets(net, overrides)
             apply_tls_offsets(net, overrides)
             from xml.etree import ElementTree as ET
+
             tl = ET.parse(net).getroot().find("tlLogic")
             assert tl is not None
             phases = tl.findall("phase")
             self.assertEqual(len(phases), 6, msg="all-red phases were duplicated on second run")
-            self.assertEqual([float(p.attrib["duration"]) for p in phases], [51.0, 3.0, 1.0, 31.0, 3.0, 1.0])
+            self.assertEqual(
+                [float(p.attrib["duration"]) for p in phases], [51.0, 3.0, 1.0, 31.0, 3.0, 1.0]
+            )
 
     def _write_synthetic_i2_net_with_crossings(self, net_path: Path) -> None:
         """Synthetic I2 with 14 vehicle linkIndices + 4 pedestrian crossing slots.
@@ -989,7 +1041,7 @@ class SumoKpiParsingTestCase(unittest.TestCase):
         """
         net_path.write_text(
             '<?xml version="1.0"?>'
-            '<net>'
+            "<net>"
             '<tlLogic id="I2" programID="0" offset="0" type="static">'
             '<phase duration="51" state="rrrGGGgrrrGGGgGrGr"/>'
             '<phase duration="5"  state="rrrGGGgrrrGGGgrrrr"/>'
@@ -999,7 +1051,7 @@ class SumoKpiParsingTestCase(unittest.TestCase):
             '<phase duration="5"  state="GGgrrrrGGgrrrrrrrr"/>'
             '<phase duration="3"  state="yyyrrrryyyrrrrrrrr"/>'
             '<phase duration="1"  state="rrrrrrrrrrrrrrrrrr"/>'
-            '</tlLogic>'
+            "</tlLogic>"
             '<connection from="N_I2_I2" to="I2_I1" tl="I2" linkIndex="0"/>'
             '<connection from="N_I2_I2" to="I2_S_I2" tl="I2" linkIndex="1"/>'
             '<connection from="N_I2_I2" to="I2_I3" tl="I2" linkIndex="2"/>'
@@ -1018,7 +1070,7 @@ class SumoKpiParsingTestCase(unittest.TestCase):
             '<connection from=":I2_w1" to=":I2_c1" tl="I2" linkIndex="15"/>'
             '<connection from=":I2_w2" to=":I2_c2" tl="I2" linkIndex="16"/>'
             '<connection from=":I2_w3" to=":I2_c3" tl="I2" linkIndex="17"/>'
-            '</net>',
+            "</net>",
             encoding="utf-8",
         )
 
@@ -1032,7 +1084,7 @@ class SumoKpiParsingTestCase(unittest.TestCase):
             self._write_synthetic_i2_net_with_crossings(net)
             overrides = tmp_path / "tls.add.xml"
             overrides.write_text(
-                '<tlsOffsetOverrides>'
+                "<tlsOffsetOverrides>"
                 '<tls id="I2" offset_s="0">'
                 '<phase role="main_green" duration_s="31"/>'
                 '<phase role="main_yellow" duration_s="3"/>'
@@ -1041,17 +1093,22 @@ class SumoKpiParsingTestCase(unittest.TestCase):
                 '<phase role="cross_yellow" duration_s="3"/>'
                 '<phase role="all_red_cross_to_main" duration_s="1"/>'
                 '<phase role="pedestrian" duration_s="12"/>'
-                '</tls>'
-                '</tlsOffsetOverrides>',
+                "</tls>"
+                "</tlsOffsetOverrides>",
                 encoding="utf-8",
             )
             apply_tls_offsets(net, overrides)
             from xml.etree import ElementTree as ET
+
             tl = ET.parse(net).getroot().find("tlLogic")
             assert tl is not None
             phases = tl.findall("phase")
             # FDW phases stripped → 8 original phases collapse to 6 vehicle phases + 1 ped phase.
-            self.assertEqual(len(phases), 7, msg="expected main_g, main_y, all_red, cross_g, cross_y, all_red, ped")
+            self.assertEqual(
+                len(phases),
+                7,
+                msg="expected main_g, main_y, all_red, cross_g, cross_y, all_red, ped",
+            )
             # Cycle sum exact.
             self.assertAlmostEqual(sum(float(p.attrib["duration"]) for p in phases), 90.0, places=3)
             # Last phase is the exclusive ped phase: G on indices 14-17, r on 0-13.
@@ -1071,7 +1128,7 @@ class SumoKpiParsingTestCase(unittest.TestCase):
             self._write_synthetic_i2_net_with_crossings(net)
             overrides = tmp_path / "tls.add.xml"
             overrides.write_text(
-                '<tlsOffsetOverrides>'
+                "<tlsOffsetOverrides>"
                 '<tls id="I2" offset_s="0">'
                 '<phase role="main_green" duration_s="31"/>'
                 '<phase role="main_yellow" duration_s="3"/>'
@@ -1080,14 +1137,15 @@ class SumoKpiParsingTestCase(unittest.TestCase):
                 '<phase role="cross_yellow" duration_s="3"/>'
                 '<phase role="all_red_cross_to_main" duration_s="1"/>'
                 '<phase role="pedestrian" duration_s="12"/>'
-                '</tls>'
-                '</tlsOffsetOverrides>',
+                "</tls>"
+                "</tlsOffsetOverrides>",
                 encoding="utf-8",
             )
             apply_tls_offsets(net, overrides)
             apply_tls_offsets(net, overrides)
             apply_tls_offsets(net, overrides)
             from xml.etree import ElementTree as ET
+
             tl = ET.parse(net).getroot().find("tlLogic")
             assert tl is not None
             phases = tl.findall("phase")
@@ -1103,22 +1161,22 @@ class SumoKpiParsingTestCase(unittest.TestCase):
         provoke a specific netconvert-output shape."""
         net_path.write_text(
             '<?xml version="1.0"?>'
-            '<net>'
+            "<net>"
             '<tlLogic id="I9" programID="0" offset="0" type="static">'
-            f'{phases_xml}'
-            '</tlLogic>'
+            f"{phases_xml}"
+            "</tlLogic>"
             '<connection from="I1_I9" to="I9_I2" tl="I9" linkIndex="0"/>'
             '<connection from="I1_I9" to="I9_I2" tl="I9" linkIndex="1"/>'
             '<connection from="N_I9_I9" to="I9_S_I9" tl="I9" linkIndex="2"/>'
             '<connection from="N_I9_I9" to="I9_S_I9" tl="I9" linkIndex="3"/>'
             '<connection from=":I9_w0" to=":I9_c0" tl="I9" linkIndex="4"/>'
             '<connection from=":I9_w1" to=":I9_c1" tl="I9" linkIndex="5"/>'
-            '</net>',
+            "</net>",
             encoding="utf-8",
         )
 
     _PED_PHASE_OVERRIDE_I9 = (
-        '<tlsOffsetOverrides>'
+        "<tlsOffsetOverrides>"
         '<tls id="I9" offset_s="0">'
         '<phase role="main_green" duration_s="31"/>'
         '<phase role="main_yellow" duration_s="3"/>'
@@ -1127,8 +1185,8 @@ class SumoKpiParsingTestCase(unittest.TestCase):
         '<phase role="cross_yellow" duration_s="3"/>'
         '<phase role="all_red_cross_to_main" duration_s="1"/>'
         '<phase role="pedestrian" duration_s="12"/>'
-        '</tls>'
-        '</tlsOffsetOverrides>'
+        "</tls>"
+        "</tlsOffsetOverrides>"
     )
 
     def test_fdw_strip_accepts_genuine_clearance_pattern(self) -> None:
@@ -1152,10 +1210,13 @@ class SumoKpiParsingTestCase(unittest.TestCase):
             overrides.write_text(self._PED_PHASE_OVERRIDE_I9, encoding="utf-8")
             apply_tls_offsets(net, overrides)
             from xml.etree import ElementTree as ET
+
             tl = ET.parse(net).getroot().find("tlLogic")
             assert tl is not None
             phases = tl.findall("phase")
-            self.assertEqual(len(phases), 7, msg="expected FDW phases stripped + ped phase appended")
+            self.assertEqual(
+                len(phases), 7, msg="expected FDW phases stripped + ped phase appended"
+            )
             # Last phase is exclusive ped: r on vehicle indices 0-3, G on ped 4-5.
             self.assertEqual(phases[-1].attrib["state"], "rrrrGG")
 
@@ -1239,17 +1300,21 @@ class SumoKpiParsingTestCase(unittest.TestCase):
 
     def test_classify_phase_role_recognises_pedestrian_and_all_red(self) -> None:
         from pps57_sumo.apply_tls_offsets import _classify_phase_role
+
         main_links = {3, 4, 5, 6, 10, 11, 12, 13}
         cross_links = {0, 1, 2, 7, 8, 9}
-        self.assertEqual(_classify_phase_role("rrrGGGgrrrGGGg", main_links, cross_links), "main_green")
-        self.assertEqual(_classify_phase_role("GGgrrrrGGgrrrr", main_links, cross_links), "cross_green")
+        self.assertEqual(
+            _classify_phase_role("rrrGGGgrrrGGGg", main_links, cross_links), "main_green"
+        )
+        self.assertEqual(
+            _classify_phase_role("GGgrrrrGGgrrrr", main_links, cross_links), "cross_green"
+        )
         self.assertEqual(_classify_phase_role("rrrrrrrrrrrrrr", main_links, cross_links), "all_red")
         # Pedestrian-only phase: G at index 14 (outside main and cross link sets).
         ped_state = "rrrrrrrrrrrrrrG"
         self.assertEqual(_classify_phase_role(ped_state, main_links, cross_links), "pedestrian")
         # Mixed (main and cross both green) — not a canonical role.
         self.assertIsNone(_classify_phase_role("GGGGGGGGGGGGGG", main_links, cross_links))
-
 
     def test_kpi_comparison_fails_large_general_traffic_penalty(self) -> None:
         baseline = {
@@ -1428,7 +1493,9 @@ class RoundaboutInternalPathTestCase(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.base = json.loads((ROOT / "configs/sumo_scenario_base.json").read_text(encoding="utf-8"))
+        cls.base = json.loads(
+            (ROOT / "configs/sumo_scenario_base.json").read_text(encoding="utf-8")
+        )
 
     def test_base_config_ring_expansion_unchanged(self) -> None:
         # Regression: the committed config (ring at I6, neighbours I5/I7) must keep
@@ -1467,7 +1534,9 @@ class RoundaboutInternalPathTestCase(unittest.TestCase):
             {"B": {"CITY": "A", "ATLANTIC": "C"}},
         )
         expanded = _expand_roundabout_routes({"r": ["A_B", "B_C"]}, intersections, terminals)
-        self.assertEqual(expanded["r"], ["A_B", "RB_B_CITY_TO_NORTH", "RB_B_NORTH_TO_ATLANTIC", "B_C"])
+        self.assertEqual(
+            expanded["r"], ["A_B", "RB_B_CITY_TO_NORTH", "RB_B_NORTH_TO_ATLANTIC", "B_C"]
+        )
 
     def test_ring_at_corridor_ends_uses_terminals_as_neighbours(self) -> None:
         from pps57_sumo.generate_plain_corridor import _roundabout_corridor_neighbours

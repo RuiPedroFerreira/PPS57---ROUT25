@@ -4,12 +4,13 @@
 Vive em `pps57_cits` por ser o pacote base (tsp e opt dependem dele), mas o
 conteúdo é util genérico — não específico de C-ITS.
 """
+
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 
-def optional_int(value: Any) -> Optional[int]:
+def optional_int(value: Any) -> int | None:
     """Converte `value` para int, devolvendo None se não for convertível.
 
     Substitui as seis cópias idênticas de `_optional_int` que existiam

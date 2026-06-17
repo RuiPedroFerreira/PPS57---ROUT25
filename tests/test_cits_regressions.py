@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Regression tests for C-ITS emulation robustness and protocol correctness."""
+
 from __future__ import annotations
 
-from copy import deepcopy
-from pathlib import Path
 import sys
 import tempfile
 import unittest
 import zlib
+from copy import deepcopy
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -48,6 +49,7 @@ from pps57_cits.traci_adapter import TraciSimulationAdapter
 try:
     from traci.exceptions import TraCIException as _VehicleReadError
 except ImportError:
+
     class _VehicleReadError(Exception):
         pass
 
@@ -57,57 +59,57 @@ def _load_config() -> CITSConfig:
 
 
 def _eligible_srem(**overrides):
-    params = dict(
-        sim_time_s=100.0,
-        vehicle_id="bus_1",
-        intersection_alias="I2",
-        tls_id="I2",
-        rsu_id="RSU_BOAVISTA_02",
-        lane_id="I1_I2_0",
-        line_id="STCP500_PROXY_W",
-        route_id="route_boavista_east_to_west",
-        eta_to_stopline_s=15.0,
-        distance_to_stopline_m=150.0,
-        speed_mps=10.0,
-        schedule_delay_s=90.0,
-        headway_deviation_s=0.0,
-        operator_priority_class=OperatorPriorityClass.HIGH_DELAY.value,
-        ttl_s=30.0,
-    )
+    params = {
+        "sim_time_s": 100.0,
+        "vehicle_id": "bus_1",
+        "intersection_alias": "I2",
+        "tls_id": "I2",
+        "rsu_id": "RSU_BOAVISTA_02",
+        "lane_id": "I1_I2_0",
+        "line_id": "STCP500_PROXY_W",
+        "route_id": "route_boavista_east_to_west",
+        "eta_to_stopline_s": 15.0,
+        "distance_to_stopline_m": 150.0,
+        "speed_mps": 10.0,
+        "schedule_delay_s": 90.0,
+        "headway_deviation_s": 0.0,
+        "operator_priority_class": OperatorPriorityClass.HIGH_DELAY.value,
+        "ttl_s": 30.0,
+    }
     params.update(overrides)
     return synth_srem(**params)
 
 
 def _signal_state(ryg, **overrides) -> SignalState:
-    params = dict(
-        intersection_id="I2",
-        tls_id="I2",
-        rsu_id="RSU_BOAVISTA_02",
-        timestamp_s=10.0,
-        current_phase_index=0,
-        current_program_id="0",
-        red_yellow_green_state=ryg,
-        next_switch_s=25.0,
-        spent_duration_s=2.0,
-    )
+    params = {
+        "intersection_id": "I2",
+        "tls_id": "I2",
+        "rsu_id": "RSU_BOAVISTA_02",
+        "timestamp_s": 10.0,
+        "current_phase_index": 0,
+        "current_program_id": "0",
+        "red_yellow_green_state": ryg,
+        "next_switch_s": 25.0,
+        "spent_duration_s": 2.0,
+    }
     params.update(overrides)
     return SignalState(**params)
 
 
 def _bus_observation(**overrides) -> VehicleObservation:
-    params = dict(
-        vehicle_id="bus_STCP500_W_UNIT",
-        vehicle_class="bus",
-        type_id="bus_12m",
-        line_id="STCP500_PROXY_W",
-        route_id="route_boavista_east_to_west",
-        edge_id="I1_I2",
-        lane_id="I1_I2_0",
-        lane_position_m=500.0,
-        lane_length_m=650.0,
-        speed_mps=10.0,
-        schedule_delay_s=90.0,
-    )
+    params = {
+        "vehicle_id": "bus_STCP500_W_UNIT",
+        "vehicle_class": "bus",
+        "type_id": "bus_12m",
+        "line_id": "STCP500_PROXY_W",
+        "route_id": "route_boavista_east_to_west",
+        "edge_id": "I1_I2",
+        "lane_id": "I1_I2_0",
+        "lane_position_m": 500.0,
+        "lane_length_m": 650.0,
+        "speed_mps": 10.0,
+        "schedule_delay_s": 90.0,
+    }
     params.update(overrides)
     return VehicleObservation(**params)
 
@@ -128,9 +130,7 @@ class DegradedTlsReadTestCase(unittest.TestCase):
             {"noValidSPATisAvailableAtThisTime": True},
         )
         self.assertEqual(len(spatem.movement_events), 1)
-        self.assertEqual(
-            spatem.movement_events[0].event_state, EventState.UNAVAILABLE.value
-        )
+        self.assertEqual(spatem.movement_events[0].event_state, EventState.UNAVAILABLE.value)
         self.assertEqual(validate_cits_message(spatem), [])
         JsonSimulationCodec().encode(spatem)  # must not raise
 
@@ -159,9 +159,11 @@ class DegradedTlsReadTestCase(unittest.TestCase):
             movement_events=[],  # codec rejects: spatem.movement_events_missing
         )
         summary = IncrementalCITSSummary()
-        with tempfile.TemporaryDirectory() as tmp:
-            with CITSJsonlLogger(Path(tmp) / "cits.jsonl") as logger:
-                controller._publish_log_collect([invalid_spatem], logger, summary)
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            CITSJsonlLogger(Path(tmp) / "cits.jsonl") as logger,
+        ):
+            controller._publish_log_collect([invalid_spatem], logger, summary)
         self.assertEqual(controller.publish_codec_failures, {"SPATEM": 1})
         self.assertEqual(summary.total, 0)
 
@@ -365,9 +367,7 @@ class VehicleClassFilterTestCase(unittest.TestCase):
         self.assertIsNone(resolved)
 
     def test_matching_vehicle_class_still_resolves(self) -> None:
-        resolved = self.config.priority_movement_for_request(
-            edge_id="I1_I2", vehicle_class="bus"
-        )
+        resolved = self.config.priority_movement_for_request(edge_id="I1_I2", vehicle_class="bus")
         self.assertIsNotNone(resolved)
         self.assertIn("public_transport", resolved.vehicle_classes)
 
@@ -393,9 +393,7 @@ class VehicleClassFilterTestCase(unittest.TestCase):
             tls_to_intersection={},
             intersection_by_alias={},
         )
-        resolved = config.priority_movement_for_request(
-            edge_id="E1", vehicle_class="passenger"
-        )
+        resolved = config.priority_movement_for_request(edge_id="E1", vehicle_class="passenger")
         self.assertIs(resolved, movement)
 
 
@@ -408,8 +406,7 @@ class IntersectionRefIdTestCase(unittest.TestCase):
 
     def test_exotic_aliases_no_longer_collide_with_canonical_ids(self) -> None:
         ref_ids = {
-            alias: parse_intersection_ref_id(alias)
-            for alias in ("I12", "TLS_1_2", "cluster_1_2")
+            alias: parse_intersection_ref_id(alias) for alias in ("I12", "TLS_1_2", "cluster_1_2")
         }
         self.assertEqual(len(set(ref_ids.values())), 3)
 
@@ -432,9 +429,7 @@ class StopThenProceedMappingTestCase(unittest.TestCase):
     """SUMO 's' (right-turn-on-red) is not a protected green movement."""
 
     def test_s_char_maps_to_stop_then_proceed(self) -> None:
-        self.assertEqual(
-            sumo_link_char_to_event_state("s"), EventState.STOP_THEN_PROCEED.value
-        )
+        self.assertEqual(sumo_link_char_to_event_state("s"), EventState.STOP_THEN_PROCEED.value)
         self.assertNotEqual(
             sumo_link_char_to_event_state("s"),
             EventState.PROTECTED_MOVEMENT_ALLOWED.value,

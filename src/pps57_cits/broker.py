@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """Broker em memória para emular a troca de mensagens OBU/RSU."""
+
 from __future__ import annotations
 
-from collections import defaultdict
-from dataclasses import dataclass, field
 import random
-from typing import DefaultDict, Dict, Iterable, List, Optional
+from collections import defaultdict
+from collections.abc import Iterable
+from dataclasses import dataclass, field
 
 from .messages import CITSMessage
 from .protocol_codec import JsonSimulationCodec, ProtocolCodec
-
 
 WirePayload = CITSMessage | str
 
@@ -32,14 +32,14 @@ class InMemoryMessageBroker:
     consumidos podem ser drenados periodicamente para não crescer.
     """
 
-    transport_config: Dict[str, object] = field(default_factory=dict)
+    transport_config: dict[str, object] = field(default_factory=dict)
     codec: ProtocolCodec | None = None
-    queues: DefaultDict[str, List[WirePayload]] = field(default_factory=lambda: defaultdict(list))
-    _counts: Dict[str, int] = field(default_factory=dict)
-    _pending: List[PendingDelivery] = field(default_factory=list)
+    queues: defaultdict[str, list[WirePayload]] = field(default_factory=lambda: defaultdict(list))
+    _counts: dict[str, int] = field(default_factory=dict)
+    _pending: list[PendingDelivery] = field(default_factory=list)
     _current_step: int = 0
-    _rng: Optional[random.Random] = field(default=None, init=False, repr=False)
-    _transport_stats: Dict[str, int] = field(default_factory=dict)
+    _rng: random.Random | None = field(default=None, init=False, repr=False)
+    _transport_stats: dict[str, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self._transport_stats = {
@@ -71,7 +71,7 @@ class InMemoryMessageBroker:
             self._schedule(message)
         self._flush_due()
 
-    def consume(self, destination_id: str) -> List[CITSMessage]:
+    def consume(self, destination_id: str) -> list[CITSMessage]:
         payloads = list(self.queues.get(destination_id, []))
         messages = [self._decode_payload(payload) for payload in payloads]
         self.queues[destination_id] = []
@@ -91,7 +91,7 @@ class InMemoryMessageBroker:
                 dropped += self.drain(dest)
         return dropped
 
-    def advance_time(self, step: Optional[int] = None) -> None:
+    def advance_time(self, step: int | None = None) -> None:
         """Advance simulated transport time and deliver pending messages.
 
         The broker stays ideal by default. When `message_transport.enabled` is
@@ -104,13 +104,13 @@ class InMemoryMessageBroker:
             self._current_step = int(step)
         self._flush_due()
 
-    def peek(self, destination_id: str) -> List[CITSMessage]:
+    def peek(self, destination_id: str) -> list[CITSMessage]:
         return [self._decode_payload(payload) for payload in self.queues.get(destination_id, [])]
 
-    def count_by_type(self) -> Dict[str, int]:
+    def count_by_type(self) -> dict[str, int]:
         return dict(self._counts)
 
-    def transport_stats(self) -> Dict[str, int]:
+    def transport_stats(self) -> dict[str, int]:
         stats = dict(self._transport_stats)
         stats["pending"] = len(self._pending)
         return stats
@@ -127,7 +127,9 @@ class InMemoryMessageBroker:
         jitter_steps = max(0, int(self.transport_config.get("jitter_steps", 0)))
         reorder_window_steps = max(0, int(self.transport_config.get("reorder_window_steps", 0)))
         jitter = self._rng.randint(0, jitter_steps) if self._rng and jitter_steps else 0
-        reorder = self._rng.randint(0, reorder_window_steps) if self._rng and reorder_window_steps else 0
+        reorder = (
+            self._rng.randint(0, reorder_window_steps) if self._rng and reorder_window_steps else 0
+        )
         due_step = self._current_step + latency_steps + jitter + reorder
         payload = self._payload_for_transport(message)
         if due_step <= self._current_step:

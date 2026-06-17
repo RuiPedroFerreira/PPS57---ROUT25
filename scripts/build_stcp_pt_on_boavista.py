@@ -12,17 +12,18 @@ Nothing is invented: stop ids, coordinates and headways all come from the real
 STCP GTFS feed; edges from the real OSM net. ``gtfs2pt`` is deliberately not used
 (it needs heavy native deps that would pollute the locked environment).
 """
+
 from __future__ import annotations
 
 import argparse
 import csv
 import io
 import json
-from pathlib import Path
-from statistics import fmean, median
 import subprocess
 import xml.etree.ElementTree as ET
 import zipfile
+from pathlib import Path
+from statistics import fmean, median
 
 import sumolib  # ships with SUMO; already in .venv
 
@@ -86,13 +87,22 @@ def _headways_min(departures_s, window):
 def corridor_lines(zip_path: Path, bbox):
     """Per line+direction: ordered in-bbox real stops and real weekday headways."""
     south, west, north, east = bbox
-    routes = {r["route_id"]: r for r in _gtfs_rows(zip_path, "routes.txt") if r.get("route_short_name", "") in CORRIDOR_LINES}
+    routes = {
+        r["route_id"]: r
+        for r in _gtfs_rows(zip_path, "routes.txt")
+        if r.get("route_short_name", "") in CORRIDOR_LINES
+    }
     rid_to_short = {rid: r.get("route_short_name", "") for rid, r in routes.items()}
-    trips = [t for t in _gtfs_rows(zip_path, "trips.txt")
-             if t["route_id"] in rid_to_short and t["service_id"] == WEEKDAY_SERVICE]
+    trips = [
+        t
+        for t in _gtfs_rows(zip_path, "trips.txt")
+        if t["route_id"] in rid_to_short and t["service_id"] == WEEKDAY_SERVICE
+    ]
     trips_by_key = {}
     for t in trips:
-        trips_by_key.setdefault((rid_to_short[t["route_id"]], t.get("direction_id", "")), []).append(t["trip_id"])
+        trips_by_key.setdefault(
+            (rid_to_short[t["route_id"]], t.get("direction_id", "")), []
+        ).append(t["trip_id"])
     stops = {s["stop_id"]: s for s in _gtfs_rows(zip_path, "stops.txt")}
 
     # one pass over stop_times: per trip ordered stops, and first-stop departures per key.
@@ -130,9 +140,10 @@ def corridor_lines(zip_path: Path, bbox):
                 if south <= lat <= north and west <= lon <= east:
                     n += 1
             return n
+
         rep = max(trip_ids, key=in_bbox_count)
         ordered = []
-        for seq, sid in sorted(trip_seq.get(rep, [])):
+        for _seq, sid in sorted(trip_seq.get(rep, [])):
             s = stops.get(sid)
             if s is None:
                 continue
@@ -140,7 +151,9 @@ def corridor_lines(zip_path: Path, bbox):
             if lat is None or lon is None:
                 continue
             if south <= lat <= north and west <= lon <= east:
-                ordered.append({"stop_id": sid, "stop_name": s.get("stop_name", ""), "lat": lat, "lon": lon})
+                ordered.append(
+                    {"stop_id": sid, "stop_name": s.get("stop_name", ""), "lat": lat, "lon": lon}
+                )
         deps = first_dep.get((short, direction), [])
         out[f"{short}:{direction}"] = {
             "line": short,
@@ -160,7 +173,9 @@ def snap_stops(net, project, services):
         for stop in entry["stops_in_bbox"]:
             sid = stop["stop_id"]
             x, y = project(stop["lon"], stop["lat"])
-            cands = [(e, d) for e, d in net.getNeighboringEdges(x, y, SNAP_RADIUS_M) if e.allows("bus")]
+            cands = [
+                (e, d) for e, d in net.getNeighboringEdges(x, y, SNAP_RADIUS_M) if e.allows("bus")
+            ]
             cands.sort(key=lambda ed: ed[1])
             if not cands:
                 stop["snapped"] = False
@@ -169,10 +184,18 @@ def snap_stops(net, project, services):
             lane = next((ln for ln in edge.getLanes() if ln.allows("bus")), edge.getLanes()[0])
             pos, _ = lane.getClosestLanePosAndDist((x, y))
             length = lane.getLength()
-            stop.update({"snapped": True, "edge": edge.getID(), "lane": lane.getID(),
-                         "lane_pos_m": round(pos, 2), "snap_dist_m": round(dist, 2)})
+            stop.update(
+                {
+                    "snapped": True,
+                    "edge": edge.getID(),
+                    "lane": lane.getID(),
+                    "lane_pos_m": round(pos, 2),
+                    "snap_dist_m": round(dist, 2),
+                }
+            )
             bus_stops[sid] = {
-                "id": f"bs_{sid}", "lane": lane.getID(),
+                "id": f"bs_{sid}",
+                "lane": lane.getID(),
                 "startPos": round(max(0.0, pos - 15.0), 2),
                 "endPos": round(min(length, pos + 15.0), 2),
                 "name": stop["stop_name"],
@@ -183,34 +206,69 @@ def snap_stops(net, project, services):
 def write_busstops_add(bus_stops, path: Path) -> None:
     root = ET.Element("additional")
     for bs in bus_stops.values():
-        ET.SubElement(root, "busStop", {
-            "id": bs["id"], "lane": bs["lane"],
-            "startPos": str(bs["startPos"]), "endPos": str(bs["endPos"]), "name": bs["name"],
-        })
+        ET.SubElement(
+            root,
+            "busStop",
+            {
+                "id": bs["id"],
+                "lane": bs["lane"],
+                "startPos": str(bs["startPos"]),
+                "endPos": str(bs["endPos"]),
+                "name": bs["name"],
+            },
+        )
     ET.ElementTree(root).write(path, encoding="utf-8", xml_declaration=True)
 
 
 def validate_sumo_load(net_path: Path, add_path: Path) -> dict:
     proc = subprocess.run(
-        ["sumo", "-n", str(net_path), "-a", str(add_path), "--no-step-log", "true",
-         "--end", "1", "--no-warnings", "true"],
-        capture_output=True, text=True,
+        [
+            "sumo",
+            "-n",
+            str(net_path),
+            "-a",
+            str(add_path),
+            "--no-step-log",
+            "true",
+            "--end",
+            "1",
+            "--no-warnings",
+            "true",
+        ],
+        capture_output=True,
+        text=True,
     )
-    return {"sumo_loads_busstops": proc.returncode == 0,
-            "stderr_tail": (proc.stderr.strip().splitlines() or [""])[-1][:200]}
+    return {
+        "sumo_loads_busstops": proc.returncode == 0,
+        "stderr_tail": (proc.stderr.strip().splitlines() or [""])[-1][:200],
+    }
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--gtfs", type=Path, default=ROOT / ".tools" / "stcp-gtfs" / "gtfs_feed.zip")
-    parser.add_argument("--net", type=Path, default=ROOT / ".tools" / "boavista-osm" / "boavista.net.xml")
-    parser.add_argument("--add-out", type=Path, default=ROOT / ".tools" / "boavista-osm" / "boavista_pt_stops.add.xml")
-    parser.add_argument("--out", type=Path, default=ROOT / "docs" / "validation" / "v4b_stcp_pt_mapping.json")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--gtfs", type=Path, default=ROOT / ".tools" / "stcp-gtfs" / "gtfs_feed.zip"
+    )
+    parser.add_argument(
+        "--net", type=Path, default=ROOT / ".tools" / "boavista-osm" / "boavista.net.xml"
+    )
+    parser.add_argument(
+        "--add-out",
+        type=Path,
+        default=ROOT / ".tools" / "boavista-osm" / "boavista_pt_stops.add.xml",
+    )
+    parser.add_argument(
+        "--out", type=Path, default=ROOT / "docs" / "validation" / "v4b_stcp_pt_mapping.json"
+    )
     args = parser.parse_args()
 
     for path in (args.gtfs, args.net):
         if not path.exists():
-            raise SystemExit(f"Missing {path}. Run scripts/fetch_stcp_gtfs.py and scripts/build_boavista_network.py first.")
+            raise SystemExit(
+                f"Missing {path}. Run scripts/fetch_stcp_gtfs.py and scripts/build_boavista_network.py first."
+            )
 
     location = ET.parse(args.net).getroot().find("location")
     orig = [float(v) for v in location.get("origBoundary").split(",")]
@@ -235,10 +293,12 @@ def main() -> None:
     # would be a real snapping gap.
     south, west, north, east = bbox
     boundary_zone_m = 200.0
+
     def _edge_dist_m(stop):
         dlat = min(stop["lat"] - south, north - stop["lat"]) * 111320.0
         dlon = min(stop["lon"] - west, east - stop["lon"]) * 111320.0 * 0.75
         return min(dlat, dlon)
+
     unsnapped = [s for s in all_stops if not s.get("snapped")]
     boundary_losses = [s for s in unsnapped if _edge_dist_m(s) <= boundary_zone_m]
     interior_gaps = [s for s in unsnapped if _edge_dist_m(s) > boundary_zone_m]
@@ -246,8 +306,12 @@ def main() -> None:
     report = {
         "validation_phase": "V4b_stcp_pt_on_real_boavista_net",
         "source_of_truth": {
-            "gtfs": json.loads((args.gtfs.parent / "PROVENANCE.json").read_text()) if (args.gtfs.parent / "PROVENANCE.json").exists() else {},
-            "net": json.loads((args.net.parent / "NET_PROVENANCE.json").read_text()) if (args.net.parent / "NET_PROVENANCE.json").exists() else {},
+            "gtfs": json.loads((args.gtfs.parent / "PROVENANCE.json").read_text())
+            if (args.gtfs.parent / "PROVENANCE.json").exists()
+            else {},
+            "net": json.loads((args.net.parent / "NET_PROVENANCE.json").read_text())
+            if (args.net.parent / "NET_PROVENANCE.json").exists()
+            else {},
             "projection": "affine from net <location> origBoundary->convBoundary (UTM z29, local approx)",
         },
         "lines_mapped": lines_present,
@@ -274,25 +338,42 @@ def main() -> None:
             "This emits bus stops + a regenerated services structure on the real net; wiring full bus "
             "flows/routes into a runnable scenario (duarouter) is the remaining step.",
             f"Stops that did not snap ({len(unsnapped)}) are all within {boundary_zone_m:.0f} m of the "
-            "net boundary (roads clipped by the corridor bbox), not interior gaps." if not interior_gaps
+            "net boundary (roads clipped by the corridor bbox), not interior gaps."
+            if not interior_gaps
             else f"{len(interior_gaps)} stop(s) failed to snap in the interior (real gaps).",
         ],
         # Pass = ALL corridor lines (500/502/204) instantiated, SUMO loads the stops, and
         # every non-snapped stop is a boundary-clipping loss (zero interior snapping gaps).
-        "verdict": "pass" if (set(CORRIDOR_LINES).issubset(lines_present) and len(snapped) > 0
-                              and load["sumo_loads_busstops"] and not interior_gaps) else "review",
+        "verdict": "pass"
+        if (
+            set(CORRIDOR_LINES).issubset(lines_present)
+            and len(snapped) > 0
+            and load["sumo_loads_busstops"]
+            and not interior_gaps
+        )
+        else "review",
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+    args.out.write_text(
+        json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
-    print(f"V4b STCP PT on real Boavista net — lines {lines_present} (204 added: {'204' in lines_present})")
-    print(f"  stops in bbox: {len(all_stops)}  snapped: {len(snapped)}  "
-          f"median {report['stop_mapping']['snap_dist_m_median']}m  "
-          f"(boundary-clipping misses: {len(boundary_losses)}, interior gaps: {len(interior_gaps)})")
-    for key, e in sorted(services.items()):
-        print(f"  line {e['line']} dir{e['direction']}: {len(e['stops_in_bbox'])} stops | "
-              f"real headway AM={e['headway_am_peak_min']}min allday={e['headway_allday_min']}min")
-    print(f"  SUMO loads bus stops: {load['sumo_loads_busstops']}   verdict: {report['verdict']}   -> {args.out}")
+    print(
+        f"V4b STCP PT on real Boavista net — lines {lines_present} (204 added: {'204' in lines_present})"
+    )
+    print(
+        f"  stops in bbox: {len(all_stops)}  snapped: {len(snapped)}  "
+        f"median {report['stop_mapping']['snap_dist_m_median']}m  "
+        f"(boundary-clipping misses: {len(boundary_losses)}, interior gaps: {len(interior_gaps)})"
+    )
+    for _key, e in sorted(services.items()):
+        print(
+            f"  line {e['line']} dir{e['direction']}: {len(e['stops_in_bbox'])} stops | "
+            f"real headway AM={e['headway_am_peak_min']}min allday={e['headway_allday_min']}min"
+        )
+    print(
+        f"  SUMO loads bus stops: {load['sumo_loads_busstops']}   verdict: {report['verdict']}   -> {args.out}"
+    )
     if report["verdict"] != "pass":
         raise SystemExit(1)
 
