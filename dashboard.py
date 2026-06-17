@@ -5,6 +5,7 @@ Run with: streamlit run dashboard.py
 
 from __future__ import annotations
 
+import base64
 import datetime as _dt
 import json
 import os
@@ -19,6 +20,7 @@ import streamlit as st
 
 ROOT = Path(__file__).parent
 REPORTS = ROOT / "reports"
+PUBLIC = ROOT / "public"
 
 # ── constants ─────────────────────────────────────────────────────────────────
 
@@ -118,7 +120,8 @@ CSS = """
 html, body, [class*="css"] { font-family: "Inter", "Segoe UI", system-ui, sans-serif; }
 
 /* page header */
-.page-header { border-bottom: 3px solid #1d6ef5; padding-bottom: 12px; margin-bottom: 6px; }
+.page-header { border-bottom: 3px solid #1d6ef5; padding-bottom: 12px; margin-bottom: 6px;
+               margin-top: 2.5rem; }  /* clear Streamlit's 60px fixed top header */
 .page-header h1 { font-size: 1.55rem; font-weight: 700; color: #0f172a; margin: 0 0 2px; letter-spacing: -0.4px; }
 .page-header .subtitle { font-size: 0.82rem; color: #64748b; margin: 0; }
 .badge { display:inline-block; background:#eff6ff; border:1px solid #bfdbfe; color:#1d4ed8;
@@ -126,9 +129,16 @@ html, body, [class*="css"] { font-family: "Inter", "Segoe UI", system-ui, sans-s
          margin-left:8px; vertical-align:middle; }
 .freshness { font-size:0.74rem; color:#94a3b8; margin:6px 0 0; }
 
+/* page-header brand row — product logo left, partner logo right */
+.ph-brandrow { display:flex; align-items:center; justify-content:space-between;
+               gap:16px; margin:2px 0 16px; }
+.ph-brandrow img { display:block; width:auto; }
+.ph-brandrow .ph-logo { height:42px; }
+.ph-brandrow .ph-partner { height:30px; opacity:0.9; }
+
 /* sidebar */
 .sb-label { font-size:0.68rem; font-weight:700; text-transform:uppercase;
-            letter-spacing:.08em; color:#94a3b8; margin:16px 0 6px; }
+            letter-spacing:.1em; color:#94a3b8; margin:16px 0 6px; }
 .sb-project { font-weight:700; font-size:0.95rem; color:#0f172a; }
 .sb-sub { font-size:0.75rem; color:#64748b; }
 .file-row { display:flex; align-items:center; gap:7px; font-size:0.75rem; color:#374151; padding:3px 0; }
@@ -208,6 +218,98 @@ section.main > div { padding-top: 1rem; }
 .footer-chip:hover { background:#f9fafb; }
 .footer-chip .fc-label { font-size:14px; font-weight:700; color:#0f172a; margin:0 0 4px; }
 .footer-chip .fc-desc  { font-size:12px; color:#64748b; margin:0; line-height:1.45; }
+
+/* expanders — clean white card with a subtle hover (app-wide: sidebar + tabs) */
+[data-testid="stExpander"] details {
+  border:1px solid #e2e8f0; border-radius:8px; background:#ffffff; overflow:hidden;
+}
+[data-testid="stExpander"] summary { background:#ffffff; }
+[data-testid="stExpander"] summary:hover { background:#f8fafc; }
+[data-testid="stExpanderDetails"] { background:#ffffff; }
+
+/* tabs — rounded top corners with a subtle hover, matching the card polish */
+[data-testid="stTabs"] button[data-testid="stTab"] {
+  border-radius:6px 6px 0 0;
+  transition:background-color 0.15s ease, color 0.15s ease;
+}
+[data-testid="stTabs"] button[data-testid="stTab"]:hover { background-color:#f1f5f9; }
+</style>
+"""
+
+# ── sidebar CSS ─────────────────────────────────────────────────────────────────
+# A single style block injected at the top of the sidebar. Light-theme palette:
+# the sidebar background is secondaryBackgroundColor (#f0f4f8), so the cards use
+# dark text on white, consistent with the .sb-* classes above.
+#
+# Scoped under section[data-testid="stSidebar"] on purpose — `.step-num` and
+# `.step-title` also exist (with different sizing) for the empty-state cards on
+# the MAIN page; scoping stops the sidebar rules from leaking onto those.
+SIDEBAR_CSS = """
+<style>
+section[data-testid="stSidebar"] .gloss-card {
+  background:#ffffff; border:1px solid #e2e8f0; border-radius:8px;
+  padding:0.6rem 0.75rem; margin-bottom:0.5rem;
+}
+section[data-testid="stSidebar"] .gloss-term {
+  font-size:13px; font-weight:600; color:#0f172a; margin-bottom:0.2rem;
+  display:flex; justify-content:space-between; align-items:baseline; gap:0.5rem;
+}
+section[data-testid="stSidebar"] .gloss-unit {
+  font-size:11px; font-weight:400; color:#94a3b8; white-space:nowrap;
+}
+section[data-testid="stSidebar"] .gloss-def {
+  font-size:12px; color:#64748b; line-height:1.55;
+}
+section[data-testid="stSidebar"] .step-card {
+  display:flex; gap:0.75rem; align-items:flex-start; margin-bottom:0.75rem;
+}
+section[data-testid="stSidebar"] .step-num {
+  font-size:11px; font-weight:700; color:#ffffff; background:#1d4ed8;
+  border-radius:50%; width:22px; height:22px; display:flex; align-items:center;
+  justify-content:center; flex-shrink:0; margin-top:1px;
+}
+section[data-testid="stSidebar"] .step-title {
+  font-size:13px; font-weight:600; color:#0f172a; margin-bottom:0.2rem;
+}
+section[data-testid="stSidebar"] .step-body {
+  font-size:12px; color:#64748b; line-height:1.55;
+}
+section[data-testid="stSidebar"] .sb-brand { text-align:center; margin:0.35rem 0 0.4rem; }
+section[data-testid="stSidebar"] .sb-brand img {
+  width:200px; max-width:90%; height:auto; display:inline-block;
+}
+section[data-testid="stSidebar"] .sb-sub { text-align:center; }
+section[data-testid="stSidebar"] .sb-partner-label {
+  font-size:9px; font-weight:600; letter-spacing:0.12em; color:#94a3b8;
+  text-align:center; margin:0 0 0.5rem 0;
+}
+section[data-testid="stSidebar"] .sb-partner { text-align:center; }
+section[data-testid="stSidebar"] .sb-partner img {
+  width:142px; max-width:72%; height:auto; display:inline-block;
+}
+section[data-testid="stSidebar"] .sb-footer-version {
+  font-size:10px; color:#94a3b8; text-align:center; margin:1rem 0 0;
+}
+/* Full-height flex column so the partner footer can pin to the very bottom.
+   When content is tall enough to scroll, margin-top:auto collapses and the
+   footer just follows the content (graceful fallback). */
+section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
+  height:100%; display:flex; flex-direction:column;
+}
+section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
+  flex:1 1 auto; display:flex; flex-direction:column;
+  padding-bottom:1.75rem;  /* override Streamlit's 6rem: footer near the bottom with a clean margin */
+}
+section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] > div {
+  flex:1 1 auto; display:flex; flex-direction:column; min-height:0;
+}
+section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] > div > [data-testid="stVerticalBlock"] {
+  flex:1 1 auto;
+}
+section[data-testid="stSidebar"] [data-testid="stElementContainer"]:has(.sb-footer) {
+  margin-top:auto;
+}
+/* (expander card/hover lives in the main CSS block now — applies app-wide) */
 </style>
 """
 
@@ -230,6 +332,43 @@ def load_json(path: Path) -> dict | None:
     if not path.exists():
         return None
     return _read_json(str(path), path.stat().st_mtime)
+
+
+@st.cache_data(show_spinner=False)
+def _img_data_uri(path_str: str, mtime: float, strip_white: bool) -> str | None:
+    # `mtime` keeps the cache key fresh when the asset changes (see _read_json).
+    try:
+        raw = Path(path_str).read_bytes()
+    except OSError:
+        return None
+    if not strip_white:
+        return "data:image/png;base64," + base64.b64encode(raw).decode("ascii")
+    # Remove a baked-in white background -> transparency. Alpha scales with each
+    # pixel's distance from white, so real colours stay fully opaque while the
+    # white field drops out and anti-aliased edges keep a smooth ramp. The source
+    # PNG on disk is never modified.
+    import io
+
+    import numpy as np
+    from PIL import Image
+
+    im = Image.open(io.BytesIO(raw)).convert("RGBA")
+    arr = np.asarray(im).astype(np.int16)
+    mn = arr[..., :3].min(axis=2)  # closest channel to white
+    alpha = np.clip((255 - mn) * 3, 0, 255)  # white -> 0, colours -> opaque
+    arr[..., 3] = np.minimum(arr[..., 3], alpha)
+    buf = io.BytesIO()
+    Image.fromarray(arr.astype("uint8"), "RGBA").save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+def logo_uri(path: Path, strip_white: bool = False) -> str | None:
+    """Inline a PNG logo as a base64 data URI so it can be embedded directly in
+    the sidebar's custom HTML (consistent with the rest of the styled markup).
+    Pass strip_white=True to drop a solid white background to transparency."""
+    if not path.exists():
+        return None
+    return _img_data_uri(str(path), path.stat().st_mtime, strip_white)
 
 
 def file_mtime(path: Path) -> str | None:
@@ -568,14 +707,122 @@ def class_vehicle_count(cls_key: str) -> int:
 
 # ── sidebar ───────────────────────────────────────────────────────────────────
 
+# divider between sidebar zones (light-adapted from the spec's white rule)
+_SB_DIVIDER = "<hr style='border:none;border-top:1px solid rgba(15,23,42,0.08);margin:1rem 0'>"
+
+# Zone C · glossary entries (search filters reactively on every keystroke)
+GLOSSARY = [
+    {
+        "term": "Perda de tempo média",
+        "unit": "segundos (s)",
+        "def": "Tempo adicional gasto por veículo face ao percurso sem paragens.",
+    },
+    {
+        "term": "Tempo de espera médio",
+        "unit": "segundos (s)",
+        "def": "Tempo total parado em semáforos por veículo durante a simulação.",
+    },
+    {
+        "term": "Velocidade média",
+        "unit": "m/s",
+        "def": "Velocidade média de todos os veículos durante a simulação.",
+    },
+    {
+        "term": "Delta TSP vs Baseline",
+        "unit": "%",
+        "def": "Variação percentual de cada métrica entre o cenário TSP e o cenário base sem prioridade.",
+    },
+    {
+        "term": "Prioridade semafórica (TSP)",
+        "unit": "—",
+        "def": "Extensão ou antecipação do verde concedida ao autocarro quando detectado na zona de aproximação.",
+    },
+    {
+        "term": "Classe de veículo",
+        "unit": "—",
+        "def": "Segmentação dos veículos simulados: autocarros, tráfego geral, veículos prioritários, emergência.",
+    },
+    {
+        "term": "Throughput",
+        "unit": "veículos/hora",
+        "def": "Número de veículos que completam o percurso por hora de simulação.",
+    },
+    {
+        "term": "Headway",
+        "unit": "segundos (s)",
+        "def": "Intervalo de tempo entre dois autocarros consecutivos na mesma paragem.",
+    },
+    {
+        "term": "C-ITS",
+        "unit": "—",
+        "def": "Cooperative Intelligent Transport Systems — comunicação V2I entre o autocarro e o semáforo.",
+    },
+    {
+        "term": "Cenário base (Baseline)",
+        "unit": "—",
+        "def": "Simulação SUMO sem qualquer prioridade semafórica — referência de comparação.",
+    },
+    {
+        "term": "RL (Reinforcement Learning)",
+        "unit": "—",
+        "def": "Controlador de semáforo treinado por aprendizagem por reforço, comparado com a regra TSP.",
+    },
+    {
+        "term": "Delay por fase",
+        "unit": "segundos (s)",
+        "def": "Atraso acumulado durante cada fase semafórica, por classe de veículo.",
+    },
+]
+
+# Zone C · step-by-step reading guide
+STEPS = [
+    {
+        "n": "1",
+        "title": "Lê o veredicto",
+        "body": "O banner no topo resume o impacto global do TSP. Verde = melhoria, amarelo = tradeoff a avaliar.",
+    },
+    {
+        "n": "2",
+        "title": "Verifica os KPIs",
+        "body": "Os três cartões mostram as métricas-chave para a classe seleccionada. O valor a bold é o resultado TSP; a seta é o delta face ao baseline.",
+    },
+    {
+        "n": "3",
+        "title": "Analisa o gráfico de barras",
+        "body": "Barras à esquerda (verde) = o TSP melhora essa classe. Barras à direita (vermelho) = custo para essa classe. O eixo está centrado em zero.",
+    },
+    {
+        "n": "4",
+        "title": "Explora os separadores",
+        "body": "Cada separador aprofunda um aspecto: KPIs detalha por métrica, Cenários mostra os 8 casos operacionais, Decisão explica o algoritmo.",
+    },
+    {
+        "n": "5",
+        "title": "Muda a classe de veículo",
+        "body": "Usa o filtro 'Classe de veículo' na sidebar para ver o impacto do TSP especificamente em autocarros, tráfego geral ou veículos prioritários.",
+    },
+]
+
 with st.sidebar:
-    st.markdown('<div class="sb-project">PPS57 · ROUT25</div>', unsafe_allow_html=True)
+    # single style block at the top of the sidebar (cards + zone treatment)
+    st.markdown(SIDEBAR_CSS, unsafe_allow_html=True)
+
+    _route25_uri = logo_uri(PUBLIC / "route25_logo.png", strip_white=True)
+    if _route25_uri:
+        st.markdown(
+            f'<div class="sb-brand"><img src="{_route25_uri}" alt="Route 25"></div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown('<div class="sb-project">PPS57 · ROUT25</div>', unsafe_allow_html=True)
     st.markdown(
         '<div class="sb-sub">Traffic Signal Priority — Linha 25, Porto</div>',
         unsafe_allow_html=True,
     )
 
-    # ── detected reports (collapsible, human-readable labels) ──────────────────
+    # ════════════════════════════════════════════════════════════════════════
+    # ZONE A — Relatórios detectados
+    # ════════════════════════════════════════════════════════════════════════
     report_files = {
         "Baseline KPIs": REPORTS / "baseline_kpis.json",
         "Demonstrador TSP": REPORTS / "tsp_demonstrator_report.json",
@@ -589,19 +836,30 @@ with st.sidebar:
                 unsafe_allow_html=True,
             )
 
-    # ── global vehicle-class filter (below the reports expander) ───────────────
+    st.markdown(_SB_DIVIDER, unsafe_allow_html=True)
+
+    # ════════════════════════════════════════════════════════════════════════
+    # ZONE B — Filtro global (classe de veículo)
+    # ════════════════════════════════════════════════════════════════════════
     st.markdown('<div class="sb-label">Filtro global</div>', unsafe_allow_html=True)
     # annotate each class with its vehicle count so empty/overlapping classes
     # are obvious (e.g. "Veículos de emergência (0)").
     cls_counts = {key: class_vehicle_count(key) for key, _ in VEHICLE_CLASSES}
     cls_label_map = {f"{label} ({cls_counts[key]})": key for key, label in VEHICLE_CLASSES}
+    # Default to Autocarros — that's where the TSP value lives. Buses are a tiny
+    # share of all vehicles, so opening on "Todos os veículos" dilutes the gain to
+    # ~0 and hides what the TSP does. Fall back to "Todos" only if there are no buses.
+    _default_key = "buses" if cls_counts.get("buses", 0) else "all_vehicles"
+    _default_display = next(d for d, k in cls_label_map.items() if k == _default_key)
+    _default_idx = list(cls_label_map.keys()).index(_default_display)
     sel_display = st.selectbox(
         "Classe de veículo",
         options=list(cls_label_map.keys()),
-        index=0,
+        index=_default_idx,
         key="veh_cls_select",
         help="Filtra todos os KPIs e gráficos por classe. O número é a contagem de veículos. "
-        "Taxonomia: Prioritários = Autocarros + Emergência (a união); "
+        "Abre em Autocarros (onde o TSP actua); muda para 'Todos os veículos' para o efeito "
+        "líquido na rede. Taxonomia: Prioritários = Autocarros + Emergência (a união); "
         "Tráfego geral = todos os não-prioritários. As classes podem sobrepor-se.",
     )
     vehicle_cls = cls_label_map[sel_display]
@@ -614,19 +872,74 @@ with st.sidebar:
     elif vehicle_cls == "emergency_vehicles" and cls_counts.get("emergency_vehicles", 0) == 0:
         st.caption("Sem veículos de emergência nesta simulação — métricas vazias.")
 
+    st.markdown(_SB_DIVIDER, unsafe_allow_html=True)
+
+    # ════════════════════════════════════════════════════════════════════════
+    # ZONE C — Documentação
+    # ════════════════════════════════════════════════════════════════════════
     st.markdown('<div class="sb-label">Documentação</div>', unsafe_allow_html=True)
+
+    # ── Glossário de métricas (teaser → searchable card list) ──────────────────
+    st.caption("12 métricas · tempo, velocidade, delay")
     with st.expander("Glossário de métricas"):
-        for _, (label, unit, desc) in KPI_META.items():
-            unit_s = f" ({unit})" if unit else ""
-            st.markdown(f"**{label}**{unit_s}  \n{desc}")
-    with st.expander("Como ler esta dashboard"):
-        st.markdown(
-            "- **Resultado principal**: leitura rápida do ganho do TSP vs baseline.\n"
-            "- **Comparação de KPIs**: escolhe dois cenários e compara em detalhe.\n"
-            "- **Motor de Decisão**: o que o algoritmo decidiu e porquê.\n"
-            "- **Pipeline C-ITS**: comunicação V2X autocarro↔semáforo.\n"
-            "- As setas ▲▼ e as cores indicam melhoria (verde) ou degradação (vermelho)."
+        query = st.text_input(
+            "Pesquisar métrica",
+            placeholder="Pesquisar métrica...",
+            label_visibility="collapsed",
+            key="gloss_search",
         )
+        filtered = (
+            [
+                g
+                for g in GLOSSARY
+                if query.lower() in g["term"].lower() or query.lower() in g["def"].lower()
+            ]
+            if query
+            else GLOSSARY
+        )
+        if not filtered:
+            st.caption("Nenhuma métrica encontrada.")
+        else:
+            for entry in filtered:
+                st.markdown(
+                    f'<div class="gloss-card">'
+                    f'<div class="gloss-term">{entry["term"]}'
+                    f'<span class="gloss-unit">{entry["unit"]}</span></div>'
+                    f'<div class="gloss-def">{entry["def"]}</div>'
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+
+    # ── Como ler esta dashboard (teaser → numbered step cards) ─────────────────
+    st.caption("Guia de leitura · 5 passos")
+    with st.expander("Como ler esta dashboard"):
+        for step in STEPS:
+            st.markdown(
+                f'<div class="step-card">'
+                f'<div class="step-num">{step["n"]}</div>'
+                f"<div>"
+                f'<div class="step-title">{step["title"]}</div>'
+                f'<div class="step-body">{step["body"]}</div>'
+                f"</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+    # ── footer — single block pinned to the bottom of the sidebar (margin-top:auto
+    #    on its element container; see .sb-footer rule in SIDEBAR_CSS) ────────────
+    _cap_uri = logo_uri(PUBLIC / "CAP_LOGO.png")
+    _cap_html = (
+        '<p class="sb-partner-label">EM PARCERIA COM</p>'
+        f'<div class="sb-partner"><img src="{_cap_uri}" alt="Capgemini"></div>'
+        if _cap_uri
+        else ""
+    )
+    st.markdown(
+        f'<div class="sb-footer">{_SB_DIVIDER}{_cap_html}'
+        '<p class="sb-footer-version">PPS57 · Linha 25 · Porto · SUMO 1.26</p>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
 # ── page header ───────────────────────────────────────────────────────────────
 
@@ -640,9 +953,22 @@ if demo:
         if scenario_id:
             break
 
+_hdr_r25 = logo_uri(PUBLIC / "route25_logo.png", strip_white=True)
+_hdr_cap = logo_uri(PUBLIC / "CAP_LOGO.png")
+_brand_row = ""
+if _hdr_r25 or _hdr_cap:
+    _bl = f'<img class="ph-logo" src="{_hdr_r25}" alt="Route 25">' if _hdr_r25 else "<span></span>"
+    _br = (
+        f'<img class="ph-partner" src="{_hdr_cap}" alt="Capgemini">'
+        if _hdr_cap
+        else "<span></span>"
+    )
+    _brand_row = f'<div class="ph-brandrow">{_bl}{_br}</div>'
+
 st.markdown(
     f"""
 <div class="page-header">
+  {_brand_row}
   <h1>PPS57 · Análise de Simulação TSP
     <span class="badge">Linha 25 · Porto</span>
     <span class="badge">SUMO 1.26</span>
@@ -830,19 +1156,34 @@ with tab_resumo:
         section("Quem ganha com o TSP — variação da perda de tempo por classe")
         if hero:
             dfh = pd.DataFrame(hero)
-            # Diverging x-axis centred on zero. The range is computed from the data
-            # (plus zero) and padded, so even tiny bars like +0.1% / +0.3% and their
-            # outside labels stay inside the axis — never hardcoded, never clipped.
+            # Absolute delta in seconds per class — shown alongside the % so the
+            # magnitude is visible (e.g. -22% reads as ~-72 s/bus, while +0.3% on
+            # general traffic is well under a second). The % alone understates how
+            # asymmetric — and favourable — the tradeoff is.
+            dfh["delta_s"] = dfh["tsp"] - dfh["baseline"]
+
+            def _fmt_delta_s(ds: float) -> str:
+                # sub-10 s deltas keep one decimal so tiny costs don't round to "+1 s"
+                return f"{ds:+.1f} s" if abs(ds) < 10 else f"{ds:+.0f} s"
+
+            bar_labels = [
+                f"{p:+.1f}% · {_fmt_delta_s(ds)}"
+                for p, ds in zip(dfh["pct"], dfh["delta_s"], strict=False)
+            ]
+
+            # Diverging x-axis centred on zero. Range comes from the data (plus zero)
+            # and is padded enough that the now-wider outside labels stay inside the
+            # figure — never hardcoded, never clipped.
             vals = dfh["pct"].tolist()
             lo_v, hi_v = min(vals + [0.0]), max(vals + [0.0])
-            pad = max(1.0, (hi_v - lo_v) * 0.18)
+            pad = max(3.0, (hi_v - lo_v) * 0.32)
             fig_hero = go.Figure(
                 go.Bar(
                     x=dfh["pct"],
                     y=dfh["Classe"],
                     orientation="h",
                     marker_color=[COLOR_GOOD if p < 0 else COLOR_BAD for p in dfh["pct"]],
-                    texttemplate="%{x:.1f}%",
+                    text=bar_labels,
                     textposition="outside",
                     cliponaxis=False,
                     customdata=dfh[["baseline", "tsp", "n"]].values,
@@ -1712,163 +2053,269 @@ with tab_scenarios:
                 "Experimenta 'Todos os veículos' ou 'Autocarros'."
             )
         else:
+            # ── single injected <style> block for this tab ────────────────────
+            st.markdown(
+                """
+<style>
+.scenario-header { margin-bottom: 1.5rem; }
+.scenario-title { font-size: 22px; font-weight: 700; color: var(--text-color, #111827); margin-bottom: 0.25rem; }
+.scenario-sub { font-size: 14px; color: rgba(128,128,128,0.9); margin-bottom: 0.75rem; }
+.scenario-badges { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.badge-green { background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; border-radius:99px; padding:0.2rem 0.75rem; font-size:13px; font-weight:500; }
+.badge-red { background:#fee2e2; color:#b91c1c; border:1px solid #fecaca; border-radius:99px; padding:0.2rem 0.75rem; font-size:13px; font-weight:500; }
+.stat-card { border:1px solid #e5e7eb; border-radius:12px; padding:1.25rem 1rem; text-align:center; }
+.stat-label { font-size:12px; color:#6b7280; margin-bottom:0.35rem; text-transform:uppercase; letter-spacing:0.06em; }
+.stat-value { font-size:28px; font-weight:700; line-height:1.1; }
+.stat-unit { font-size:13px; color:#9ca3af; margin-top:0.2rem; }
+.stat-positive { color:#16a34a; }
+.stat-negative { color:#dc2626; }
+.stat-neutral { color:#111827; }
+</style>
+""",
+                unsafe_allow_html=True,
+            )
+
             df_all = pd.DataFrame(rows)
             run_types_all = sorted(df_all["Run type"].unique())
-            color_map = {rt: run_color(rt) for rt in run_types_all}
             baseline_rt = next((r for r in run_types_all if "baseline" in r), None)
             tsp_rt = next((r for r in run_types_all if "tsp" in r), None)
             n_scen = df_all["Cenário"].nunique()
 
-            # ── plain-language headline: cross-scenario TSP impact ────────────
-            if baseline_rt and tsp_rt:
-                tl = df_all[df_all["metric_key"] == "mean_time_loss_s"]
-                pv0 = (
-                    tl.groupby(["Cenário", "Run type"])["Valor"]
-                    .mean()
-                    .reset_index()
-                    .pivot(index="Cenário", columns="Run type", values="Valor")
-                )
-                deltas = {}
-                for scen, r in pv0.iterrows():
-                    bvv, tvv = r.get(baseline_rt), r.get(tsp_rt)
-                    if bvv and tvv:
-                        deltas[scen] = (tvv - bvv) / bvv * 100
-                if deltas:
-                    improved = sum(1 for d in deltas.values() if d < 0)
-                    best = min(deltas, key=deltas.get)
-                    worst = max(deltas, key=deltas.get)
-                    st.markdown(
-                        f"#### Em **{len(deltas)}** cenários, o TSP melhora a perda de tempo de "
-                        f"{vehicle_cls_label.lower()} em **{improved}**. Maior ganho: "
-                        f"**{best}** ({deltas[best]:+.0f}%); pior caso: **{worst}** ({deltas[worst]:+.0f}%)."
-                    )
-                    st.caption(
-                        "Cada cenário é uma situação operacional distinta; o impacto mede-se "
-                        "dentro do cenário (baseline vs TSP com seeds emparelhadas)."
-                    )
+            label_map = {
+                "bunched_buses": "Bunching de autocarros",
+                "emergency_vehicle_conflict": "Conflito c/ emergência",
+                "congested_am_peak": "Congestionamento AM",
+                "baseline_am_peak": "Pico AM (base)",
+                "baseline_off_peak": "Fora de pico (base)",
+                "congested_delayed_bus": "Autocarro atrasado c/ congestionamento",
+                "cross_traffic_pressure": "Pressão tráfego cruzado",
+                "delayed_bus_westbound": "Autocarro atrasado sentido Oeste",
+            }
 
-            # ── cross-scenario overview ───────────────────────────────────────
-            section(f"Visão geral — {n_scen} cenários · {vehicle_cls_label}")
-            ov_keys = [
-                "mean_time_loss_s",
-                "mean_waiting_time_s",
-                "mean_duration_s",
-                "mean_speed_mps",
+            # Lower-is-better metrics only: keeps the "negativo = melhoria" framing and
+            # the green=Δ<0 colouring valid. Speed is excluded here on purpose (it would
+            # invert that framing).
+            metric_keys = [
+                k
+                for k in [
+                    "mean_time_loss_s",
+                    "mean_waiting_time_s",
+                    "mean_duration_s",
+                    "p95_time_loss_s",
+                    "mean_depart_delay_s",
+                    "mean_stop_count",
+                ]
+                if k in df_all["metric_key"].values
             ]
-            ov_keys = [k for k in ov_keys if k in df_all["metric_key"].values]
-            ov_label = st.selectbox("Métrica", [KPI_META[k][0] for k in ov_keys], key="ov_metric")
-            ov_key = next(k for k in ov_keys if KPI_META[k][0] == ov_label)
+            metric_options = [KPI_META[k][0] for k in metric_keys]
+            label_to_key = {KPI_META[k][0]: k for k in metric_keys}
 
-            dfm = df_all[df_all["metric_key"] == ov_key]
+            # ── header placeholder (filled after the controls choose the metric) ─
+            header_box = st.container()
+
+            # ── unified controls — drive BOTH the overview chart and the detail ─
+            col_metric, col_scenario, col_sort = st.columns([2, 2, 1], vertical_alignment="bottom")
+            with col_metric:
+                selected_metric = st.selectbox("Métrica", metric_options, key="scen_metric")
+            with col_scenario:
+                selected_scenario = st.selectbox(
+                    "Cenário (detalhe)",
+                    scen_names,
+                    format_func=lambda s: label_map.get(s, s),
+                    key="scen_detail",
+                )
+            with col_sort:
+                sort_asc = st.toggle("Ordenar ↑", value=False, key="scen_sort")
+            sel_metric_key = label_to_key[selected_metric]
+
+            # ── per-scenario Δ% (TSP vs baseline) for the selected metric ───────
+            dfm = df_all[df_all["metric_key"] == sel_metric_key]
             piv = dfm.groupby(["Cenário", "Run type"])["Valor"].mean().reset_index()
-            fig_ov = px.bar(
-                piv,
-                x="Cenário",
-                y="Valor",
-                color="Run type",
-                barmode="group",
-                color_discrete_map=color_map,
-                height=420,
-            )
-            fig_ov.update_layout(legend_title_text="", xaxis_tickangle=-30)
-            chart_layout(fig_ov, f"{ov_label} por cenário — baseline vs TSP")
-            st.plotly_chart(fig_ov, use_container_width=True)
-
-            # per-scenario delta (TSP vs baseline), correctly coloured by improvement
+            ddf = pd.DataFrame()
             if baseline_rt and tsp_rt:
                 wide = piv.pivot(index="Cenário", columns="Run type", values="Valor")
-                higher_better = ov_key in HIGHER_IS_BETTER
                 drows = []
                 for scen, r in wide.iterrows():
                     b, t = r.get(baseline_rt), r.get(tsp_rt)
                     if b and t is not None and b != 0:
-                        d = (t - b) / abs(b) * 100
-                        improved = (d > 0) if higher_better else (d < 0)
                         drows.append(
-                            {"Cenário": scen, "Delta %": round(d, 1), "improved": improved}
+                            {
+                                "scen": scen,
+                                "label": label_map.get(scen, scen),
+                                "delta": round((t - b) / abs(b) * 100, 1),
+                            }
                         )
-                if drows:
-                    ddf = pd.DataFrame(drows).sort_values("Delta %")
-                    fig_d = go.Figure(
-                        go.Bar(
-                            x=ddf["Delta %"],
-                            y=ddf["Cenário"],
-                            orientation="h",
-                            marker_color=["#22c55e" if i else "#ef4444" for i in ddf["improved"]],
-                            text=[f"{d:+.1f}%" for d in ddf["Delta %"]],
-                            textposition="outside",
-                            hovertemplate="%{y}: %{x:+.1f}%<extra></extra>",
-                        )
-                    )
-                    fig_d.add_vline(x=0, line_width=2, line_color="#334155")
-                    chart_layout(
-                        fig_d,
-                        f"Impacto do TSP por cenário (Δ% {ov_label})",
-                        height=max(280, n_scen * 42 + 80),
-                    )
-                    st.plotly_chart(fig_d, use_container_width=True)
-                    insight(
-                        "Verde = o TSP melhora o cenário; vermelho = piora. "
-                        "Permite ver em que cenários a prioridade semafórica traz mais valor "
-                        "(ex. autocarros atrasados ou bunching) e onde tem custo."
-                    )
+                ddf = pd.DataFrame(drows)
 
-            # ── per-scenario detail ───────────────────────────────────────────
-            section("Detalhe por cenário")
-            cc1, cc2 = st.columns([1, 2])
-            with cc1:
-                sel_scen = st.selectbox("Cenário", scen_names, key="detail_scen")
-            df_scen = df_all[df_all["Cenário"] == sel_scen]
-            with cc2:
-                sel_metric = st.selectbox(
-                    "Métrica", df_scen["Métrica"].unique().tolist(), key="detail_metric"
+            # ── header (title · class · best/worst badges) ──────────────────────
+            with header_box:
+                badges = ""
+                if not ddf.empty:
+                    b_row = ddf.loc[ddf["delta"].idxmin()]  # most negative = biggest gain
+                    w_row = ddf.loc[ddf["delta"].idxmax()]  # most positive = worst case
+                    badges = (
+                        f'<span class="badge-green">Maior ganho: {b_row["label"]} '
+                        f"({b_row['delta']:+.1f}%)</span>"
+                        f'<span class="badge-red">Pior caso: {w_row["label"]} '
+                        f"({w_row['delta']:+.1f}%)</span>"
+                    )
+                st.markdown(
+                    '<div class="scenario-header">'
+                    f'<div class="scenario-title">Impacto do TSP nos {n_scen} cenários operacionais</div>'
+                    '<div class="scenario-sub">Comparação baseline vs TSP por situação de tráfego'
+                    f" · classe: {vehicle_cls_label}</div>"
+                    f'<div class="scenario-badges">{badges}</div>'
+                    "</div>",
+                    unsafe_allow_html=True,
                 )
-            df_plot = df_scen[df_scen["Métrica"] == sel_metric]
 
-            n_seeds = (
-                df_plot.groupby("Run type")["Seed"].nunique().max() if not df_plot.empty else 0
-            )
-            fig_box = px.box(
-                df_plot,
-                x="Run type",
-                y="Valor",
-                color="Run type",
-                points="all",
-                height=400,
-                color_discrete_map=color_map,
-            )
-            fig_box.update_layout(showlegend=False)
-            chart_layout(fig_box, f"{sel_metric} — {sel_scen} ({vehicle_cls_label})")
-            st.plotly_chart(fig_box, use_container_width=True)
-            if n_seeds and n_seeds > 1:
-                insight(
-                    "Cada ponto = uma seed. A caixa mostra Q1–Q3; a linha central é a mediana. "
-                    "Pouca sobreposição entre arms sugere diferença significativa."
-                )
+            # ── delta chart (overview) ──────────────────────────────────────────
+            if ddf.empty:
+                st.info("Sem par baseline + TSP para calcular o impacto por cenário.")
             else:
-                insight(
-                    "Apenas <strong>1 seed</strong> por arm — sem dispersão estatística. "
-                    "Corre mais seeds (ex. <code>--seeds 57 58 59</code>) para boxplots com "
-                    "variabilidade e intervalos de confiança."
+                cdf = ddf.sort_values("delta", ascending=sort_asc)
+                vals = cdf["delta"].tolist()
+                lo, hi = min(vals + [0.0]), max(vals + [0.0])
+                pad = max(3.0, (hi - lo) * 0.18)
+                fig_d = go.Figure(
+                    go.Bar(
+                        x=cdf["delta"],
+                        y=cdf["label"],
+                        orientation="h",
+                        marker_color=["#16a34a" if d < 0 else "#dc2626" for d in cdf["delta"]],
+                        texttemplate="%{x:.1f}%",
+                        textposition="outside",
+                        cliponaxis=False,
+                        hovertemplate="%{y}: %{x:+.1f}%<extra></extra>",
+                    )
+                )
+                fig_d.add_vline(x=0, line_color="#9ca3af", line_width=1.5, line_dash="dot")
+                fig_d.update_layout(
+                    paper_bgcolor="white",
+                    plot_bgcolor="#f8fafc",
+                    font={"family": "Inter, system-ui, sans-serif", "color": "#374151", "size": 11},
+                    margin={"l": 220, "r": 80, "t": 20, "b": 40},
+                    bargap=0.4,
+                    height=320,
+                    showlegend=False,
+                    xaxis_title="Δ% face ao baseline (negativo = melhoria)",
+                )
+                fig_d.update_xaxes(
+                    range=[lo - pad, hi + pad],
+                    gridcolor="#f1f5f9",
+                    linecolor="#e2e8f0",
+                    zeroline=False,
+                    tickfont={"size": 11},
+                )
+                fig_d.update_yaxes(
+                    title="", tickfont={"size": 13}, gridcolor="#f1f5f9", linecolor="#e2e8f0"
+                )
+                st.plotly_chart(fig_d, use_container_width=True, config={"displayModeBar": False})
+                st.caption(
+                    "*Verde = o TSP melhora o cenário; vermelho = piora. Mostra onde a "
+                    "prioridade semafórica traz mais valor (autocarros atrasados, bunching) "
+                    "e onde tem custo.*"
                 )
 
-            section("Estatísticas descritivas")
-            summary = (
-                df_plot.groupby("Run type")["Valor"]
-                .agg(["mean", "std", "min", "max", "count"])
-                .rename(
-                    columns={
-                        "mean": "Média",
-                        "std": "Desvio-padrão",
-                        "min": "Mín",
-                        "max": "Máx",
-                        "count": "Seeds",
-                    }
-                )
-                .round(2)
+            # ── divider + section label (overview → detail) ─────────────────────
+            st.markdown("---")
+            st.markdown(
+                "<p style='font-size:11px;font-weight:600;letter-spacing:0.08em;"
+                "color:#9ca3af;text-transform:uppercase;margin-bottom:0.5rem'>"
+                "DETALHE POR CENÁRIO</p>",
+                unsafe_allow_html=True,
             )
-            st.dataframe(summary, use_container_width=True)
-            download_csv(summary.reset_index(), f"scenario_{sel_scen}.csv", key="dl_scen")
+
+            # ── scenario detail panel ───────────────────────────────────────────
+            st.markdown(
+                f"#### {label_map.get(selected_scenario, selected_scenario)} · {selected_metric}"
+            )
+
+            sdf = df_all[
+                (df_all["Cenário"] == selected_scenario) & (df_all["metric_key"] == sel_metric_key)
+            ]
+            arm_vals = sdf.groupby("Run type")["Valor"].mean()
+            bval = arm_vals.get(baseline_rt) if baseline_rt else None
+            tval = arm_vals.get(tsp_rt) if tsp_rt else None
+            unit = KPI_META[sel_metric_key][1]
+            unit_disp = unit if unit else "—"
+
+            if bval is None or tval is None or bval == 0:
+                st.info("Sem valores baseline + TSP para este cenário e métrica nesta classe.")
+            else:
+                delta = (tval - bval) / abs(bval) * 100
+                improved = delta < 0  # lower-is-better metrics only on this tab
+                tone = "stat-positive" if improved else "stat-negative"
+                c1, c2, c3 = st.columns(3)
+                c1.markdown(
+                    '<div class="stat-card"><div class="stat-label">Baseline</div>'
+                    f'<div class="stat-value stat-neutral">{bval:.1f}</div>'
+                    f'<div class="stat-unit">{unit_disp}</div></div>',
+                    unsafe_allow_html=True,
+                )
+                c2.markdown(
+                    '<div class="stat-card"><div class="stat-label">TSP</div>'
+                    f'<div class="stat-value {tone}">{tval:.1f}</div>'
+                    f'<div class="stat-unit">{unit_disp}</div></div>',
+                    unsafe_allow_html=True,
+                )
+                c3.markdown(
+                    '<div class="stat-card"><div class="stat-label">Δ variação</div>'
+                    f'<div class="stat-value {tone}">{delta:+.1f}%</div>'
+                    '<div class="stat-unit">face ao baseline</div></div>',
+                    unsafe_allow_html=True,
+                )
+
+                n_seeds = int(sdf.groupby("Run type")["Seed"].nunique().max() or 0)
+                if n_seeds <= 1:
+                    st.info(
+                        "Com 1 seed por arm, estes valores são determinísticos — sem intervalo "
+                        "de confiança. Para análise estatística robusta, corre com múltiplos "
+                        "seeds (--seeds 57 98 99)."
+                    )
+                else:
+                    st.info(
+                        f"{n_seeds} seeds por arm — a tabela abaixo resume média e dispersão "
+                        "entre seeds."
+                    )
+
+                # ── descriptive stats (cleaned) ────────────────────────────────
+                st.markdown("**Estatísticas descritivas**")
+                u = f" ({unit})" if unit else ""
+                stats = (
+                    sdf.groupby("Run type")["Valor"]
+                    .agg(["mean", "std", "min", "max", "count"])
+                    .rename(
+                        columns={
+                            "mean": f"Média{u}",
+                            "std": f"Desvio-padrão{u}",
+                            "min": f"Mín{u}",
+                            "max": f"Máx{u}",
+                            "count": "Seeds",
+                        }
+                    )
+                )
+                stats = stats.dropna(axis=1, how="all").round(2)
+                stats = stats.reset_index().rename(columns={"Run type": "Arm"})
+                stats["Arm"] = (
+                    stats["Arm"].map({baseline_rt: "Baseline", tsp_rt: "TSP"}).fillna(stats["Arm"])
+                )
+                if "Seeds" in stats.columns:
+                    stats["Seeds"] = stats["Seeds"].astype(int)
+                st.dataframe(stats, hide_index=True, use_container_width=True)
+
+                # ── export (right-aligned) ─────────────────────────────────────
+                csv_bytes = stats.to_csv(index=False).encode("utf-8")
+                _, col_btn = st.columns([4, 1])
+                with col_btn:
+                    st.download_button(
+                        "⬇ Exportar CSV",
+                        data=csv_bytes,
+                        file_name=f"{selected_scenario}_{sel_metric_key}.csv",
+                        mime="text/csv",
+                        key="dl_scenario",
+                        use_container_width=True,
+                    )
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 6 — Metodologia
