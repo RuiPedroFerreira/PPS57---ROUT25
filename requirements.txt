@@ -11,8 +11,11 @@ defusedxml>=0.7,<1.0
 PyYAML>=6.0,<7.0
 
 # Dashboard de comparação de resultados (dashboard.py).
-# Piso 1.36: a tab "Cenários" usa st.columns(..., vertical_alignment=...),
-# introduzido no Streamlit 1.36 (no 1.35 levanta TypeError).
-streamlit>=1.36,<2.0
+# Piso 1.41: o dashboard depende de st.container(key=...) e das classes CSS
+# .st-key-<key> (Streamlit 1.39) para a navegação drawer/topbar, e de border=True
+# em st.metric (Streamlit 1.41). Em versões anteriores st.container(key=...)
+# levanta TypeError logo na página inicial, antes de o dashboard renderizar.
+# (Supersede o piso 1.36 que cobria st.columns(..., vertical_alignment=...).)
+streamlit>=1.41,<2.0
 plotly>=5.22,<7.0
 pandas>=2.0,<4.0
