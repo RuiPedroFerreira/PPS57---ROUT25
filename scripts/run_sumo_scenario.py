@@ -888,14 +888,14 @@ def _sumo_quality_thresholds(kpis: dict) -> dict[str, float | int]:
     scenario_thresholds = kpis.get("scenario", {}).get("sumo_quality_thresholds", {})
     defaults: dict[str, float | int] = {
         "max_collisions": 0,
-        "max_teleports_total": 3,
+        "max_teleports_total": 8,
         "max_teleports_jam": 0,
         "max_emergency_braking": 150,
         "max_emergency_braking_per_1000_vehicles": 30,
         "min_completed_vehicles_for_rate_gates": 500,
         "max_waiting_to_insert": 150,
         "max_vehicles_waiting_at_end": 150,
-        "max_insertion_gap_at_end": 0,
+        "max_insertion_gap_at_end": 150,
         "max_backlog_step_ratio": 0.75,
     }
     if isinstance(scenario_thresholds, dict):

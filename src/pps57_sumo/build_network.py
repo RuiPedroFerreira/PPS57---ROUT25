@@ -217,6 +217,19 @@ def write_sumocfg(config: dict, artifacts: SumoArtifacts, *, output_dir: Path) -
         )
         jam_threshold = float(actuated_cfg.get("jam_threshold_s", 30.0))
         actuated_lines = f'    <tls.actuated.jam-threshold value="{jam_threshold:g}"/>\n'
+    # Optional global anti-gridlock: after `ignore_junction_blocker_s` seconds a
+    # vehicle blocked inside a junction by a non-moving foe drives on instead of
+    # waiting out the full time-to-teleport (300s) and registering a jam-teleport.
+    # This models the realistic "force-through" resolution of urban block-the-box
+    # gridlock at the give-way roundabout (I6) and at signalised junction boxes
+    # (I7 spillback), which otherwise deadlock on specific seeds near saturation.
+    # It is a global SIM setting applied identically to every run-type, so it does
+    # not change any signal program nor the set of TLS the TSP controller acts on:
+    # the baseline-vs-TSP comparison stays measured on an identical environment.
+    ijb_lines = ""
+    ijb = config.get("ignore_junction_blocker_s")
+    if ijb is not None and float(ijb) > 0:
+        ijb_lines = f'    <ignore-junction-blocker value="{float(ijb):g}"/>\n'
     text = f"""<?xml version="1.0" ?>
 <configuration>
   <input>
@@ -243,7 +256,7 @@ def write_sumocfg(config: dict, artifacts: SumoArtifacts, *, output_dir: Path) -
   </report>
   <processing>
     <time-to-teleport value="300"/>
-{actuated_lines}    <!-- Do not enable ignore-route-errors here: sorted route validation should
+{ijb_lines}{actuated_lines}    <!-- Do not enable ignore-route-errors here: sorted route validation should
          fail loudly instead of silently dropping out-of-order vehicles. -->
   </processing>
   <random_number>

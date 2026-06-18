@@ -110,6 +110,7 @@ class TSPControlController:
         sumo_binary: str = "sumo",
         gui: bool = False,
         apply_actuation: bool = True,
+        extra_args: list[str] | None = None,
     ) -> dict[str, object]:
         adapter = TraciSimulationAdapter(self.cits_config, sumo_binary=sumo_binary, gui=gui)
         cits_summary = IncrementalCITSSummary()
@@ -117,7 +118,7 @@ class TSPControlController:
         actuations: list[ActuationResult] = []
         compensations: list[ActuationResult] = []
 
-        adapter.start()  # propaga TraciUnavailableError
+        adapter.start(extra_args)  # propaga TraciUnavailableError; extra_args -> linha SUMO
 
         # Fecha o SUMO mesmo que algo entre o arranque e o loop falhe — em
         # particular `_verify_signal_programs`, que fala com TraCI, ou a

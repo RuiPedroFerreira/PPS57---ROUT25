@@ -534,6 +534,54 @@ class ReconcileRuntimeTests(unittest.TestCase):
         rec = reconcile_contract_with_runtime(contract, _Runtime(), profile)
         self.assertEqual(rec.signal_groups["ALIAS"].phase_index, 1)
 
+    def test_reconcile_remaps_split_green_movement_instead_of_excluding(self) -> None:
+        # #66: movimento com verde dividido por fases (nenhuma fase tem TODOS os
+        # links do grupo verdes) já NÃO devolve None/exclui — escolhe a melhor
+        # fase de serviço (a de maior duração que dá verde ao grupo).
+        from dataclasses import replace
+        from types import SimpleNamespace
+
+        from pps57_tsp.signal_control import reconcile_contract_with_runtime
+
+        class _Runtime:  # link 0 verde na fase 0; link 1 verde na fase 1 (dividido)
+            def read_program_phase_states(self, tls_id):
+                return ["Grr", "rGr", "rrr"]
+
+            def read_program_phase_durations(self, tls_id):
+                return [20.0, 30.0, 4.0]
+
+        group = SignalGroupContract(signal_group_id="G", phase_index=5, movement_ids=["m"])
+        contract = replace(self._stale_contract(), signal_groups={"G": group})
+        profile = SimpleNamespace(
+            movements=[SimpleNamespace(signal_group_id="G", link_indices=[0, 1])]
+        )
+        rec = reconcile_contract_with_runtime(contract, _Runtime(), profile)
+        # Antes: None -> mantinha phase_index=5 (fora do programa) -> TLS excluído.
+        self.assertEqual(rec.signal_groups["G"].phase_index, 1)
+
+    def test_reconcile_prefers_longest_protected_service_phase(self) -> None:
+        # #66: com o verde protegido do grupo em VÁRIAS fases, escolhe a de MAIOR
+        # duração de serviço (não a primeira) -> o green_extension visa a fase certa.
+        from dataclasses import replace
+        from types import SimpleNamespace
+
+        from pps57_tsp.signal_control import reconcile_contract_with_runtime
+
+        class _Runtime:  # link 0 protegido nas fases 0 (10s) e 2 (30s)
+            def read_program_phase_states(self, tls_id):
+                return ["Grr", "rrr", "Grr"]
+
+            def read_program_phase_durations(self, tls_id):
+                return [10.0, 4.0, 30.0]
+
+        group = SignalGroupContract(signal_group_id="G", phase_index=0, movement_ids=["m"])
+        contract = replace(self._stale_contract(), signal_groups={"G": group})
+        profile = SimpleNamespace(
+            movements=[SimpleNamespace(signal_group_id="G", link_indices=[0])]
+        )
+        rec = reconcile_contract_with_runtime(contract, _Runtime(), profile)
+        self.assertEqual(rec.signal_groups["G"].phase_index, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

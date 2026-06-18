@@ -828,11 +828,29 @@ def build_route_xml(
         config.get("active_demand_profile", "am_peak"), {}
     )
     stochastic_arrivals = bool(config.get("stochastic_arrivals", True))
+    # Demand cool-down: stop emitting new vehicles `demand_cooldown_s` before the
+    # simulation end so the network can drain. Without it, flows emit right up to
+    # `simulation_end_s` and SUMO halts at `--end` with a residual `waiting`
+    # backlog (vehicles whose depart time was reached on the final tick but could
+    # not insert), which trips the strict `max_insertion_gap_at_end` gate even
+    # though nothing is actually stuck. The TraCI run-types already over-run to
+    # drain; this makes the fixed-end `baseline` run consistent with them. Default
+    # 0 (no cool-down) keeps minimal/external configs unchanged.
+    demand_end: float | None = None
+    cooldown = float(config.get("demand_cooldown_s", 0) or 0)
+    if cooldown > 0:
+        demand_end = float(config.get("simulation_end_s", 7200)) - cooldown
     skip_keys = {"description", "time_profile", "_base_id"}
     for flow in demand.get("flows", []):
         sub_flows = _expand_time_profile(flow)
         for sub_flow in sub_flows:
             attrs = {key: str(value) for key, value in sub_flow.items() if key not in skip_keys}
+            if demand_end is not None:
+                begin_t = float(attrs.get("begin", 0.0))
+                if begin_t >= demand_end:
+                    continue
+                if float(attrs.get("end", demand_end)) > demand_end:
+                    attrs["end"] = _format_time(demand_end)
             if stochastic_arrivals and "period" in sub_flow:
                 period_value = float(sub_flow["period"])
                 if period_value > 0:
