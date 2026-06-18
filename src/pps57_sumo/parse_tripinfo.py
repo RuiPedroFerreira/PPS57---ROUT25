@@ -37,7 +37,17 @@ def _percentile(values: list[float | None], percentile: float) -> float | None:
     return round(cleaned[index], 3)
 
 
-def parse_tripinfo(path: Path) -> dict:
+DEFAULT_BUS_ID_PREFIXES = ("bus_", "Bus")
+DEFAULT_BUS_TYPE_NAMES = {"stcp_bus", "transit_bus"}
+DEFAULT_LINE_ATTR_NAMES = ("line", "line_id", "lineID")
+
+
+def parse_tripinfo(
+    path: Path,
+    *,
+    bus_id_prefixes: tuple[str, ...] = DEFAULT_BUS_ID_PREFIXES,
+    line_attr_names: tuple[str, ...] = DEFAULT_LINE_ATTR_NAMES,
+) -> dict:
     try:
         tree = ET.parse(path)
     except Exception as exc:
@@ -46,12 +56,9 @@ def parse_tripinfo(path: Path) -> dict:
     for node in tree.getroot().iter("tripinfo"):
         vehicle_id = node.attrib.get("id", "")
         vehicle_type = node.attrib.get("vType", "")
+        attrs = dict(node.attrib)
+        is_bus = _is_bus(vehicle_id, vehicle_type, bus_id_prefixes)
         vehicle_type_lc = vehicle_type.lower()
-        is_bus = (
-            vehicle_id.startswith("bus_")
-            or vehicle_type_lc.startswith("bus")
-            or vehicle_type_lc in {"stcp_bus", "transit_bus"}
-        )
         is_emergency = vehicle_id.startswith(("ev_", "emergency_")) or vehicle_type_lc in {
             "emergency_vehicle",
             "emergency",
@@ -64,8 +71,8 @@ def parse_tripinfo(path: Path) -> dict:
                 "is_bus": is_bus,
                 "is_emergency": is_emergency,
                 "is_priority": is_priority,
-                "line_key": _line_key(vehicle_id),
-                "direction": _direction_key(vehicle_id),
+                "line_key": _line_key(vehicle_id, attrs, line_attr_names),
+                "direction": _direction_key(vehicle_id, attrs),
                 "depart": _num(node.attrib.get("depart")),
                 "arrival": _num(node.attrib.get("arrival")),
                 "duration": _num(node.attrib.get("duration")),
@@ -113,22 +120,57 @@ def parse_tripinfo(path: Path) -> dict:
         "priority_vehicles": summarize(group("is_priority", True)),
         "general_traffic": summarize(group("is_priority", False)),
         "non_priority_vehicles": summarize(group("is_priority", False)),
+        "bus_lines": _bus_lines(rows, summarize),
         "bus_headways": _bus_headways(rows),
     }
 
 
-def _line_key(vehicle_id: str) -> str:
+def _is_bus(vehicle_id: str, vehicle_type: str, bus_id_prefixes: tuple[str, ...]) -> bool:
+    vehicle_type_lc = vehicle_type.lower()
+    return (
+        vehicle_id.startswith(bus_id_prefixes)
+        or vehicle_type_lc.startswith("bus")
+        or vehicle_type_lc in DEFAULT_BUS_TYPE_NAMES
+    )
+
+
+def _line_key(
+    vehicle_id: str,
+    attrs: dict[str, str] | None = None,
+    line_attr_names: tuple[str, ...] = DEFAULT_LINE_ATTR_NAMES,
+) -> str:
+    attrs = attrs or {}
+    for attr_name in line_attr_names:
+        value = attrs.get(attr_name)
+        if value:
+            return value
     parts = vehicle_id.split("_")
-    if len(parts) >= 3 and parts[0] == "bus":
+    if len(parts) >= 3 and parts[0] in {"bus", "Bus"}:
         return parts[1]
     return ""
 
 
-def _direction_key(vehicle_id: str) -> str:
+def _direction_key(vehicle_id: str, attrs: dict[str, str] | None = None) -> str:
+    attrs = attrs or {}
+    for attr_name in ("direction", "dir"):
+        value = attrs.get(attr_name)
+        if value:
+            return value
     parts = vehicle_id.split("_")
-    if len(parts) >= 4 and parts[0] == "bus":
+    if len(parts) >= 4 and parts[0] in {"bus", "Bus"}:
         return parts[2]
     return ""
+
+
+def _bus_lines(rows: list[dict], summarize) -> dict:
+    groups: dict[str, list[dict]] = {}
+    for row in rows:
+        if not row["is_bus"]:
+            continue
+        line_key = row.get("line_key")
+        if line_key:
+            groups.setdefault(line_key, []).append(row)
+    return {line: summarize(items) for line, items in sorted(groups.items())}
 
 
 def _bus_headways(rows: list[dict]) -> dict:

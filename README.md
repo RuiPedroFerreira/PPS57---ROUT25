@@ -6,14 +6,14 @@ explainable TSP decision engine, a mandatory Safety Layer, offline policy
 optimization, tabular reinforcement-learning training, and a Streamlit dashboard
 for results comparison.
 
-The platform runs on **two complementary scenarios**:
+The platform's reference results now come from **Ingolstadt city-wide**:
 
 - a **real, third-party calibrated city-wide network** — Ingolstadt (DE), the
-  TUM-VT `sumo_ingolstadt` scenario — used for external-validity, scale and
-  honest grounding; and
+  TUM-VT `sumo_ingolstadt` scenario — used as the baseline/reference for
+  runner outputs, KPIs, dashboard scenario views and validation tests; and
 - a **synthetic demonstration corridor** — a hand-built SUMO corridor themed on
-  Porto/Boavista — used as a small, fully controllable arm for the C-ITS/TSP
-  pipeline, the scenario suite and the dashboard.
+  Porto/Boavista — kept as a small legacy/control arm for low-cost C-ITS/TSP
+  experiments.
 
 It is a technical demonstration and validation platform, **not** an operational
 traffic-control deployment. The synthetic corridor's geometry, demand, PT lines
@@ -24,7 +24,7 @@ real third-party data used as-is, never re-invented.
 
 - Runs the explainable TSP engine **city-wide on the real Ingolstadt network**
   (123 signalised intersections, detector-calibrated demand, real GTFS public
-  transport), baseline vs TSP with paired seeds.
+  transport), with a plain SUMO baseline vs TSP actuation using paired seeds.
 - Builds and runs a **synthetic SUMO corridor** scenario for controlled C-ITS/TSP
   demonstrations and the multi-scenario suite.
 - Emulates C-ITS/V2X messages in JSON form: `MAPEM`, `SPATEM`, `SREM`, `SSEM`.
@@ -166,10 +166,11 @@ make run
 make kpis
 ```
 
-For the real city-wide scenario (after cloning TUM-VT — see below):
+For the real city-wide reference scenario (after cloning TUM-VT — see below):
 
 ```bash
-.venv/bin/python scripts/run_ingolstadt_demo.py --steps 300
+make ingolstadt-list
+make ingolstadt-smoke
 ```
 
 To explore results in the dashboard:
@@ -205,19 +206,22 @@ paths into XML comments, where `--` is illegal).
 ### Run baseline vs TSP
 
 ```bash
-# 5 minutes from the 07:00 peak, TSP actuation ON
-.venv/bin/python scripts/run_ingolstadt_demo.py --steps 300
+# list real day × window slices from configs/scenario_catalog_ingolstadt.yaml
+.venv/bin/python scripts/run_ingolstadt_demo.py --list
 
-# baseline arm (decides but does not actuate)
-.venv/bin/python scripts/run_ingolstadt_demo.py --steps 300 --no-actuation
+# 5-minute smoke: plain SUMO baseline vs TSP actuation on the AM peak
+.venv/bin/python scripts/run_ingolstadt_demo.py \
+  --scenario city_am_peak --run-type pair --steps 300 --seeds 57
 
-# different start of the window
-.venv/bin/python scripts/run_ingolstadt_demo.py --begin 07:00:00 --steps 600
+# full catalog suite, paired by seed
+.venv/bin/python scripts/run_ingolstadt_demo.py --all --run-type pair --seeds 57
 ```
 
-The runner auto-discovers all 123 TLS, builds the authoritative conflict matrix,
-prints coverage, and runs the controller through TraCI. Logs land under
-`.tools/ingol_run/out/`.
+The `baseline` arm is plain SUMO without the TSP runtime. `tsp_no_actuation` is
+kept as a dry-run/counterfactual audit mode, not as the baseline. The runner
+auto-discovers all 123 TLS, builds the authoritative conflict matrix, writes
+isolated SUMO outputs under `.tools/ingol_run/runs/<scenario>/<run_type>/seed_<n>/out/`,
+and writes KPIs/reports under `reports/ingolstadt/`.
 
 ### Scenario set and method
 
@@ -237,21 +241,18 @@ meaningless); the pairwise downstream spillback-defer is kept.
 
 ## Streamlit Dashboard
 
-`dashboard.py` is a results-comparison dashboard for the **synthetic corridor**
-runs (it labels its geometry accordingly). Launch it with:
+`dashboard.py` defaults to the **Ingolstadt city-wide reference** scenario reports
+when `reports/ingolstadt/` exists, with the synthetic corridor still available as
+a fallback dataset. Launch it with:
 
 ```bash
 streamlit run dashboard.py
 ```
 
 It has eight tabs — Resumo, KPIs, Decisão, C-ITS, vs RL, Cenários, Método and
-Simulação — and reads generated reports such as
-`reports/tsp_demonstrator_report.json`, `reports/baseline_kpis.json`,
-`reports/tsp_baseline_vs_rl_comparison.json`, `reports/scenarios/` and
-`configs/scenario_catalog.yaml`. Generate those first with the workflows below
-(e.g. `make tsp-demonstrator`, `make compare-tsp-rl`, `make scenario-suite`). The
-Simulação tab can launch `sumo-gui` / `scripts/run_tsp_demonstrator.py` as a
-subprocess.
+Simulação — and the Cenários tab reads `reports/ingolstadt/` plus
+`configs/scenario_catalog_ingolstadt.yaml` by default. Generate those first with
+`make ingolstadt-smoke`, `make ingolstadt-run` or `make ingolstadt-suite`.
 
 ## Available Make Targets
 
@@ -260,6 +261,10 @@ subprocess.
 | `make validate` | Validate project structure and JSON configs | No |
 | `make test` | Run all unit tests | No |
 | `make sumo-smoke` | Quick SUMO binary smoke test | Yes |
+| `make ingolstadt-list` | List real Ingolstadt reference slices | No |
+| `make ingolstadt-smoke` | Run a short Ingolstadt baseline-vs-TSP pair | Yes + TUM clone |
+| `make ingolstadt-run` | Run one Ingolstadt reference scenario | Yes + TUM clone |
+| `make ingolstadt-suite` | Run every Ingolstadt reference scenario | Yes + TUM clone |
 | `make build` | Generate synthetic-corridor plain files and compile the network | Yes |
 | `make run` | Build and run the synthetic-corridor baseline | Yes |
 | `make gui` | Build and open the SUMO GUI baseline | Yes |
@@ -282,8 +287,8 @@ subprocess.
 | `make sort-routes` | Sort SUMO route definitions by departure time | No |
 | `make clean` | Remove known generated artifacts | No |
 
-The Ingolstadt scenario (`scripts/run_ingolstadt_demo.py`) and the dashboard
-(`streamlit run dashboard.py`) are run as direct commands, not `make` targets.
+The synthetic corridor targets remain available for controlled legacy/demo runs;
+Ingolstadt is the reference path for scenario KPIs and dashboard scenario results.
 
 ## Choosing A Workflow
 

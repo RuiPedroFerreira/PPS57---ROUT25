@@ -21,6 +21,8 @@ except ImportError:  # pragma: no cover - exercised in minimal CI images.
 
 
 METRICS = ("CO2", "CO", "NOx", "PMx", "HC", "fuel", "electricity")
+BUS_ID_PREFIXES = ("bus_", "Bus")
+BUS_TYPE_NAMES = {"stcp_bus", "transit_bus"}
 
 
 def parse_emissions(path: Path | None) -> dict[str, Any]:
@@ -82,7 +84,11 @@ def parse_emissions(path: Path | None) -> dict[str, Any]:
         metric: round(mean(samples[metric]), 3) for metric in METRICS if samples[metric]
     }
 
-    bus_ids = [vid for vid in per_vehicle if vid.startswith("bus_")]
+    bus_ids = [
+        vid
+        for vid in per_vehicle
+        if _is_bus_like(vid, per_vehicle_type.get(vid, ""))
+    ]
     if bus_ids:
         bus_totals = dict.fromkeys(METRICS, 0.0)
         for vid in bus_ids:
@@ -93,3 +99,12 @@ def parse_emissions(path: Path | None) -> dict[str, Any]:
         }
         out["bus_count"] = len(bus_ids)
     return out
+
+
+def _is_bus_like(vehicle_id: str, vehicle_type: str) -> bool:
+    vehicle_type_lc = vehicle_type.lower()
+    return (
+        vehicle_id.startswith(BUS_ID_PREFIXES)
+        or vehicle_type_lc.startswith("bus")
+        or vehicle_type_lc in BUS_TYPE_NAMES
+    )

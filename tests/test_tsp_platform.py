@@ -31,7 +31,8 @@ from pps57_tsp.actuator import TraciTSPActuator
 from pps57_tsp.config import TSPConfig, load_tsp_config
 from pps57_tsp.controller import TSPControlController
 from pps57_tsp.engine import TSPDecisionEngine
-from pps57_tsp.models import DecisionStatus, TSPAction, TSPDecision
+from pps57_tsp.logger import summarise_tsp
+from pps57_tsp.models import ActuationResult, DecisionStatus, TSPAction, TSPDecision
 from pps57_tsp.safety import TSPSafetyLayer
 from pps57_tsp.signal_control import (
     ControllerContract,
@@ -238,6 +239,41 @@ def processing_ssem(srem) -> SSEMLike:
 
 
 class TSPPlatformTests(unittest.TestCase):
+    def test_tsp_summary_reports_per_tls_citywide_counters(self) -> None:
+        approved = early_green_decision(priority_level=OperatorPriorityClass.EMERGENCY.value)
+        approved = approved.copy_with(
+            tls_id="TLS_A",
+            status=DecisionStatus.APPROVED.value,
+            reason="approved",
+        )
+        blocked = approved.copy_with(
+            tls_id="TLS_B",
+            status=DecisionStatus.BLOCKED_BY_SAFETY.value,
+            reason="NETWORK_BINDING_NO_AUTHORITATIVE_CONFLICT_MATRIX",
+        )
+        actuation = ActuationResult(
+            decision_id=approved.decision_id,
+            timestamp_s=10.0,
+            tls_id="TLS_A",
+            action=approved.action,
+            applied=True,
+            no_actuation=False,
+            command="setPhaseDuration",
+            reason="applied",
+        )
+
+        summary = summarise_tsp([approved, blocked], [actuation])
+
+        self.assertEqual(summary["per_tls"]["TLS_A"]["approved"], 1)
+        self.assertEqual(summary["per_tls"]["TLS_A"]["real_traci_applied_events"], 1)
+        self.assertEqual(summary["per_tls"]["TLS_B"]["blocked_by_safety"], 1)
+        self.assertEqual(
+            summary["per_tls"]["TLS_B"]["block_reasons"][
+                "NETWORK_BINDING_NO_AUTHORITATIVE_CONFLICT_MATRIX"
+            ],
+            1,
+        )
+
     def test_emergency_request_bypasses_normal_score_threshold(self) -> None:
         cits, tsp = configs()
         engine = TSPDecisionEngine(cits, tsp)

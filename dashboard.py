@@ -11,6 +11,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -23,6 +24,17 @@ import yaml
 ROOT = Path(__file__).parent
 REPORTS = ROOT / "reports"
 PUBLIC = ROOT / "public"
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from pps57_dashboard.results import (  # noqa: E402
+    catalog_label_map,
+    default_scenario_dataset,
+    discover_scenario_report_roots,
+    load_scenario_kpi_rows,
+    scenario_catalog_path,
+)
 
 # ── constants ─────────────────────────────────────────────────────────────────
 
@@ -2054,7 +2066,22 @@ with tab_rl:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 with tab_scenarios:
-    scenario_dir = REPORTS / "scenarios"
+    scenario_roots = discover_scenario_report_roots(REPORTS)
+    dataset_labels = {
+        "ingolstadt": "Ingolstadt city-wide reference",
+        "synthetic": "Synthetic corridor demonstrator",
+    }
+    dataset_ids = list(scenario_roots) or ["ingolstadt"]
+    default_dataset = default_scenario_dataset(REPORTS)
+    default_idx = dataset_ids.index(default_dataset) if default_dataset in dataset_ids else 0
+    selected_dataset = st.selectbox(
+        "Dataset de cenários",
+        dataset_ids,
+        index=default_idx,
+        format_func=lambda item: dataset_labels.get(item, item),
+        key="scenario_dataset",
+    )
+    scenario_dir = scenario_roots.get(selected_dataset, REPORTS / "ingolstadt")
     scen_names = (
         sorted(p.name for p in scenario_dir.iterdir() if p.is_dir())
         if scenario_dir.exists()
@@ -2062,36 +2089,13 @@ with tab_scenarios:
     )
     if not scen_names:
         warn(
-            "Sem resultados de cenários. Corre <code>make scenario-suite</code> (ou o separador "
-            "Simulação) para gerar runs por cenário com baseline vs TSP emparelhados."
+            "Sem resultados de cenários Ingolstadt. Corre <code>make ingolstadt-suite</code> "
+            "para gerar baseline SUMO vs TSP emparelhados; o modo sintético continua "
+            "disponível se existirem reports em <code>reports/scenarios</code>."
         )
     else:
         # ── load every scenario/run-type/seed into one long dataframe ─────────
-        rows = []
-        for scen in scen_names:
-            for rt_dir in (scenario_dir / scen).iterdir():
-                if not rt_dir.is_dir():
-                    continue
-                for seed_dir in rt_dir.iterdir():
-                    if not seed_dir.is_dir():
-                        continue
-                    kpis = load_json(seed_dir / "kpis.json")
-                    if not kpis:
-                        continue
-                    data = get_kpi(kpis, vehicle_cls)
-                    for m, (lab, _, _) in KPI_META.items():
-                        v = data.get(m)
-                        if v is not None:
-                            rows.append(
-                                {
-                                    "Cenário": scen,
-                                    "Run type": rt_dir.name,
-                                    "Seed": seed_dir.name,
-                                    "metric_key": m,
-                                    "Métrica": lab,
-                                    "Valor": v,
-                                }
-                            )
+        rows = load_scenario_kpi_rows(scenario_dir, vehicle_cls, KPI_META)
 
         if not rows:
             st.info(
@@ -2151,6 +2155,12 @@ with tab_scenarios:
                 "cross_traffic_pressure": "Pressão tráfego cruzado",
                 "delayed_bus_westbound": "Autocarro atrasado sentido Oeste",
             }
+            # Scenario objectives come straight from the selected catalog
+            # (configs/) — the source of truth — so the dashboard never invents
+            # descriptions for the Ingolstadt reference set.
+            scen_catalog = load_yaml(scenario_catalog_path(ROOT, selected_dataset)) or {}
+            scen_meta = scen_catalog.get("scenarios") or {}
+            label_map.update(catalog_label_map(scen_catalog))
             # Per-scenario glyph — purely presentational, keyed by scenario id.
             scen_icon = {
                 "baseline_am_peak": "🌅",
@@ -2190,11 +2200,16 @@ with tab_scenarios:
                 "priority_hierarchy": "Hierarquia de prioridades",
                 "bus_priority_preemption": "Preempção da prioridade ao autocarro",
                 "bus_time_loss_under_saturation": "Perda de tempo do autocarro em saturação",
+                "bus_time_loss_citywide": "Perda de tempo dos autocarros · rede inteira",
+                "bus_time_loss_line11": "Perda de tempo · Linha 11",
+                "tsp_interventions_per_tls": "Intervenções TSP por TLS",
+                "safety_blocks": "Bloqueios da Safety Layer",
+                "fail_closed_coverage": "Cobertura fail-closed",
+                "bus_time_loss_low_demand": "Perda de tempo bus · baixa procura",
+                "intervention_rate_weekend": "Taxa de intervenção · domingo",
+                "robustness_vs_am_peak": "Robustez face ao pico AM",
+                "lateral_impact_near_zero": "Impacto lateral quase nulo",
             }
-            # Scenario objectives come straight from the catalog (configs/) — the
-            # single source of truth — so the dashboard never invents descriptions.
-            scen_catalog = load_yaml(ROOT / "configs" / "scenario_catalog.yaml") or {}
-            scen_meta = scen_catalog.get("scenarios") or {}
 
             # Lower-is-better metrics only: keeps the "negativo = melhoria" framing and
             # the green=Δ<0 colouring valid. Speed is excluded here on purpose (it would
