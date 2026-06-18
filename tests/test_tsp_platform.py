@@ -754,5 +754,60 @@ class TSPPlatformTests(unittest.TestCase):
         )
 
 
+class ConflictAwareAllRedTests(unittest.TestCase):
+    """#68: all-red entre greens consecutivos é exigido só quando há conflito.
+
+    Cenário: 2 service-greens (fases 0 e 2) com só um amarelo entre eles (sem
+    all-red >= 1s). Links: 0 e 1 cruzam (foes); 0 e 2 não. A fase de origem serve
+    o link 0; o que muda na fase de destino decide se é preciso clearance.
+    """
+
+    PHASE_SEQ = [0, 1, 2]
+    SERVICE = [0, 2]
+    DURATIONS = [30.0, 3.0, 30.0]  # fase 1 = amarelo 3s, nunca all-red
+    CONFLICTS = {0: frozenset({1}), 1: frozenset({0})}
+    KNOWN = frozenset({0, 1, 2})
+
+    def _flagged(self, states, link_conflicts, known):
+        from pps57_tsp.signal_control import _missing_all_red_transitions
+
+        return _missing_all_red_transitions(
+            states, self.DURATIONS, self.PHASE_SEQ, self.SERVICE, 1.0,
+            link_conflicts=link_conflicts, known_conflict_links=known,
+        )
+
+    def test_genuine_conflict_is_flagged(self) -> None:
+        # destino liberta link 1, que é foe do link 0 que termina -> exige all-red.
+        states = ["Grr", "yrr", "rGr"]
+        flagged = self._flagged(states, self.CONFLICTS, self.KNOWN)
+        self.assertIn((0, 2), flagged)
+
+    def test_same_green_segmented_is_not_flagged(self) -> None:
+        # destino não liberta nada de novo (subconjunto do verde de origem) -> sem
+        # clearance: links {0,1} verdes na origem, só {1} no destino.
+        states = ["GGr", "yyr", "rGr"]
+        flagged = self._flagged(states, self.CONFLICTS, self.KNOWN)
+        self.assertNotIn((0, 2), flagged)
+
+    def test_nonconflicting_expansion_is_not_flagged(self) -> None:
+        # destino liberta o link 2 (não-foe do 0) e mantém o 0 -> seguro.
+        states = ["Grr", "yrr", "GrG"]
+        flagged = self._flagged(states, {0: frozenset(), 2: frozenset()}, frozenset({0, 1, 2}))
+        self.assertNotIn((0, 2), flagged)
+
+    def test_unknown_link_fail_closes(self) -> None:
+        # destino liberta link 1 mas o link 1 não tem foe data autoritativa
+        # (fora de known) -> não dá para provar seguro -> exige all-red.
+        states = ["Grr", "yrr", "rGr"]
+        flagged = self._flagged(states, {0: frozenset()}, frozenset({0}))
+        self.assertIn((0, 2), flagged)
+
+    def test_no_matrix_preserves_legacy_fail_closed(self) -> None:
+        # Sem matriz (None): comportamento legado -> exige all-red em todo o lado.
+        states = ["Grr", "yrr", "GrG"]  # expansão não-conflituante, mas sem dados
+        flagged = self._flagged(states, None, None)
+        self.assertIn((0, 2), flagged)
+
+
 if __name__ == "__main__":
     unittest.main()

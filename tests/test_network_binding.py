@@ -166,6 +166,24 @@ class BindingTests(unittest.TestCase):
         self.assertEqual(report["groups_with_authoritative_conflicts"], 2)
         self.assertEqual(report["coverage_fraction"], 1.0)
 
+    def test_link_level_conflict_matrix(self) -> None:
+        # Mesma fonte de verdade (foes) ao nível do LINK: link 0 conflitua com 1.
+        # Ambos têm foe data autoritativa (known), mesmo sendo conflict-free seria.
+        bound = build_network_binding(_write_net(PERMISSIVE_NET)).binding_for_tls("J")
+        self.assertEqual(bound.link_conflicts.get(0), frozenset({1}))
+        self.assertEqual(bound.link_conflicts.get(1), frozenset({0}))
+        self.assertEqual(bound.known_conflict_links, frozenset({0, 1}))
+
+    def test_link_level_matrix_known_but_conflict_free(self) -> None:
+        # link 0 (through) é autoritativamente conhecido mas conflict-free: tem de
+        # estar em known_conflict_links e ausente (ou vazio) de link_conflicts —
+        # é o que distingue um link seguro de um sem foe data. Links 1<->2 cruzam.
+        bound = build_network_binding(_write_net(MULTILANE_NET)).binding_for_tls("J")
+        self.assertIn(0, bound.known_conflict_links)
+        self.assertEqual(bound.link_conflicts.get(0, frozenset()), frozenset())
+        self.assertEqual(bound.link_conflicts.get(1), frozenset({2}))
+        self.assertEqual(bound.link_conflicts.get(2), frozenset({1}))
+
     def test_multilane_internal_edge_uses_intlanes_positions(self) -> None:
         # Regression: the request index is the position in intLanes; deriving it
         # from the lane-id numbers collapses sibling lanes of a multi-lane

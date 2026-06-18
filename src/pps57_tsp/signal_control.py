@@ -76,6 +76,15 @@ class ControllerContract:
     # na verificação de fase pedonal exclusiva. Vazio => sem profile -> a
     # verificação recai na heurística service∪intergreen.
     vehicle_link_indices: list[int] = field(default_factory=list)
+    # Matriz de conflitos ao nível do LINK (vinda do NetworkBinding / foes da
+    # rede), usada pela verificação de all-red para distinguir greens
+    # consecutivos conflituantes de não-conflituantes. ``None`` => sem dados
+    # autoritativos -> a verificação fica fail-closed (comportamento legado:
+    # exige all-red em todas as transições verde->verde). Dict (possivelmente
+    # vazio) => dados presentes; ``known_conflict_links`` diz que links têm foe
+    # data autoritativa (mesmo com conjunto de conflitos vazio).
+    link_conflicts: dict[int, frozenset[int]] | None = None
+    known_conflict_links: frozenset[int] | None = None
 
     def signal_group_for_id(self, signal_group_id: str) -> SignalGroupContract | None:
         return self.signal_groups.get(signal_group_id)
@@ -314,6 +323,8 @@ class TraciSignalControlAdapter:
                         contract.phase_sequence,
                         contract.service_green_phase_indices,
                         contract.min_all_red_s,
+                        link_conflicts=contract.link_conflicts,
+                        known_conflict_links=contract.known_conflict_links,
                     )
                     for from_phase, to_phase in missing_all_red:
                         problems.append(
@@ -601,7 +612,16 @@ def apply_network_binding(
                 conflicts_with=conflicts,
                 conflict_matrix_known=True,
             )
-        bound.append(replace(contract, signal_groups=new_groups))
+        # Matriz de conflitos ao nível do link: índices universais dentro do TLS
+        # (não precisam de tradução por alias, ao contrário dos ids de grupo).
+        bound.append(
+            replace(
+                contract,
+                signal_groups=new_groups,
+                link_conflicts=dict(tls_binding.link_conflicts),
+                known_conflict_links=tls_binding.known_conflict_links,
+            )
+        )
     return bound
 
 
@@ -1068,12 +1088,64 @@ def _has_configured_pedestrian_phase(
     return False
 
 
+def _green_link_indices(state: str) -> set[int]:
+    return {index for index, ch in enumerate(state) if ch in ("g", "G")}
+
+
+def _transition_needs_all_red(
+    states: list[str],
+    from_phase: int,
+    to_phase: int,
+    link_conflicts: dict[int, frozenset[int]] | None,
+    known_conflict_links: frozenset[int] | None,
+) -> bool:
+    """Esta transição verde->verde (sem all-red) liberta um movimento conflituante?
+
+    All-red entre dois verdes só é necessário quando um movimento que TERMINA
+    (verde na fase de origem, já não na de destino) é foe de um que ARRANCA (novo
+    verde na fase de destino) — só aí há tráfego a libertar que pode colidir com o
+    que ainda escoa. Foes que co-existem verdes na fase de destino
+    (protegido/permissivo) são uma propriedade dessa fase, não uma clearance da
+    transição, e não exigem all-red entre as fases.
+
+    Fail-closed por omissão de dados:
+    - ``link_conflicts is None`` (sem matriz autoritativa): devolve ``True`` para
+      TODAS as transições -> comportamento legado (exige all-red em todo o lado),
+      como em redes sintéticas sem NetworkBinding.
+    - matriz presente mas algum link envolvido sem foe data autoritativa: devolve
+      ``True`` (não dá para provar seguro) a menos que um conflito genuíno já o
+      tenha decidido.
+    """
+    if link_conflicts is None:
+        return True
+    if not (0 <= from_phase < len(states) and 0 <= to_phase < len(states)):
+        return True
+    green_from = _green_link_indices(states[from_phase])
+    green_to = _green_link_indices(states[to_phase])
+    newly = green_to - green_from  # movimentos que ARRANCAM
+    if not newly:
+        return False  # nada de novo libertado (mesmo verde mantido/encolhido) -> seguro
+    terminating = green_from - green_to  # movimentos que TERMINAM
+    for starting in newly:
+        for ending in terminating:
+            if starting in link_conflicts.get(ending, frozenset()) or ending in link_conflicts.get(
+                starting, frozenset()
+            ):
+                return True  # movimento que termina é foe de um que arranca -> all-red exigível
+    known = known_conflict_links or frozenset()
+    # Seguro só se TODOS os links envolvidos têm foe data autoritativa (nenhum
+    # conflitua, já verificado acima); caso contrário foe data em falta -> fail-closed.
+    return not all(link in known for link in (newly | terminating))
+
+
 def _missing_all_red_transitions(
     states: list[str],
     durations: list[float],
     phase_sequence: list[int],
     service_green_phase_indices: list[int],
     min_all_red_s: float,
+    link_conflicts: dict[int, frozenset[int]] | None = None,
+    known_conflict_links: frozenset[int] | None = None,
 ) -> list[tuple[int, int]]:
     service_set = set(service_green_phase_indices)
     # Iterate over (position, phase_index) pairs so that duplicate phase indices
@@ -1107,6 +1179,14 @@ def _missing_all_red_transitions(
             and float(durations[idx]) >= min_all_red_s
             for idx in between
         )
-        if not has_required_all_red:
+        if has_required_all_red:
+            continue
+        # Sem all-red explícito entre dois service-greens consecutivos: só é
+        # problema se a transição libertar um movimento conflituante (ou se a foe
+        # data não permitir prová-lo seguro). Greens não-conflituantes (mesmo
+        # verde segmentado / expansão sem conflito) deixam de ser falsos-negativos.
+        if _transition_needs_all_red(
+            states, from_phase, to_phase, link_conflicts, known_conflict_links
+        ):
             missing.append((from_phase, to_phase))
     return missing
