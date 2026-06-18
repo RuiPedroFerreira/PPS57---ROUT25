@@ -68,29 +68,49 @@ def read_tripinfo(path: Path, line_map: dict[str, str]) -> list[dict]:
                 "line": line_map.get(vid, ""),
                 "time_loss": float(node.get("timeLoss", 0.0)),
                 "duration": float(node.get("duration", 0.0)),
+                "waiting_time": float(node.get("waitingTime", 0.0)),
+                "stop_count": float(node.get("waitingCount", 0.0)),
+                "depart_delay": float(node.get("departDelay", 0.0)),
+                "route_length": float(node.get("routeLength", 0.0)),
             }
         )
     return rows
+
+
+def _summarize(items: list[dict]) -> dict:
+    """KPIs por grupo de veículos (todos do tripinfo; nada fabricado)."""
+
+    def avg(key: str) -> float | None:
+        return round(mean([r[key] for r in items]), 2) if items else None
+
+    def p95(key: str) -> float | None:
+        vals = sorted(r[key] for r in items)
+        return round(vals[min(len(vals) - 1, int(0.95 * len(vals)))], 2) if vals else None
+
+    speeds = [r["route_length"] / r["duration"] for r in items if r["duration"] > 0]
+    return {
+        "n": len(items),
+        "mean_time_loss_s": avg("time_loss"),
+        "p95_time_loss_s": p95("time_loss"),
+        "mean_waiting_time_s": avg("waiting_time"),
+        "mean_stop_count": avg("stop_count"),
+        "mean_speed_mps": round(mean(speeds), 2) if speeds else None,
+        "mean_duration_s": avg("duration"),
+        "mean_depart_delay_s": avg("depart_delay"),
+    }
 
 
 def kpis(rows: list[dict], line: str) -> dict:
     buses = [r for r in rows if r["is_bus"]]
     line_buses = [r for r in buses if r["line"] == line]
     general = [r for r in rows if not r["is_bus"]]
-
-    def avg(items: list[dict], key: str) -> float | None:
-        return round(mean([r[key] for r in items]), 2) if items else None
-
-    return {
-        "n_vehicles": len(rows),
-        "n_buses": len(buses),
-        "bus_mean_time_loss_s": avg(buses, "time_loss"),
-        "bus_mean_duration_s": avg(buses, "duration"),
-        f"n_line_{line}_buses": len(line_buses),
-        f"line_{line}_bus_mean_time_loss_s": avg(line_buses, "time_loss"),
-        "n_general": len(general),
-        "general_mean_time_loss_s": avg(general, "time_loss"),
-    }
+    bus, lin, gen = _summarize(buses), _summarize(line_buses), _summarize(general)
+    # Achatado para a comparação pareada por chave (paired() acede a chaves planas).
+    out = {"n_vehicles": len(rows), "throughput_completed": len(rows)}
+    for prefix, summary in (("bus", bus), (f"line_{line}_bus", lin), ("general", gen)):
+        for key, value in summary.items():
+            out[f"{prefix}_{key}" if key != "n" else f"n_{prefix}"] = value
+    return out
 
 
 def _begin_seconds(begin: str) -> int:
@@ -192,9 +212,12 @@ def main() -> int:
                 "baseline": base_kpi,
                 "tsp": tsp_kpi,
                 "tsp_decisions": summary.get("total_decisions"),
+                "tsp_approved": summary.get("approved_decisions"),
                 "tsp_actuations_applied": summary.get("applied_events"),
+                "tsp_real_traci_applied": summary.get("real_traci_applied_events"),
                 "tsp_blocked_by_safety": summary.get("blocked_by_safety"),
                 "green_extension_decisions": summary.get("green_extension_decisions"),
+                "early_green_decisions": summary.get("early_green_decisions"),
             }
         )
         b, t = base_kpi["bus_mean_time_loss_s"], tsp_kpi["bus_mean_time_loss_s"]
@@ -203,9 +226,11 @@ def main() -> int:
               f"| atuações={summary.get('applied_events')}", flush=True)
 
     # Estatística pareada: melhoria = redução do bus time-loss (lower is better).
-    def paired(group_key: str) -> dict:
+    def paired(group_key: str, lower_is_better: bool = True) -> dict:
         deltas = [
-            s["baseline"][group_key] - s["tsp"][group_key]
+            (s["baseline"][group_key] - s["tsp"][group_key])
+            if lower_is_better
+            else (s["tsp"][group_key] - s["baseline"][group_key])
             for s in per_seed
             if s["baseline"].get(group_key) is not None and s["tsp"].get(group_key) is not None
         ]
@@ -236,10 +261,15 @@ def main() -> int:
         "no_fabricated_data": "Rede, procura det-calib e GTFS reais de Ingolstadt; nada inventado.",
         "per_seed": per_seed,
         "paired_bus_time_loss_improvement_s": paired("bus_mean_time_loss_s"),
+        "paired_bus_p95_time_loss_improvement_s": paired("bus_p95_time_loss_s"),
+        "paired_bus_waiting_time_improvement_s": paired("bus_mean_waiting_time_s"),
+        "paired_bus_stop_count_improvement": paired("bus_mean_stop_count"),
+        "paired_bus_speed_gain_mps": paired("bus_mean_speed_mps", lower_is_better=False),
         f"paired_line_{args.line}_bus_time_loss_improvement_s": paired(
             f"line_{args.line}_bus_mean_time_loss_s"
         ),
         "paired_general_time_loss_change_s": paired("general_mean_time_loss_s"),
+        "paired_general_waiting_time_change_s": paired("general_mean_waiting_time_s"),
     }
     out_path = ROOT / args.out
     out_path.parent.mkdir(parents=True, exist_ok=True)

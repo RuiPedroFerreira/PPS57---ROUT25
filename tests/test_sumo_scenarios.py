@@ -1360,6 +1360,7 @@ class SumoKpiParsingTestCase(unittest.TestCase):
                     "max_teleports_total": 0,
                     "max_emergency_braking": 2,
                     "max_vehicles_waiting_at_end": 0,
+                    "max_insertion_gap_at_end": 0,
                     "max_backlog_step_ratio": 0.10,
                 }
             },
