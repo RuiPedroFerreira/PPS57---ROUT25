@@ -759,26 +759,47 @@ def build_controller_contract(
 
 
 def _runtime_green_phase(
-    states: list[str], link_indices: list[int], prefer_protected: bool
+    states: list[str],
+    link_indices: list[int],
+    prefer_protected: bool,
+    durations: list[float] | None = None,
 ) -> int | None:
-    """Índice da fase runtime em que TODOS os links do grupo têm verde.
+    """Índice da fase runtime que melhor serve o verde do grupo.
 
     Os link indices vêm do profile (net.xml) mas são TOPOLÓGICOS — o WAUT troca os
     *estados* das fases, não a ordem dos links — logo continuam válidos em runtime.
-    Preferência por verde protegido ('G') quando exigido; fallback para permissivo
-    ('g'/'G'). None se nenhuma fase serve o grupo (mantém o phase_index offline).
+
+    Em vez de exigir TODOS os links do grupo verdes numa ÚNICA fase (que devolvia
+    ``None`` em verde dividido por várias fases — protegido+permissivo, lagging-left
+    — deixando o ``phase_index`` offline e excluindo o TLS na verificação), pontua
+    cada fase pelo verde que dá AOS LINKS DO GRUPO e escolhe a melhor: mais links em
+    verde protegido (``'G'``), depois mais links em verde (``'g'``/``'G'``), depois
+    maior duração de serviço, depois índice mais cedo. Prefere verde protegido
+    quando exigido (só recorre a permissivo se nenhuma fase protege o grupo).
+    Devolve ``None`` só quando NENHUMA fase dá verde ao grupo (mantém o
+    ``phase_index`` offline -> fail-closed).
+
+    Não relaxa segurança: só escolhe qual a fase de serviço que o
+    green_extension/early_green visa; os gates de clearance/all-red operam sobre os
+    service/intergreen recomputados do runtime, não sobre este índice.
     """
     indices = [index for index in link_indices if isinstance(index, int) and index >= 0]
     if not indices:
         return None
-    if prefer_protected:
-        for phase, state in enumerate(states):
-            if all(index < len(state) and state[index] == "G" for index in indices):
-                return phase
+    scored: list[tuple[int, int, float, int, int]] = []
     for phase, state in enumerate(states):
-        if all(index < len(state) and state[index].lower() == "g" for index in indices):
-            return phase
-    return None
+        chars = [state[index] for index in indices if index < len(state)]
+        protected = sum(1 for ch in chars if ch == "G")
+        green = sum(1 for ch in chars if ch.lower() == "g")
+        if green == 0:
+            continue
+        duration = float(durations[phase]) if durations and phase < len(durations) else 0.0
+        scored.append((protected, green, duration, -phase, phase))
+    if not scored:
+        return None
+    if prefer_protected and any(item[0] > 0 for item in scored):
+        scored = [item for item in scored if item[0] > 0]
+    return max(scored)[-1]
 
 
 def reconcile_contract_with_runtime(
@@ -828,7 +849,9 @@ def reconcile_contract_with_runtime(
         for group_id, group in contract.signal_groups.items():
             link_indices = link_indices_by_group.get(group_id)
             runtime_phase = (
-                _runtime_green_phase(states, link_indices, group.requires_protected_green)
+                _runtime_green_phase(
+                    states, link_indices, group.requires_protected_green, durations
+                )
                 if link_indices
                 else None
             )
