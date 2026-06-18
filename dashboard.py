@@ -17,7 +17,6 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
-import streamlit.components.v1 as components
 import yaml
 
 ROOT = Path(__file__).parent
@@ -131,12 +130,16 @@ html, body, [class*="css"] { font-family: "Inter", "Segoe UI", system-ui, sans-s
          margin-left:8px; vertical-align:middle; }
 .freshness { font-size:0.74rem; color:#94a3b8; margin:6px 0 0; }
 
-/* page-header brand row — product logo left, partner logo right */
-.ph-brandrow { display:flex; align-items:center; justify-content:space-between;
-               gap:16px; margin:2px 0 16px; }
-.ph-brandrow img { display:block; width:auto; }
-.ph-brandrow .ph-logo { height:42px; }
-.ph-brandrow .ph-partner { height:30px; opacity:0.9; }
+/* brand bar pinned to the bottom of every page — product logo left, partner
+   logo right; centred at the same max width as the content so the logos line up
+   with the content edges. */
+.page-footer { position: fixed; left: 0; right: 0; bottom: 0; z-index: 90;
+               background: #ffffff; border-top: 0.5px solid #e5e7eb; height: 56px; }
+.page-footer-inner { max-width: 1500px; height: 100%; margin: 0 auto; padding: 0 2.5rem;
+                     display: flex; align-items: center; justify-content: space-between; }
+.page-footer img { display: block; width: auto; }
+.page-footer .pf-logo { height: 30px; }
+.page-footer .pf-partner { height: 24px; opacity: 0.9; }
 
 /* sidebar */
 .sb-label { font-size:0.68rem; font-weight:700; text-transform:uppercase;
@@ -214,8 +217,7 @@ section.main > div { padding-top: 1rem; }
 .kpi-delta.kpi-bad  { color:#dc2626; }
 .kpi-delta.kpi-flat { color:#6b7280; }
 
-/* footer navigation chips live inside a components.html iframe (see tab_resumo);
-   their styles are inlined there, so no parent CSS is needed here. */
+/* "Explorar em detalhe" chips are real st.buttons styled near the drawer rules below. */
 
 /* expanders — clean white card with a subtle hover (app-wide: sidebar + tabs) */
 [data-testid="stExpander"] details {
@@ -231,6 +233,127 @@ section.main > div { padding-top: 1rem; }
   transition:background-color 0.15s ease, color 0.15s ease;
 }
 [data-testid="stTabs"] button[data-testid="stTab"]:hover { background-color:#f1f5f9; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   DRAWER NAVIGATION — replaces the native sidebar. One block, light theme.
+   The native sidebar/header are hidden. The topbar + slide-over drawer are real
+   Streamlit widgets pinned via Streamlit's stable .st-key-<key> classes (1.39+),
+   since widgets can't live inside an st.markdown HTML string. The content column
+   is centred at a max width so the page reads structured, not edge-to-edge.
+   ══════════════════════════════════════════════════════════════════════════ */
+section[data-testid="stSidebar"] { display: none !important; }
+header[data-testid="stHeader"] { display: none !important; }
+[data-testid="stMainBlockContainer"], .block-container {
+  max-width: 1500px !important; padding: 66px 2.5rem 88px !important; margin: 0 auto !important; }
+.page-header { margin-top: 0.25rem; }
+
+/* topbar — fixed to the viewport top; the hamburger (also fixed) aligns to it */
+.topbar { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: #ffffff;
+          border-bottom: 0.5px solid #e5e7eb; height: 48px; display: flex; align-items: center;
+          padding: 0 1.5rem 0 3.6rem; gap: 12px; }
+.topbar-logo { font-size: 15px; font-weight: 600; color: #111827; letter-spacing: -0.01em; }
+.topbar-logo span { color: #10b981; }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: #10b981; flex-shrink: 0; }
+
+/* hamburger — real st.button(key="open_drawer") pinned over the topbar's left edge */
+.st-key-open_drawer { position: fixed; top: 7px; left: 14px; z-index: 130; width: 34px; }
+.st-key-open_drawer button { width: 34px !important; height: 34px; min-height: 34px; padding: 0;
+  border: 0.5px solid #e5e7eb; border-radius: 8px; background: #f9fafb; color: #111827; font-size: 16px; }
+.st-key-open_drawer button:hover { background: #f3f4f6; border-color: #d1d5db; }
+
+/* overlay — real full-screen st.button(key="overlay_close"); clicking it closes the
+   drawer. The scrim lives on the container (reliable) and the button fills it
+   transparently to capture the click. */
+.st-key-overlay_close { position: fixed; inset: 0; z-index: 900; width: 100vw !important;
+  height: 100vh !important; background: rgba(15,23,42,0.32); }
+.st-key-overlay_close .stButton { width: 100%; height: 100%; }
+.st-key-overlay_close button { width: 100%; height: 100vh; min-height: 100vh; margin: 0;
+  background: transparent !important; border: none !important; border-radius: 0;
+  color: transparent !important; box-shadow: none !important; }
+
+/* drawer panel — st.container(key="drawer_panel") pinned to the left.
+   Flex column so content stacks top-down; the footer is fixed to the bottom
+   (see .drawer-footer), and the panel reserves bottom padding so the last
+   status block never hides behind it. */
+.st-key-drawer_panel { position: fixed; top: 0; left: 0; bottom: 0; width: 264px; z-index: 901;
+  background: #ffffff; border-right: 0.5px solid #e5e7eb; box-shadow: 4px 0 24px rgba(0,0,0,0.06);
+  overflow-y: auto; overflow-x: hidden; padding: 0 0 64px; gap: 0;
+  display: flex; flex-direction: column; }
+.st-key-drawer_panel button {
+  width: calc(100% - 12px) !important; margin: 1px 6px !important;
+  display: flex !important; justify-content: flex-start !important; align-items: center !important;
+  text-align: left !important; background: transparent !important; border: none !important;
+  box-shadow: none !important; color: #374151 !important;
+  font-size: 13px !important; font-weight: 400 !important;
+  padding: 8px 14px !important; border-radius: 8px !important; min-height: 0 !important; }
+.st-key-drawer_panel button > div {
+  justify-content: flex-start !important; width: 100% !important; }
+.st-key-drawer_panel button p { text-align: left !important; margin: 0 !important; }
+.st-key-drawer_panel button:hover { background: #f3f4f6 !important; color: #111827 !important; }
+.st-key-drawer_panel button[kind="primary"] { background: #eff6ff !important; color: #1d4ed8 !important; font-weight: 500 !important; }
+.st-key-drawer_panel [data-testid="stSelectbox"],
+.st-key-drawer_panel [data-testid="stCaptionContainer"] { padding-left: 12px; padding-right: 12px; }
+/* filter helper line + a clear, card-like select so its purpose reads at a glance.
+   Streamlit gives markdown containers a -16px bottom margin (compact spacing) which
+   pulls each block up onto the previous one; neutralise it across the bottom group
+   so the label, hint, select and status block stack with their own spacing. */
+.drawer-filter-hint { font-size: 10.5px; color: #94a3b8; line-height: 1.45; padding: 0 14px 8px; }
+.st-key-drawer_bottom [data-testid="stMarkdownContainer"] { margin-bottom: 0 !important; }
+.drawer-filter-hint strong { color: #6b7280; font-weight: 600; }
+.st-key-drawer_panel [data-baseweb="select"] > div {
+  background: #ffffff !important; border-radius: 9px !important; min-height: 40px; }
+.st-key-drawer_panel [data-testid="stSelectbox"] label { display: none; }
+/* navigation spread across the whole white area between the header and the
+   bottom group: its wrapper grows to fill the slack (flex:1) and the nav block
+   distributes its items evenly over that full height (space-evenly). */
+.st-key-drawer_panel > div:has(> .st-key-drawer_nav) {
+  flex: 1 1 auto !important; display: flex !important; flex-direction: column !important; }
+.st-key-drawer_nav { flex: 1 1 auto; justify-content: space-evenly !important; gap: 0; }
+.st-key-drawer_bottom { gap: 0; }
+
+/* drawer decorative bits */
+.drawer-head { height: 48px; border-bottom: 0.5px solid #e5e7eb; display: flex; align-items: center;
+               padding: 0 14px; justify-content: space-between; }
+.drawer-head .dh-logo { font-size: 15px; font-weight: 600; color: #111827; }
+.drawer-head .dh-logo span { color: #10b981; }
+.drawer-head .dh-sub { font-size: 11px; color: #6b7280; }
+.drawer-section-label { font-size: 9.5px; font-weight: 700; letter-spacing: 0.11em; text-transform: uppercase;
+                        color: #9ca3af; padding: 16px 14px 5px; }
+.nav-divider { height: 0.5px; background: #eef1f5; margin: 10px 14px; }
+.status-block { margin: 12px 12px 4px; padding: 11px 12px; border: 0.5px solid #e5e7eb; border-radius: 10px;
+                background: #f9fafb; }
+.status-block-row { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; }
+.status-block-title { font-size: 12px; font-weight: 600; color: #111827; }
+.status-block-sub { font-size: 11px; color: #6b7280; line-height: 1.55; }
+/* footer pinned to the bottom of the 264px drawer; white bg + top/right borders
+   so scrolling content disappears cleanly behind it. */
+.drawer-footer { position: fixed; left: 0; bottom: 0; width: 264px; z-index: 902;
+                 box-sizing: border-box; display: flex; align-items: center; gap: 9px;
+                 padding: 12px 14px; background: #ffffff;
+                 border-top: 0.5px solid #e5e7eb; border-right: 0.5px solid #e5e7eb; }
+.drawer-footer-label { font-size: 10px; color: #9ca3af; font-weight: 600; white-space: nowrap;
+                       text-transform: uppercase; letter-spacing: 0.06em; }
+.drawer-footer-logo { height: 18px; width: auto; opacity: 0.75; }
+
+/* "Explorar em detalhe" chips — real buttons (key=chip_*) styled as cards */
+.st-key-explore_chips button { height: auto; min-height: 0; text-align: left; justify-content: flex-start;
+  align-items: flex-start; border: 1px solid #e5e7eb; border-radius: 10px; background: #ffffff;
+  color: #0f172a; font-weight: 700; font-size: 14px; padding: 0.85rem 1.1rem; box-shadow: none; }
+.st-key-explore_chips button:hover { background: #f9fafb; border-color: #cbd5e1; }
+
+/* glossary + reading-guide cards (relocated from the sidebar to the Método tab) */
+.gloss-card { background:#ffffff; border:1px solid #e2e8f0; border-radius:8px;
+              padding:0.6rem 0.75rem; margin-bottom:0.5rem; }
+.gloss-term { font-size:13px; font-weight:600; color:#0f172a; margin-bottom:0.2rem;
+              display:flex; justify-content:space-between; align-items:baseline; gap:0.5rem; }
+.gloss-unit { font-size:11px; font-weight:400; color:#94a3b8; white-space:nowrap; }
+.gloss-def { font-size:12px; color:#64748b; line-height:1.55; }
+.step-card { display:flex; gap:0.75rem; align-items:flex-start; margin-bottom:0.75rem; }
+.step-card .step-num { font-size:11px; font-weight:700; color:#ffffff; background:#1d4ed8;
+                       border-radius:50%; width:22px; height:22px; display:flex; align-items:center;
+                       justify-content:center; flex-shrink:0; margin-top:1px; }
+.step-card .step-title { font-size:13px; font-weight:600; color:#0f172a; margin-bottom:0.2rem; }
+.step-card .step-body { font-size:12px; color:#64748b; line-height:1.55; }
 </style>
 """
 
@@ -242,75 +365,6 @@ section.main > div { padding-top: 1rem; }
 # Scoped under section[data-testid="stSidebar"] on purpose — `.step-num` and
 # `.step-title` also exist (with different sizing) for the empty-state cards on
 # the MAIN page; scoping stops the sidebar rules from leaking onto those.
-SIDEBAR_CSS = """
-<style>
-section[data-testid="stSidebar"] .gloss-card {
-  background:#ffffff; border:1px solid #e2e8f0; border-radius:8px;
-  padding:0.6rem 0.75rem; margin-bottom:0.5rem;
-}
-section[data-testid="stSidebar"] .gloss-term {
-  font-size:13px; font-weight:600; color:#0f172a; margin-bottom:0.2rem;
-  display:flex; justify-content:space-between; align-items:baseline; gap:0.5rem;
-}
-section[data-testid="stSidebar"] .gloss-unit {
-  font-size:11px; font-weight:400; color:#94a3b8; white-space:nowrap;
-}
-section[data-testid="stSidebar"] .gloss-def {
-  font-size:12px; color:#64748b; line-height:1.55;
-}
-section[data-testid="stSidebar"] .step-card {
-  display:flex; gap:0.75rem; align-items:flex-start; margin-bottom:0.75rem;
-}
-section[data-testid="stSidebar"] .step-num {
-  font-size:11px; font-weight:700; color:#ffffff; background:#1d4ed8;
-  border-radius:50%; width:22px; height:22px; display:flex; align-items:center;
-  justify-content:center; flex-shrink:0; margin-top:1px;
-}
-section[data-testid="stSidebar"] .step-title {
-  font-size:13px; font-weight:600; color:#0f172a; margin-bottom:0.2rem;
-}
-section[data-testid="stSidebar"] .step-body {
-  font-size:12px; color:#64748b; line-height:1.55;
-}
-section[data-testid="stSidebar"] .sb-brand { text-align:center; margin:0.35rem 0 0.4rem; }
-section[data-testid="stSidebar"] .sb-brand img {
-  width:200px; max-width:90%; height:auto; display:inline-block;
-}
-section[data-testid="stSidebar"] .sb-sub { text-align:center; }
-section[data-testid="stSidebar"] .sb-partner-label {
-  font-size:9px; font-weight:600; letter-spacing:0.12em; color:#94a3b8;
-  text-align:center; margin:0 0 0.5rem 0;
-}
-section[data-testid="stSidebar"] .sb-partner { text-align:center; }
-section[data-testid="stSidebar"] .sb-partner img {
-  width:142px; max-width:72%; height:auto; display:inline-block;
-}
-section[data-testid="stSidebar"] .sb-footer-version {
-  font-size:10px; color:#94a3b8; text-align:center; margin:1rem 0 0;
-}
-/* Full-height flex column so the partner footer can pin to the very bottom.
-   When content is tall enough to scroll, margin-top:auto collapses and the
-   footer just follows the content (graceful fallback). */
-section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
-  height:100%; display:flex; flex-direction:column;
-}
-section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
-  flex:1 1 auto; display:flex; flex-direction:column;
-  padding-bottom:1.75rem;  /* override Streamlit's 6rem: footer near the bottom with a clean margin */
-}
-section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] > div {
-  flex:1 1 auto; display:flex; flex-direction:column; min-height:0;
-}
-section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] > div > [data-testid="stVerticalBlock"] {
-  flex:1 1 auto;
-}
-section[data-testid="stSidebar"] [data-testid="stElementContainer"]:has(.sb-footer) {
-  margin-top:auto;
-}
-/* (expander card/hover lives in the main CSS block now — applies app-wide) */
-</style>
-"""
-
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -685,7 +739,7 @@ st.set_page_config(
     page_title="PPS57 — TSP Analysis",
     page_icon=None,
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
     menu_items={
         "about": "PPS57 · ROUT25 — Dashboard de análise de Traffic Signal Priority (TSP) "
         "para a Linha 25 do Porto. Compara Baseline SUMO, TSP Rule-based e TSP+RL.",
@@ -719,12 +773,9 @@ def class_vehicle_count(cls_key: str) -> int:
     return max((kp.get(cls_key, {}).get("vehicles", 0) or 0 for kp in run_kpis.values()), default=0)
 
 
-# ── sidebar ───────────────────────────────────────────────────────────────────
+# ── drawer content data (glossary + reading guide, rendered in the Método tab) ──
 
-# divider between sidebar zones (light-adapted from the spec's white rule)
-_SB_DIVIDER = "<hr style='border:none;border-top:1px solid rgba(15,23,42,0.08);margin:1rem 0'>"
-
-# Zone C · glossary entries (search filters reactively on every keystroke)
+# Glossary entries (the Método-tab search filters reactively on every keystroke)
 GLOSSARY = [
     {
         "term": "Perda de tempo média",
@@ -813,147 +864,177 @@ STEPS = [
     {
         "n": "5",
         "title": "Muda a classe de veículo",
-        "body": "Usa o filtro 'Classe de veículo' na sidebar para ver o impacto do TSP especificamente em autocarros, tráfego geral ou veículos prioritários.",
+        "body": "Abre o menu (☰, canto superior esquerdo) e usa o filtro 'Classe de veículo' para ver o impacto do TSP especificamente em autocarros, tráfego geral ou veículos prioritários.",
     },
 ]
 
-with st.sidebar:
-    # single style block at the top of the sidebar (cards + zone treatment)
-    st.markdown(SIDEBAR_CSS, unsafe_allow_html=True)
+# ── session state ─────────────────────────────────────────────────────────────
 
-    _route25_uri = logo_uri(PUBLIC / "route25_logo.png", strip_white=True)
-    if _route25_uri:
+if "drawer_open" not in st.session_state:
+    st.session_state.drawer_open = False
+if "active_tab" not in st.session_state:
+    st.session_state.active_tab = "Resumo"
+
+# ── global vehicle-class filter ───────────────────────────────────────────────
+# The filter lives in the drawer, but it is computed here at module level so the
+# topbar pill and every tab can read it whether or not the drawer is open.
+#
+# The selectbox is only mounted while the drawer is open, so its widget key
+# ("drawer_class_select") can't be the source of truth: Streamlit garbage-collects
+# the state of widgets that aren't rendered on a run, so the first interaction
+# after closing the drawer would drop the key and silently reset the filter to the
+# default. The canonical value therefore lives in a plain (non-widget) session key
+# that survives every run; the widget is seeded from it via `index` and writes
+# back through `on_change`.
+cls_counts = {key: class_vehicle_count(key) for key, _ in VEHICLE_CLASSES}
+cls_label_map = {f"{label} ({cls_counts[key]})": key for key, label in VEHICLE_CLASSES}
+CLASS_OPTIONS = list(cls_label_map.keys())
+# Default to Autocarros — that's where the TSP value lives. Buses are a tiny share
+# of all vehicles, so opening on "Todos os veículos" dilutes the gain to ~0 and
+# hides what the TSP does. Fall back to "Todos" only if there are no buses.
+_default_key = "buses" if cls_counts.get("buses", 0) else "all_vehicles"
+_default_display = next(d for d, k in cls_label_map.items() if k == _default_key)
+# Re-seed when unset or when a data refresh changed the option labels (vehicle
+# counts are baked into each label).
+if st.session_state.get("vehicle_class_display") not in CLASS_OPTIONS:
+    st.session_state.vehicle_class_display = _default_display
+selected_class = st.session_state.vehicle_class_display
+vehicle_cls = cls_label_map[selected_class]
+vehicle_cls_label = next(lbl for k, lbl in VEHICLE_CLASSES if k == vehicle_cls)
+
+
+def _sync_vehicle_class() -> None:
+    """Persist the drawer selectbox choice into the non-widget session key."""
+    st.session_state.vehicle_class_display = st.session_state.drawer_class_select
+
+# ── drawer navigation model + system status ───────────────────────────────────
+
+TABS = ["Resumo", "KPIs", "Decisão", "C-ITS", "vs RL", "Cenários", "Método", "Simulação"]
+
+NAV_GROUPS = [
+    (None, ["Resumo"]),
+    ("Análise", ["KPIs", "Decisão", "C-ITS", "vs RL"]),
+    ("Exploração", ["Cenários"]),
+    ("Referência", ["Método", "Simulação"]),
+]
+
+report_files = {
+    "Baseline KPIs": REPORTS / "baseline_kpis.json",
+    "Demonstrador TSP": REPORTS / "tsp_demonstrator_report.json",
+    "Comparação TSP vs RL": REPORTS / "tsp_baseline_vs_rl_comparison.json",
+}
+_reports_ok = sum(1 for p in report_files.values() if p.exists())
+_reports_total = len(report_files)
+_fresh = file_mtime(REPORTS / "tsp_demonstrator_report.json") or file_mtime(
+    REPORTS / "baseline_kpis.json"
+)
+# ── topbar (fixed) + hamburger trigger ────────────────────────────────────────
+# The ☰ is a real st.button pinned over the topbar's left edge via its stable
+# .st-key-open_drawer class (a plain HTML icon can't trigger a rerun, and
+# components/JS are out of scope).
+if st.button("☰", key="open_drawer", help="Abrir menu"):
+    st.session_state.drawer_open = True
+    st.rerun()
+
+st.markdown(
+    """
+<div class="topbar">
+  <div class="topbar-logo">Route<span>_25</span></div>
+</div>
+""",
+    unsafe_allow_html=True,
+)
+
+# ── slide-over drawer ─────────────────────────────────────────────────────────
+
+if st.session_state.drawer_open:
+    # Overlay: a real full-screen button — clicking anywhere outside closes the
+    # drawer (a plain <div> can't trigger a rerun without JS/components).
+    if st.button("Fechar menu", key="overlay_close", help="Fechar o menu"):
+        st.session_state.drawer_open = False
+        st.rerun()
+
+    # Panel: real Streamlit widgets, pinned into the fixed drawer via the
+    # container's stable .st-key-drawer_panel class.
+    with st.container(key="drawer_panel"):
         st.markdown(
-            f'<div class="sb-brand"><img src="{_route25_uri}" alt="Route 25"></div>',
+            '<div class="drawer-head"><div class="dh-logo">Route<span>_25</span></div>'
+            '<div class="dh-sub">Linha 25 · Porto</div></div>',
             unsafe_allow_html=True,
         )
-    else:
-        st.markdown('<div class="sb-project">PPS57 · ROUT25</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="sb-sub">Traffic Signal Priority — Linha 25, Porto</div>',
-        unsafe_allow_html=True,
-    )
+        # Navigation is vertically centred in the free space between the header
+        # and the bottom group via .st-key-drawer_nav { margin: auto 0 }.
+        with st.container(key="drawer_nav"):
+            if st.button("✕  Fechar", key="close_drawer", use_container_width=True):
+                st.session_state.drawer_open = False
+                st.rerun()
 
-    # ════════════════════════════════════════════════════════════════════════
-    # ZONE A — Relatórios detectados
-    # ════════════════════════════════════════════════════════════════════════
-    report_files = {
-        "Baseline KPIs": REPORTS / "baseline_kpis.json",
-        "Demonstrador TSP": REPORTS / "tsp_demonstrator_report.json",
-        "Comparação TSP vs RL": REPORTS / "tsp_baseline_vs_rl_comparison.json",
-    }
-    with st.expander("Relatórios detectados", expanded=True):
-        for label, path in report_files.items():
-            dot = "dot-ok" if path.exists() else "dot-off"
+            for group_label, group_tabs in NAV_GROUPS:
+                if group_label:
+                    st.markdown(
+                        f'<div class="drawer-section-label">{group_label}</div>',
+                        unsafe_allow_html=True,
+                    )
+                for _label in group_tabs:
+                    if st.button(
+                        _label,
+                        key=f"nav_{_label}",
+                        use_container_width=True,
+                        type="primary" if st.session_state.active_tab == _label else "secondary",
+                    ):
+                        st.session_state.active_tab = _label
+                        st.session_state.drawer_open = False
+                        st.rerun()
+
+        # Filter + status are pushed to the bottom of the flex column (just above
+        # the fixed footer) via .st-key-drawer_bottom { margin-top: auto }.
+        with st.container(key="drawer_bottom"):
+            st.markdown('<div class="nav-divider"></div>', unsafe_allow_html=True)
             st.markdown(
-                f'<div class="file-row"><span class="dot {dot}"></span><span>{label}</span></div>',
+                '<div class="drawer-section-label">Filtro global</div>', unsafe_allow_html=True
+            )
+            st.markdown(
+                '<div class="drawer-filter-hint">Aplica-se a <strong>todos</strong> os '
+                'KPIs e gráficos</div>',
+                unsafe_allow_html=True,
+            )
+            st.selectbox(
+                "Classe de veículo",
+                options=CLASS_OPTIONS,
+                index=CLASS_OPTIONS.index(selected_class),
+                key="drawer_class_select",
+                on_change=_sync_vehicle_class,
+                label_visibility="collapsed",
+                help="Classe de veículo aplicada a todos os KPIs e gráficos; o número é a "
+                "contagem de veículos. Abre em Autocarros (onde o TSP actua); muda para "
+                "'Todos os veículos' para o efeito líquido na rede. Prioritários = Autocarros "
+                "+ Emergência; Tráfego geral = não-prioritários.",
+            )
+            if vehicle_cls == "priority_vehicles" and cls_counts.get("emergency_vehicles", 0) == 0:
+                st.caption("Sem veículos de emergência — **Prioritários = Autocarros**.")
+            elif vehicle_cls == "emergency_vehicles" and cls_counts.get("emergency_vehicles", 0) == 0:
+                st.caption("Sem veículos de emergência — métricas vazias.")
+
+            st.markdown(
+                f'<div class="status-block"><div class="status-block-row">'
+                f'<div class="status-dot"></div>'
+                f'<span class="status-block-title">Sistema activo</span></div>'
+                f'<div class="status-block-sub">{_reports_ok}/{_reports_total} relatórios detectados'
+                f'{("<br>Atualizado " + _fresh) if _fresh else ""}</div></div>',
                 unsafe_allow_html=True,
             )
 
-    st.markdown(_SB_DIVIDER, unsafe_allow_html=True)
-
-    # ════════════════════════════════════════════════════════════════════════
-    # ZONE B — Filtro global (classe de veículo)
-    # ════════════════════════════════════════════════════════════════════════
-    st.markdown('<div class="sb-label">Filtro global</div>', unsafe_allow_html=True)
-    # annotate each class with its vehicle count so empty/overlapping classes
-    # are obvious (e.g. "Veículos de emergência (0)").
-    cls_counts = {key: class_vehicle_count(key) for key, _ in VEHICLE_CLASSES}
-    cls_label_map = {f"{label} ({cls_counts[key]})": key for key, label in VEHICLE_CLASSES}
-    # Default to Autocarros — that's where the TSP value lives. Buses are a tiny
-    # share of all vehicles, so opening on "Todos os veículos" dilutes the gain to
-    # ~0 and hides what the TSP does. Fall back to "Todos" only if there are no buses.
-    _default_key = "buses" if cls_counts.get("buses", 0) else "all_vehicles"
-    _default_display = next(d for d, k in cls_label_map.items() if k == _default_key)
-    _default_idx = list(cls_label_map.keys()).index(_default_display)
-    sel_display = st.selectbox(
-        "Classe de veículo",
-        options=list(cls_label_map.keys()),
-        index=_default_idx,
-        key="veh_cls_select",
-        help="Filtra todos os KPIs e gráficos por classe. O número é a contagem de veículos. "
-        "Abre em Autocarros (onde o TSP actua); muda para 'Todos os veículos' para o efeito "
-        "líquido na rede. Taxonomia: Prioritários = Autocarros + Emergência (a união); "
-        "Tráfego geral = todos os não-prioritários. As classes podem sobrepor-se.",
-    )
-    vehicle_cls = cls_label_map[sel_display]
-    vehicle_cls_label = next(lbl for k, lbl in VEHICLE_CLASSES if k == vehicle_cls)
-
-    if vehicle_cls == "priority_vehicles" and cls_counts.get("emergency_vehicles", 0) == 0:
-        st.caption(
-            "Sem veículos de emergência nesta simulação, por isso **Prioritários = Autocarros**."
+        _cap_uri = logo_uri(PUBLIC / "CAP_LOGO.png")
+        _cap_img = (
+            f'<img class="drawer-footer-logo" src="{_cap_uri}" alt="Capgemini">'
+            if _cap_uri
+            else '<span style="font-size:11px;font-weight:600;color:#6b7280;">Capgemini</span>'
         )
-    elif vehicle_cls == "emergency_vehicles" and cls_counts.get("emergency_vehicles", 0) == 0:
-        st.caption("Sem veículos de emergência nesta simulação — métricas vazias.")
-
-    st.markdown(_SB_DIVIDER, unsafe_allow_html=True)
-
-    # ════════════════════════════════════════════════════════════════════════
-    # ZONE C — Documentação
-    # ════════════════════════════════════════════════════════════════════════
-    st.markdown('<div class="sb-label">Documentação</div>', unsafe_allow_html=True)
-
-    # ── Glossário de métricas (teaser → searchable card list) ──────────────────
-    st.caption("12 métricas · tempo, velocidade, delay")
-    with st.expander("Glossário de métricas"):
-        query = st.text_input(
-            "Pesquisar métrica",
-            placeholder="Pesquisar métrica...",
-            label_visibility="collapsed",
-            key="gloss_search",
+        st.markdown(
+            f'<div class="drawer-footer">'
+            f'<span class="drawer-footer-label">Developed by</span>{_cap_img}</div>',
+            unsafe_allow_html=True,
         )
-        filtered = (
-            [
-                g
-                for g in GLOSSARY
-                if query.lower() in g["term"].lower() or query.lower() in g["def"].lower()
-            ]
-            if query
-            else GLOSSARY
-        )
-        if not filtered:
-            st.caption("Nenhuma métrica encontrada.")
-        else:
-            for entry in filtered:
-                st.markdown(
-                    f'<div class="gloss-card">'
-                    f'<div class="gloss-term">{entry["term"]}'
-                    f'<span class="gloss-unit">{entry["unit"]}</span></div>'
-                    f'<div class="gloss-def">{entry["def"]}</div>'
-                    f"</div>",
-                    unsafe_allow_html=True,
-                )
-
-    # ── Como ler esta dashboard (teaser → numbered step cards) ─────────────────
-    st.caption("Guia de leitura · 5 passos")
-    with st.expander("Como ler esta dashboard"):
-        for step in STEPS:
-            st.markdown(
-                f'<div class="step-card">'
-                f'<div class="step-num">{step["n"]}</div>'
-                f"<div>"
-                f'<div class="step-title">{step["title"]}</div>'
-                f'<div class="step-body">{step["body"]}</div>'
-                f"</div>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
-
-    # ── footer — single block pinned to the bottom of the sidebar (margin-top:auto
-    #    on its element container; see .sb-footer rule in SIDEBAR_CSS) ────────────
-    _cap_uri = logo_uri(PUBLIC / "CAP_LOGO.png")
-    _cap_html = (
-        '<p class="sb-partner-label">EM PARCERIA COM</p>'
-        f'<div class="sb-partner"><img src="{_cap_uri}" alt="Capgemini"></div>'
-        if _cap_uri
-        else ""
-    )
-    st.markdown(
-        f'<div class="sb-footer">{_SB_DIVIDER}{_cap_html}'
-        '<p class="sb-footer-version">PPS57 · Linha 25 · Porto · SUMO 1.26</p>'
-        "</div>",
-        unsafe_allow_html=True,
-    )
 
 # ── page header ───────────────────────────────────────────────────────────────
 
@@ -969,20 +1050,10 @@ if demo:
 
 _hdr_r25 = logo_uri(PUBLIC / "route25_logo.png", strip_white=True)
 _hdr_cap = logo_uri(PUBLIC / "CAP_LOGO.png")
-_brand_row = ""
-if _hdr_r25 or _hdr_cap:
-    _bl = f'<img class="ph-logo" src="{_hdr_r25}" alt="Route 25">' if _hdr_r25 else "<span></span>"
-    _br = (
-        f'<img class="ph-partner" src="{_hdr_cap}" alt="Capgemini">'
-        if _hdr_cap
-        else "<span></span>"
-    )
-    _brand_row = f'<div class="ph-brandrow">{_bl}{_br}</div>'
 
 st.markdown(
     f"""
 <div class="page-header">
-  {_brand_row}
   <h1>PPS57 · Análise de Simulação TSP
     <span class="badge">Linha 25 · Porto</span>
     <span class="badge">SUMO 1.26</span>
@@ -999,6 +1070,15 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
+# Brand bar pinned to the bottom of every page (product logo left, partner right).
+if _hdr_r25 or _hdr_cap:
+    _fl = f'<img class="pf-logo" src="{_hdr_r25}" alt="Route 25">' if _hdr_r25 else "<span></span>"
+    _fr = f'<img class="pf-partner" src="{_hdr_cap}" alt="Capgemini">' if _hdr_cap else "<span></span>"
+    st.markdown(
+        f'<div class="page-footer"><div class="page-footer-inner">{_fl}{_fr}</div></div>',
+        unsafe_allow_html=True,
+    )
 
 # ── empty state ───────────────────────────────────────────────────────────────
 
@@ -1054,20 +1134,10 @@ VERDICT_MAP = {
     "does_not_demonstrate_actuation": ("is-fail", "Sem actuação TSP"),
 }
 
-# ── tabs ──────────────────────────────────────────────────────────────────────
-
-tab_resumo, tab_kpi, tab_decisions, tab_cits, tab_rl, tab_scenarios, tab_meta, tab_sim = st.tabs(
-    [
-        "Resumo",
-        "KPIs",
-        "Decisão",
-        "C-ITS",
-        "vs RL",
-        "Cenários",
-        "Método",
-        "Simulação",
-    ]
-)
+# ── navigation routing ────────────────────────────────────────────────────────
+# st.tabs is gone — the drawer sets st.session_state.active_tab, and each former
+# tab body now renders inside an if/elif on that value (bodies unchanged).
+_active = st.session_state.active_tab
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 0 — Resumo (narrativa guiada: a resposta primeiro)
@@ -1081,7 +1151,7 @@ HERO_CLASSES = [
     ("all_vehicles", "Todos os veículos"),
 ]
 
-with tab_resumo:
+if _active == "Resumo":
     # ── verdict ───────────────────────────────────────────────────────────────
     if demo and "verdict" in demo:
         v = demo["verdict"]
@@ -1209,7 +1279,7 @@ with tab_resumo:
             chart_layout(fig_hero, "", height=280)
             fig_hero.update_layout(bargap=0.35)
             fig_hero.update_xaxes(range=[lo_v - pad, hi_v + pad])
-            st.plotly_chart(fig_hero, use_container_width=True)
+            st.plotly_chart(fig_hero, use_container_width=True, config={"displayModeBar": False})
 
             # ── legend: colour squares instead of a wall of italic text ─────────
             lg1, lg2 = st.columns(2)
@@ -1221,62 +1291,31 @@ with tab_resumo:
                     "Vê o separador **Cenários → emergency_vehicle_conflict** para o caso de emergência."
                 )
 
-        # ── navigation chips: click jumps to the matching tab ─────────────────
-        # st.tabs has no programmatic-switch API (Streamlit 1.36), so the chips
-        # render inside a components.html iframe and click the real tab button
-        # (matched by its visible label) in the parent document. Fully client-side
-        # — no rerun, instant switch. Labels MUST match the st.tabs() labels above.
+        # ── navigation chips: click jumps to the matching view ────────────────
+        # Real st.buttons (styled as cards via .st-key-explore_chips) set
+        # active_tab and rerun — the drawer-driven equivalent of the old tabs.
         section("Explorar em detalhe")
         nav_items = [
             ("KPIs", "Comparação detalhada entre cenários, por classe e métrica."),
             ("Decisão", "O que o algoritmo decidiu e porquê."),
             ("Cenários", "Impacto do TSP nas 8 situações operacionais."),
         ]
-        nav_chips = "".join(
-            f'<div class="footer-chip" role="button" tabindex="0" '
-            f"onclick=\"goTab('{label}')\" "
-            f"onkeydown=\"if(event.key==='Enter'||event.key===' '){{event.preventDefault();goTab('{label}')}}\">"
-            f'<div class="fc-label">{label} →</div>'
-            f'<div class="fc-desc">{desc}</div></div>'
-            for label, desc in nav_items
-        )
-        components.html(
-            f"""
-            <style>
-              * {{ box-sizing:border-box; }}
-              body {{ margin:0; font-family:"Source Sans Pro",-apple-system,system-ui,sans-serif; }}
-              .nav-grid {{ display:grid; gap:1rem; grid-template-columns:repeat(3,1fr); }}
-              .footer-chip {{ border:1px solid #e5e7eb; border-radius:10px; padding:1rem 1.25rem;
-                              cursor:pointer; background:#fff; min-width:0; height:100%;
-                              transition:background .15s,border-color .15s,box-shadow .15s; }}
-              .footer-chip:hover {{ background:#f9fafb; border-color:#cbd5e1;
-                                    box-shadow:0 1px 3px rgba(15,23,42,.06); }}
-              .footer-chip:focus-visible {{ outline:2px solid #2563eb; outline-offset:2px; }}
-              .fc-label {{ font-size:14px; font-weight:700; color:#0f172a; margin:0 0 4px; }}
-              .fc-desc  {{ font-size:12px; color:#64748b; margin:0; line-height:1.45; }}
-            </style>
-            <div class="nav-grid">{nav_chips}</div>
-            <script>
-              function goTab(label) {{
-                const tabs = window.parent.document.querySelectorAll('button[role="tab"]');
-                for (const t of tabs) {{
-                  if (t.innerText.trim() === label) {{
-                    t.click();
-                    window.parent.scrollTo({{ top: 0, behavior: "smooth" }});
-                    return;
-                  }}
-                }}
-              }}
-            </script>
-            """,
-            height=120,
-        )
+        with st.container(key="explore_chips"):
+            chip_cols = st.columns(3)
+            for chip_col, (chip_label, chip_desc) in zip(chip_cols, nav_items, strict=False):
+                with chip_col:
+                    if st.button(
+                        f"{chip_label} →", key=f"chip_{chip_label}", use_container_width=True
+                    ):
+                        st.session_state.active_tab = chip_label
+                        st.rerun()
+                    st.caption(chip_desc)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 1 — KPI comparison
 # ═══════════════════════════════════════════════════════════════════════════════
 
-with tab_kpi:
+elif _active == "KPIs":
     if not cls_data:
         st.info("Sem dados de KPI disponíveis.")
     else:
@@ -1297,7 +1336,10 @@ with tab_kpi:
                 if bus_display in cls_label_map:
 
                     def _focus_buses(target=bus_display):
-                        st.session_state["veh_cls_select"] = target
+                        # write the canonical (non-widget) key — the drawer's
+                        # selectbox isn't mounted here, so its widget key would be
+                        # garbage-collected before the next run reads it.
+                        st.session_state["vehicle_class_display"] = target
 
                     st.button(
                         "Ver autocarros",
@@ -1388,7 +1430,7 @@ with tab_kpi:
                 hovertemplate="%{y}<br>%{fullData.name}: %{x:.1f}<extra></extra>",
             )
             chart_layout(fig, "KPIs por cenário (segundos)")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
             insight(
                 "Barras mais curtas = melhor desempenho nas métricas de tempo. "
                 "Compare o <strong>baseline</strong> (cinzento) com os cenários TSP para quantificar o ganho."
@@ -1432,7 +1474,7 @@ with tab_kpi:
                 chart_layout(
                     fig_wf, "Ganho absoluto (s) — verde reduz, vermelho aumenta", height=320
                 )
-                st.plotly_chart(fig_wf, use_container_width=True)
+                st.plotly_chart(fig_wf, use_container_width=True, config={"displayModeBar": False})
                 insight(
                     "Verde = melhoria (redução do tempo). Vermelho = degradação. "
                     "A linha vertical é o cenário de referência. Percentagens = variação relativa."
@@ -1519,7 +1561,7 @@ with tab_kpi:
             )
             chart_layout(fig_dist, "Perda de tempo: média e cauda da distribuição (P95)")
             fig_dist.update_layout(showlegend=False)
-            st.plotly_chart(fig_dist, use_container_width=True)
+            st.plotly_chart(fig_dist, use_container_width=True, config={"displayModeBar": False})
             insight(
                 "O P95 representa os 5% de viagens com pior desempenho — a cauda é relevante para "
                 "avaliar equidade e o pior caso. Um bom TSP reduz tanto a média como o P95."
@@ -1529,7 +1571,7 @@ with tab_kpi:
 # TAB 2 — TSP decision engine
 # ═══════════════════════════════════════════════════════════════════════════════
 
-with tab_decisions:
+elif _active == "Decisão":
     if not demo:
         st.info("Report do demonstrador não disponível.")
     else:
@@ -1599,7 +1641,7 @@ with tab_decisions:
                     )
                 )
                 chart_layout(fig_funnel, "Funil de decisão TSP", height=300)
-                st.plotly_chart(fig_funnel, use_container_width=True)
+                st.plotly_chart(fig_funnel, use_container_width=True, config={"displayModeBar": False})
             with col_m:
                 st.markdown("&nbsp;")
                 mm1, mm2 = st.columns(2)
@@ -1681,7 +1723,7 @@ with tab_decisions:
                 )
                 chart_layout(fig_pie, "Acções do motor TSP", height=320)
                 fig_pie.update_layout(showlegend=False)
-                st.plotly_chart(fig_pie, use_container_width=True)
+                st.plotly_chart(fig_pie, use_container_width=True, config={"displayModeBar": False})
             else:
                 st.caption("Sem acções registadas.")
         with col_legend:
@@ -1764,7 +1806,7 @@ with tab_decisions:
             )
             chart_layout(fig_o, "", height=max(220, len(items) * 46 + 80))
             fig_o.update_xaxes(range=[0, max(vals_o) * 1.25 + 0.01])
-            st.plotly_chart(fig_o, use_container_width=True)
+            st.plotly_chart(fig_o, use_container_width=True, config={"displayModeBar": False})
             top_obj = labels_o[0] if labels_o else "—"
             insight(
                 "Contribuição média de cada objectivo para o priority score das decisões que "
@@ -1790,7 +1832,7 @@ with tab_decisions:
                 height=max(260, len(df_sf) * 50 + 80),
             )
             chart_layout(fig_sf, "Safety Layer — motivos de bloqueio")
-            st.plotly_chart(fig_sf, use_container_width=True)
+            st.plotly_chart(fig_sf, use_container_width=True, config={"displayModeBar": False})
             insight(
                 "A Safety Layer bloqueia actuações que criem conflitos: amarelo insuficiente, "
                 "violação de verde mínimo/máximo, cooldown entre actuações ou conflito de fases."
@@ -1823,7 +1865,7 @@ with tab_decisions:
 # TAB 3 — C-ITS Pipeline
 # ═══════════════════════════════════════════════════════════════════════════════
 
-with tab_cits:
+elif _active == "C-ITS":
     if not demo:
         st.info("Report do demonstrador não disponível.")
     else:
@@ -1900,7 +1942,7 @@ with tab_cits:
                     fig_ct.update_layout(showlegend=False)
                     fig_ct.update_traces(hovertemplate="%{x}: %{y}<extra></extra>")
                     chart_layout(fig_ct, "Mensagens por protocolo C-ITS (escala log)")
-                    st.plotly_chart(fig_ct, use_container_width=True)
+                    st.plotly_chart(fig_ct, use_container_width=True, config={"displayModeBar": False})
                 with col_desc:
                     st.markdown("&nbsp;")
                     for mtype, mdesc in cits_descs.items():
@@ -1959,7 +2001,7 @@ with tab_cits:
                 )
                 fig_prl.update_layout(showlegend=False)
                 chart_layout(fig_prl, "Pedidos de prioridade — estados no ciclo de vida")
-                st.plotly_chart(fig_prl, use_container_width=True)
+                st.plotly_chart(fig_prl, use_container_width=True, config={"displayModeBar": False})
                 insight(
                     "<strong>Granted</strong> = prioridade concedida. <strong>Cleared</strong> = "
                     "pedido concluído (autocarro passou). <strong>Expired</strong> = timeout sem "
@@ -1982,7 +2024,7 @@ with tab_cits:
 # TAB 4 — Baseline vs RL
 # ═══════════════════════════════════════════════════════════════════════════════
 
-with tab_rl:
+elif _active == "vs RL":
     if not rl_comparison:
         warn(
             "Report de comparação Baseline vs RL não disponível. "
@@ -2021,7 +2063,7 @@ with tab_rl:
             )
             fig_vc.update_layout(showlegend=False)
             chart_layout(fig_vc, "Veredictos da política RL vs baseline rule-based")
-            st.plotly_chart(fig_vc, use_container_width=True)
+            st.plotly_chart(fig_vc, use_container_width=True, config={"displayModeBar": False})
             insight(
                 "Cada decisão compara a acção da política RL com a rule-based. Veredicto positivo = "
                 "RL escolheu acção com melhor valor estimado de recompensa."
@@ -2053,7 +2095,7 @@ with tab_rl:
 # TAB 5 — Scenarios
 # ═══════════════════════════════════════════════════════════════════════════════
 
-with tab_scenarios:
+elif _active == "Cenários":
     scenario_dir = REPORTS / "scenarios"
     scen_names = (
         sorted(p.name for p in scenario_dir.iterdir() if p.is_dir())
@@ -2481,7 +2523,7 @@ with tab_scenarios:
 # TAB 6 — Metodologia
 # ═══════════════════════════════════════════════════════════════════════════════
 
-with tab_meta:
+elif _active == "Método":
     st.markdown("#### Como ler estes resultados — fontes, parâmetros e limites da simulação.")
     st.caption(
         "Tudo nesta dashboard vem de runs SUMO/TraCI reais (não há números inventados). "
@@ -2567,11 +2609,58 @@ with tab_meta:
             if ev_rows:
                 st.dataframe(pd.DataFrame(ev_rows), use_container_width=True, hide_index=True)
 
+    # ── Glossário de métricas (relocated from the sidebar; searchable cards) ───
+    section("Glossário de métricas")
+    gloss_query = st.text_input(
+        "Pesquisar métrica",
+        placeholder="Pesquisar métrica...",
+        label_visibility="collapsed",
+        key="gloss_search",
+    )
+    gloss_filtered = (
+        [
+            g
+            for g in GLOSSARY
+            if gloss_query.lower() in g["term"].lower()
+            or gloss_query.lower() in g["def"].lower()
+        ]
+        if gloss_query
+        else GLOSSARY
+    )
+    if not gloss_filtered:
+        st.caption("Nenhuma métrica encontrada.")
+    else:
+        gloss_cols = st.columns(2)
+        for gi, entry in enumerate(gloss_filtered):
+            with gloss_cols[gi % 2]:
+                st.markdown(
+                    f'<div class="gloss-card">'
+                    f'<div class="gloss-term">{entry["term"]}'
+                    f'<span class="gloss-unit">{entry["unit"]}</span></div>'
+                    f'<div class="gloss-def">{entry["def"]}</div>'
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+
+    # ── Guia de leitura (relocated from the sidebar; numbered step cards) ──────
+    section("Guia de leitura")
+    for step in STEPS:
+        st.markdown(
+            f'<div class="step-card">'
+            f'<div class="step-num">{step["n"]}</div>'
+            f"<div>"
+            f'<div class="step-title">{step["title"]}</div>'
+            f'<div class="step-body">{step["body"]}</div>'
+            f"</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 7 — Simulação
 # ═══════════════════════════════════════════════════════════════════════════════
 
-with tab_sim:
+elif _active == "Simulação":
     st.markdown(
         "Lança simulações SUMO directamente a partir da dashboard — visualmente no "
         "SUMO-GUI ou em modo headless para regenerar os reports de análise."
