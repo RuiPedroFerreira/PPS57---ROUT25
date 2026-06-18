@@ -3,9 +3,11 @@
 
 The Ingolstadt branch is the reference evidence path: scenarios come from
 ``configs/scenario_catalog_ingolstadt.yaml`` and each run writes isolated SUMO
-outputs, KPIs and reports under ``reports/ingolstadt``. The old no-actuation mode
-is kept as a TSP dry-run, but the baseline arm is now plain SUMO without the TSP
-runtime.
+outputs, KPIs and reports under ``reports/ingolstadt``. Há dois modos: o
+``baseline`` corre o controller TSP em dry-run (``apply_actuation=False`` — decide
+mas não atua) e o ``tsp_actuation`` corre-o com atuação. Partilham o mesmo caminho,
+diferindo só no toggle, pelo que a equivalência baseline ≡ no-actuation é garantida
+por construção.
 """
 
 from __future__ import annotations
@@ -13,7 +15,6 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
-import subprocess
 import sys
 from copy import deepcopy
 from dataclasses import dataclass
@@ -28,13 +29,11 @@ for path in (SRC, SCRIPTS):
         sys.path.insert(0, str(path))
 
 from pps57_cits.config import load_cits_config  # noqa: E402
-from pps57_sumo.build_network import sumo_environment  # noqa: E402
 from pps57_sumo.scenarios import ScenarioConfigError, load_catalog  # noqa: E402
 from pps57_tsp.config import load_tsp_config  # noqa: E402
 from pps57_tsp.controller import TSPControlController  # noqa: E402
 from run_sumo_scenario import (  # noqa: E402
     _aggregate_replications,
-    _require,
     apply_relative_insertion_gate,
     collect_run_kpis,
     compare_scenario_runs,
@@ -46,7 +45,9 @@ from run_sumo_scenario import (  # noqa: E402
 
 SCENARIO_DIR = ROOT / ".tools" / "ingolstadt" / "simulation" / "Ingolstadt SUMO 365"
 WORK = ROOT / ".tools" / "ingol_run"
-RUN_TYPES = ("baseline", "tsp_no_actuation", "tsp_actuation")
+# Dois modos: baseline = controller em dry-run (apply_actuation=False) e
+# tsp_actuation = atuação real. Mesmo caminho (run_tsp), só muda o toggle.
+RUN_TYPES = ("baseline", "tsp_actuation")
 DEFAULT_SEED = 57
 REFERENCE = "ingolstadt_citywide"
 SCENARIO_SET = "pps57_ingolstadt_citywide_tsp_v1"
@@ -81,7 +82,8 @@ def parse_args() -> argparse.Namespace:
         "--run-type",
         choices=[*RUN_TYPES, "pair", "comparison", "all"],
         default="pair",
-        help="baseline=plain SUMO; tsp_no_actuation=TSP dry-run; tsp_actuation=real actuation.",
+        help="baseline=controller em dry-run (sem atuação); tsp_actuation=atuação real. "
+        "pair/comparison/all resolvem todos para baseline + tsp_actuation.",
     )
     parser.add_argument("--seeds", nargs="+", type=int, default=None)
     parser.add_argument(
@@ -103,7 +105,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--no-actuation",
         action="store_true",
-        help="Legacy shortcut for an ad-hoc TSP dry-run; not a plain SUMO baseline.",
+        help="Atalho para correr só o braço baseline (controller em dry-run, sem atuação).",
     )
     parser.add_argument("--generate-only", action="store_true")
     parser.add_argument(
@@ -376,12 +378,12 @@ def _run_report_dir(
 
 
 def _run_types_for(args: argparse.Namespace) -> list[str]:
+    # baseline já É o dry-run (controller com apply_actuation=False), por isso
+    # --no-actuation resolve para baseline; os aliases dão o par dos dois modos.
     if args.no_actuation:
-        return ["tsp_no_actuation"]
-    if args.run_type == "pair":
+        return ["baseline"]
+    if args.run_type in {"pair", "comparison", "all"}:
         return ["baseline", "tsp_actuation"]
-    if args.run_type in {"comparison", "all"}:
-        return ["baseline", "tsp_no_actuation", "tsp_actuation"]
     return [args.run_type]
 
 
@@ -478,13 +480,6 @@ def write_tsp_config(
     return config_path
 
 
-def run_baseline(args: argparse.Namespace, sumocfg: Path) -> None:
-    _require(args.sumo_binary)
-    cmd = [args.sumo_binary, "-c", str(sumocfg), "--duration-log.statistics"]
-    print("$ " + " ".join(cmd))
-    subprocess.run(cmd, cwd=ROOT, check=True, env=sumo_environment())
-
-
 def run_tsp(
     args: argparse.Namespace,
     spec: IngolstadtScenarioSpec,
@@ -527,10 +522,9 @@ def run_scenario_type(
 
     controller_summary: dict[str, Any] = {}
     if not args.generate_only:
-        if run_type == "baseline":
-            run_baseline(args, sumocfg)
-        else:
-            controller_summary = run_tsp(args, spec, run_type, run_output_dir, sumocfg, net)
+        # baseline e tsp_actuation partilham o caminho do controller; run_tsp só
+        # liga a atuação quando run_type == "tsp_actuation".
+        controller_summary = run_tsp(args, spec, run_type, run_output_dir, sumocfg, net)
 
     out_dir = run_output_dir / "out"
     kpis = collect_run_kpis(out_dir)

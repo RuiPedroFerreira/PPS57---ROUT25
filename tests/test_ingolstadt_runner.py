@@ -90,14 +90,16 @@ class IngolstadtRunnerTestCase(unittest.TestCase):
             self.assertIn(str(run_output / "out" / "summary.xml"), text)
             self.assertIn("routes_2023-07-04_24h_det_calib.rou.xml.gz", text)
 
-    def test_no_actuation_flag_maps_catalog_runs_to_tsp_dry_run(self) -> None:
+    def test_no_actuation_flag_maps_to_baseline_dry_run(self) -> None:
+        # Após consolidar para dois modos, o baseline É o dry-run (controller com
+        # apply_actuation=False), por isso --no-actuation resolve para baseline.
         args = argparse.Namespace(
             no_actuation=True,
             scenario="city_am_peak",
             all=False,
             run_type="pair",
         )
-        self.assertEqual(rid._run_types_for(args), ["tsp_no_actuation"])
+        self.assertEqual(rid._run_types_for(args), ["baseline"])
 
     def test_citywide_tsp_config_disables_corridor_debt_and_specific_mappings(self) -> None:
         raw = json.loads((ROOT / "configs/tsp_safety_config.json").read_text(encoding="utf-8"))

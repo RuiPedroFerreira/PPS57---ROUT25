@@ -217,8 +217,10 @@ paths into XML comments, where `--` is illegal).
 .venv/bin/python scripts/run_ingolstadt_demo.py --all --run-type pair --seeds 57
 ```
 
-The `baseline` arm is plain SUMO without the TSP runtime. `tsp_no_actuation` is
-kept as a dry-run/counterfactual audit mode, not as the baseline. The runner
+The `baseline` arm runs the same TSP controller in dry-run mode
+(`apply_actuation=False`): it decides but never actuates, so it differs from
+`tsp_actuation` only by the actuation toggle — a clean controlled experiment, with
+the equivalence baseline ≡ no-actuation guaranteed by construction. The runner
 auto-discovers all 123 TLS, builds the authoritative conflict matrix, writes
 isolated SUMO outputs under `.tools/ingol_run/runs/<scenario>/<run_type>/seed_<n>/out/`,
 and writes KPIs/reports under `reports/ingolstadt/`.
@@ -389,8 +391,9 @@ make scenario-run SCENARIO=cross_traffic_pressure RUN_TYPE=comparison
 make scenario-suite RUN_TYPE=baseline
 ```
 
-Supported run types are `baseline`, `cits`, `tsp_no_actuation`,
-`tsp_actuation`, `comparison` (baseline + no-actuation + actuation), and `all`.
+Supported run types are `baseline` (controller dry-run, no actuation) and
+`tsp_actuation` (real actuation). `pair`, `comparison`, and `all` are retained
+aliases that all resolve to `baseline` + `tsp_actuation`.
 
 Scenario KPIs include tripinfo metrics (duration, speed, waiting time,
 timeLoss, bus headways and priority/general/emergency vehicle groups) plus E1/E2
@@ -426,7 +429,7 @@ in `configs/sumo_scenario_base.json`.
 When running C-ITS/TSP modes in restricted environments, set a fixed TraCI port:
 
 ```bash
-TRACI_PORT=8813 make scenario-run SCENARIO=baseline_off_peak RUN_TYPE=tsp_no_actuation
+TRACI_PORT=8813 make scenario-run SCENARIO=baseline_off_peak RUN_TYPE=tsp_actuation
 ```
 
 ### Run C-ITS/V2X Emulation
@@ -1190,7 +1193,7 @@ make train-rl-policy
 ### Scenario runs need a fixed TraCI port
 
 ```bash
-TRACI_PORT=8813 make scenario-run SCENARIO=baseline_off_peak RUN_TYPE=tsp_no_actuation
+TRACI_PORT=8813 make scenario-run SCENARIO=baseline_off_peak RUN_TYPE=tsp_actuation
 ```
 
 ### Optimized runtime policy is not loaded

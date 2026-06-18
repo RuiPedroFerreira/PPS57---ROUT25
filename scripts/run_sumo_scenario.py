@@ -19,7 +19,6 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from pps57_cits.config import load_cits_config  # noqa: E402
-from pps57_cits.controller import CITSEmulationController  # noqa: E402
 from pps57_sumo.build_network import build_sumo_artifacts, sumo_environment  # noqa: E402
 from pps57_sumo.detector_kpis import parse_detector_kpis  # noqa: E402
 from pps57_sumo.parse_emissions import parse_emissions  # noqa: E402
@@ -35,7 +34,10 @@ from pps57_sumo.stats import T_CRITICAL_95, mean_ci95, t_critical_95  # noqa: E4
 from pps57_tsp.config import load_tsp_config  # noqa: E402
 from pps57_tsp.controller import TSPControlController  # noqa: E402
 
-RUN_TYPES = ("baseline", "cits", "tsp_no_actuation", "tsp_actuation")
+# baseline = controller em dry-run (apply_actuation=False); tsp_actuation = atuação
+# real. Os dois braços partilham o MESMO caminho (run_tsp), diferindo só no toggle de
+# atuação, pelo que a equivalência baseline ≡ no-actuation fica garantida por construção.
+RUN_TYPES = ("baseline", "tsp_actuation")
 
 
 def parse_args() -> argparse.Namespace:
@@ -175,12 +177,12 @@ def run_scenario(
     scenario_output_dir.mkdir(parents=True, exist_ok=True)
     scenario_report_dir.mkdir(parents=True, exist_ok=True)
 
-    if args.run_type == "pair":
+    # pair/comparison/all são aliases retidos para compatibilidade (Makefile/README):
+    # após a consolidação para dois modos, todos resolvem para baseline + tsp_actuation.
+    if args.run_type in {"pair", "comparison", "all"}:
         run_types = ["baseline", "tsp_actuation"]
-    elif args.run_type == "comparison":
-        run_types = ["baseline", "tsp_no_actuation", "tsp_actuation"]
     else:
-        run_types = list(RUN_TYPES) if args.run_type == "all" else [args.run_type]
+        run_types = [args.run_type]
 
     seeds = _resolve_seeds(args, config)
     scenario_runs: dict[str, dict] = {}
@@ -477,10 +479,8 @@ def run_scenario_type(
         return summary
 
     if run_type == "baseline":
-        run_baseline_sumo(args, config, run_output_dir, artifacts.sumocfg_file)
-    elif run_type == "cits":
-        run_cits(args, scenario_id, run_output_dir, run_report_dir, artifacts)
-    elif run_type == "tsp_no_actuation":
+        # Baseline = o controller real em dry-run: decide mas não atua. Mesmo
+        # caminho que tsp_actuation, só com o toggle de atuação a falso.
         run_tsp(args, scenario_id, run_output_dir, run_report_dir, artifacts, apply_actuation=False)
     elif run_type == "tsp_actuation":
         run_tsp(args, scenario_id, run_output_dir, run_report_dir, artifacts, apply_actuation=True)
@@ -498,40 +498,6 @@ def run_scenario_type(
     return summary
 
 
-def run_baseline_sumo(
-    args: argparse.Namespace, config: dict, run_output_dir: Path, sumocfg: Path
-) -> None:
-    binary = (
-        config.get("sumo", {}).get("default_gui_binary", "sumo-gui")
-        if args.gui
-        else args.sumo_binary
-    )
-    end_s = _effective_end_s(config, args.steps)
-    cmd = [
-        binary,
-        "-c",
-        str(sumocfg),
-        "--duration-log.statistics",
-        "--tripinfo-output",
-        str(run_output_dir / "tripinfo.xml"),
-        "--summary-output",
-        str(run_output_dir / "summary.xml"),
-        "--statistic-output",
-        str(run_output_dir / "statistics.xml"),
-        "--emission-output",
-        str(run_output_dir / "emissions.xml"),
-        "--seed",
-        str(config.get("random_seed", 57)),
-        "--end",
-        _format_sumo_number(end_s),
-    ]
-    if config.get("pedestrian_flows"):
-        cmd.extend(["--pedestrian.model", "striping"])
-    if args.gui:
-        cmd.extend(["--start", "--quit-on-end"])
-    _run(cmd)
-
-
 def _effective_end_s(config: dict, requested_steps: int | None) -> float:
     configured_begin = float(config.get("simulation_begin_s", 0))
     configured_end = float(config.get("simulation_end_s", 7200))
@@ -542,24 +508,6 @@ def _effective_end_s(config: dict, requested_steps: int | None) -> float:
         raise SystemExit("simulation_step_length_s must be > 0.")
     requested_end = configured_begin + max(0, int(requested_steps)) * step_length
     return min(configured_end, requested_end)
-
-
-def _format_sumo_number(value: float) -> str:
-    return str(int(value)) if float(value).is_integer() else str(value)
-
-
-def run_cits(
-    args: argparse.Namespace,
-    scenario_id: str,
-    run_output_dir: Path,
-    run_report_dir: Path,
-    artifacts,
-) -> None:
-    clear_global_sumo_outputs()
-    config_path = write_cits_config(scenario_id, run_output_dir, run_report_dir, artifacts)
-    config = load_cits_config(config_path, root=ROOT)
-    controller = CITSEmulationController(config)
-    controller.run_with_sumo(steps=args.steps, sumo_binary=args.sumo_binary, gui=args.gui)
 
 
 def run_tsp(
@@ -745,7 +693,7 @@ def compare_scenario_runs(runs: dict[str, dict]) -> dict:
     baseline = _load_kpis(runs.get("baseline", {}).get("kpis"))
     baseline_run = runs.get("baseline", {})
     comparisons: dict[str, dict] = {}
-    for run_type in ("tsp_no_actuation", "tsp_actuation"):
+    for run_type in ("tsp_actuation",):
         candidate = _load_kpis(runs.get(run_type, {}).get("kpis"))
         if not baseline or not candidate:
             continue
