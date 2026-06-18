@@ -34,7 +34,7 @@ try:
 except ImportError:  # pragma: no cover - exercised in minimal CI images.
     from xml.etree import ElementTree as ET  # type: ignore[no-redef]
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
 SCRIPTS = ROOT / "scripts"
 for entry in (str(SRC), str(SCRIPTS)):
