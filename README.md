@@ -1,66 +1,104 @@
 # PPS57 ROUT25 Traffic Priority Platform
 
-PPS57 ROUT25 is a local validation platform for public-transport traffic-signal priority on a simulated Porto/Boavista corridor model. It combines a SUMO digital twin, C-ITS/V2X message emulation, an explainable TSP decision engine, a mandatory Safety Layer, offline policy optimization, and tabular reinforcement-learning training.
+PPS57 ROUT25 is a local validation platform for public-transport traffic-signal
+priority (TSP). It combines a SUMO digital twin, C-ITS/V2X message emulation, an
+explainable TSP decision engine, a mandatory Safety Layer, offline policy
+optimization, tabular reinforcement-learning training, and a Streamlit dashboard
+for results comparison.
 
-The repository is designed for technical demonstration and validation. It is not an operational traffic-control deployment: network geometry, demand, public-transport lines and signal plans are synthetic SUMO assets for simulation only.
+The platform runs on **two complementary scenarios**:
+
+- a **real, third-party calibrated city-wide network** — Ingolstadt (DE), the
+  TUM-VT `sumo_ingolstadt` scenario — used for external-validity, scale and
+  honest grounding; and
+- a **synthetic demonstration corridor** — a hand-built SUMO corridor themed on
+  Porto/Boavista — used as a small, fully controllable arm for the C-ITS/TSP
+  pipeline, the scenario suite and the dashboard.
+
+It is a technical demonstration and validation platform, **not** an operational
+traffic-control deployment. The synthetic corridor's geometry, demand, PT lines
+and signal plans are SUMO assets for simulation only; the Ingolstadt scenario is
+real third-party data used as-is, never re-invented.
 
 ## What It Does
 
-- Builds and runs a SUMO corridor scenario for Porto/Boavista.
-- Emulates C-ITS/V2X messages in JSON form: `MAPEM`, `SPATEM`, `SREM`, and `SSEM`.
-- Generates bus priority requests from emulated OBUs and validates them through RSUs.
+- Runs the explainable TSP engine **city-wide on the real Ingolstadt network**
+  (123 signalised intersections, detector-calibrated demand, real GTFS public
+  transport), baseline vs TSP with paired seeds.
+- Builds and runs a **synthetic SUMO corridor** scenario for controlled C-ITS/TSP
+  demonstrations and the multi-scenario suite.
+- Emulates C-ITS/V2X messages in JSON form: `MAPEM`, `SPATEM`, `SREM`, `SSEM`.
+- Generates bus priority requests from emulated OBUs and validates them via RSUs.
 - Converts accepted priority requests into TSP decisions.
-- Applies a Safety Layer before any signal actuation.
-- Validates a controller contract with signal groups, conflicts, intergreens and
-  safety bounds before enabling TraCI actuation.
+- Applies a mandatory **Safety Layer** before any signal actuation.
+- Validates a controller contract (signal groups, conflicts, intergreens, safety
+  bounds) before enabling TraCI actuation, using the network's own authoritative
+  conflict matrix (`<request foes>`).
 - Screens approved TSP actions through a simulated controller layer that can
   ACK/NACK commands before they reach SUMO/TraCI.
 - Supports SUMO/TraCI actuation and SUMO/TraCI no-actuation observation mode.
-- Optionally activates v2.2 priority event lifecycle (check-in/check-out with
+- Optionally activates the v2.2 priority event lifecycle (check-in/check-out with
   rolling green extensions and green compensation).
 - Exports JSONL logs and JSON reports for auditability.
-- Generates a demonstrator report comparing SUMO baseline, direct TSP and TSP
-  through the simulated controller, using only SUMO/TraCI artifacts.
-- Compares offline policy candidates against the baseline TSP engine.
-- Trains a tabular Q-learning policy from SUMO/TraCI event-derived scenarios.
+- Compares offline policy candidates against the baseline TSP engine and trains a
+  tabular Q-learning policy from SUMO/TraCI event-derived scenarios.
 - Loads exported policies for runtime inference in semi-live TSP runs.
-- Provides a sim-to-real validation ladder (V0–V4d) for grounding the simulation
-  in real-world references without fabricating data.
+- Presents results in a **Streamlit dashboard** (`dashboard.py`).
+
+## Two Scenarios: Real City-Wide vs Synthetic Corridor
+
+The platform keeps a clear line between the two arms; they are not the same model.
+
+| | Ingolstadt city-wide | Synthetic corridor |
+|---|---|---|
+| Geometry | Real OSM-derived net (TUM-VT), 123 TLS | Hand-built corridor, ~7 intersections |
+| Demand | Detector-calibrated real routes | Synthetic, HCM-anchored profiles |
+| Public transport | Real GTFS (INVG): 59 lines, 2138 trips/day, 418 stops | Synthetic proxy lines |
+| Signal plans | Real `TL`/`WAUT` programs | Generated fixed-time plans |
+| Used for | External validity, scale, honest grounding | Controlled C-ITS/TSP demo, scenario suite, dashboard |
+| Entry point | `scripts/run_ingolstadt_demo.py` | `make build`, `scripts/run_sumo_scenario.py`, `make tsp-demonstrator` |
+| Catalog | `configs/scenario_catalog_ingolstadt.yaml` | `configs/scenario_catalog.yaml` |
+
+The synthetic corridor is themed "Porto/Boavista" in identifiers and example
+payloads. That theme is cosmetic: the geometry is generic synthetic SUMO assets,
+**not** a model of Porto and **not** Ingolstadt.
 
 ## Repository Layout
 
 ```text
-configs/                 Runtime configuration for C-ITS, TSP and policy training
+configs/                 Runtime config for C-ITS, TSP, policy training, scenarios
+dashboard.py             Streamlit results-comparison dashboard
+public/                  Dashboard branding assets (logos)
 outputs/                 Generated JSONL/XML/log artifacts (git-ignored)
-reports/                 Generated summaries, KPIs and policy reports
+reports/                 Generated summaries, KPIs and policy reports (git-ignored)
 scripts/                 User-facing command-line entry points
+scripts/legacy_porto/    Archived Porto/Boavista sim-to-real exploration (see its README)
 src/pps57_cits/          C-ITS/V2X emulation layer
 src/pps57_opt/           Policy optimization, runtime policy loading and RL training
-src/pps57_sumo/          SUMO network generation, KPI parsing and sim-to-real metrics
+src/pps57_sumo/          SUMO network generation, KPI parsing, network binding/profile
 src/pps57_tsp/           TSP engine, Safety Layer and actuation
-sumo/                    SUMO network, routes, additional files and run config
+sumo/                    Synthetic-corridor SUMO network, routes, additionals, run config
 tests/                   Unit and integration tests
-.tools/                  Git-ignored validation artifacts (OSM extracts, GTFS feeds,
-                         reference counts — fetched by scripts, never vendored)
+.tools/                  Git-ignored downloads (TUM-VT Ingolstadt clone, fetched data)
 ```
 
 ## Documentation Map
 
 - [Prerequisites](#prerequisites) and [Environment Setup](#environment-setup)
-  cover the local Python/SUMO setup.
-- [First Run Quick Start](#first-run-quick-start) gives the shortest validation
-  and simulation paths.
-- [Available Make Targets](#available-make-targets) is the command reference for
-  common project workflows.
+  cover the local Python/SUMO/dashboard setup.
+- [First Run Quick Start](#first-run-quick-start) gives the shortest paths.
+- [Ingolstadt City-Wide Scenario](#ingolstadt-city-wide-scenario-tum-vt) covers
+  the real-network run.
+- [Streamlit Dashboard](#streamlit-dashboard) covers `dashboard.py`.
+- [Available Make Targets](#available-make-targets) is the command reference.
 - [Command-Line Workflows](#command-line-workflows) describes each pipeline and
-  its generated artifacts.
-- [Sim-to-Real Validation Ladder](#sim-to-real-validation-ladder) describes the
-  V0–V4d evidence chain.
+  its artifacts.
 - [Output Artifacts](#output-artifacts), [Safety Layer Rules](#safety-layer-rules)
   and [Runtime Policy Modes](#runtime-policy-modes) explain the runtime evidence
   model.
-- [Troubleshooting](#troubleshooting) lists the most common setup and runtime
-  issues.
+- [Real-Scenario Grounding & Honest Limitations](#real-scenario-grounding--honest-limitations)
+  records what is real, what is synthetic and what is not claimed.
+- [Troubleshooting](#troubleshooting) lists the most common issues.
 
 ## Prerequisites
 
@@ -70,6 +108,9 @@ Run commands from the repository root. The project expects:
 - A local virtual environment at `.venv`.
 - SUMO command-line tools reachable from `PATH` for simulation workflows:
   `sumo`, `sumo-gui` and `netconvert`.
+- For the Ingolstadt scenario: a local clone of the TUM-VT scenario (see below).
+- For the dashboard: `streamlit`, `plotly` and `pandas` (included in the
+  pinned dependency set).
 
 The pinned dependency set includes the SUMO Python interfaces and, where the
 `eclipse-sumo` wheel supports the platform, SUMO CLI binaries inside `.venv/bin`.
@@ -117,7 +158,7 @@ make test
 make scenario-list
 ```
 
-For a baseline SUMO run and KPI export:
+For a synthetic-corridor baseline SUMO run and KPI export:
 
 ```bash
 make build
@@ -125,24 +166,92 @@ make run
 make kpis
 ```
 
-For C-ITS/TSP event data, run one of the SUMO/TraCI workflows:
+For the real city-wide scenario (after cloning TUM-VT — see below):
 
 ```bash
-make cits-sumo
-make tsp-sumo-no-actuation
+.venv/bin/python scripts/run_ingolstadt_demo.py --steps 300
 ```
 
-Build learning data and policy reports after those logs exist:
+To explore results in the dashboard:
 
 ```bash
-make build-event-training-dataset
-make optimize-offline
-make train-rl-policy
+streamlit run dashboard.py
 ```
 
 If `make build`, `make run` or a scenario command cannot find `sumo` or
 `netconvert`, activate the virtual environment in the current shell or add an
 external SUMO installation to `PATH`.
+
+## Ingolstadt City-Wide Scenario (TUM-VT)
+
+The real-network arm runs the TSP engine across the **whole signalised network of
+Ingolstadt (DE)**, using the third-party, calibrated
+[TUM-VT `sumo_ingolstadt`](https://github.com/TUM-VT/sumo_ingolstadt) scenario
+(Apache-2.0). Nothing is fabricated: the network, motorised demand
+(detector-calibrated `routes_<day>_24h_det_calib`), traffic-light programs and
+public transport (real INVG GTFS) all come from the scenario as-is.
+
+### Obtain the scenario
+
+```bash
+git clone --depth 1 https://github.com/TUM-VT/sumo_ingolstadt.git .tools/ingolstadt
+```
+
+`.tools/` is git-ignored. `scripts/run_ingolstadt_demo.py` then copies the chosen
+day's files into a clean working directory `.tools/ingol_run` — a path with no
+spaces and no `---`, which the SUMO command-line tools require (they echo file
+paths into XML comments, where `--` is illegal).
+
+### Run baseline vs TSP
+
+```bash
+# 5 minutes from the 07:00 peak, TSP actuation ON
+.venv/bin/python scripts/run_ingolstadt_demo.py --steps 300
+
+# baseline arm (decides but does not actuate)
+.venv/bin/python scripts/run_ingolstadt_demo.py --steps 300 --no-actuation
+
+# different start of the window
+.venv/bin/python scripts/run_ingolstadt_demo.py --begin 07:00:00 --steps 600
+```
+
+The runner auto-discovers all 123 TLS, builds the authoritative conflict matrix,
+prints coverage, and runs the controller through TraCI. Logs land under
+`.tools/ingol_run/out/`.
+
+### Scenario set and method
+
+`configs/scenario_catalog_ingolstadt.yaml` documents the city-wide scenario set:
+each scenario is a real **slice** (day × time window) of the calibrated data —
+e.g. `city_am_peak` (07:00–09:00 on 2023-07-04), `city_midday_offpeak`,
+`city_pm_secondary_peak`, and `weekend_sunday` (2023-06-25). The representative
+demand window is ~05:00–14:00; there is no afternoon peak on the demo day.
+
+KPIs are reported at two levels: (1) the whole network (external validity, scale)
+and (2) per line, with **Line 11** as a clean causal-attribution lens (25
+consecutive signalised intersections). Operational situations (delayed bus,
+bunching, cross-traffic pressure, multi-line conflict) **emerge** from the
+simulation and are measured, not constructed. The TSP config's `corridor` block
+is disabled city-wide (a single recovery-debt budget summed over 123 TLS is
+meaningless); the pairwise downstream spillback-defer is kept.
+
+## Streamlit Dashboard
+
+`dashboard.py` is a results-comparison dashboard for the **synthetic corridor**
+runs (it labels its geometry accordingly). Launch it with:
+
+```bash
+streamlit run dashboard.py
+```
+
+It has eight tabs — Resumo, KPIs, Decisão, C-ITS, vs RL, Cenários, Método and
+Simulação — and reads generated reports such as
+`reports/tsp_demonstrator_report.json`, `reports/baseline_kpis.json`,
+`reports/tsp_baseline_vs_rl_comparison.json`, `reports/scenarios/` and
+`configs/scenario_catalog.yaml`. Generate those first with the workflows below
+(e.g. `make tsp-demonstrator`, `make compare-tsp-rl`, `make scenario-suite`). The
+Simulação tab can launch `sumo-gui` / `scripts/run_tsp_demonstrator.py` as a
+subprocess.
 
 ## Available Make Targets
 
@@ -151,8 +260,8 @@ external SUMO installation to `PATH`.
 | `make validate` | Validate project structure and JSON configs | No |
 | `make test` | Run all unit tests | No |
 | `make sumo-smoke` | Quick SUMO binary smoke test | Yes |
-| `make build` | Generate SUMO plain files and compile the network | Yes |
-| `make run` | Build and run the SUMO baseline | Yes |
+| `make build` | Generate synthetic-corridor plain files and compile the network | Yes |
+| `make run` | Build and run the synthetic-corridor baseline | Yes |
 | `make gui` | Build and open the SUMO GUI baseline | Yes |
 | `make kpis` | Parse `outputs/tripinfo.xml` into `reports/baseline_kpis.json` | Needs tripinfo |
 | `make scenario-list` | List configured SUMO validation scenarios and estimated demand | No |
@@ -166,25 +275,31 @@ external SUMO installation to `PATH`.
 | `make tsp-gui-no-actuation` | Run TSP with SUMO GUI observation only | Yes |
 | `make compare-tsp-rl` | Run baseline and RL TSP back-to-back and write a comparison table | Yes |
 | `make compare-sumo-kpis BASELINE_KPIS=... RL_KPIS=...` | Diff two pre-generated KPI JSON files | No |
+| `make evaluate-decision-outcomes` | Classify RL decisions as same / blocked-unsafe / less intrusive | Yes |
+| `make build-event-training-dataset` | Join C-ITS/TSP/actuation logs into the event training dataset | No |
 | `make optimize-offline` | Compare safe offline policy candidates | No |
 | `make train-rl-policy` | Train tabular Q-learning policy offline | No |
 | `make sort-routes` | Sort SUMO route definitions by departure time | No |
 | `make clean` | Remove known generated artifacts | No |
+
+The Ingolstadt scenario (`scripts/run_ingolstadt_demo.py`) and the dashboard
+(`streamlit run dashboard.py`) are run as direct commands, not `make` targets.
 
 ## Choosing A Workflow
 
 | Goal | Start with |
 |---|---|
 | Validate the checkout without running SUMO | `make validate` and `make test` |
-| Confirm the scenario catalog | `make scenario-list` |
-| Build the SUMO network | `make build` |
+| Confirm the synthetic scenario catalog | `make scenario-list` |
+| Build the synthetic SUMO network | `make build` |
 | Produce baseline SUMO KPIs | `make run` followed by `make kpis` |
+| Run TSP city-wide on the real network | `scripts/run_ingolstadt_demo.py` |
 | Generate C-ITS messages from SUMO/TraCI | `make cits-sumo` |
 | Observe TSP decisions without changing signals | `make tsp-sumo-no-actuation` |
 | Run TSP with TraCI signal actuation | `make tsp-sumo` |
 | Compare baseline, direct TSP and controller-mediated TSP | `make tsp-demonstrator` |
 | Train or refresh runtime policies | `make build-event-training-dataset`, then `make optimize-offline` or `make train-rl-policy` |
-| Ground the simulation in real references | See [Sim-to-Real Validation Ladder](#sim-to-real-validation-ladder) |
+| Explore results visually | `streamlit run dashboard.py` |
 
 ## Command-Line Workflows
 
@@ -221,7 +336,7 @@ Pytest is also supported:
 .venv/bin/python -m pytest -q
 ```
 
-### Build SUMO Network
+### Build SUMO Network (synthetic corridor)
 
 ```bash
 make build
@@ -236,19 +351,15 @@ Direct equivalent:
 ```
 
 `make build` runs `make validate` first, so the gate that checks well-formed XML
-and sorted routes fires before any network compilation.
+and sorted routes fires before any network compilation. This builds the
+**synthetic corridor**; the Ingolstadt network is downloaded pre-built (see
+[Ingolstadt City-Wide Scenario](#ingolstadt-city-wide-scenario-tum-vt)).
 
-### Run SUMO Baseline
+### Run SUMO Baseline (synthetic corridor)
 
 ```bash
 make run
 make kpis
-```
-
-Or run the full baseline helper:
-
-```bash
-.venv/bin/python scripts/run_baseline.py
 ```
 
 Generated outputs:
@@ -260,9 +371,9 @@ outputs/statistics.xml
 reports/baseline_kpis.json
 ```
 
-### Run Scenario Suite
+### Run Scenario Suite (synthetic corridor)
 
-The scenario suite is declared in `configs/sumo_scenario_base.json` and
+The synthetic scenario suite is declared in `configs/sumo_scenario_base.json` and
 described in `configs/scenario_catalog.yaml`. Each scenario has a demand profile,
 public-transport service assumptions, event configuration and KPI focus.
 
@@ -464,7 +575,8 @@ reports/tsp_demonstrator_report.json
 
 The report checks public-transport KPIs, general-traffic cost, Safety Layer
 blocks, controller ACK/NACK evidence and per-TLS runtime counts. It consumes only
-SUMO/TraCI artifacts generated by those runs.
+SUMO/TraCI artifacts generated by those runs, and is the data source for the
+dashboard.
 
 ### Decision Outcome Evaluation
 
@@ -581,8 +693,9 @@ reports/rl_training_summary.json
 ### NetworkBinding Check
 
 Demonstrates that the authoritative conflict matrix (from SUMO junction `<request
-foes>`) resolves the fail-close gate on the real Boavista OSM network. Requires the
-OSM-derived network to be present (run `scripts/build_boavista_network.py` first):
+foes>`) resolves the fail-close gate on the **real Ingolstadt network**. Requires
+the Ingolstadt net to be materialised first (run `scripts/run_ingolstadt_demo.py`
+after cloning TUM-VT):
 
 ```bash
 .venv/bin/python scripts/run_network_binding_check.py
@@ -590,7 +703,7 @@ OSM-derived network to be present (run `scripts/build_boavista_network.py` first
 
 Counts signal groups that trip the fail-close predicate before and after the
 NetworkBinding is applied. Evidence is written to
-`docs/validation/networkbinding_boavista_check.json`.
+`reports/validation/networkbinding_ingolstadt_check.json`.
 
 ### Empirical Network Profile Check
 
@@ -599,72 +712,10 @@ traffic-light programs actually loaded by SUMO, and optionally applies one
 approved TSP actuation to observe the real phase sequence:
 
 ```bash
-.venv/bin/python scripts/empirical_network_profile_check.py
-.venv/bin/python scripts/empirical_network_profile_check.py --apply-actuation
-```
-
-## Sim-to-Real Validation Ladder
-
-The platform uses a V0–V4d evidence chain to ground the synthetic simulation in
-traceable real-world references. No data is fabricated: each level either fetches
-a public dataset or applies an industry-standard methodology, and the validation
-report records the source, SHA-256 and fetch timestamp. The instrument itself
-(`configs/validation_config.json`) is independent of SUMO so the oracle is not
-the system under test.
-
-| Level | What it checks | Source of truth | Status |
-|---|---|---|---|
-| V0 | GEH / flow-band instrument exists and parses | `configs/validation_config.json` (DMRB, FHWA Vol. III thresholds) | Shipped |
-| V1 | SUMO output format acceptance | SUMO tripinfo/detector schemas | Covered by tests |
-| V2 | Modelled demand plausibility (face-validity transfer) | Madrid open data (Ayuntamiento de Madrid) + UK DfT AADF; Porto has no open counts | Runnable (Porto counts unavailable) |
-| V3 | Public-transport headways vs real STCP timetable | STCP GTFS CC0 feed (Porto Open Data portal) | Runnable |
-| V4 | Real Boavista geometry from OSM | OpenStreetMap / Overpass (ODbL) | Runnable |
-| V4b | Real STCP stops and services on the real OSM net | V3 GTFS + V4 net | Runnable |
-| V4d | Reference-aligned background demand + Webster signals on real net | Madrid open-data intensity band + HCM practical capacity + Webster (1958) | Runnable |
-
-**V2 honest note:** Porto publishes no open traffic counts (CMP request declined).
-V2 therefore transfers a reference envelope from real Madrid urban detectors
-(median 397 veh/h, P75 819 veh/h, P90 1329 veh/h) and UK DfT AADF data,
-and checks that the modelled arterial intensity falls inside that spread. This is
-a face-validity gate (plausibility transfer), not a Porto calibration.
-
-### Fetching Reference Data
-
-These scripts populate `.tools/` (git-ignored) and must run before the
-corresponding validation scripts:
-
-```bash
-# Real European traffic counts (V2)
-.venv/bin/python scripts/fetch_reference_counts.py
-
-# STCP GTFS feed (V3)
-.venv/bin/python scripts/fetch_stcp_gtfs.py
-
-# Real Boavista OSM extract (V4)
-.venv/bin/python scripts/fetch_boavista_osm.py
-```
-
-### Building the Real Boavista Network
-
-```bash
-# Convert the OSM extract to a SUMO network (V4)
-.venv/bin/python scripts/build_boavista_network.py
-
-# Map real STCP stops and services onto the real net (V4b)
-.venv/bin/python scripts/build_stcp_pt_on_boavista.py
-
-# Calibrated background demand + Webster signals, run corridor, export KPIs (V4d)
-.venv/bin/python scripts/build_reference_corridor.py
-```
-
-### Running Validation Reports
-
-```bash
-# V2: demand reference envelope vs real European counts
-.venv/bin/python scripts/run_v2_demand_validation.py
-
-# NetworkBinding: conflict matrix removes OSM fail-close (requires V4 net)
-.venv/bin/python scripts/run_network_binding_check.py
+.venv/bin/python scripts/empirical_network_profile_check.py \
+  --network .tools/ingol_run/ingolstadt_net.net.xml
+.venv/bin/python scripts/empirical_network_profile_check.py \
+  --network .tools/ingol_run/ingolstadt_net.net.xml --apply-actuation
 ```
 
 ## C-ITS/V2X Message Flow
@@ -696,6 +747,10 @@ Junctions with more than 255 SUMO links have their excess links silently dropped
 per MovementEvent rather than invalidating the whole message.
 
 ## Message Examples
+
+The payloads below are **illustrative**, using synthetic-corridor identifiers
+(`RSU_BOAVISTA_02`, `STCP500_PROXY_W`). The Ingolstadt run uses the same shapes
+with that scenario's auto-discovered IDs.
 
 ### MAPEM
 
@@ -953,16 +1008,18 @@ Example SUMO/TraCI actuation result:
 | `outputs/event_training_dataset.jsonl` | `build-event-training-dataset` | Joined C-ITS/TSP/actuation scenarios for policy training |
 | `outputs/tripinfo.xml` | SUMO baseline | Per-vehicle SUMO trip information |
 | `outputs/scenarios/<scenario>/<run_type>/seed_<seed>/` | Scenario runner | Per-scenario SUMO, C-ITS and TSP run artifacts |
+| `.tools/ingol_run/out/` | `scripts/run_ingolstadt_demo.py` | Ingolstadt city-wide run logs (decisions, actuation, C-ITS, summaries) |
 | `reports/cits_emulation_summary.json` | C-ITS runs | Message counts and request summary |
 | `reports/tsp_emulation_summary.json` | TSP runs | Decision, safety and actuation summary |
 | `reports/protocol_lifecycle_audit.json` | `scripts/audit_protocol_lifecycle.py` | Replayed SREM/SSEM/TSP/actuation lifecycle audit |
 | `reports/baseline_kpis.json` | KPI parser | SUMO baseline KPI summary |
 | `reports/scenarios/<scenario>/<run_type>/seed_<seed>/kpis.json` | Scenario runner | Per-run KPI summary used by scenario reports |
+| `reports/validation/networkbinding_ingolstadt_check.json` | `scripts/run_network_binding_check.py` | Conflict-matrix coverage and fail-close removal on the Ingolstadt net |
 | `reports/policy_report.json` | Policy optimization | Exported safe runtime policy |
 | `reports/policy_optimization_summary.json` | Policy optimization | Offline comparison summary |
 | `reports/tabular_q_policy_report.json` | RL training | Exported tabular Q-learning policy |
 | `reports/rl_training_summary.json` | RL training | RL training metrics |
-| `reports/tsp_demonstrator_report.md/.json` | `make tsp-demonstrator` | Three-arm demonstrator evidence |
+| `reports/tsp_demonstrator_report.md/.json` | `make tsp-demonstrator` | Three-arm demonstrator evidence (dashboard data source) |
 | `reports/tsp_baseline_vs_rl_comparison.md/.json` | `make compare-tsp-rl` | Baseline vs RL KPI comparison |
 | `reports/decision_outcome_evaluation.md/.json` | `make evaluate-decision-outcomes` | Per-decision outcome classification |
 
@@ -977,7 +1034,8 @@ The Safety Layer is mandatory for baseline decisions, optimized runtime decision
 - maximum total green exceeded;
 - cooldown after previous priority intervention;
 - maximum consecutive priority interventions per signal;
-- expired or non-actuable requests.
+- expired or non-actuable requests;
+- signal groups without an authoritative conflict matrix (fail-closed).
 
 In v2.2 event lifecycle mode, continued rolling extensions of the same event do not
 consume cooldown budget or count as new interventions, but the cumulative event
@@ -1014,13 +1072,48 @@ SUMO/TraCI event logs -> event training dataset -> RL training -> exported polic
 
 | Config | Purpose |
 |---|---|
-| `configs/sumo_scenario_base.json` | Corridor geometry, demand, PT services, stops and SUMO generation inputs |
-| `configs/scenario_catalog.yaml` | Scenario descriptors, demand profiles and KPI focus per scenario |
-| `configs/cits_v2x_config.json` | OBU, RSU, C-ITS logging and safety constraints |
+| `configs/sumo_scenario_base.json` | Synthetic-corridor geometry, demand, PT services, stops and SUMO generation inputs |
+| `configs/scenario_catalog.yaml` | Synthetic-corridor scenario descriptors, demand profiles and KPI focus |
+| `configs/scenario_catalog_ingolstadt.yaml` | Ingolstadt city-wide scenario set (real day × window slices, method, measured facts) |
+| `configs/cits_v2x_config.json` | OBU, RSU, C-ITS logging and safety constraints (synthetic corridor) |
+| `configs/cits_ingolstadt_config.json` | C-ITS/TSP config for the real Ingolstadt run (network auto-discovery, GTFS schedule plan) |
 | `configs/tsp_safety_config.json` | TSP scoring, actuation and runtime policy settings (v2.1, default) |
 | `configs/tsp_safety_config_v22.json` | TSP safety settings with v2.2 priority event lifecycle enabled |
 | `configs/policy_training_config.json` | Candidate actions, reward and RL training settings |
-| `configs/validation_config.json` | Sim-to-real validation instrument (GEH thresholds, flow bands, demand envelope) |
+| `configs/validation_config.json` | Source-traced validation thresholds (GEH, flow/travel-time bands, TSP face-validity) |
+
+## Real-Scenario Grounding & Honest Limitations
+
+The platform's external-validity grounding is the **real, calibrated Ingolstadt
+network** (TUM-VT, Apache-2.0). No demand, timetable or geometry is invented:
+each city-wide scenario is a real slice (day × window) of detector-calibrated
+data with real INVG GTFS public transport. Source-traced acceptance thresholds
+live in `configs/validation_config.json` (each carries a `source` field), kept
+independent of SUMO so the oracle is not the system under test.
+
+What is **not** claimed:
+
+- C-ITS messages are a JSON simulation profile — not ASN.1/OER and not operational
+  PKI; MAPEM geometry anchors are synthetic WGS84-like, not surveyed coordinates.
+- The TSP only actuates on signal groups with an authoritative conflict matrix.
+  On the Ingolstadt net that is ~57.9% of signal groups (814/1407); all 123 TLS
+  are addressable (none in total fail-close) after the `via`→slot fix in
+  `network_binding`, and the Safety Layer fail-closes everywhere else.
+- The synthetic corridor's magnitudes are illustrative (HCM-anchored), not a
+  calibration of any specific city.
+
+### Legacy Porto sim-to-real exploration
+
+An earlier phase tried to ground the simulation by *constructing* a real Porto/
+Boavista corridor from open data (OSM extract, STCP GTFS, a European reference-
+count envelope — the V2/V3/V4 "ladder"). That approach was superseded by the
+ready-made calibrated Ingolstadt scenario, so its construction scripts have no
+analog here (there is nothing to download/netconvert/snap when the network is
+already built and calibrated). They are archived, not deleted, under
+[`scripts/legacy_porto/`](scripts/legacy_porto/README.md) and remain recoverable
+and auditable. The reusable, city-agnostic parts (authoritative conflict matrix,
+empirical network profile, GTFS and reference-count parsers) stayed on the main
+path under `src/pps57_sumo/`.
 
 ## Development Checks
 
@@ -1051,6 +1144,32 @@ netconvert --version
 If `sumo-gui` is unavailable or the machine is headless, use the non-GUI targets
 such as `make run`, `make cits-sumo` or `make tsp-sumo-no-actuation`.
 
+### The Ingolstadt scenario is not found
+
+`scripts/run_ingolstadt_demo.py` expects the TUM-VT scenario cloned into
+`.tools/ingolstadt`:
+
+```bash
+git clone --depth 1 https://github.com/TUM-VT/sumo_ingolstadt.git .tools/ingolstadt
+```
+
+The runner materialises each day's files into `.tools/ingol_run`, a clean path
+with no spaces and no `---`. This matters: the repository directory name contains
+`---`, and SUMO CLI tools echo their file paths into XML comments where `--` is
+illegal, so absolute paths through the repo root break those tools. Keep SUMO
+inputs/outputs under `.tools/ingol_run`.
+
+### The dashboard shows no data
+
+`dashboard.py` reads generated reports. Produce them first, e.g.:
+
+```bash
+make tsp-demonstrator
+make compare-tsp-rl
+make scenario-suite RUN_TYPE=comparison
+streamlit run dashboard.py
+```
+
 ### Policy optimization or RL training says no event scenarios were found
 
 The policy commands require `outputs/event_training_dataset.jsonl` with rows
@@ -1077,11 +1196,3 @@ Regenerate the policy report, then pass it explicitly:
 make optimize-offline
 .venv/bin/python scripts/run_tsp_control.py --mode sumo --policy-mode optimized --policy-report reports/policy_report.json
 ```
-
-### Sim-to-real scripts fail to fetch data
-
-The fetch scripts (`fetch_reference_counts.py`, `fetch_stcp_gtfs.py`,
-`fetch_boavista_osm.py`) require network access and fail loudly if a source is
-unreachable or returns no usable data. They never substitute defaults. Raw
-fetched data lands in `.tools/` (git-ignored); only derived validation reports
-are committed.

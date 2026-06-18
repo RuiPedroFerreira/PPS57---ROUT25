@@ -105,14 +105,14 @@ class TSPSafetyLayer:
     def set_signal_program_verified(self, verified: bool) -> None:
         self.signal_program_verified = bool(verified)
 
-    def set_actuable_tls(self, tls: "frozenset[str] | set[str] | None") -> None:
+    def set_actuable_tls(self, tls: frozenset[str] | set[str] | None) -> None:
         """Restringe a atuação aos TLS cujo programa passou a verificação.
 
         None desliga o gate per-TLS (retrocompat). Aceita qualquer iterável.
         """
         self.actuable_tls = frozenset(tls) if tls is not None else None
 
-    def set_early_green_actuable_tls(self, tls: "frozenset[str] | set[str] | None") -> None:
+    def set_early_green_actuable_tls(self, tls: frozenset[str] | set[str] | None) -> None:
         """TLS cujo programa passou também a clearance: só estes podem early_green."""
         self.early_green_actuable_tls = frozenset(tls) if tls is not None else None
 
@@ -122,7 +122,7 @@ class TSPSafetyLayer:
             return tls_id in self.early_green_actuable_tls
         return self.signal_program_verified
 
-    def seed_contracts(self, contracts: "list[ControllerContract]") -> None:
+    def seed_contracts(self, contracts: list[ControllerContract]) -> None:
         """Semeia o cache de contratos (ex.: reconciliados com o programa runtime).
 
         Garante que a Safety valida sobre a MESMA estrutura de fases que o motor e

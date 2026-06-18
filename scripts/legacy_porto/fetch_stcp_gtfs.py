@@ -35,7 +35,7 @@ RAW_URL = f"{PORTAL}/dataset/{DATASET_ID}/resource/{RESOURCE_ID}/download/gtfs_f
 # and baked in as an integrity pin.
 EXPECTED_SHA256 = "48870fdaf236e473173d1c6a576f305220fb723de6e6f7850eea8821ef5c0669"
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def _sha256(path: Path) -> str:
