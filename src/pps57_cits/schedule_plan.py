@@ -34,11 +34,110 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+try:
+    from defusedxml import ElementTree as ET  # type: ignore[import-untyped]
+except ImportError:  # pragma: no cover - exercised in minimal CI images.
+    from xml.etree import ElementTree as ET  # type: ignore[no-redef]
+
+from pps57_sumo.network_profile import edge_from_lane
+from pps57_sumo.validation.gtfs_pt import gtfs_time_to_seconds
+
 if TYPE_CHECKING:  # evita custo/ciclo em runtime; só para type-checkers
     from .config import CITSConfig
     from .models import VehicleObservation
 
 _LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class GtfsScheduleAdherenceProvider:
+    """Aderência a horário a partir do GTFS REAL do cenário (não sintético).
+
+    Lê os tempos agendados ``until`` por paragem do feed GTFS (os ``<stop>`` de
+    cada ``<trip>``) e calcula ``schedule_delay_s = max(0, sim_time - hora
+    agendada da PRÓXIMA paragem à frente do veículo)``. Não fabrica nenhum
+    número: o atraso é a diferença entre o relógio da simulação e a hora do
+    horário publicado. ``headway_deviation_s`` fica 0 (o feed não dá headway real
+    por veículo aqui; o sinal de prioridade vem do atraso de horário).
+
+    Determinístico e sem estado: a mesma posição produz sempre o mesmo atraso.
+    """
+
+    stops_by_vehicle: dict[str, list[tuple[str, float]]]
+
+    def schedule_adherence_for(
+        self, observation: VehicleObservation, sim_time_s: float
+    ) -> tuple[float, float] | None:
+        stops = self.stops_by_vehicle.get(observation.vehicle_id)
+        if not stops:
+            return None
+        route = observation.route_edges or []
+        position = observation.route_index
+        # Sem a posição AUTORITATIVA do veículo na rota (route_index do TraCI) não
+        # dá para localizar a próxima paragem sem ambiguidade — recai no proxy em
+        # vez de FABRICAR um atraso a partir da posição 0 (footgun do route.index).
+        if not route or position is None or not (0 <= position < len(route)):
+            return None
+        # edge -> primeira posição na rota, construído uma vez (O(rota)); a rota
+        # pode mudar com rerouting, por isso não se faz cache entre chamadas. Evita
+        # o O(paragens x rota) de chamar route.index() por paragem dentro do loop.
+        first_pos_by_edge: dict[str, int] = {}
+        for index, edge in enumerate(route):
+            first_pos_by_edge.setdefault(edge, index)
+        # Próxima paragem (em ordem de viagem) que ainda está à frente do veículo.
+        for stop_edge, until_s in stops:
+            stop_pos = first_pos_by_edge.get(stop_edge)
+            if stop_pos is not None and stop_pos >= position:
+                return round(max(0.0, sim_time_s - until_s), 3), 0.0
+        return None  # todas as paragens já passaram -> OBU recai no proxy
+
+
+def _gtfs_provider_from_config(
+    cits_config: CITSConfig, block: dict
+) -> GtfsScheduleAdherenceProvider | None:
+    """Constrói o provider GTFS real a partir dos ficheiros do cenário."""
+    trips_src = block.get("gtfs_trips")
+    stops_src = block.get("pt_stops")
+    if not trips_src or not stops_src:
+        _LOGGER.warning("schedule_plan mode=gtfs requer 'gtfs_trips' e 'pt_stops'; provider desligado.")
+        return None
+    try:
+        stops_root = ET.fromstring(Path(cits_config.path_from_root(str(stops_src))).read_bytes())
+        trips_root = ET.fromstring(Path(cits_config.path_from_root(str(trips_src))).read_bytes())
+    except (OSError, ValueError, ET.ParseError) as exc:  # type: ignore[attr-defined]
+        _LOGGER.warning("schedule_plan mode=gtfs não conseguiu ler os ficheiros (%s); desligado.", exc)
+        return None
+
+    edge_by_stop: dict[str, str] = {}
+    for bus_stop in stops_root.iter("busStop"):
+        stop_id, lane = bus_stop.get("id"), bus_stop.get("lane")
+        if stop_id and lane:
+            edge_by_stop[stop_id] = edge_from_lane(lane)
+
+    stops_by_vehicle: dict[str, list[tuple[str, float]]] = {}
+    for trip in trips_root.iter("trip"):
+        trip_id = trip.get("id")
+        if not trip_id:
+            continue
+        sequence: list[tuple[str, float]] = []
+        for stop in trip.findall("stop"):
+            edge = edge_by_stop.get(stop.get("busStop", ""))
+            until_raw = stop.get("until", "")
+            try:
+                # gtfs_time_to_seconds aceita horas >= 24 (viagens overnight) e
+                # levanta ValueError em formato inválido -> tratamos como sem hora.
+                until = float(gtfs_time_to_seconds(until_raw)) if until_raw else None
+            except ValueError:
+                until = None
+            if edge and until is not None:
+                sequence.append((edge, until))
+        if sequence:
+            stops_by_vehicle[trip_id] = sequence
+
+    if not stops_by_vehicle:
+        _LOGGER.warning("schedule_plan mode=gtfs: nenhuma viagem com paragens mapeáveis; desligado.")
+        return None
+    return GtfsScheduleAdherenceProvider(stops_by_vehicle=stops_by_vehicle)
 
 
 @dataclass(frozen=True)
@@ -66,6 +165,10 @@ class SchedulePlanProvider:
         block = cits_config.schedule_plan
         if not isinstance(block, dict) or not bool(block.get("enabled", False)):
             return None
+        # mode=gtfs: aderência a horário a partir do feed GTFS REAL do cenário
+        # (tempos `until` por paragem), em vez do stand-in sintético determinístico.
+        if str(block.get("mode", "")).lower() == "gtfs":
+            return _gtfs_provider_from_config(cits_config, block)
         source = str(block.get("timetable_source", "configs/sumo_scenario_base.json"))
         try:
             raw = json.loads(Path(cits_config.path_from_root(source)).read_text(encoding="utf-8"))

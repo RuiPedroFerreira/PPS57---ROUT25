@@ -27,7 +27,7 @@ from statistics import fmean, median
 
 import sumolib  # ships with SUMO; already in .venv
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 CORRIDOR_LINES = ["500", "502", "204"]
 WEEKDAY_SERVICE = "DIAS UTEIS"
 SNAP_RADIUS_M = 60.0

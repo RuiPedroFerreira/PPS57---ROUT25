@@ -45,7 +45,7 @@ LICENSE = "ODbL (OpenStreetMap contributors)"
 # exactly the snapshot the committed validation report was produced from.
 EXPECTED_SHA256 = "012ac5593ce72b131944ad368a41bb48f517387fb4c62d136045ff9a9cffce99"
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def _sha256(path: Path) -> str:

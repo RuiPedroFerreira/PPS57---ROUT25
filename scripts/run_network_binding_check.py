@@ -1,25 +1,28 @@
 #!/usr/bin/env python3
-"""NetworkBinding evidence: authoritative conflict matrix removes the OSM fail-close.
+"""NetworkBinding evidence: authoritative conflict matrix removes the fail-close.
 
-The TSP demo had to bypass the contract-verification gate on the real Boavista
-corridor (``safety.set_signal_program_verified(True)``) because the OSM net's
-joined intersections trip the "sem matriz de conflitos" check: signal groups with
-movements but an empty conflict matrix. That matrix was inferred heuristically from
-phase-state disjointness, which cannot see permissive movements that share green.
+On the real calibrated Ingolstadt network (TUM-VT, 123 TLS) the joined
+intersections trip the contract-verification gate's "sem matriz de conflitos"
+check: signal groups with movements but an empty conflict matrix. That matrix was
+inferred heuristically from phase-state disjointness, which cannot see permissive
+movements that share green.
 
 This script demonstrates the fix end-to-end on the *real* network, through the
 *real* contract-building path:
 
-  1. build the controller contracts exactly as the demo does (auto network
-     discovery + generated contracts), and count the signal groups that trip the
-     fail-close predicate from ``verify_controller_contracts``;
+  1. build the controller contracts exactly as the city-wide demo does (auto
+     network discovery + generated contracts), and count the signal groups that
+     trip the fail-close predicate from ``verify_controller_contracts``;
   2. build the :class:`NetworkBinding` (authoritative conflicts from SUMO junction
      ``<request foes>``), apply it to the contracts, and re-count.
 
 It fabricates nothing: every conflict comes from the network's own foe data, and a
 group the network genuinely leaves without foe data still fail-closes. Safety
 remains the final gate. Evidence is written to
-``docs/validation/networkbinding_boavista_check.json``.
+``reports/validation/networkbinding_ingolstadt_check.json``.
+
+Pré-requisito: a net materializada por ``scripts/run_ingolstadt_demo.py`` em
+``.tools/ingol_run/ingolstadt_net.net.xml`` (ou aponta ``--net`` para outra net).
 """
 
 from __future__ import annotations
@@ -48,7 +51,7 @@ from pps57_tsp.signal_control import (  # noqa: E402
     signal_group_lacks_conflict_matrix,
 )
 
-WORK = ROOT / ".tools" / "boavista-osm"
+WORK = ROOT / ".tools" / "ingol_run"
 
 
 def _fail_close_groups(contracts) -> list[dict]:
@@ -71,16 +74,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--net", type=Path, default=WORK / "boavista.net.xml")
+    parser.add_argument("--net", type=Path, default=WORK / "ingolstadt_net.net.xml")
     parser.add_argument(
         "--out",
         type=Path,
-        default=ROOT / "docs" / "validation" / "networkbinding_boavista_check.json",
+        default=ROOT / "reports" / "validation" / "networkbinding_ingolstadt_check.json",
     )
     args = parser.parse_args()
     if not args.net.exists():
         raise SystemExit(
-            f"Missing {args.net}. Run the V4 build first (scripts/build_boavista_network.py)."
+            f"Missing {args.net}. Materialise the Ingolstadt net first "
+            "(scripts/run_ingolstadt_demo.py, after git clone TUM-VT/sumo_ingolstadt)."
         )
 
     cits = auto_discovery_cits_config(args.net)

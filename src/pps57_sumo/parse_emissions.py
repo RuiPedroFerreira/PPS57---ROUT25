@@ -14,6 +14,8 @@ from pathlib import Path
 from statistics import mean
 from typing import Any
 
+from pps57_sumo.vehicle_classification import is_bus_like
+
 try:
     from defusedxml import ElementTree as ET  # type: ignore[import-untyped]
 except ImportError:  # pragma: no cover - exercised in minimal CI images.
@@ -82,7 +84,11 @@ def parse_emissions(path: Path | None) -> dict[str, Any]:
         metric: round(mean(samples[metric]), 3) for metric in METRICS if samples[metric]
     }
 
-    bus_ids = [vid for vid in per_vehicle if vid.startswith("bus_")]
+    bus_ids = [
+        vid
+        for vid in per_vehicle
+        if is_bus_like(vid, per_vehicle_type.get(vid, ""))
+    ]
     if bus_ids:
         bus_totals = dict.fromkeys(METRICS, 0.0)
         for vid in bus_ids:

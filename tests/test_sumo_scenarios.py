@@ -735,8 +735,27 @@ class SumoKpiParsingTestCase(unittest.TestCase):
             kpis = parse_tripinfo(path)
             self.assertEqual(kpis["all_vehicles"]["vehicles"], 3)
             self.assertEqual(kpis["buses"]["mean_speed_mps"], 10.0)
+            self.assertEqual(kpis["bus_lines"]["STCP500"]["vehicles"], 2)
             self.assertEqual(kpis["bus_headways"]["STCP500:W"]["mean_headway_s"], 600)
             self.assertEqual(kpis["general_traffic"]["vehicles"], 1)
+
+    def test_tripinfo_parser_reports_ingolstadt_bus_line_kpis(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "tripinfo.xml"
+            path.write_text(
+                "<tripinfos>"
+                '<tripinfo id="Bus_11_0001" vType="bus" line="11" depart="0" arrival="100" duration="100" routeLength="1000" waitingTime="10" timeLoss="20" waitingCount="2" />'
+                '<tripinfo id="Bus_11_0002" vType="bus" line="11" depart="600" arrival="720" duration="120" routeLength="1000" waitingTime="15" timeLoss="30" waitingCount="3" />'
+                '<tripinfo id="car_1" vType="car" depart="0" arrival="80" duration="80" routeLength="900" waitingTime="5" timeLoss="8" waitingCount="1" />'
+                "</tripinfos>",
+                encoding="utf-8",
+            )
+            kpis = parse_tripinfo(path)
+            self.assertEqual(kpis["buses"]["vehicles"], 2)
+            self.assertEqual(kpis["general_traffic"]["vehicles"], 1)
+            self.assertEqual(kpis["bus_lines"]["11"]["vehicles"], 2)
+            self.assertEqual(kpis["bus_lines"]["11"]["mean_time_loss_s"], 25.0)
+            self.assertEqual(kpis["bus_headways"]["11"]["mean_headway_s"], 600)
 
     def test_tripinfo_parser_does_not_classify_flow_name_as_emergency(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -790,23 +809,25 @@ class SumoKpiParsingTestCase(unittest.TestCase):
                 '<timestep time="0">'
                 '<vehicle id="car_1" type="car" CO2="100" fuel="40" NOx="5" />'
                 '<vehicle id="bus_STCP500_W_0000" type="bus_12m" CO2="500" fuel="180" NOx="20" />'
+                '<vehicle id="Bus_11_0001" type="bus" CO2="250" fuel="90" NOx="10" />'
                 "</timestep>"
                 '<timestep time="60">'
                 '<vehicle id="car_1" type="car" CO2="700" fuel="280" NOx="35" />'
                 '<vehicle id="bus_STCP500_W_0000" type="bus_12m" CO2="3500" fuel="1260" NOx="140" />'
+                '<vehicle id="Bus_11_0001" type="bus" CO2="750" fuel="270" NOx="30" />'
                 "</timestep>"
                 "</emission-export>",
                 encoding="utf-8",
             )
             kpis = parse_emissions(path)
             self.assertTrue(kpis["available"])
-            self.assertEqual(kpis["vehicle_count"], 2)
+            self.assertEqual(kpis["vehicle_count"], 3)
             # Valores SUMO de emission-output são POR-STEP (não cumulativos):
             # o total de cada veículo é a soma dos seus steps.
-            self.assertEqual(kpis["totals_mg"]["CO2"], 4800.0)  # car 100+700, bus 500+3500
-            self.assertEqual(kpis["totals_mg"]["fuel"], 1760.0)
-            self.assertEqual(kpis["bus_count"], 1)
-            self.assertEqual(kpis["bus_totals_mg"]["CO2"], 4000.0)
+            self.assertEqual(kpis["totals_mg"]["CO2"], 5800.0)
+            self.assertEqual(kpis["totals_mg"]["fuel"], 2120.0)
+            self.assertEqual(kpis["bus_count"], 2)
+            self.assertEqual(kpis["bus_totals_mg"]["CO2"], 5000.0)
 
     def test_emissions_parser_handles_missing_file(self) -> None:
         kpis = parse_emissions(Path("/nonexistent/emissions.xml"))

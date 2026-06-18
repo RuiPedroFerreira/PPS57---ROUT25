@@ -31,7 +31,8 @@ from pps57_tsp.actuator import TraciTSPActuator
 from pps57_tsp.config import TSPConfig, load_tsp_config
 from pps57_tsp.controller import TSPControlController
 from pps57_tsp.engine import TSPDecisionEngine
-from pps57_tsp.models import DecisionStatus, TSPAction, TSPDecision
+from pps57_tsp.logger import summarise_tsp
+from pps57_tsp.models import ActuationResult, DecisionStatus, TSPAction, TSPDecision
 from pps57_tsp.safety import TSPSafetyLayer
 from pps57_tsp.signal_control import (
     ControllerContract,
@@ -238,6 +239,41 @@ def processing_ssem(srem) -> SSEMLike:
 
 
 class TSPPlatformTests(unittest.TestCase):
+    def test_tsp_summary_reports_per_tls_citywide_counters(self) -> None:
+        approved = early_green_decision(priority_level=OperatorPriorityClass.EMERGENCY.value)
+        approved = approved.copy_with(
+            tls_id="TLS_A",
+            status=DecisionStatus.APPROVED.value,
+            reason="approved",
+        )
+        blocked = approved.copy_with(
+            tls_id="TLS_B",
+            status=DecisionStatus.BLOCKED_BY_SAFETY.value,
+            reason="NETWORK_BINDING_NO_AUTHORITATIVE_CONFLICT_MATRIX",
+        )
+        actuation = ActuationResult(
+            decision_id=approved.decision_id,
+            timestamp_s=10.0,
+            tls_id="TLS_A",
+            action=approved.action,
+            applied=True,
+            no_actuation=False,
+            command="setPhaseDuration",
+            reason="applied",
+        )
+
+        summary = summarise_tsp([approved, blocked], [actuation])
+
+        self.assertEqual(summary["per_tls"]["TLS_A"]["approved"], 1)
+        self.assertEqual(summary["per_tls"]["TLS_A"]["real_traci_applied_events"], 1)
+        self.assertEqual(summary["per_tls"]["TLS_B"]["blocked_by_safety"], 1)
+        self.assertEqual(
+            summary["per_tls"]["TLS_B"]["block_reasons"][
+                "NETWORK_BINDING_NO_AUTHORITATIVE_CONFLICT_MATRIX"
+            ],
+            1,
+        )
+
     def test_emergency_request_bypasses_normal_score_threshold(self) -> None:
         cits, tsp = configs()
         engine = TSPDecisionEngine(cits, tsp)
@@ -580,6 +616,36 @@ class TSPPlatformTests(unittest.TestCase):
             any("fase pedonal exclusiva configurada" in problem for problem in configured_problems)
         )
 
+    def test_pedestrian_phase_detected_via_vehicle_links_when_service_is_derived(self) -> None:
+        # #64: com service/intergreen DERIVADOS (auto-discovery/reconcile) cobrem
+        # TODAS as fases, e a fase pedonal exclusiva — que tem 'g' no link de peão
+        # — cai em service, fazendo a heurística antiga falhar sempre. Com a
+        # classificação de links veiculares a exclusividade é verificada direta.
+        from pps57_tsp.signal_control import _has_configured_pedestrian_phase
+
+        states = ["GGr", "yyr", "rrG"]  # links 0,1 veiculares; link 2 = travessia pedonal
+        service_derived, intergreen_derived, ped = [0, 2], [1], [2]
+
+        # Sem links (fallback): a heurística falha (fase 2 está em service∪intergreen).
+        self.assertFalse(
+            _has_configured_pedestrian_phase(states, service_derived, intergreen_derived, ped)
+        )
+        # Com links veiculares [0,1]: fase 2 tem verde e NENHUM link veicular verde
+        # -> pedonal exclusiva reconhecida (a correção do #64).
+        self.assertTrue(
+            _has_configured_pedestrian_phase(
+                states, service_derived, intergreen_derived, ped, vehicle_link_indices=[0, 1]
+            )
+        )
+        # Fase com verde veicular E pedonal concorrente NÃO é exclusiva -> rejeitada
+        # (segurança preservada: truncar encurtaria a travessia concorrente).
+        concurrent = ["GGr", "yyr", "rGG"]  # fase 2: link 1 veicular verde + link 2 pedonal
+        self.assertFalse(
+            _has_configured_pedestrian_phase(
+                concurrent, [0, 2], [1], [2], vehicle_link_indices=[0, 1]
+            )
+        )
+
     def test_priority_score_tolerates_zero_normalisation_config(self) -> None:
         cits, tsp = configs()
         raw = copy.deepcopy(tsp.raw)
@@ -722,6 +788,61 @@ class TSPPlatformTests(unittest.TestCase):
         self.assertTrue(
             any("did not suppress baseline actuation" in note for note in decision.notes)
         )
+
+
+class ConflictAwareAllRedTests(unittest.TestCase):
+    """#68: all-red entre greens consecutivos é exigido só quando há conflito.
+
+    Cenário: 2 service-greens (fases 0 e 2) com só um amarelo entre eles (sem
+    all-red >= 1s). Links: 0 e 1 cruzam (foes); 0 e 2 não. A fase de origem serve
+    o link 0; o que muda na fase de destino decide se é preciso clearance.
+    """
+
+    PHASE_SEQ = [0, 1, 2]
+    SERVICE = [0, 2]
+    DURATIONS = [30.0, 3.0, 30.0]  # fase 1 = amarelo 3s, nunca all-red
+    CONFLICTS = {0: frozenset({1}), 1: frozenset({0})}
+    KNOWN = frozenset({0, 1, 2})
+
+    def _flagged(self, states, link_conflicts, known):
+        from pps57_tsp.signal_control import _missing_all_red_transitions
+
+        return _missing_all_red_transitions(
+            states, self.DURATIONS, self.PHASE_SEQ, self.SERVICE, 1.0,
+            link_conflicts=link_conflicts, known_conflict_links=known,
+        )
+
+    def test_genuine_conflict_is_flagged(self) -> None:
+        # destino liberta link 1, que é foe do link 0 que termina -> exige all-red.
+        states = ["Grr", "yrr", "rGr"]
+        flagged = self._flagged(states, self.CONFLICTS, self.KNOWN)
+        self.assertIn((0, 2), flagged)
+
+    def test_same_green_segmented_is_not_flagged(self) -> None:
+        # destino não liberta nada de novo (subconjunto do verde de origem) -> sem
+        # clearance: links {0,1} verdes na origem, só {1} no destino.
+        states = ["GGr", "yyr", "rGr"]
+        flagged = self._flagged(states, self.CONFLICTS, self.KNOWN)
+        self.assertNotIn((0, 2), flagged)
+
+    def test_nonconflicting_expansion_is_not_flagged(self) -> None:
+        # destino liberta o link 2 (não-foe do 0) e mantém o 0 -> seguro.
+        states = ["Grr", "yrr", "GrG"]
+        flagged = self._flagged(states, {0: frozenset(), 2: frozenset()}, frozenset({0, 1, 2}))
+        self.assertNotIn((0, 2), flagged)
+
+    def test_unknown_link_fail_closes(self) -> None:
+        # destino liberta link 1 mas o link 1 não tem foe data autoritativa
+        # (fora de known) -> não dá para provar seguro -> exige all-red.
+        states = ["Grr", "yrr", "rGr"]
+        flagged = self._flagged(states, {0: frozenset()}, frozenset({0}))
+        self.assertIn((0, 2), flagged)
+
+    def test_no_matrix_preserves_legacy_fail_closed(self) -> None:
+        # Sem matriz (None): comportamento legado -> exige all-red em todo o lado.
+        states = ["Grr", "yrr", "GrG"]  # expansão não-conflituante, mas sem dados
+        flagged = self._flagged(states, None, None)
+        self.assertIn((0, 2), flagged)
 
 
 if __name__ == "__main__":

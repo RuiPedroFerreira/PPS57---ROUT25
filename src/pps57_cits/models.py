@@ -46,6 +46,10 @@ class VehicleObservation:
     schedule_adherence_sourced: bool = False
     route_edges: list[str] = field(default_factory=list)
     next_edge_id: str = ""
+    # Posição autoritativa do veículo na rota (TraCI getRouteIndex). Usada pelo
+    # GtfsScheduleAdherenceProvider para localizar a próxima paragem sem
+    # ambiguidade em rotas que repetem arestas. None quando indeterminável.
+    route_index: int | None = None
     queue_ahead_vehicle_count: int = 0
     stop_count: int = 0
     eta_params: EtaParams = field(default_factory=EtaParams)

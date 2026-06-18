@@ -186,5 +186,85 @@ class ScheduleAdherenceIntegrationTestCase(unittest.TestCase):
         self.assertIs(adapter._with_schedule_adherence(obs, 100.0), obs)
 
 
+class GtfsScheduleAdherenceTestCase(unittest.TestCase):
+    """Aderência a horário a partir do GTFS REAL (tempos `until` por paragem)."""
+
+    def _provider(self):
+        from pps57_cits.schedule_plan import GtfsScheduleAdherenceProvider
+
+        return GtfsScheduleAdherenceProvider(
+            stops_by_vehicle={"Bus_:1": [("E1", 100.0), ("E3", 200.0), ("E5", 300.0)]}
+        )
+
+    def test_delay_vs_next_scheduled_stop_ahead(self) -> None:
+        obs = make_obs(
+            vehicle_id="Bus_:1",
+            edge_id="E2",
+            route_edges=["E1", "E2", "E3", "E4", "E5"],
+            route_index=1,
+        )
+        # próxima paragem à frente (pos>=1) = E3 (agendada 200s); às 250s -> 50s.
+        self.assertEqual(self._provider().schedule_adherence_for(obs, 250.0), (50.0, 0.0))
+
+    def test_on_time_is_zero_delay(self) -> None:
+        obs = make_obs(
+            vehicle_id="Bus_:1",
+            edge_id="E2",
+            route_edges=["E1", "E2", "E3", "E4", "E5"],
+            route_index=1,
+        )
+        self.assertEqual(self._provider().schedule_adherence_for(obs, 150.0), (0.0, 0.0))
+
+    def test_returns_none_without_route_index(self) -> None:
+        # Sem route_index autoritativo, NÃO fabrica atraso (recai no proxy).
+        obs = make_obs(
+            vehicle_id="Bus_:1", edge_id="E2", route_edges=["E1", "E2", "E3"], route_index=None
+        )
+        self.assertIsNone(self._provider().schedule_adherence_for(obs, 250.0))
+
+    def test_unknown_vehicle_returns_none(self) -> None:
+        obs = make_obs(
+            vehicle_id="desconhecido", edge_id="E2", route_edges=["E1", "E2"], route_index=1
+        )
+        self.assertIsNone(self._provider().schedule_adherence_for(obs, 250.0))
+
+    def test_from_config_builds_gtfs_provider_from_files(self) -> None:
+        import json
+        import tempfile
+
+        from pps57_cits.schedule_plan import (
+            GtfsScheduleAdherenceProvider,
+            SchedulePlanProvider,
+        )
+
+        work = Path(tempfile.mkdtemp())
+        (work / "stops.add.xml").write_text(
+            '<additional><busStop id="S1" lane="E1_0"/><busStop id="S2" lane="E3_0"/></additional>',
+            encoding="utf-8",
+        )
+        (work / "trips.rou.xml").write_text(
+            '<routes><trip id="Bus_:1" line="10" from="E1" to="E5">'
+            '<stop busStop="S1" until="00:01:40"/><stop busStop="S2" until="00:03:20"/>'
+            "</trip></routes>",
+            encoding="utf-8",
+        )
+        cfg = {
+            "schedule_plan": {
+                "enabled": True,
+                "mode": "gtfs",
+                "gtfs_trips": str(work / "trips.rou.xml"),
+                "pt_stops": str(work / "stops.add.xml"),
+            },
+            "intersections": [],
+        }
+        cfg_path = work / "cits.json"
+        cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+        provider = SchedulePlanProvider.from_config(load_cits_config(cfg_path, root=work))
+        self.assertIsInstance(provider, GtfsScheduleAdherenceProvider)
+        self.assertEqual(
+            provider.stops_by_vehicle["Bus_:1"], [("E1", 100.0), ("E3", 200.0)]
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

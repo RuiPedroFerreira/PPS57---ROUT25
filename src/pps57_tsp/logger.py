@@ -43,14 +43,34 @@ def summarise_tsp(
 ) -> dict[str, object]:
     by_action: dict[str, int] = {}
     by_status: dict[str, int] = {}
+    by_tls: dict[str, dict[str, object]] = {}
     for decision in decisions:
         by_action[decision.action] = by_action.get(decision.action, 0) + 1
         by_status[decision.status] = by_status.get(decision.status, 0) + 1
+        tls = _tls_summary(by_tls, decision.tls_id)
+        tls["decisions"] = int(tls["decisions"]) + 1
+        tls_actions = tls["by_action"]
+        if isinstance(tls_actions, dict):
+            tls_actions[decision.action] = int(tls_actions.get(decision.action, 0)) + 1
+        if decision.status == DecisionStatus.APPROVED.value:
+            tls["approved"] = int(tls["approved"]) + 1
+        if decision.status == DecisionStatus.BLOCKED_BY_SAFETY.value:
+            tls["blocked_by_safety"] = int(tls["blocked_by_safety"]) + 1
+            block_reasons = tls["block_reasons"]
+            if isinstance(block_reasons, dict):
+                block_reasons[decision.reason] = int(block_reasons.get(decision.reason, 0)) + 1
 
     applied = [item for item in actuations if item.applied]
     no_actuation_events = [item for item in actuations if item.no_actuation]
     real_applied = [item for item in applied if not item.no_actuation]
     blocked = [item for item in decisions if item.status == DecisionStatus.BLOCKED_BY_SAFETY.value]
+    for item in actuations:
+        tls = _tls_summary(by_tls, item.tls_id)
+        tls["actuation_events"] = int(tls["actuation_events"]) + 1
+        if item.applied:
+            tls["applied_events"] = int(tls["applied_events"]) + 1
+        if item.applied and not item.no_actuation:
+            tls["real_traci_applied_events"] = int(tls["real_traci_applied_events"]) + 1
 
     return {
         "total_decisions": len(decisions),
@@ -66,7 +86,24 @@ def summarise_tsp(
         "applied_events": len(applied),
         "no_actuation_events": len(no_actuation_events),
         "real_traci_applied_events": len(real_applied),
+        "per_tls": {tls_id: by_tls[tls_id] for tls_id in sorted(by_tls)},
     }
+
+
+def _tls_summary(by_tls: dict[str, dict[str, object]], tls_id: str) -> dict[str, object]:
+    return by_tls.setdefault(
+        tls_id,
+        {
+            "decisions": 0,
+            "approved": 0,
+            "blocked_by_safety": 0,
+            "by_action": {},
+            "block_reasons": {},
+            "actuation_events": 0,
+            "applied_events": 0,
+            "real_traci_applied_events": 0,
+        },
+    )
 
 
 def write_tsp_summary(

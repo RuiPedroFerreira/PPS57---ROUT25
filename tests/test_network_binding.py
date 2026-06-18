@@ -102,6 +102,30 @@ NOVIA_NET = """<?xml version="1.0" encoding="UTF-8"?>
 </net>
 """
 
+# Regression: real netconvert/OSM output emits *internal junctions* (id ":...",
+# no <request> table) that list the controlling junction's internal lanes in their
+# OWN intLanes for internal-junction right-of-way. Here ":J_2" re-lists :J_0_0 and
+# :J_1_0 AFTER J. If via_slots is populated from every junction, the internal one
+# (last writer) shadows J's slots -> each connection's via resolves to an index
+# with no foe data and BOTH groups fail-close (conflict_source="none"). On the real
+# Ingolstadt net this silently dropped ~70% of controlled connections (12% -> 58%
+# coverage once fixed). via_slots must come only from request-bearing junctions.
+INTERNAL_SHADOW_NET = """<?xml version="1.0" encoding="UTF-8"?>
+<net>
+  <junction id="J" type="traffic_light" incLanes="E1_0 E3_0" intLanes=":J_0_0 :J_1_0">
+    <request index="0" response="00" foes="10" cont="0"/>
+    <request index="1" response="00" foes="01" cont="0"/>
+  </junction>
+  <junction id=":J_2" type="internal" incLanes=":J_0_0 :J_1_0" intLanes=":J_0_0 :J_1_0"/>
+  <tlLogic id="J" type="static" programID="0" offset="0">
+    <phase duration="30" state="GG"/>
+    <phase duration="5" state="yy"/>
+  </tlLogic>
+  <connection from="E1" to="E2" fromLane="0" toLane="0" tl="J" linkIndex="0" dir="s" state="O" via=":J_0_0"/>
+  <connection from="E3" to="E4" fromLane="0" toLane="0" tl="J" linkIndex="1" dir="s" state="O" via=":J_1_0"/>
+</net>
+"""
+
 
 def _write_net(text: str) -> Path:
     with tempfile.NamedTemporaryFile("w", suffix=".net.xml", delete=False) as handle:
@@ -142,6 +166,24 @@ class BindingTests(unittest.TestCase):
         self.assertEqual(report["groups_with_authoritative_conflicts"], 2)
         self.assertEqual(report["coverage_fraction"], 1.0)
 
+    def test_link_level_conflict_matrix(self) -> None:
+        # Mesma fonte de verdade (foes) ao nível do LINK: link 0 conflitua com 1.
+        # Ambos têm foe data autoritativa (known), mesmo sendo conflict-free seria.
+        bound = build_network_binding(_write_net(PERMISSIVE_NET)).binding_for_tls("J")
+        self.assertEqual(bound.link_conflicts.get(0), frozenset({1}))
+        self.assertEqual(bound.link_conflicts.get(1), frozenset({0}))
+        self.assertEqual(bound.known_conflict_links, frozenset({0, 1}))
+
+    def test_link_level_matrix_known_but_conflict_free(self) -> None:
+        # link 0 (through) é autoritativamente conhecido mas conflict-free: tem de
+        # estar em known_conflict_links e ausente (ou vazio) de link_conflicts —
+        # é o que distingue um link seguro de um sem foe data. Links 1<->2 cruzam.
+        bound = build_network_binding(_write_net(MULTILANE_NET)).binding_for_tls("J")
+        self.assertIn(0, bound.known_conflict_links)
+        self.assertEqual(bound.link_conflicts.get(0, frozenset()), frozenset())
+        self.assertEqual(bound.link_conflicts.get(1), frozenset({2}))
+        self.assertEqual(bound.link_conflicts.get(2), frozenset({1}))
+
     def test_multilane_internal_edge_uses_intlanes_positions(self) -> None:
         # Regression: the request index is the position in intLanes; deriving it
         # from the lane-id numbers collapses sibling lanes of a multi-lane
@@ -165,6 +207,19 @@ class BindingTests(unittest.TestCase):
         report = binding.coverage_report()
         self.assertEqual(report["n_signal_groups"], 3)
         self.assertEqual(report["groups_with_authoritative_conflicts"], 2)
+
+    def test_internal_junction_does_not_shadow_via_slots(self) -> None:
+        # Regression: an internal junction re-listing J's internal lanes must NOT
+        # steal the via->slot mapping. Both groups stay authoritatively bound.
+        net = _write_net(INTERNAL_SHADOW_NET)
+        binding = build_network_binding(net)
+        self.assertEqual(binding.conflicts_for("J", G1), [G2])
+        self.assertEqual(binding.conflicts_for("J", G2), [G1])
+        bound = binding.binding_for_tls("J")
+        self.assertTrue(bound.signal_groups[G1].conflict_matrix_known)
+        self.assertTrue(bound.signal_groups[G2].conflict_matrix_known)
+        report = binding.coverage_report()
+        self.assertEqual(report["coverage_fraction"], 1.0)
 
 
 def _contract_with_group(group: SignalGroupContract) -> ControllerContract:
@@ -376,6 +431,108 @@ class VerifierFailCloseTests(unittest.TestCase):
         )
         problems = self.adapter.verify_controller_contracts([_contract_with_group(group)])
         self.assertFalse(any("sem matriz de conflitos" in p for p in problems), problems)
+
+
+class ReconcileRuntimeTests(unittest.TestCase):
+    """#4: o contrato estrutural passa a vir do programa SUMO em execução."""
+
+    @staticmethod
+    def _stale_contract() -> ControllerContract:
+        # Estrutura "net.xml" (Boavista-template): 6 fases, ciclo 90s.
+        return ControllerContract(
+            tls_id="J",
+            adapter_type="sumo_traci",
+            fixed_time_required=True,
+            allowed_actions=["green_extension", "early_green"],
+            phase_sequence=[0, 1, 2, 3, 4, 5],
+            service_green_phase_indices=[0, 3],
+            intergreen_phase_indices=[1, 2, 4, 5],
+            min_yellow_s=3.0,
+            min_all_red_s=1.0,
+            expected_cycle_s=90.0,
+            pedestrian_phase_required=True,
+            pedestrian_phase_indices=[6],
+            signal_groups={},
+        )
+
+    def test_reconcile_uses_runtime_program_structure(self) -> None:
+        from pps57_tsp.signal_control import reconcile_contract_with_runtime
+
+        class _Runtime:  # programa WAUT real: 3 fases, ciclo 54s
+            def read_program_phase_states(self, tls_id):
+                return ["GGr", "yyr", "rrG"]
+
+            def read_program_phase_durations(self, tls_id):
+                return [30.0, 4.0, 20.0]
+
+        rec = reconcile_contract_with_runtime(self._stale_contract(), _Runtime())
+        self.assertEqual(rec.phase_sequence, [0, 1, 2])
+        self.assertEqual(rec.service_green_phase_indices, [0, 2])
+        self.assertEqual(rec.intergreen_phase_indices, [1])
+        self.assertEqual(rec.expected_cycle_s, 54.0)
+        # Não reconcilia a deteção pedonal (precisa dos link indices) -> conservador.
+        self.assertEqual(rec.pedestrian_phase_indices, [6])
+        self.assertTrue(rec.pedestrian_phase_required)
+
+    def test_reconcile_unreadable_program_keeps_contract(self) -> None:
+        from pps57_tsp.signal_control import reconcile_contract_with_runtime
+
+        class _Blind:
+            def read_program_phase_states(self, tls_id):
+                return None
+
+            def read_program_phase_durations(self, tls_id):
+                return None
+
+        stale = self._stale_contract()
+        self.assertIs(reconcile_contract_with_runtime(stale, _Blind()), stale)
+
+    def test_reconcile_remaps_group_phase_index_from_runtime(self) -> None:
+        # #5: o phase_index do grupo é remapeado para a fase verde REAL do
+        # movimento (link index topológico + estados runtime), destravando o
+        # green_extension/early_green em TLS WAUT cujo verde mudou de fase.
+        from dataclasses import replace
+        from types import SimpleNamespace
+
+        from pps57_tsp.signal_control import reconcile_contract_with_runtime
+
+        class _Runtime:  # link 0 só tem verde protegido na fase 2
+            def read_program_phase_states(self, tls_id):
+                return ["rGr", "ryr", "Grr"]
+
+            def read_program_phase_durations(self, tls_id):
+                return [20.0, 4.0, 30.0]
+
+        group = SignalGroupContract(signal_group_id="G", phase_index=5, movement_ids=["m"])
+        contract = replace(self._stale_contract(), signal_groups={"G": group})
+        profile = SimpleNamespace(
+            movements=[SimpleNamespace(signal_group_id="G", link_indices=[0])]
+        )
+        rec = reconcile_contract_with_runtime(contract, _Runtime(), profile)
+        self.assertEqual(rec.signal_groups["G"].phase_index, 2)
+
+    def test_reconcile_keeps_phase_index_when_group_not_in_profile(self) -> None:
+        # Sem match no profile (ex.: grupo com alias de config), mantém o
+        # phase_index offline — correto onde o programa runtime == net.xml.
+        from dataclasses import replace
+        from types import SimpleNamespace
+
+        from pps57_tsp.signal_control import reconcile_contract_with_runtime
+
+        class _Runtime:
+            def read_program_phase_states(self, tls_id):
+                return ["rGr", "ryr", "Grr"]
+
+            def read_program_phase_durations(self, tls_id):
+                return [20.0, 4.0, 30.0]
+
+        group = SignalGroupContract(signal_group_id="ALIAS", phase_index=1, movement_ids=["m"])
+        contract = replace(self._stale_contract(), signal_groups={"ALIAS": group})
+        profile = SimpleNamespace(
+            movements=[SimpleNamespace(signal_group_id="G", link_indices=[0])]
+        )
+        rec = reconcile_contract_with_runtime(contract, _Runtime(), profile)
+        self.assertEqual(rec.signal_groups["ALIAS"].phase_index, 1)
 
 
 if __name__ == "__main__":

@@ -79,6 +79,19 @@ class BoundTLS:
     tls_id: str
     junction_ids: list[str]
     signal_groups: dict[str, SignalGroupBinding] = field(default_factory=dict)
+    # Authoritative conflict matrix at the *link-index* level (the indices SUMO
+    # phase-state strings use), parallel to the group-level one above. Built from
+    # the same junction ``<request foes>`` data, resolving each controlled
+    # connection's link index through its ``via`` internal lane. The all-red
+    # transition check needs link granularity (a phase releases links, not groups)
+    # to tell a genuinely conflicting green→green transition from the same green
+    # merely segmented into sub-phases.
+    link_conflicts: dict[int, frozenset[int]] = field(default_factory=dict)
+    # Link indices whose foe data is authoritative (resolved to a request slot
+    # that carries a foes bitmask) — even when their conflict set is empty
+    # (genuinely conflict-free). Distinguishes a *known-empty* matrix from an
+    # *unknown* link, so the all-red check stays fail-closed on unknowns.
+    known_conflict_links: frozenset[int] = field(default_factory=frozenset)
 
     def conflicts_for(self, signal_group_id: str) -> list[str]:
         group = self.signal_groups.get(signal_group_id)
@@ -150,6 +163,46 @@ def _group_for_connection(
     return None
 
 
+def _tls_link_conflicts(
+    tls_profile,  # type: ignore[no-untyped-def]
+    via_slots: dict[str, tuple[str, int]],
+    junction_requests: dict[str, dict[int, str]],
+) -> tuple[dict[int, frozenset[int]], frozenset[int]]:
+    """Link-index conflict matrix for one TLS, from junction ``<request foes>``.
+
+    Resolves each controlled connection's link index to its junction-local request
+    slot through its ``via`` internal lane (same definitional mapping as the
+    group-level binding), then reads the foes bitmask. Returns ``(conflicts,
+    known)`` where ``conflicts[link]`` is the set of conflicting link indices and
+    ``known`` is the set of link indices that resolved to authoritative foe data
+    (possibly with an empty conflict set — genuinely conflict-free). Links whose
+    ``via`` does not resolve are absent from both -> the caller stays fail-closed.
+    """
+    link_to_slots: dict[int, set[tuple[str, int]]] = {}
+    slot_to_links: dict[tuple[str, int], set[int]] = {}
+    for connection in tls_profile.connections:
+        slot = via_slots.get(connection.via)
+        if slot is None:
+            continue
+        link_to_slots.setdefault(connection.link_index, set()).add(slot)
+        slot_to_links.setdefault(slot, set()).add(connection.link_index)
+
+    conflicts: dict[int, set[int]] = {}
+    known: set[int] = set()
+    for link, slots in link_to_slots.items():
+        for junction_id, req_idx in slots:
+            foes = junction_requests.get(junction_id, {}).get(req_idx)
+            if foes is None:
+                continue
+            known.add(link)
+            for foe_idx in foe_local_indices(foes):
+                for other in slot_to_links.get((junction_id, foe_idx), ()):
+                    if other != link:
+                        conflicts.setdefault(link, set()).add(other)
+                        conflicts.setdefault(other, set()).add(link)  # foes é simétrico
+    return {link: frozenset(peers) for link, peers in conflicts.items()}, frozenset(known)
+
+
 def _read_junction_tables(
     net_path: Path,
 ) -> tuple[dict[str, dict[int, str]], dict[str, tuple[str, int]]]:
@@ -163,6 +216,15 @@ def _read_junction_tables(
       attribute** — the definitional mapping SUMO uses for ``<request index=...>``.
       It must not be derived from the lane id's embedded numbers (internal *edge*
       index, shared by sibling lanes of multi-lane internal edges).
+
+    Only **real junctions carry a ``<request>`` table**; their ``intLanes`` slot is
+    the request index. Internal junctions (id ``":..."``) list the same internal
+    lanes in their own ``intLanes`` (for internal-junction right-of-way) but have no
+    request table — so via_slots is populated **only from request-bearing junctions**.
+    Mapping internal junctions too lets them shadow the controlling junction's slot:
+    a connection's ``via`` then resolves to an index with no foe data and the whole
+    signal group fail-closes for nothing (on real netconvert/OSM output this silently
+    dropped ~70% of controlled connections).
     """
     requests: dict[str, dict[int, str]] = {}
     via_slots: dict[str, tuple[str, int]] = {}
@@ -171,16 +233,17 @@ def _read_junction_tables(
         jid = junction.get("id")
         if not jid:
             continue
-        for slot_index, lane_id in enumerate((junction.get("intLanes") or "").split()):
-            via_slots[lane_id] = (jid, slot_index)
         by_index: dict[int, str] = {}
         for request in junction.findall("request"):
             idx = request.get("index")
             foes = request.get("foes", "")
             if idx is not None:
                 by_index[int(idx)] = foes
-        if by_index:
-            requests[jid] = by_index
+        if not by_index:
+            continue  # internal junction (no request table): must not shadow via_slots
+        requests[jid] = by_index
+        for slot_index, lane_id in enumerate((junction.get("intLanes") or "").split()):
+            via_slots[lane_id] = (jid, slot_index)
     return requests, via_slots
 
 
@@ -242,8 +305,15 @@ def build_network_binding(
                 conflict_source="sumo_request_foes" if had_foe_data else "none",
             )
         tls_junctions = sorted({jid for slots in group_slots.values() for jid, _ in slots})
+        link_conflicts, known_conflict_links = _tls_link_conflicts(
+            tls_profile, via_slots, junction_requests
+        )
         tls_bindings[tls_id] = BoundTLS(
-            tls_id=tls_id, junction_ids=tls_junctions, signal_groups=groups
+            tls_id=tls_id,
+            junction_ids=tls_junctions,
+            signal_groups=groups,
+            link_conflicts=link_conflicts,
+            known_conflict_links=known_conflict_links,
         )
 
     return NetworkBinding(

@@ -338,11 +338,24 @@ def _build_movements(
         grouped.setdefault((connection.from_edge, connection.to_edge), []).append(connection)
 
     draft: list[MovementProfile] = []
+    used_group_ids: set[str] = set()
     for (from_edge, to_edge), group in sorted(grouped.items()):
         link_indices = sorted({connection.link_index for connection in group})
         green_phases, protected_phases, permissive_phases = _green_phase_sets(phases, link_indices)
         target_phase = _target_phase(phases, link_indices, protected_phases or green_phases)
-        signal_group_id = f"{tls_id}_movement_{_safe_id(from_edge)}_to_{_safe_id(to_edge)}"
+        # _safe_id is lossy on real OSM edge ids ('#', '.', ':' -> '_'), so two
+        # distinct (from,to) pairs can collapse to the same label and collide
+        # (raising "Duplicate priority movement id" downstream in load_cits_config).
+        # The grouping key is unique, so disambiguate only the colliding LABEL with
+        # a deterministic suffix; clean synthetic ids (e.g. I1_I2) never collide and
+        # stay byte-identical, so existing nets/tests are unaffected.
+        base_group_id = f"{tls_id}_movement_{_safe_id(from_edge)}_to_{_safe_id(to_edge)}"
+        signal_group_id = base_group_id
+        dup = 0
+        while signal_group_id in used_group_ids:
+            dup += 1
+            signal_group_id = f"{base_group_id}_dup{dup}"
+        used_group_ids.add(signal_group_id)
         movement_id = f"{signal_group_id}_public_transport"
         draft.append(
             MovementProfile(

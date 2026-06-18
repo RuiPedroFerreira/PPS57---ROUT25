@@ -71,6 +71,20 @@ class ControllerContract:
     pedestrian_phase_required: bool
     pedestrian_phase_indices: list[int]
     signal_groups: dict[str, SignalGroupContract]
+    # Link indices de movimentos veiculares (não-internos), topologicamente
+    # estáveis entre programas WAUT. Distinguem verde veicular de verde pedonal
+    # na verificação de fase pedonal exclusiva. Vazio => sem profile -> a
+    # verificação recai na heurística service∪intergreen.
+    vehicle_link_indices: list[int] = field(default_factory=list)
+    # Matriz de conflitos ao nível do LINK (vinda do NetworkBinding / foes da
+    # rede), usada pela verificação de all-red para distinguir greens
+    # consecutivos conflituantes de não-conflituantes. ``None`` => sem dados
+    # autoritativos -> a verificação fica fail-closed (comportamento legado:
+    # exige all-red em todas as transições verde->verde). Dict (possivelmente
+    # vazio) => dados presentes; ``known_conflict_links`` diz que links têm foe
+    # data autoritativa (mesmo com conjunto de conflitos vazio).
+    link_conflicts: dict[int, frozenset[int]] | None = None
+    known_conflict_links: frozenset[int] | None = None
 
     def signal_group_for_id(self, signal_group_id: str) -> SignalGroupContract | None:
         return self.signal_groups.get(signal_group_id)
@@ -309,6 +323,8 @@ class TraciSignalControlAdapter:
                         contract.phase_sequence,
                         contract.service_green_phase_indices,
                         contract.min_all_red_s,
+                        link_conflicts=contract.link_conflicts,
+                        known_conflict_links=contract.known_conflict_links,
                     )
                     for from_phase, to_phase in missing_all_red:
                         problems.append(
@@ -327,6 +343,7 @@ class TraciSignalControlAdapter:
                     contract.service_green_phase_indices,
                     contract.intergreen_phase_indices,
                     contract.pedestrian_phase_indices,
+                    vehicle_link_indices=contract.vehicle_link_indices or None,
                 ):
                     problems.append(
                         f"{tls_id}: fase pedonal exclusiva configurada não encontrada; clearance pedonal não garantida"
@@ -595,7 +612,16 @@ def apply_network_binding(
                 conflicts_with=conflicts,
                 conflict_matrix_known=True,
             )
-        bound.append(replace(contract, signal_groups=new_groups))
+        # Matriz de conflitos ao nível do link: índices universais dentro do TLS
+        # (não precisam de tradução por alias, ao contrário dos ids de grupo).
+        bound.append(
+            replace(
+                contract,
+                signal_groups=new_groups,
+                link_conflicts=dict(tls_binding.link_conflicts),
+                known_conflict_links=tls_binding.known_conflict_links,
+            )
+        )
     return bound
 
 
@@ -728,6 +754,96 @@ def build_controller_contract(
         pedestrian_phase_required=pedestrian_required,
         pedestrian_phase_indices=pedestrian_phase_indices,
         signal_groups=signal_groups,
+        vehicle_link_indices=(_vehicle_link_indices(tls_profile) if tls_profile is not None else []),
+    )
+
+
+def _runtime_green_phase(
+    states: list[str], link_indices: list[int], prefer_protected: bool
+) -> int | None:
+    """Índice da fase runtime em que TODOS os links do grupo têm verde.
+
+    Os link indices vêm do profile (net.xml) mas são TOPOLÓGICOS — o WAUT troca os
+    *estados* das fases, não a ordem dos links — logo continuam válidos em runtime.
+    Preferência por verde protegido ('G') quando exigido; fallback para permissivo
+    ('g'/'G'). None se nenhuma fase serve o grupo (mantém o phase_index offline).
+    """
+    indices = [index for index in link_indices if isinstance(index, int) and index >= 0]
+    if not indices:
+        return None
+    if prefer_protected:
+        for phase, state in enumerate(states):
+            if all(index < len(state) and state[index] == "G" for index in indices):
+                return phase
+    for phase, state in enumerate(states):
+        if all(index < len(state) and state[index].lower() == "g" for index in indices):
+            return phase
+    return None
+
+
+def reconcile_contract_with_runtime(
+    contract: ControllerContract,
+    adapter: SignalControlAdapter,
+    tls_profile: TLSProfile | None = None,
+) -> ControllerContract:
+    """Reconcilia a ESTRUTURA do contrato com o programa SUMO realmente em execução.
+
+    O contrato é construído offline a partir do ``tlLogic`` embebido no ``net.xml``,
+    mas em runtime o WAUT troca o programa por hora do dia (ex.: ciclo 90s->243s,
+    4->3 fases). O contrato offline fica desatualizado e a verificação fail-closa
+    com "ciclo difere"/"fase fora do programa", e o motor recusa o early_green com
+    "current_phase_not_configured_as_conflict"/"would_skip_clearance_phase".
+
+    Lê o programa em execução via TraCI e reconstrói ``phase_sequence``,
+    ``service_green_phase_indices``, ``intergreen_phase_indices`` e
+    ``expected_cycle_s`` a partir dos estados/durações reais. Com ``tls_profile``,
+    remapeia também o ``phase_index`` de cada signal group para a fase verde REAL
+    do movimento (via os seus link indices topológicos + os estados runtime) — é o
+    que destrava o green_extension/early_green nos TLS WAUT cujo verde mudou de
+    fase. NÃO relaxa segurança: os checks de clearance passam a operar sobre os
+    intergreens VERDADEIROS e a verificação pedonal mantém-se intacta (fail-closed
+    quando não confirmável). Programa ilegível -> contrato inalterado. Preserva a
+    matriz de conflitos do binding e ``pedestrian_phase_indices``.
+    """
+    states = adapter.read_program_phase_states(contract.tls_id)
+    if not states:
+        return contract  # programa ilegível -> fail-closed (inalterado)
+    durations = adapter.read_program_phase_durations(contract.tls_id)
+    service_green = [index for index, state in enumerate(states) if "g" in state.lower()]
+    intergreen = [index for index, state in enumerate(states) if "g" not in state.lower()]
+    expected_cycle = (
+        sum(float(duration) for duration in durations) if durations else contract.expected_cycle_s
+    )
+
+    signal_groups = contract.signal_groups
+    if tls_profile is not None:
+        # link indices por signal group (match directo: nos contratos
+        # auto-descobertos o id do grupo == movement.signal_group_id do profile;
+        # em configs com alias não há match -> phase_index mantém-se, que é o
+        # correto porque aí o programa runtime == net.xml).
+        link_indices_by_group = {
+            movement.signal_group_id: movement.link_indices for movement in tls_profile.movements
+        }
+        remapped: dict[str, SignalGroupContract] = {}
+        for group_id, group in contract.signal_groups.items():
+            link_indices = link_indices_by_group.get(group_id)
+            runtime_phase = (
+                _runtime_green_phase(states, link_indices, group.requires_protected_green)
+                if link_indices
+                else None
+            )
+            remapped[group_id] = (
+                replace(group, phase_index=runtime_phase) if runtime_phase is not None else group
+            )
+        signal_groups = remapped
+
+    return replace(
+        contract,
+        phase_sequence=list(range(len(states))),
+        service_green_phase_indices=service_green,
+        intergreen_phase_indices=intergreen,
+        expected_cycle_s=expected_cycle,
+        signal_groups=signal_groups,
     )
 
 
@@ -842,17 +958,31 @@ def _additional_signal_group_items(
     return [item for item in items if isinstance(item, dict)] if isinstance(items, list) else []
 
 
+def _vehicle_link_indices(tls_profile: TLSProfile) -> list[int]:
+    """Link indices de movimentos VEICULARES (conexões sem lanes internas ':').
+
+    As restantes conexões (de/para lanes internas) são travessias pedonais. É a
+    MESMA distinção usada por _pedestrian_phase_indices, extraída para um só
+    sítio, para distinguir verde veicular de verde pedonal na verificação de
+    clearance (uma fase pedonal exclusiva tem peões verdes e veículos vermelhos).
+    """
+    return sorted(
+        {
+            connection.link_index
+            for connection in tls_profile.connections
+            if not connection.from_edge.startswith(":")
+            and not connection.to_edge.startswith(":")
+        }
+    )
+
+
 def _pedestrian_phase_indices(tls_profile: TLSProfile) -> list[int]:
     pedestrian_indices = {
         connection.link_index
         for connection in tls_profile.connections
         if connection.from_edge.startswith(":") or connection.to_edge.startswith(":")
     }
-    vehicle_indices = {
-        connection.link_index
-        for connection in tls_profile.connections
-        if not connection.from_edge.startswith(":") and not connection.to_edge.startswith(":")
-    }
+    vehicle_indices = set(_vehicle_link_indices(tls_profile))
     result: list[int] = []
     for phase in tls_profile.phases:
         pedestrian_green = any(
@@ -924,19 +1054,88 @@ def _has_configured_pedestrian_phase(
     service_green_phase_indices: list[int],
     intergreen_phase_indices: list[int],
     pedestrian_phase_indices: list[int],
+    vehicle_link_indices: list[int] | None = None,
 ) -> bool:
+    """Existe uma fase pedonal EXCLUSIVA (peões verdes, veículos vermelhos)?
+
+    É a garantia de que o early_green (truncagem de fase) não encurta a travessia
+    pedonal. Com ``vehicle_link_indices`` (classificação topológica dos links
+    veiculares, estável entre programas WAUT), verifica a exclusividade
+    DIRETAMENTE: a fase tem verde mas NENHUM link veicular verde. Sem essa info
+    (``None``) recai na heurística anterior — a fase pedonal tem de estar fora do
+    conjunto curado service∪intergreen. A heurística é necessária para configs
+    sem profile, mas falha quando service/intergreen são DERIVADOS (cobrem todas
+    as fases e a fase pedonal, que tem 'g' no link de peão, cai em service); é
+    por isso que o caminho com links é o correto para redes reais (OSM/WAUT).
+    """
     if not pedestrian_phase_indices:
         return False
     vehicular_phase_indices = set(service_green_phase_indices) | set(intergreen_phase_indices)
     for index in pedestrian_phase_indices:
-        if index in vehicular_phase_indices:
-            return False
         if not (0 <= index < len(states)):
-            return False
+            continue
         state = states[index]
-        if any(ch in {"G", "g"} for ch in state):
-            return True
+        if not any(ch in {"G", "g"} for ch in state):
+            continue  # sem qualquer verde -> não é fase pedonal
+        if vehicle_link_indices is not None:
+            vehicle_green = any(
+                link < len(state) and state[link] in {"G", "g"} for link in vehicle_link_indices
+            )
+            if not vehicle_green:
+                return True  # verde presente e nenhum veicular -> pedonal exclusiva
+        elif index not in vehicular_phase_indices:
+            return True  # fallback: fase fora do conjunto veicular curado
     return False
+
+
+def _green_link_indices(state: str) -> set[int]:
+    return {index for index, ch in enumerate(state) if ch in ("g", "G")}
+
+
+def _transition_needs_all_red(
+    states: list[str],
+    from_phase: int,
+    to_phase: int,
+    link_conflicts: dict[int, frozenset[int]] | None,
+    known_conflict_links: frozenset[int] | None,
+) -> bool:
+    """Esta transição verde->verde (sem all-red) liberta um movimento conflituante?
+
+    All-red entre dois verdes só é necessário quando um movimento que TERMINA
+    (verde na fase de origem, já não na de destino) é foe de um que ARRANCA (novo
+    verde na fase de destino) — só aí há tráfego a libertar que pode colidir com o
+    que ainda escoa. Foes que co-existem verdes na fase de destino
+    (protegido/permissivo) são uma propriedade dessa fase, não uma clearance da
+    transição, e não exigem all-red entre as fases.
+
+    Fail-closed por omissão de dados:
+    - ``link_conflicts is None`` (sem matriz autoritativa): devolve ``True`` para
+      TODAS as transições -> comportamento legado (exige all-red em todo o lado),
+      como em redes sintéticas sem NetworkBinding.
+    - matriz presente mas algum link envolvido sem foe data autoritativa: devolve
+      ``True`` (não dá para provar seguro) a menos que um conflito genuíno já o
+      tenha decidido.
+    """
+    if link_conflicts is None:
+        return True
+    if not (0 <= from_phase < len(states) and 0 <= to_phase < len(states)):
+        return True
+    green_from = _green_link_indices(states[from_phase])
+    green_to = _green_link_indices(states[to_phase])
+    newly = green_to - green_from  # movimentos que ARRANCAM
+    if not newly:
+        return False  # nada de novo libertado (mesmo verde mantido/encolhido) -> seguro
+    terminating = green_from - green_to  # movimentos que TERMINAM
+    for starting in newly:
+        for ending in terminating:
+            if starting in link_conflicts.get(ending, frozenset()) or ending in link_conflicts.get(
+                starting, frozenset()
+            ):
+                return True  # movimento que termina é foe de um que arranca -> all-red exigível
+    known = known_conflict_links or frozenset()
+    # Seguro só se TODOS os links envolvidos têm foe data autoritativa (nenhum
+    # conflitua, já verificado acima); caso contrário foe data em falta -> fail-closed.
+    return not all(link in known for link in (newly | terminating))
 
 
 def _missing_all_red_transitions(
@@ -945,6 +1144,8 @@ def _missing_all_red_transitions(
     phase_sequence: list[int],
     service_green_phase_indices: list[int],
     min_all_red_s: float,
+    link_conflicts: dict[int, frozenset[int]] | None = None,
+    known_conflict_links: frozenset[int] | None = None,
 ) -> list[tuple[int, int]]:
     service_set = set(service_green_phase_indices)
     # Iterate over (position, phase_index) pairs so that duplicate phase indices
@@ -978,6 +1179,14 @@ def _missing_all_red_transitions(
             and float(durations[idx]) >= min_all_red_s
             for idx in between
         )
-        if not has_required_all_red:
+        if has_required_all_red:
+            continue
+        # Sem all-red explícito entre dois service-greens consecutivos: só é
+        # problema se a transição libertar um movimento conflituante (ou se a foe
+        # data não permitir prová-lo seguro). Greens não-conflituantes (mesmo
+        # verde segmentado / expansão sem conflito) deixam de ser falsos-negativos.
+        if _transition_needs_all_red(
+            states, from_phase, to_phase, link_conflicts, known_conflict_links
+        ):
             missing.append((from_phase, to_phase))
     return missing
