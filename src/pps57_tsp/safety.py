@@ -70,6 +70,18 @@ class TSPSafetyLayer:
     # Sem isto, não há prova de que truncar a fase corrente não compromete a
     # clearance pedonal -> fail-closed quando o flag de safety estiver ligado.
     signal_program_verified: bool = False
+    # Conjunto de TLS atuáveis (programa semafórico verificado pelo controller).
+    # None => sem gate per-TLS (retrocompat: comportamento global por
+    # signal_program_verified). Quando definido, um TLS fora do conjunto é
+    # bloqueado no topo de validate() — antes de registar recovery-debt/cooldown
+    # — para que num cenário city-wide real um único TLS atuado/sem-matriz não
+    # acumule débito nem desligue a atuação na rede inteira.
+    actuable_tls: frozenset[str] | None = None
+    # Subconjunto de actuable_tls cujo programa passou TAMBÉM os checks de
+    # clearance (fase pedonal, all-red, intergreens) — só estes podem early_green
+    # (truncar fase encurta clearance). green_extension não trunca, logo basta
+    # estar em actuable_tls. None => gate de clearance global (signal_program_verified).
+    early_green_actuable_tls: frozenset[str] | None = None
     # Optional engine↔network binding. When set, the per-decision controller
     # contract gets its conflict matrix from the SUMO network's own <request foes>
     # data (authoritative), instead of the phase-disjointness heuristic. This is
@@ -92,6 +104,33 @@ class TSPSafetyLayer:
 
     def set_signal_program_verified(self, verified: bool) -> None:
         self.signal_program_verified = bool(verified)
+
+    def set_actuable_tls(self, tls: "frozenset[str] | set[str] | None") -> None:
+        """Restringe a atuação aos TLS cujo programa passou a verificação.
+
+        None desliga o gate per-TLS (retrocompat). Aceita qualquer iterável.
+        """
+        self.actuable_tls = frozenset(tls) if tls is not None else None
+
+    def set_early_green_actuable_tls(self, tls: "frozenset[str] | set[str] | None") -> None:
+        """TLS cujo programa passou também a clearance: só estes podem early_green."""
+        self.early_green_actuable_tls = frozenset(tls) if tls is not None else None
+
+    def _early_green_clearance_verified(self, tls_id: str) -> bool:
+        """Clearance pedonal confirmada para este TLS (gate per-TLS, ou global)."""
+        if self.early_green_actuable_tls is not None:
+            return tls_id in self.early_green_actuable_tls
+        return self.signal_program_verified
+
+    def seed_contracts(self, contracts: "list[ControllerContract]") -> None:
+        """Semeia o cache de contratos (ex.: reconciliados com o programa runtime).
+
+        Garante que a Safety valida sobre a MESMA estrutura de fases que o motor e
+        a verificação usam — uma só fonte de verdade. Os contratos já trazem a
+        matriz de conflitos do binding aplicada pelo controller.
+        """
+        for contract in contracts:
+            self._contract_cache[contract.tls_id] = contract
 
     def set_event_lifecycle(self, events: PriorityEventManager | None) -> None:
         self.event_lifecycle = events
@@ -126,6 +165,15 @@ class TSPSafetyLayer:
                 safe_decision=safe,
                 notes=notes + ["Sem atuação semafórica requerida."],
             )
+
+        # Gate per-TLS: só TLS cujo programa semafórico passou a verificação do
+        # controller (_verify_signal_programs) são atuáveis. Bloquear aqui — antes
+        # de qualquer registo de recovery-debt/cooldown ou abertura de evento —
+        # garante que um TLS não-atuável não acumula débito que a compensação
+        # pagaria depois (atuando-o por uma porta lateral). actuable_tls=None
+        # mantém o comportamento global anterior (retrocompat).
+        if self.actuable_tls is not None and decision.tls_id not in self.actuable_tls:
+            return self._blocked(decision, "signal_program_unverified_tls_not_actuable", notes)
 
         if self._is_yellow_transition(signal_state, decision):
             return self._blocked(decision, "current_phase_is_yellow_wait_for_next_cycle", notes)
@@ -404,7 +452,7 @@ class TSPSafetyLayer:
         # `controller._verify_signal_programs` e propagado via
         # `signal_program_verified`. Sem verificação -> fail-closed.
         if bool(safety.get("pedestrian_clearance_must_not_be_shortened", True)):
-            if not self.signal_program_verified:
+            if not self._early_green_clearance_verified(decision.tls_id):
                 return self._blocked(
                     decision,
                     "pedestrian_clearance_unverifiable_signal_program_not_validated",

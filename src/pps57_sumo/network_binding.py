@@ -163,6 +163,15 @@ def _read_junction_tables(
       attribute** — the definitional mapping SUMO uses for ``<request index=...>``.
       It must not be derived from the lane id's embedded numbers (internal *edge*
       index, shared by sibling lanes of multi-lane internal edges).
+
+    Only **real junctions carry a ``<request>`` table**; their ``intLanes`` slot is
+    the request index. Internal junctions (id ``":..."``) list the same internal
+    lanes in their own ``intLanes`` (for internal-junction right-of-way) but have no
+    request table — so via_slots is populated **only from request-bearing junctions**.
+    Mapping internal junctions too lets them shadow the controlling junction's slot:
+    a connection's ``via`` then resolves to an index with no foe data and the whole
+    signal group fail-closes for nothing (on real netconvert/OSM output this silently
+    dropped ~70% of controlled connections).
     """
     requests: dict[str, dict[int, str]] = {}
     via_slots: dict[str, tuple[str, int]] = {}
@@ -171,16 +180,17 @@ def _read_junction_tables(
         jid = junction.get("id")
         if not jid:
             continue
-        for slot_index, lane_id in enumerate((junction.get("intLanes") or "").split()):
-            via_slots[lane_id] = (jid, slot_index)
         by_index: dict[int, str] = {}
         for request in junction.findall("request"):
             idx = request.get("index")
             foes = request.get("foes", "")
             if idx is not None:
                 by_index[int(idx)] = foes
-        if by_index:
-            requests[jid] = by_index
+        if not by_index:
+            continue  # internal junction (no request table): must not shadow via_slots
+        requests[jid] = by_index
+        for slot_index, lane_id in enumerate((junction.get("intLanes") or "").split()):
+            via_slots[lane_id] = (jid, slot_index)
     return requests, via_slots
 
 

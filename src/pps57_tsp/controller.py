@@ -51,9 +51,11 @@ from .signal_control import (
     SimulatedControllerAdapter,
     TraciSignalControlAdapter,
     _network_profile_enabled,
+    _network_tls_profile,
     apply_network_binding,
     build_controller_contracts,
     network_binding_aliases,
+    reconcile_contract_with_runtime,
 )
 
 
@@ -136,26 +138,78 @@ class TSPControlController:
             # semafórico realmente carregado e detetar TLS atuados (o motor assume
             # controlo de tempo fixo). Em qualquer divergência, fail-closed:
             # desativa a atuação mas mantém a observação/decisão.
-            contracts = self._signal_controlled_contracts()
-            signal_control: SignalControlAdapter = TraciSignalControlAdapter(adapter)
+            base_signal_control = TraciSignalControlAdapter(adapter)
+            # #4: reconcilia a estrutura do contrato (sequência de fases, intergreens,
+            # ciclo) com o programa SUMO REALMENTE em execução, lido via TraCI. O
+            # contrato offline vem do tlLogic embebido no net.xml, mas o WAUT troca o
+            # programa por hora do dia -> contrato desatualizado. Semeia os caches do
+            # motor e da Safety para todos decidirem/validarem sobre a MESMA estrutura
+            # (uma só fonte de verdade). NÃO relaxa segurança: a clearance passa a
+            # operar sobre os intergreens reais; a verificação pedonal mantém-se.
+            contracts = [
+                reconcile_contract_with_runtime(
+                    contract,
+                    base_signal_control,
+                    _network_tls_profile(self.cits_config, self.tsp_config, contract.tls_id),
+                )
+                for contract in self._signal_controlled_contracts()
+            ]
+            self.engine.seed_contracts(contracts)
+            self.safety.seed_contracts(contracts)
+            signal_control: SignalControlAdapter = base_signal_control
             controller_simulation_cfg = self.tsp_config.raw.get("controller_simulation", {})
             if bool(controller_simulation_cfg.get("enabled", False)):
                 signal_control = SimulatedControllerAdapter(
-                    base=signal_control,
+                    base=base_signal_control,
                     contracts=contracts,
                     config=controller_simulation_cfg,
                 )
-            verification_problems = self._verify_signal_programs(signal_control)
-            effective_actuation = apply_actuation and not verification_problems
+            verification_problems = self._verify_signal_programs(signal_control, contracts=contracts)
+            # Atribuição per-TLS e per-AÇÃO. Cada problema é "{tls_id}: ..." (os ids
+            # de TLS do SUMO nunca contêm ':'). green_extension só estende a fase
+            # verde CORRENTE — validado live pela Safety; nunca trunca fase nem muda
+            # quem está vermelho — logo basta programa legível + tempo fixo. early_green
+            # trunca fase, por isso exige TAMBÉM os checks de clearance (fase pedonal,
+            # all-red, intergreens). Classificar por estes dois níveis evita que um só
+            # TLS atuado/sem-clearance desligue a atuação na rede inteira (era o gate
+            # global; ver smoke city-wide em Ingolstadt: 0/123 atuáveis).
+            all_signal_tls = {
+                intersection.tls_id
+                for intersection in self.cits_config.signal_controlled_intersections
+            }
+            green_ext_blockers = (
+                "ilegível",
+                "tempo fixo",
+                "atuado/adaptativo",
+                "estados de fase ilegíveis",
+            )
+            green_ext_blocked: set[str] = set()
+            tls_with_any_problem: set[str] = set()
+            for problem in verification_problems:
+                tls_id = problem.split(":", 1)[0].strip()
+                tls_with_any_problem.add(tls_id)
+                if any(marker in problem for marker in green_ext_blockers):
+                    green_ext_blocked.add(tls_id)
+            green_ext_actuable_tls = all_signal_tls - green_ext_blocked
+            fully_verified_tls = all_signal_tls - tls_with_any_problem
+            effective_actuation = apply_actuation and bool(green_ext_actuable_tls)
             if verification_problems and apply_actuation:
                 print(
-                    "[SAFETY] Atuação TraCI desativada: verificação do programa semafórico falhou:"
+                    f"[SAFETY] Atuação per-TLS/per-ação: green_extension em "
+                    f"{len(green_ext_actuable_tls)}/{len(all_signal_tls)} TLS "
+                    f"(early_green em {len(fully_verified_tls)}); "
+                    f"{len(verification_problems)} problemas (primeiros 10):"
                 )
-                for problem in verification_problems:
+                for problem in verification_problems[:10]:
                     print(f"  - {problem}")
-            # Propaga o resultado da verificação para a Safety Layer poder enforçar
-            # `pedestrian_clearance_must_not_be_shortened` (fail-closed em falhas).
-            self.safety.set_signal_program_verified(not verification_problems)
+                if len(verification_problems) > 10:
+                    print(f"  - ... (+{len(verification_problems) - 10} problemas)")
+            # Safety: actuable_tls gateia QUALQUER atuação (green_extension);
+            # early_green_actuable_tls restringe o early_green aos TLS com clearance
+            # confirmada; o flag global mantém retrocompat para chamadas sem set.
+            self.safety.set_signal_program_verified(bool(fully_verified_tls))
+            self.safety.set_actuable_tls(green_ext_actuable_tls)
+            self.safety.set_early_green_actuable_tls(fully_verified_tls)
             actuator = TraciTSPActuator(adapter=signal_control, apply_actuation=effective_actuation)
 
             step_count = 0
@@ -275,6 +329,11 @@ class TSPControlController:
                 "signal_program_verification": {
                     "problems": verification_problems,
                     "actuation_downgraded": bool(verification_problems and apply_actuation),
+                    "tls_total": len(all_signal_tls),
+                    "tls_actuable": len(green_ext_actuable_tls),
+                    "tls_green_extension_actuable": len(green_ext_actuable_tls),
+                    "tls_early_green_actuable": len(fully_verified_tls),
+                    "tls_fail_closed": len(all_signal_tls) - len(green_ext_actuable_tls),
                 },
                 "message_transport": self.broker.transport_stats(),
                 "cits_total_messages": cits_summary_dict["total_messages"],
@@ -590,7 +649,9 @@ class TSPControlController:
             logger.write(message)
             summary.add(message)
 
-    def _verify_signal_programs(self, adapter: SignalControlAdapter) -> list[str]:
+    def _verify_signal_programs(
+        self, adapter: SignalControlAdapter, contracts: list[ControllerContract] | None = None
+    ) -> list[str]:
         """Verifica contratos de controlador contra o programa semafórico real.
 
         Fail-closed: se o programa não puder ser lido, ou se algum índice de fase
@@ -598,7 +659,8 @@ class TSPControlController:
         ou se o TLS for atuado quando o contrato exige tempo fixo, devolve
         problemas que desativam a atuação.
         """
-        contracts = self._signal_controlled_contracts()
+        if contracts is None:
+            contracts = self._signal_controlled_contracts()
         if hasattr(adapter, "verify_controller_contracts"):
             return adapter.verify_controller_contracts(contracts)
         return TraciSignalControlAdapter(adapter).verify_controller_contracts(contracts)  # type: ignore[arg-type]

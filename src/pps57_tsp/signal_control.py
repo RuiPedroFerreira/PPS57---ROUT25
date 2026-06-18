@@ -731,6 +731,95 @@ def build_controller_contract(
     )
 
 
+def _runtime_green_phase(
+    states: list[str], link_indices: list[int], prefer_protected: bool
+) -> int | None:
+    """Índice da fase runtime em que TODOS os links do grupo têm verde.
+
+    Os link indices vêm do profile (net.xml) mas são TOPOLÓGICOS — o WAUT troca os
+    *estados* das fases, não a ordem dos links — logo continuam válidos em runtime.
+    Preferência por verde protegido ('G') quando exigido; fallback para permissivo
+    ('g'/'G'). None se nenhuma fase serve o grupo (mantém o phase_index offline).
+    """
+    indices = [index for index in link_indices if isinstance(index, int) and index >= 0]
+    if not indices:
+        return None
+    if prefer_protected:
+        for phase, state in enumerate(states):
+            if all(index < len(state) and state[index] == "G" for index in indices):
+                return phase
+    for phase, state in enumerate(states):
+        if all(index < len(state) and state[index].lower() == "g" for index in indices):
+            return phase
+    return None
+
+
+def reconcile_contract_with_runtime(
+    contract: ControllerContract,
+    adapter: SignalControlAdapter,
+    tls_profile: TLSProfile | None = None,
+) -> ControllerContract:
+    """Reconcilia a ESTRUTURA do contrato com o programa SUMO realmente em execução.
+
+    O contrato é construído offline a partir do ``tlLogic`` embebido no ``net.xml``,
+    mas em runtime o WAUT troca o programa por hora do dia (ex.: ciclo 90s->243s,
+    4->3 fases). O contrato offline fica desatualizado e a verificação fail-closa
+    com "ciclo difere"/"fase fora do programa", e o motor recusa o early_green com
+    "current_phase_not_configured_as_conflict"/"would_skip_clearance_phase".
+
+    Lê o programa em execução via TraCI e reconstrói ``phase_sequence``,
+    ``service_green_phase_indices``, ``intergreen_phase_indices`` e
+    ``expected_cycle_s`` a partir dos estados/durações reais. Com ``tls_profile``,
+    remapeia também o ``phase_index`` de cada signal group para a fase verde REAL
+    do movimento (via os seus link indices topológicos + os estados runtime) — é o
+    que destrava o green_extension/early_green nos TLS WAUT cujo verde mudou de
+    fase. NÃO relaxa segurança: os checks de clearance passam a operar sobre os
+    intergreens VERDADEIROS e a verificação pedonal mantém-se intacta (fail-closed
+    quando não confirmável). Programa ilegível -> contrato inalterado. Preserva a
+    matriz de conflitos do binding e ``pedestrian_phase_indices``.
+    """
+    states = adapter.read_program_phase_states(contract.tls_id)
+    if not states:
+        return contract  # programa ilegível -> fail-closed (inalterado)
+    durations = adapter.read_program_phase_durations(contract.tls_id)
+    service_green = [index for index, state in enumerate(states) if "g" in state.lower()]
+    intergreen = [index for index, state in enumerate(states) if "g" not in state.lower()]
+    expected_cycle = (
+        sum(float(duration) for duration in durations) if durations else contract.expected_cycle_s
+    )
+
+    signal_groups = contract.signal_groups
+    if tls_profile is not None:
+        # link indices por signal group (match directo: nos contratos
+        # auto-descobertos o id do grupo == movement.signal_group_id do profile;
+        # em configs com alias não há match -> phase_index mantém-se, que é o
+        # correto porque aí o programa runtime == net.xml).
+        link_indices_by_group = {
+            movement.signal_group_id: movement.link_indices for movement in tls_profile.movements
+        }
+        remapped: dict[str, SignalGroupContract] = {}
+        for group_id, group in contract.signal_groups.items():
+            link_indices = link_indices_by_group.get(group_id)
+            runtime_phase = (
+                _runtime_green_phase(states, link_indices, group.requires_protected_green)
+                if link_indices
+                else None
+            )
+            remapped[group_id] = (
+                replace(group, phase_index=runtime_phase) if runtime_phase is not None else group
+            )
+        signal_groups = remapped
+
+    return replace(
+        contract,
+        phase_sequence=list(range(len(states))),
+        service_green_phase_indices=service_green,
+        intergreen_phase_indices=intergreen,
+        expected_cycle_s=expected_cycle,
+        signal_groups=signal_groups,
+    )
+
+
 def _network_tls_profile(
     cits_config: CITSConfig, tsp_config: TSPConfig, tls_id: str
 ) -> TLSProfile | None:

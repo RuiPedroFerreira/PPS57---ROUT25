@@ -544,6 +544,16 @@ class TSPDecisionEngine:
             return float(phase_min)
         return max(min_green, float(phase_min))
 
+    def seed_contracts(self, contracts: list[ControllerContract]) -> None:
+        """Semeia o cache de contratos (ex.: reconciliados com o programa runtime).
+
+        O controller chama isto após reconciliar os contratos com o programa SUMO
+        real, para o motor decidir sobre a MESMA estrutura de fases que a Safety e
+        a verificação — uma só fonte de verdade.
+        """
+        for contract in contracts:
+            self._contract_cache[contract.tls_id] = contract
+
     def _controller_contract_for_request(self, request: SREMLike) -> ControllerContract | None:
         if request.tls_id not in self._contract_cache:
             try:

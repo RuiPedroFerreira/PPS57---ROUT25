@@ -241,6 +241,32 @@ class Package4TSPTestCase(unittest.TestCase):
             result.safe_decision.extension_s, self.cits.safety_constraints["max_green_extension_s"]
         )
 
+    def test_per_tls_actuable_gate_blocks_unverified_allows_verified(self) -> None:
+        # #2 city-wide: actuable_tls restringe a atuação aos TLS cujo programa
+        # passou a verificação. None (default) = comportamento global anterior.
+        request = self._request(eta_to_stopline_s=40.0)
+        state = self._state(next_switch_s=101.0)
+        decision = self.engine.decide(request, state, sim_time_s=100.0)
+        tls = decision.tls_id
+
+        # Retrocompat: sem gate per-TLS, aprova.
+        baseline = TSPSafetyLayer(self.cits, self.tsp)
+        self.assertTrue(baseline.validate(decision, state, sim_time_s=100.0).approved)
+
+        # TLS verificado -> o gate deixa passar (continua aprovado).
+        verified = TSPSafetyLayer(self.cits, self.tsp)
+        verified.set_actuable_tls({tls})
+        self.assertTrue(verified.validate(decision, state, sim_time_s=100.0).approved)
+
+        # TLS NÃO atuável -> bloqueado pelo gate, ANTES de registar recovery-debt.
+        unverified = TSPSafetyLayer(self.cits, self.tsp)
+        unverified.set_actuable_tls(set())
+        result = unverified.validate(decision, state, sim_time_s=100.0)
+        self.assertFalse(result.approved)
+        self.assertEqual(result.safe_decision.status, DecisionStatus.BLOCKED_BY_SAFETY.value)
+        self.assertIn("signal_program_unverified_tls_not_actuable", result.reason)
+        self.assertEqual(unverified.recovery_debt_by_tls.get(tls, 0.0), 0.0)
+
     def test_safety_blocks_early_green_before_min_green(self) -> None:
         safety = TSPSafetyLayer(self.cits, self.tsp)
         request = self._request(
@@ -874,6 +900,14 @@ class Package4TSPTestCase(unittest.TestCase):
             "conflicts_with"
         ] = []
         controller = TSPControlController(self.cits, TSPConfig(root=self.tsp.root, raw=raw))
+        # Sem fonte autoritativa, uma lista de conflitos vazia vinda do config NÃO é
+        # de confiança e o gate fail-close tem de disparar. (Antes, o binding também
+        # falhava neste TLS por causa do shadowing de junções internas, mascarando o
+        # cenário; corrigido isso, a rede passou a cobrir I2 autoritativamente — ver
+        # test_internal_junction_does_not_shadow_via_slots. Para exercer o caminho
+        # "sem matriz", removemos a fonte autoritativa explicitamente.)
+        controller.network_binding = None
+        controller.network_binding_aliases = None
 
         class _CleanAdapter:
             def read_program_phase_count(self, tls_id: str) -> int:
@@ -1013,6 +1047,51 @@ class Package4TSPTestCase(unittest.TestCase):
         result = safety.validate(decision, state, sim_time_s=100.0)
         self.assertTrue(result.approved, msg=f"reason={result.reason}")
         self.assertEqual(result.reason, "approved_red_truncation")
+
+    def test_early_green_per_tls_clearance_gate(self) -> None:
+        # #3 per-ação: um TLS pode ser green_extension-atuável (em actuable_tls)
+        # mas NÃO early_green-atuável (clearance não confirmada). O early_green
+        # tem de ser bloqueado mesmo assim — truncar fase encurtaria clearance.
+        request = self._request(
+            destination_id="RSU_BOAVISTA_07",
+            intersection_id="I7",
+            tls_id="I7",
+            rsu_id="RSU_BOAVISTA_07",
+            current_edge_id="ATLANTIC_WEST_I7",
+            current_lane_id="ATLANTIC_WEST_I7_0",
+            priority_movement_id="I7_eastbound_public_transport",
+            target_signal_group_id="I7_priority_eastbound",
+        )
+        state = SignalState(
+            intersection_id="I7",
+            tls_id="I7",
+            rsu_id="RSU_BOAVISTA_07",
+            timestamp_s=100.0,
+            current_phase_index=3,
+            current_program_id="test",
+            red_yellow_green_state="rrGG",
+            next_switch_s=125.0,
+            spent_duration_s=20.0,
+            controlled_lanes=["I6_I7_0", "ATLANTIC_WEST_I7_0", "N_I7_I7_0", "S_I7_I7_0"],
+        )
+        decision = self.engine.decide(request, state, sim_time_s=100.0)
+        self.assertEqual(decision.action, TSPAction.EARLY_GREEN.value)
+
+        # I7 atuável (green_ext) E com clearance confirmada -> early_green aprovado.
+        ok = TSPSafetyLayer(self.cits, self.tsp)
+        ok.set_actuable_tls({"I7"})
+        ok.set_early_green_actuable_tls({"I7"})
+        self.assertTrue(ok.validate(decision, state, sim_time_s=100.0).approved)
+
+        # I7 atuável p/ green_extension mas SEM clearance -> early_green bloqueado.
+        no_clear = TSPSafetyLayer(self.cits, self.tsp)
+        no_clear.set_actuable_tls({"I7"})
+        no_clear.set_early_green_actuable_tls(set())
+        result = no_clear.validate(decision, state, sim_time_s=100.0)
+        self.assertFalse(result.approved)
+        self.assertEqual(
+            result.reason, "pedestrian_clearance_unverifiable_signal_program_not_validated"
+        )
 
     def _approved_early_green(self, safety: TSPSafetyLayer):
         request = self._request(

@@ -82,6 +82,10 @@ class ReasonCode(str, Enum):
     )
     MAX_CONSECUTIVE_INTERVENTIONS_REACHED = "max_consecutive_priority_interventions_reached"
     UNSUPPORTED_TSP_ACTION = "unsupported_tsp_action"
+    # Gate per-TLS: programa semafórico do TLS não passou a verificação do
+    # controller (atuado/adaptativo, sem matriz de conflitos, clearance, etc.),
+    # logo o TLS fica fail-closed individualmente.
+    SIGNAL_PROGRAM_UNVERIFIED_TLS_NOT_ACTUABLE = "signal_program_unverified_tls_not_actuable"
 
     # --- safety: green extension ---
     GREEN_EXTENSION_DISABLED_BY_CONFIG = "green_extension_disabled_by_config"
