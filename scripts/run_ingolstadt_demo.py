@@ -13,7 +13,7 @@ real de autocarros do dia. As situações operacionais emergem da simulação.
 Exemplos:
   python scripts/run_ingolstadt_demo.py --steps 300                 # 07:00, 5 min, TSP
   python scripts/run_ingolstadt_demo.py --begin 07:00:00 --steps 600
-  python scripts/run_ingolstadt_demo.py --no-actuation              # braço baseline (sem atuação)
+  python scripts/run_ingolstadt_demo.py --no-actuation              # dry-run TSP (sem atuação)
 """
 from __future__ import annotations
 
@@ -37,12 +37,32 @@ WORK = ROOT / ".tools" / "ingol_run"
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--day", default="2023-07-04", help="Dia-demo (Routes/TL/PT têm de existir no cenário).")
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument(
+        "--day",
+        default="2023-07-04",
+        help="Dia-demo (Routes/TL/PT têm de existir no cenário).",
+    )
     p.add_argument("--begin", default="07:00:00", help="Início da janela (HH:MM:SS).")
-    p.add_argument("--steps", type=int, default=300, help="Passos de simulação (step-length 1s).")
-    p.add_argument("--no-actuation", action="store_true", help="Braço baseline: decide mas não atua.")
-    p.add_argument("--refresh", action="store_true", help="Recopiar os ficheiros do cenário (lento).")
+    p.add_argument(
+        "--steps",
+        type=int,
+        default=300,
+        help="Passos de simulação (step-length 1s).",
+    )
+    p.add_argument(
+        "--no-actuation",
+        action="store_true",
+        help="Dry-run TSP: decide mas não atua; não é baseline SUMO puro.",
+    )
+    p.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Recopiar os ficheiros do cenário (lento).",
+    )
     p.add_argument("--config", default="configs/cits_ingolstadt_config.json", type=Path)
     p.add_argument("--tsp-config", default="configs/tsp_safety_config.json", type=Path)
     return p.parse_args()
@@ -50,6 +70,10 @@ def parse_args() -> argparse.Namespace:
 
 def materialize(day: str, begin: str, refresh: bool) -> tuple[Path, Path]:
     """Copia (idempotente) os ficheiros do dia para um diretório limpo e escreve o sumocfg."""
+    route = f"Routes/routes_{day}_24h_det_calib.rou.xml.gz"
+    tl_logic = f"TL/{day}_tlLogics_24h.tll.xml"
+    waut = f"TL/{day}_WAUT.xml"
+    gtfs = f"PT/{day}_gtfs_trips.rou.xml"
     if not SCENARIO_DIR.exists():
         raise SystemExit(
             f"Cenário não encontrado em {SCENARIO_DIR}.\n"
@@ -58,11 +82,11 @@ def materialize(day: str, begin: str, refresh: bool) -> tuple[Path, Path]:
         )
     files = {
         "ingolstadt_net.net.xml": "ingolstadt_net.net.xml",
-        f"Routes/routes_{day}_24h_det_calib.rou.xml.gz": f"Routes/routes_{day}_24h_det_calib.rou.xml.gz",
-        f"TL/{day}_tlLogics_24h.tll.xml": f"TL/{day}_tlLogics_24h.tll.xml",
-        f"TL/{day}_WAUT.xml": f"TL/{day}_WAUT.xml",
+        route: route,
+        tl_logic: tl_logic,
+        waut: waut,
         "PT/pt_stops.add.xml": "PT/pt_stops.add.xml",
-        f"PT/{day}_gtfs_trips.rou.xml": f"PT/{day}_gtfs_trips.rou.xml",
+        gtfs: gtfs,
     }
     (WORK / "Routes").mkdir(parents=True, exist_ok=True)
     (WORK / "TL").mkdir(parents=True, exist_ok=True)
@@ -75,12 +99,20 @@ def materialize(day: str, begin: str, refresh: bool) -> tuple[Path, Path]:
         if refresh or not dst.exists():
             shutil.copy2(src, dst)
     sumocfg = WORK / "demo.sumocfg"
+    additional = ", ".join(
+        [
+            tl_logic,
+            waut,
+            "PT/pt_stops.add.xml",
+            gtfs,
+        ]
+    )
     sumocfg.write_text(
         f"""<configuration>
   <input>
     <net-file value="ingolstadt_net.net.xml"/>
-    <route-files value="Routes/routes_{day}_24h_det_calib.rou.xml.gz"/>
-    <additional-files value="TL/{day}_tlLogics_24h.tll.xml, TL/{day}_WAUT.xml, PT/pt_stops.add.xml, PT/{day}_gtfs_trips.rou.xml"/>
+    <route-files value="{route}"/>
+    <additional-files value="{additional}"/>
   </input>
   <time>
     <begin value="{begin}"/>
@@ -98,6 +130,34 @@ def materialize(day: str, begin: str, refresh: bool) -> tuple[Path, Path]:
         encoding="utf-8",
     )
     return sumocfg, WORK / "ingolstadt_net.net.xml"
+
+
+def _citywide_tsp_raw(raw: dict) -> dict:
+    """Disable corridor-only assumptions for the real city-wide Ingolstadt run."""
+    corridor = dict(raw.get("corridor", {}))
+    corridor.update(
+        {
+            "max_corridor_recovery_debt_s": None,
+            "respect_downstream_spillback": True,
+            "flag_green_wave": False,
+        }
+    )
+    raw["corridor"] = corridor
+
+    profile = dict(raw.get("network_profile", {}))
+    profile.update({"enabled": True, "prefer_generated_contracts_for_unknown_tls": True})
+    raw["network_profile"] = profile
+
+    contracts = dict(raw.get("controller_contracts", {}))
+    if isinstance(contracts.get("controllers"), dict):
+        contracts["controllers"] = {}
+    raw["controller_contracts"] = contracts
+
+    phase_mapping = dict(raw.get("phase_mapping", {}))
+    if isinstance(phase_mapping.get("priority_movements"), dict):
+        phase_mapping["priority_movements"] = {}
+    raw["phase_mapping"] = phase_mapping
+    return raw
 
 
 def main() -> int:
@@ -122,7 +182,7 @@ def main() -> int:
     cits_path = WORK / "cits_resolved.json"
     cits_path.write_text(json.dumps(cits), encoding="utf-8")
 
-    tsp = json.loads((ROOT / args.tsp_config).read_text(encoding="utf-8"))
+    tsp = _citywide_tsp_raw(json.loads((ROOT / args.tsp_config).read_text(encoding="utf-8")))
     tsp["scenario_id"] = "ingolstadt_citywide_tsp"
     tsp.setdefault("logging", {}).update(
         {
@@ -138,15 +198,19 @@ def main() -> int:
     tsp_config = load_tsp_config(tsp_path, root=ROOT)
 
     n_tls = len(cits_config.signal_controlled_intersections)
-    print(f"[setup] dia={args.day} begin={args.begin} steps={args.steps} "
-          f"actuação={'OFF (baseline)' if args.no_actuation else 'ON'}")
+    print(
+        f"[setup] dia={args.day} begin={args.begin} steps={args.steps} "
+        f"actuação={'OFF (dry-run)' if args.no_actuation else 'ON'}"
+    )
     print(f"[setup] TLS sinal-controlados auto-descobertos: {n_tls}")
 
     controller = TSPControlController(cits_config, tsp_config)
     if controller.network_binding is not None:
         rep = controller.network_binding.coverage_report()
-        print(f"[setup] cobertura matriz de conflitos: {rep['coverage_fraction']:.1%} "
-              f"({rep['groups_with_authoritative_conflicts']}/{rep['n_signal_groups']} groups)")
+        print(
+            f"[setup] cobertura matriz de conflitos: {rep['coverage_fraction']:.1%} "
+            f"({rep['groups_with_authoritative_conflicts']}/{rep['n_signal_groups']} groups)"
+        )
 
     summary = controller.run_with_sumo(
         steps=args.steps, sumo_binary="sumo", apply_actuation=not args.no_actuation
@@ -167,7 +231,10 @@ def main() -> int:
     print(f"  early green:          {summary.get('early_green_decisions')}")
     print(f"atuações aplicadas:     {summary.get('applied_events')} "
           f"(eventos TraCI reais: {summary.get('real_traci_applied_events')})")
-    print(f"SREM gerados:           {count(out / 'cits_messages.jsonl') and summary.get('cits_by_type', {}).get('SREM', '?')}")
+    srem_count = count(out / "cits_messages.jsonl") and summary.get("cits_by_type", {}).get(
+        "SREM", "?"
+    )
+    print(f"SREM gerados:           {srem_count}")
     print(f"C-ITS rejeitados:       {summary.get('cits_rejected_messages')}")
     print(f"logs em:                {out}")
     return 0
