@@ -6,6 +6,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+DATASET_INGOLSTADT = "ingolstadt"
+DATASET_SYNTHETIC = "synthetic"
+
 
 def discover_scenario_report_roots(reports_root: Path) -> dict[str, Path]:
     """Return available scenario result roots, preferring Ingolstadt as reference."""
@@ -13,28 +16,30 @@ def discover_scenario_report_roots(reports_root: Path) -> dict[str, Path]:
     ingolstadt = reports_root / "ingolstadt"
     synthetic = reports_root / "scenarios"
     if (ingolstadt / "scenario_suite_summary.json").exists() or ingolstadt.exists():
-        roots["ingolstadt"] = ingolstadt
+        roots[DATASET_INGOLSTADT] = ingolstadt
     if synthetic.exists():
-        roots["synthetic"] = synthetic
+        roots[DATASET_SYNTHETIC] = synthetic
     return roots
 
 
 def default_scenario_dataset(reports_root: Path) -> str:
     roots = discover_scenario_report_roots(reports_root)
-    if "ingolstadt" in roots:
-        return "ingolstadt"
-    if "synthetic" in roots:
-        return "synthetic"
-    return "ingolstadt"
+    if DATASET_INGOLSTADT in roots:
+        return DATASET_INGOLSTADT
+    if DATASET_SYNTHETIC in roots:
+        return DATASET_SYNTHETIC
+    return DATASET_INGOLSTADT
 
 
 def scenario_catalog_path(root: Path, dataset: str) -> Path:
-    if dataset == "ingolstadt":
+    if dataset == DATASET_INGOLSTADT:
         return root / "configs" / "scenario_catalog_ingolstadt.yaml"
     return root / "configs" / "scenario_catalog.yaml"
 
 
-def load_scenario_kpi_rows(report_root: Path, vehicle_cls: str, kpi_meta: dict[str, Any]) -> list[dict]:
+def load_scenario_kpi_rows(
+    report_root: Path, vehicle_cls: str, kpi_meta: dict[str, Any]
+) -> list[dict]:
     """Load per-scenario/run/seed KPI rows from a scenario report root."""
     rows: list[dict] = []
     if not report_root.exists():
@@ -56,7 +61,7 @@ def load_scenario_kpi_rows(report_root: Path, vehicle_cls: str, kpi_meta: dict[s
                     value = data.get(metric_key)
                     if value is None:
                         continue
-                    label = meta[0] if isinstance(meta, tuple | list) and meta else metric_key
+                    label = meta[0] if isinstance(meta, (tuple, list)) and meta else metric_key
                     rows.append(
                         {
                             "Cenário": scenario_dir.name,

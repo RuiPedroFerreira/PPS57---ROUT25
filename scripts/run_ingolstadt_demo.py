@@ -47,6 +47,10 @@ from run_sumo_scenario import (  # noqa: E402
 SCENARIO_DIR = ROOT / ".tools" / "ingolstadt" / "simulation" / "Ingolstadt SUMO 365"
 WORK = ROOT / ".tools" / "ingol_run"
 RUN_TYPES = ("baseline", "tsp_no_actuation", "tsp_actuation")
+DEFAULT_SEED = 57
+REFERENCE = "ingolstadt_citywide"
+SCENARIO_SET = "pps57_ingolstadt_citywide_tsp_v1"
+CATALOG_REQUIRED_FIELDS = ("day", "window_s", "description", "realism_basis", "kpi_focus")
 
 
 @dataclass(frozen=True)
@@ -65,7 +69,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--catalog", default=Path("configs/scenario_catalog_ingolstadt.yaml"), type=Path)
+    parser.add_argument(
+        "--catalog",
+        default=Path("configs/scenario_catalog_ingolstadt.yaml"),
+        type=Path,
+    )
     parser.add_argument("--scenario", help="Scenario id from the Ingolstadt catalog.")
     parser.add_argument("--all", action="store_true", help="Run every Ingolstadt catalog scenario.")
     parser.add_argument("--list", action="store_true", help="List Ingolstadt catalog scenarios.")
@@ -82,15 +90,27 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional horizon in seconds. Defaults to the catalog window for catalog runs.",
     )
-    parser.add_argument("--day", default="2023-07-04", help="Ad-hoc day when --scenario is omitted.")
-    parser.add_argument("--begin", default="07:00:00", help="Ad-hoc begin time when --scenario is omitted.")
+    parser.add_argument(
+        "--day",
+        default="2023-07-04",
+        help="Ad-hoc day when --scenario is omitted.",
+    )
+    parser.add_argument(
+        "--begin",
+        default="07:00:00",
+        help="Ad-hoc begin time when --scenario is omitted.",
+    )
     parser.add_argument(
         "--no-actuation",
         action="store_true",
         help="Legacy shortcut for an ad-hoc TSP dry-run; not a plain SUMO baseline.",
     )
     parser.add_argument("--generate-only", action="store_true")
-    parser.add_argument("--refresh", action="store_true", help="Recopy TUM files into .tools/ingol_run.")
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Recopy TUM files into .tools/ingol_run.",
+    )
     parser.add_argument("--config", default=Path("configs/cits_ingolstadt_config.json"), type=Path)
     parser.add_argument("--tsp-config", default=Path("configs/tsp_safety_config.json"), type=Path)
     parser.add_argument("--outputs-dir", default=Path(".tools/ingol_run/runs"), type=Path)
@@ -117,15 +137,17 @@ def seconds_to_hhmmss(value: int) -> str:
 
 
 def required_scenario_files(day: str) -> dict[str, str]:
+    route = f"Routes/routes_{day}_24h_det_calib.rou.xml.gz"
+    tl_logic = f"TL/{day}_tlLogics_24h.tll.xml"
+    waut = f"TL/{day}_WAUT.xml"
+    gtfs = f"PT/{day}_gtfs_trips.rou.xml"
     return {
         "ingolstadt_net.net.xml": "ingolstadt_net.net.xml",
-        f"Routes/routes_{day}_24h_det_calib.rou.xml.gz": (
-            f"Routes/routes_{day}_24h_det_calib.rou.xml.gz"
-        ),
-        f"TL/{day}_tlLogics_24h.tll.xml": f"TL/{day}_tlLogics_24h.tll.xml",
-        f"TL/{day}_WAUT.xml": f"TL/{day}_WAUT.xml",
+        route: route,
+        tl_logic: tl_logic,
+        waut: waut,
         "PT/pt_stops.add.xml": "PT/pt_stops.add.xml",
-        f"PT/{day}_gtfs_trips.rou.xml": f"PT/{day}_gtfs_trips.rou.xml",
+        gtfs: gtfs,
     }
 
 
@@ -134,21 +156,26 @@ def load_ingolstadt_catalog(path: Path) -> dict[str, Any]:
     for scenario_id, entry in catalog["scenarios"].items():
         if not isinstance(entry, dict):
             raise ScenarioConfigError(f"Ingolstadt scenario {scenario_id!r} must be a mapping.")
-        missing = [key for key in ("day", "window_s", "description", "realism_basis", "kpi_focus") if not entry.get(key)]
+        missing = [key for key in CATALOG_REQUIRED_FIELDS if not entry.get(key)]
         if missing:
             raise ScenarioConfigError(
                 f"Ingolstadt scenario {scenario_id!r} missing fields: {', '.join(missing)}"
             )
-        window = entry.get("window_s")
-        if (
-            not isinstance(window, list | tuple)
-            or len(window) != 2
-            or int(window[0]) >= int(window[1])
-        ):
+        if not _valid_window(entry.get("window_s")):
             raise ScenarioConfigError(
                 f"Ingolstadt scenario {scenario_id!r} must define an increasing window_s."
             )
     return catalog
+
+
+def _valid_window(raw: object) -> bool:
+    if not isinstance(raw, (list, tuple)) or len(raw) != 2:
+        return False
+    try:
+        begin_s, end_s = (int(value) for value in raw)
+    except (TypeError, ValueError):
+        return False
+    return begin_s < end_s
 
 
 def resolve_ingolstadt_specs(
@@ -161,20 +188,16 @@ def resolve_ingolstadt_specs(
     else:
         begin_s = hhmmss_to_seconds(args.begin)
         steps = int(args.steps if args.steps is not None else 300)
-        end_s = begin_s + steps
         return [
-            IngolstadtScenarioSpec(
+            _build_spec(
                 scenario_id="ad_hoc_ingolstadt",
                 day=args.day,
                 begin_s=begin_s,
-                end_s=end_s,
-                begin=args.begin,
-                end=seconds_to_hhmmss(end_s),
                 steps=steps,
                 catalog_entry={
                     "description": "Ad-hoc Ingolstadt city-wide smoke window",
                     "day": args.day,
-                    "window_s": [begin_s, end_s],
+                    "window_s": [begin_s, begin_s + steps],
                     "realism_basis": "Real TUM-VT Ingolstadt slice selected by CLI.",
                     "kpi_focus": ["bus_time_loss_citywide", "general_traffic_delay"],
                 },
@@ -188,20 +211,37 @@ def resolve_ingolstadt_specs(
         entry = catalog["scenarios"][scenario_id]
         begin_s, catalog_end_s = (int(value) for value in entry["window_s"])
         steps = int(args.steps if args.steps is not None else catalog_end_s - begin_s)
-        end_s = begin_s + steps
         specs.append(
-            IngolstadtScenarioSpec(
+            _build_spec(
                 scenario_id=scenario_id,
                 day=str(entry["day"]),
                 begin_s=begin_s,
-                end_s=end_s,
-                begin=seconds_to_hhmmss(begin_s),
-                end=seconds_to_hhmmss(end_s),
                 steps=steps,
                 catalog_entry=dict(entry),
             )
         )
     return specs
+
+
+def _build_spec(
+    *,
+    scenario_id: str,
+    day: str,
+    begin_s: int,
+    steps: int,
+    catalog_entry: dict[str, Any],
+) -> IngolstadtScenarioSpec:
+    end_s = begin_s + steps
+    return IngolstadtScenarioSpec(
+        scenario_id=scenario_id,
+        day=day,
+        begin_s=begin_s,
+        end_s=end_s,
+        begin=seconds_to_hhmmss(begin_s),
+        end=seconds_to_hhmmss(end_s),
+        steps=steps,
+        catalog_entry=catalog_entry,
+    )
 
 
 def materialize(
@@ -223,32 +263,72 @@ def materialize(
             "https://github.com/TUM-VT/sumo_ingolstadt.git .tools/ingolstadt"
         )
 
-    for dst_rel in required_scenario_files(day).values():
+    files = required_scenario_files(day)
+    for dst_rel in files.values():
         (work / dst_rel).parent.mkdir(parents=True, exist_ok=True)
     out_dir = (run_output_dir / "out") if run_output_dir is not None else work / "out"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    for src_rel, dst_rel in required_scenario_files(day).items():
+    for src_rel, dst_rel in files.items():
         src, dst = scenario_dir / src_rel, work / dst_rel
         if not src.exists():
             raise SystemExit(f"Ficheiro do cenário em falta para o dia {day}: {src}")
         if refresh or not dst.exists():
             shutil.copy2(src, dst)
 
-    sumocfg = (run_output_dir / "demo.sumocfg") if run_output_dir is not None else work / "demo.sumocfg"
+    sumocfg = (
+        run_output_dir / "demo.sumocfg"
+        if run_output_dir is not None
+        else work / "demo.sumocfg"
+    )
     end_value = end or "24:00:00"
-    seed_block = f"\n  <random>\n    <seed value=\"{int(seed)}\"/>\n  </random>" if seed is not None else ""
+    seed_block = (
+        f"\n  <random>\n    <seed value=\"{int(seed)}\"/>\n  </random>"
+        if seed is not None
+        else ""
+    )
     sumocfg.parent.mkdir(parents=True, exist_ok=True)
     sumocfg.write_text(
-        f"""<configuration>
+        _sumocfg_xml(
+            day=day,
+            begin=begin,
+            end=end_value,
+            work=work,
+            out_dir=out_dir,
+            seed_block=seed_block,
+        ),
+        encoding="utf-8",
+    )
+    return sumocfg, work / "ingolstadt_net.net.xml"
+
+
+def _sumocfg_xml(
+    *,
+    day: str,
+    begin: str,
+    end: str,
+    work: Path,
+    out_dir: Path,
+    seed_block: str,
+) -> str:
+    additional_files = ", ".join(
+        str(path)
+        for path in (
+            work / "TL" / f"{day}_tlLogics_24h.tll.xml",
+            work / "TL" / f"{day}_WAUT.xml",
+            work / "PT" / "pt_stops.add.xml",
+            work / "PT" / f"{day}_gtfs_trips.rou.xml",
+        )
+    )
+    return f"""<configuration>
   <input>
     <net-file value="{work / 'ingolstadt_net.net.xml'}"/>
     <route-files value="{work / 'Routes' / f'routes_{day}_24h_det_calib.rou.xml.gz'}"/>
-    <additional-files value="{work / 'TL' / f'{day}_tlLogics_24h.tll.xml'}, {work / 'TL' / f'{day}_WAUT.xml'}, {work / 'PT' / 'pt_stops.add.xml'}, {work / 'PT' / f'{day}_gtfs_trips.rou.xml'}"/>
+    <additional-files value="{additional_files}"/>
   </input>
   <time>
     <begin value="{begin}"/>
-    <end value="{end_value}"/>
+    <end value="{end}"/>
   </time>
   <processing>
     <step-length value="1"/>
@@ -264,10 +344,7 @@ def materialize(
     <emission-output value="{out_dir / 'emissions.xml'}"/>
   </output>
 </configuration>
-""",
-        encoding="utf-8",
-    )
-    return sumocfg, work / "ingolstadt_net.net.xml"
+"""
 
 
 def _relative(path: Path) -> str:
@@ -275,6 +352,27 @@ def _relative(path: Path) -> str:
         return str(path.relative_to(ROOT))
     except ValueError:
         return str(path)
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _run_output_dir(
+    args: argparse.Namespace, spec: IngolstadtScenarioSpec, run_type: str, seed: int
+) -> Path:
+    return ROOT / args.outputs_dir / spec.scenario_id / run_type / f"seed_{seed}"
+
+
+def _run_report_dir(
+    args: argparse.Namespace, spec: IngolstadtScenarioSpec, run_type: str, seed: int
+) -> Path:
+    return ROOT / args.reports_dir / spec.scenario_id / run_type / f"seed_{seed}"
 
 
 def _run_types_for(args: argparse.Namespace) -> list[str]:
@@ -288,7 +386,23 @@ def _run_types_for(args: argparse.Namespace) -> list[str]:
 
 
 def _seeds_for(args: argparse.Namespace) -> list[int]:
-    return [int(seed) for seed in (args.seeds or [57])]
+    return [int(seed) for seed in (args.seeds or [DEFAULT_SEED])]
+
+
+def _generated_verdict() -> dict[str, Any]:
+    return {"status": "generated", "reasons": []}
+
+
+def _run_verdict_for(args: argparse.Namespace, kpis: dict[str, Any]) -> dict[str, Any]:
+    return _generated_verdict() if args.generate_only else run_verdict(kpis)
+
+
+def _scenario_verdict_for(args: argparse.Namespace, summary: dict[str, Any]) -> dict[str, Any]:
+    return _generated_verdict() if args.generate_only else scenario_verdict(summary)
+
+
+def _comparisons_for(args: argparse.Namespace, scenario_runs: dict[str, dict]) -> dict[str, Any]:
+    return {} if args.generate_only else compare_scenario_runs(scenario_runs)
 
 
 def write_cits_config(
@@ -298,7 +412,7 @@ def write_cits_config(
     sumocfg: Path,
     net: Path,
 ) -> Path:
-    raw = json.loads((ROOT / args.config).read_text(encoding="utf-8"))
+    raw = _read_json(ROOT / args.config)
     raw["scenario_id"] = f"ingolstadt_{spec.scenario_id}_cits"
     raw.setdefault("sumo", {}).update({"sumocfg": _relative(sumocfg), "network": _relative(net)})
     schedule_plan = raw.get("schedule_plan", {})
@@ -313,7 +427,7 @@ def write_cits_config(
         "spatem_snapshot": _relative(out / "spatem.json"),
     }
     config_path = run_output_dir / "cits_resolved.json"
-    config_path.write_text(json.dumps(raw, indent=2, ensure_ascii=False), encoding="utf-8")
+    _write_json(config_path, raw)
     return config_path
 
 
@@ -348,7 +462,7 @@ def write_tsp_config(
     run_type: str,
     run_output_dir: Path,
 ) -> Path:
-    raw = json.loads((ROOT / args.tsp_config).read_text(encoding="utf-8"))
+    raw = _read_json(ROOT / args.tsp_config)
     raw = _citywide_tsp_raw(raw)
     raw["scenario_id"] = f"ingolstadt_{spec.scenario_id}_{run_type}"
     out = run_output_dir / "out"
@@ -360,7 +474,7 @@ def write_tsp_config(
         }
     )
     config_path = run_output_dir / "tsp_resolved.json"
-    config_path.write_text(json.dumps(raw, indent=2, ensure_ascii=False), encoding="utf-8")
+    _write_json(config_path, raw)
     return config_path
 
 
@@ -398,8 +512,8 @@ def run_scenario_type(
     run_type: str,
     seed: int,
 ) -> dict[str, Any]:
-    run_output_dir = ROOT / args.outputs_dir / spec.scenario_id / run_type / f"seed_{seed}"
-    run_report_dir = ROOT / args.reports_dir / spec.scenario_id / run_type / f"seed_{seed}"
+    run_output_dir = _run_output_dir(args, spec, run_type, seed)
+    run_report_dir = _run_report_dir(args, spec, run_type, seed)
     run_output_dir.mkdir(parents=True, exist_ok=True)
     run_report_dir.mkdir(parents=True, exist_ok=True)
     sumocfg, net = materialize(
@@ -428,10 +542,10 @@ def run_scenario_type(
         "begin_s": spec.begin_s,
         "end_s": spec.end_s,
         "max_steps": spec.steps,
-        "reference": "ingolstadt_citywide",
+        "reference": REFERENCE,
     }
     kpi_path = run_report_dir / "kpis.json"
-    kpi_path.write_text(json.dumps(kpis, indent=2, ensure_ascii=False), encoding="utf-8")
+    _write_json(kpi_path, kpis)
     return {
         "run_type": run_type,
         "seed": seed,
@@ -440,7 +554,7 @@ def run_scenario_type(
         "reports_dir": _relative(run_report_dir),
         "kpis": _relative(kpi_path),
         "controller_summary": controller_summary,
-        "run_verdict": run_verdict(kpis) if not args.generate_only else {"status": "generated", "reasons": []},
+        "run_verdict": _run_verdict_for(args, kpis),
     }
 
 
@@ -455,9 +569,9 @@ def run_scenario(args: argparse.Namespace, spec: IngolstadtScenarioSpec) -> dict
         apply_relative_insertion_gate(scenario_runs)
     summary = {
         "scenario_id": spec.scenario_id,
-        "scenario_set": "pps57_ingolstadt_citywide_tsp_v1",
+        "scenario_set": SCENARIO_SET,
         "city": "Ingolstadt",
-        "reference": "ingolstadt_citywide",
+        "reference": REFERENCE,
         "day": spec.day,
         "begin_s": spec.begin_s,
         "end_s": spec.end_s,
@@ -467,16 +581,12 @@ def run_scenario(args: argparse.Namespace, spec: IngolstadtScenarioSpec) -> dict
         "reports_dir": _relative(ROOT / args.reports_dir / spec.scenario_id),
         "runs": scenario_runs,
         "seeds": seeds,
-        "comparisons": compare_scenario_runs(scenario_runs) if not args.generate_only else {},
+        "comparisons": _comparisons_for(args, scenario_runs),
     }
-    summary["verdict"] = (
-        scenario_verdict(summary) if not args.generate_only else {"status": "generated", "reasons": []}
-    )
+    summary["verdict"] = _scenario_verdict_for(args, summary)
     scenario_report_dir = ROOT / args.reports_dir / spec.scenario_id
     scenario_report_dir.mkdir(parents=True, exist_ok=True)
-    (scenario_report_dir / "scenario_summary.json").write_text(
-        json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    _write_json(scenario_report_dir / "scenario_summary.json", summary)
     (scenario_report_dir / "scenario_report.md").write_text(
         render_scenario_report(summary), encoding="utf-8"
     )
@@ -489,22 +599,21 @@ def main() -> int:
     if args.list:
         for scenario_id, entry in catalog["scenarios"].items():
             begin, end = (seconds_to_hhmmss(int(value)) for value in entry["window_s"])
-            print(f"{scenario_id}: day={entry['day']} window={begin}-{end} focus={','.join(entry['kpi_focus'])}")
+            focus = ",".join(entry["kpi_focus"])
+            print(f"{scenario_id}: day={entry['day']} window={begin}-{end} focus={focus}")
         return 0
 
     specs = resolve_ingolstadt_specs(args, catalog)
     summaries = [run_scenario(args, spec) for spec in specs]
     suite = {
         "scenario_count": len(summaries),
-        "scenario_set": "pps57_ingolstadt_citywide_tsp_v1",
-        "reference": "ingolstadt_citywide",
+        "scenario_set": SCENARIO_SET,
+        "reference": REFERENCE,
         "scenarios": summaries,
     }
     reports_dir = ROOT / args.reports_dir
     reports_dir.mkdir(parents=True, exist_ok=True)
-    (reports_dir / "scenario_suite_summary.json").write_text(
-        json.dumps(suite, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    _write_json(reports_dir / "scenario_suite_summary.json", suite)
     (reports_dir / "scenario_suite_report.md").write_text(
         render_suite_report(suite), encoding="utf-8"
     )

@@ -89,38 +89,15 @@ def parse_tripinfo(
             return rows
         return [r for r in rows if r[field] == expected]
 
-    def summarize(items: list[dict]) -> dict:
-        return {
-            "vehicles": len(items),
-            "mean_duration_s": _mean([r["duration"] for r in items]),
-            "p95_duration_s": _percentile([r["duration"] for r in items], 0.95),
-            "mean_route_length_m": _mean([r["routeLength"] for r in items]),
-            "mean_speed_mps": _mean(
-                [
-                    (r["routeLength"] / r["duration"])
-                    if r["routeLength"] is not None
-                    and r["duration"] is not None
-                    and r["duration"] > 0
-                    else None
-                    for r in items
-                ]
-            ),
-            "mean_waiting_time_s": _mean([r["waitingTime"] for r in items]),
-            "mean_time_loss_s": _mean([r["timeLoss"] for r in items]),
-            "mean_depart_delay_s": _mean([r["departDelay"] for r in items]),
-            "p95_time_loss_s": _percentile([r["timeLoss"] for r in items], 0.95),
-            "mean_stop_count": _mean([r["waitingCount"] for r in items]),
-        }
-
     return {
         "source": str(path),
-        "all_vehicles": summarize(group(None)),
-        "buses": summarize(group("is_bus", True)),
-        "emergency_vehicles": summarize(group("is_emergency", True)),
-        "priority_vehicles": summarize(group("is_priority", True)),
-        "general_traffic": summarize(group("is_priority", False)),
-        "non_priority_vehicles": summarize(group("is_priority", False)),
-        "bus_lines": _bus_lines(rows, summarize),
+        "all_vehicles": _summarize_items(group(None)),
+        "buses": _summarize_items(group("is_bus", True)),
+        "emergency_vehicles": _summarize_items(group("is_emergency", True)),
+        "priority_vehicles": _summarize_items(group("is_priority", True)),
+        "general_traffic": _summarize_items(group("is_priority", False)),
+        "non_priority_vehicles": _summarize_items(group("is_priority", False)),
+        "bus_lines": _bus_lines(rows),
         "bus_headways": _bus_headways(rows),
     }
 
@@ -162,7 +139,31 @@ def _direction_key(vehicle_id: str, attrs: dict[str, str] | None = None) -> str:
     return ""
 
 
-def _bus_lines(rows: list[dict], summarize) -> dict:
+def _summarize_items(items: list[dict]) -> dict:
+    return {
+        "vehicles": len(items),
+        "mean_duration_s": _mean([row["duration"] for row in items]),
+        "p95_duration_s": _percentile([row["duration"] for row in items], 0.95),
+        "mean_route_length_m": _mean([row["routeLength"] for row in items]),
+        "mean_speed_mps": _mean(
+            [
+                (row["routeLength"] / row["duration"])
+                if row["routeLength"] is not None
+                and row["duration"] is not None
+                and row["duration"] > 0
+                else None
+                for row in items
+            ]
+        ),
+        "mean_waiting_time_s": _mean([row["waitingTime"] for row in items]),
+        "mean_time_loss_s": _mean([row["timeLoss"] for row in items]),
+        "mean_depart_delay_s": _mean([row["departDelay"] for row in items]),
+        "p95_time_loss_s": _percentile([row["timeLoss"] for row in items], 0.95),
+        "mean_stop_count": _mean([row["waitingCount"] for row in items]),
+    }
+
+
+def _bus_lines(rows: list[dict]) -> dict:
     groups: dict[str, list[dict]] = {}
     for row in rows:
         if not row["is_bus"]:
@@ -170,7 +171,7 @@ def _bus_lines(rows: list[dict], summarize) -> dict:
         line_key = row.get("line_key")
         if line_key:
             groups.setdefault(line_key, []).append(row)
-    return {line: summarize(items) for line, items in sorted(groups.items())}
+    return {line: _summarize_items(items) for line, items in sorted(groups.items())}
 
 
 def _bus_headways(rows: list[dict]) -> dict:

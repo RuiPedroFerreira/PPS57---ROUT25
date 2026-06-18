@@ -47,19 +47,7 @@ def summarise_tsp(
     for decision in decisions:
         by_action[decision.action] = by_action.get(decision.action, 0) + 1
         by_status[decision.status] = by_status.get(decision.status, 0) + 1
-        tls = by_tls.setdefault(
-            decision.tls_id,
-            {
-                "decisions": 0,
-                "approved": 0,
-                "blocked_by_safety": 0,
-                "by_action": {},
-                "block_reasons": {},
-                "actuation_events": 0,
-                "applied_events": 0,
-                "real_traci_applied_events": 0,
-            },
-        )
+        tls = _tls_summary(by_tls, decision.tls_id)
         tls["decisions"] = int(tls["decisions"]) + 1
         tls_actions = tls["by_action"]
         if isinstance(tls_actions, dict):
@@ -77,19 +65,7 @@ def summarise_tsp(
     real_applied = [item for item in applied if not item.no_actuation]
     blocked = [item for item in decisions if item.status == DecisionStatus.BLOCKED_BY_SAFETY.value]
     for item in actuations:
-        tls = by_tls.setdefault(
-            item.tls_id,
-            {
-                "decisions": 0,
-                "approved": 0,
-                "blocked_by_safety": 0,
-                "by_action": {},
-                "block_reasons": {},
-                "actuation_events": 0,
-                "applied_events": 0,
-                "real_traci_applied_events": 0,
-            },
-        )
+        tls = _tls_summary(by_tls, item.tls_id)
         tls["actuation_events"] = int(tls["actuation_events"]) + 1
         if item.applied:
             tls["applied_events"] = int(tls["applied_events"]) + 1
@@ -112,6 +88,22 @@ def summarise_tsp(
         "real_traci_applied_events": len(real_applied),
         "per_tls": {tls_id: by_tls[tls_id] for tls_id in sorted(by_tls)},
     }
+
+
+def _tls_summary(by_tls: dict[str, dict[str, object]], tls_id: str) -> dict[str, object]:
+    return by_tls.setdefault(
+        tls_id,
+        {
+            "decisions": 0,
+            "approved": 0,
+            "blocked_by_safety": 0,
+            "by_action": {},
+            "block_reasons": {},
+            "actuation_events": 0,
+            "applied_events": 0,
+            "real_traci_applied_events": 0,
+        },
+    )
 
 
 def write_tsp_summary(
