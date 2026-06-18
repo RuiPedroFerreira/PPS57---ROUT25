@@ -204,10 +204,14 @@ class TSPControlController:
                     print(f"  - {problem}")
                 if len(verification_problems) > 10:
                     print(f"  - ... (+{len(verification_problems) - 10} problemas)")
-            # Safety: actuable_tls gateia QUALQUER atuação (green_extension);
-            # early_green_actuable_tls restringe o early_green aos TLS com clearance
-            # confirmada; o flag global mantém retrocompat para chamadas sem set.
-            self.safety.set_signal_program_verified(bool(fully_verified_tls))
+            # Safety (gate per-TLS — fonte de verdade): actuable_tls gateia QUALQUER
+            # atuação (green_extension); early_green_actuable_tls restringe o
+            # early_green aos TLS com clearance confirmada. NÃO se toca no flag global
+            # signal_program_verified: os conjuntos per-TLS são autoritativos
+            # (_early_green_clearance_verified ignora o global quando o set está
+            # definido), e bool(fully_verified_tls)="há >=1 TLS limpo" seria uma
+            # granularidade enganadora. O flag global fica como retrocompat para
+            # chamadas não-SUMO que não definem os conjuntos.
             self.safety.set_actuable_tls(green_ext_actuable_tls)
             self.safety.set_early_green_actuable_tls(fully_verified_tls)
             actuator = TraciTSPActuator(adapter=signal_control, apply_actuation=effective_actuation)

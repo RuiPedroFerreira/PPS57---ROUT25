@@ -198,19 +198,34 @@ class GtfsScheduleAdherenceTestCase(unittest.TestCase):
 
     def test_delay_vs_next_scheduled_stop_ahead(self) -> None:
         obs = make_obs(
-            vehicle_id="Bus_:1", edge_id="E2", route_edges=["E1", "E2", "E3", "E4", "E5"]
+            vehicle_id="Bus_:1",
+            edge_id="E2",
+            route_edges=["E1", "E2", "E3", "E4", "E5"],
+            route_index=1,
         )
-        # próxima paragem à frente = E3 (agendada 200s); às 250s -> 50s atrasado.
+        # próxima paragem à frente (pos>=1) = E3 (agendada 200s); às 250s -> 50s.
         self.assertEqual(self._provider().schedule_adherence_for(obs, 250.0), (50.0, 0.0))
 
     def test_on_time_is_zero_delay(self) -> None:
         obs = make_obs(
-            vehicle_id="Bus_:1", edge_id="E2", route_edges=["E1", "E2", "E3", "E4", "E5"]
+            vehicle_id="Bus_:1",
+            edge_id="E2",
+            route_edges=["E1", "E2", "E3", "E4", "E5"],
+            route_index=1,
         )
         self.assertEqual(self._provider().schedule_adherence_for(obs, 150.0), (0.0, 0.0))
 
+    def test_returns_none_without_route_index(self) -> None:
+        # Sem route_index autoritativo, NÃO fabrica atraso (recai no proxy).
+        obs = make_obs(
+            vehicle_id="Bus_:1", edge_id="E2", route_edges=["E1", "E2", "E3"], route_index=None
+        )
+        self.assertIsNone(self._provider().schedule_adherence_for(obs, 250.0))
+
     def test_unknown_vehicle_returns_none(self) -> None:
-        obs = make_obs(vehicle_id="desconhecido", edge_id="E2", route_edges=["E1", "E2"])
+        obs = make_obs(
+            vehicle_id="desconhecido", edge_id="E2", route_edges=["E1", "E2"], route_index=1
+        )
         self.assertIsNone(self._provider().schedule_adherence_for(obs, 250.0))
 
     def test_from_config_builds_gtfs_provider_from_files(self) -> None:

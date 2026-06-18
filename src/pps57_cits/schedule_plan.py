@@ -39,6 +39,9 @@ try:
 except ImportError:  # pragma: no cover - exercised in minimal CI images.
     from xml.etree import ElementTree as ET  # type: ignore[no-redef]
 
+from pps57_sumo.network_profile import edge_from_lane
+from pps57_sumo.validation.gtfs_pt import gtfs_time_to_seconds
+
 if TYPE_CHECKING:  # evita custo/ciclo em runtime; só para type-checkers
     from .config import CITSConfig
     from .models import VehicleObservation
@@ -68,29 +71,25 @@ class GtfsScheduleAdherenceProvider:
         stops = self.stops_by_vehicle.get(observation.vehicle_id)
         if not stops:
             return None
-        route = list(observation.route_edges or [])
-        current_pos = route.index(observation.edge_id) if observation.edge_id in route else 0
-        # Próxima paragem agendada que ainda está à frente na rota.
+        route = observation.route_edges or []
+        position = observation.route_index
+        # Sem a posição AUTORITATIVA do veículo na rota (route_index do TraCI) não
+        # dá para localizar a próxima paragem sem ambiguidade — recai no proxy em
+        # vez de FABRICAR um atraso a partir da posição 0 (footgun do route.index).
+        if not route or position is None or not (0 <= position < len(route)):
+            return None
+        # edge -> primeira posição na rota, construído uma vez (O(rota)); a rota
+        # pode mudar com rerouting, por isso não se faz cache entre chamadas. Evita
+        # o O(paragens x rota) de chamar route.index() por paragem dentro do loop.
+        first_pos_by_edge: dict[str, int] = {}
+        for index, edge in enumerate(route):
+            first_pos_by_edge.setdefault(edge, index)
+        # Próxima paragem (em ordem de viagem) que ainda está à frente do veículo.
         for stop_edge, until_s in stops:
-            if stop_edge in route and route.index(stop_edge) >= current_pos:
+            stop_pos = first_pos_by_edge.get(stop_edge)
+            if stop_pos is not None and stop_pos >= position:
                 return round(max(0.0, sim_time_s - until_s), 3), 0.0
         return None  # todas as paragens já passaram -> OBU recai no proxy
-
-
-def _edge_of_lane(lane_id: str) -> str:
-    edge, sep, suffix = lane_id.rpartition("_")
-    return edge if sep and suffix.isdigit() else lane_id
-
-
-def _hms_to_seconds(value: str) -> float | None:
-    parts = value.split(":")
-    if len(parts) != 3:
-        return None
-    try:
-        hours, minutes, seconds = (int(part) for part in parts)
-    except ValueError:
-        return None
-    return float(hours * 3600 + minutes * 60 + seconds)
 
 
 def _gtfs_provider_from_config(
@@ -113,7 +112,7 @@ def _gtfs_provider_from_config(
     for bus_stop in stops_root.iter("busStop"):
         stop_id, lane = bus_stop.get("id"), bus_stop.get("lane")
         if stop_id and lane:
-            edge_by_stop[stop_id] = _edge_of_lane(lane)
+            edge_by_stop[stop_id] = edge_from_lane(lane)
 
     stops_by_vehicle: dict[str, list[tuple[str, float]]] = {}
     for trip in trips_root.iter("trip"):
@@ -123,7 +122,13 @@ def _gtfs_provider_from_config(
         sequence: list[tuple[str, float]] = []
         for stop in trip.findall("stop"):
             edge = edge_by_stop.get(stop.get("busStop", ""))
-            until = _hms_to_seconds(stop.get("until", ""))
+            until_raw = stop.get("until", "")
+            try:
+                # gtfs_time_to_seconds aceita horas >= 24 (viagens overnight) e
+                # levanta ValueError em formato inválido -> tratamos como sem hora.
+                until = float(gtfs_time_to_seconds(until_raw)) if until_raw else None
+            except ValueError:
+                until = None
             if edge and until is not None:
                 sequence.append((edge, until))
         if sequence:
