@@ -30,14 +30,22 @@ from pps57_tsp.signal_control import build_controller_contract
 
 class NetworkProfileTests(unittest.TestCase):
     def test_sumo_environment_repairs_stale_sumo_home(self) -> None:
-        with patch.dict(os.environ, {"SUMO_HOME": "/path/that/does/not/exist"}):
-            resolved = resolve_sumo_home()
-            env = ensure_sumo_environment()
+        with tempfile.TemporaryDirectory() as tmp:
+            fake_home = Path(tmp) / "sumo"
+            (fake_home / "tools").mkdir(parents=True)
+            (fake_home / "data" / "xsd").mkdir(parents=True)
 
-        self.assertIsNotNone(resolved)
-        assert resolved is not None
-        self.assertTrue((resolved / "tools").is_dir())
-        self.assertEqual(env["SUMO_HOME"], str(resolved))
+            with patch.dict(os.environ, {"SUMO_HOME": "/path/that/does/not/exist"}), patch(
+                "pps57_sumo.environment._standard_sumo_home_candidates",
+                return_value=[fake_home],
+            ):
+                resolved = resolve_sumo_home()
+                env = ensure_sumo_environment()
+
+            self.assertIsNotNone(resolved)
+            assert resolved is not None
+            self.assertTrue((resolved / "tools").is_dir())
+            self.assertEqual(env["SUMO_HOME"], str(resolved))
 
     def test_profile_extracts_tls_phases_movements_and_conflicts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
