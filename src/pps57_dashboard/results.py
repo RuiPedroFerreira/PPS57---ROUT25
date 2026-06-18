@@ -15,11 +15,19 @@ def discover_scenario_report_roots(reports_root: Path) -> dict[str, Path]:
     roots: dict[str, Path] = {}
     ingolstadt = reports_root / "ingolstadt"
     synthetic = reports_root / "scenarios"
-    if (ingolstadt / "scenario_suite_summary.json").exists() or ingolstadt.exists():
+    if _has_scenario_reports(ingolstadt):
         roots[DATASET_INGOLSTADT] = ingolstadt
-    if synthetic.exists():
+    if _has_scenario_reports(synthetic):
         roots[DATASET_SYNTHETIC] = synthetic
     return roots
+
+
+def _has_scenario_reports(report_root: Path) -> bool:
+    if (report_root / "scenario_suite_summary.json").exists():
+        return True
+    if not report_root.exists():
+        return False
+    return any(report_root.glob("*/*/seed_*/kpis.json"))
 
 
 def default_scenario_dataset(reports_root: Path) -> str:

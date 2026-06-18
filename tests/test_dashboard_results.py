@@ -27,10 +27,30 @@ class DashboardResultsTestCase(unittest.TestCase):
             reports = Path(tmp) / "reports"
             (reports / "ingolstadt").mkdir(parents=True)
             (reports / "scenarios").mkdir(parents=True)
+            (reports / "ingolstadt" / "scenario_suite_summary.json").write_text(
+                "{}", encoding="utf-8"
+            )
+            (reports / "scenarios" / "scenario_suite_summary.json").write_text(
+                "{}", encoding="utf-8"
+            )
             roots = discover_scenario_report_roots(reports)
             self.assertEqual(default_scenario_dataset(reports), "ingolstadt")
             self.assertEqual(roots["ingolstadt"], reports / "ingolstadt")
             self.assertEqual(roots["synthetic"], reports / "scenarios")
+
+    def test_empty_ingolstadt_root_does_not_hide_synthetic_reports(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            reports = Path(tmp) / "reports"
+            (reports / "ingolstadt").mkdir(parents=True)
+            (reports / "scenarios" / "baseline_am_peak").mkdir(parents=True)
+            (reports / "scenarios" / "scenario_suite_summary.json").write_text(
+                "{}", encoding="utf-8"
+            )
+
+            roots = discover_scenario_report_roots(reports)
+
+            self.assertNotIn("ingolstadt", roots)
+            self.assertEqual(default_scenario_dataset(reports), "synthetic")
 
     def test_loads_ingolstadt_kpi_rows_from_reference_layout(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

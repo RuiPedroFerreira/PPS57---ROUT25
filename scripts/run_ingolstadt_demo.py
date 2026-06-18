@@ -283,7 +283,7 @@ def materialize(
     )
     end_value = end or "24:00:00"
     seed_block = (
-        f"\n  <random>\n    <seed value=\"{int(seed)}\"/>\n  </random>"
+        f"\n  <random_number>\n    <seed value=\"{int(seed)}\"/>\n  </random_number>"
         if seed is not None
         else ""
     )
@@ -376,7 +376,7 @@ def _run_report_dir(
 
 
 def _run_types_for(args: argparse.Namespace) -> list[str]:
-    if args.no_actuation and not args.scenario and not args.all:
+    if args.no_actuation:
         return ["tsp_no_actuation"]
     if args.run_type == "pair":
         return ["baseline", "tsp_actuation"]

@@ -5,8 +5,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from statistics import mean
+
+SRC = Path(__file__).resolve().parents[1]
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from pps57_sumo.vehicle_classification import DEFAULT_BUS_ID_PREFIXES, is_bus_like  # noqa: E402
 
 # M4: defusedxml em vez do stdlib — tripinfo vem de simulações externas.
 try:
@@ -37,8 +44,6 @@ def _percentile(values: list[float | None], percentile: float) -> float | None:
     return round(cleaned[index], 3)
 
 
-DEFAULT_BUS_ID_PREFIXES = ("bus_", "Bus")
-DEFAULT_BUS_TYPE_NAMES = {"stcp_bus", "transit_bus"}
 DEFAULT_LINE_ATTR_NAMES = ("line", "line_id", "lineID")
 
 
@@ -57,7 +62,7 @@ def parse_tripinfo(
         vehicle_id = node.attrib.get("id", "")
         vehicle_type = node.attrib.get("vType", "")
         attrs = dict(node.attrib)
-        is_bus = _is_bus(vehicle_id, vehicle_type, bus_id_prefixes)
+        is_bus = is_bus_like(vehicle_id, vehicle_type, bus_id_prefixes=bus_id_prefixes)
         vehicle_type_lc = vehicle_type.lower()
         is_emergency = vehicle_id.startswith(("ev_", "emergency_")) or vehicle_type_lc in {
             "emergency_vehicle",
@@ -100,15 +105,6 @@ def parse_tripinfo(
         "bus_lines": _bus_lines(rows),
         "bus_headways": _bus_headways(rows),
     }
-
-
-def _is_bus(vehicle_id: str, vehicle_type: str, bus_id_prefixes: tuple[str, ...]) -> bool:
-    vehicle_type_lc = vehicle_type.lower()
-    return (
-        vehicle_id.startswith(bus_id_prefixes)
-        or vehicle_type_lc.startswith("bus")
-        or vehicle_type_lc in DEFAULT_BUS_TYPE_NAMES
-    )
 
 
 def _line_key(
