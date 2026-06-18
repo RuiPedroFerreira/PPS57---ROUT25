@@ -81,7 +81,46 @@ KPI_META = {
         "",
         "Número médio de paragens por veículo. Menor é melhor.",
     ),
+    "total_co2_mg": (
+        "CO2 total",
+        "mg",
+        "Emissão total de CO2. Menor é melhor.",
+    ),
+    "total_co2_mg_per_vehicle": (
+        "CO2 por veículo",
+        "mg/veículo",
+        "Emissão de CO2 normalizada por veículo concluído. Menor é melhor.",
+    ),
+    "total_co2_mg_per_vehicle_km": (
+        "CO2 por veículo-km",
+        "mg/km",
+        "Emissão de CO2 normalizada por quilómetro percorrido. Menor é melhor.",
+    ),
+    "total_fuel_mg": (
+        "Combustível total",
+        "mg",
+        "Consumo total de combustível (proxy SUMO). Menor é melhor.",
+    ),
+    "total_fuel_mg_per_vehicle": (
+        "Combustível por veículo",
+        "mg/veículo",
+        "Combustível normalizado por veículo concluído. Menor é melhor.",
+    ),
+    "total_fuel_mg_per_vehicle_km": (
+        "Combustível por veículo-km",
+        "mg/km",
+        "Combustível normalizado por quilómetro percorrido. Menor é melhor.",
+    ),
 }
+
+EMISSION_METRICS = [
+    "total_co2_mg",
+    "total_co2_mg_per_vehicle",
+    "total_co2_mg_per_vehicle_km",
+    "total_fuel_mg",
+    "total_fuel_mg_per_vehicle",
+    "total_fuel_mg_per_vehicle_km",
+]
 
 # metrics where an increase is an improvement (drives delta colouring)
 HIGHER_IS_BETTER = {"mean_speed_mps"}
@@ -1390,6 +1429,8 @@ elif _active == "KPIs":
                 "mean_waiting_time_s",
                 "mean_duration_s",
                 "p95_time_loss_s",
+                "total_co2_mg_per_vehicle",
+                "total_fuel_mg_per_vehicle",
             ]
             ccols = st.columns(len(card_metrics))
             for col, m in zip(ccols, card_metrics, strict=False):
@@ -1407,6 +1448,8 @@ elif _active == "KPIs":
             "mean_duration_s",
             "mean_depart_delay_s",
             "p95_time_loss_s",
+            "total_co2_mg_per_vehicle_km",
+            "total_fuel_mg_per_vehicle_km",
         ]
         rows = []
         for metric in plot_metrics:
@@ -1458,6 +1501,8 @@ elif _active == "KPIs":
                 "mean_duration_s",
                 "p95_time_loss_s",
                 "mean_depart_delay_s",
+                "total_co2_mg",
+                "total_fuel_mg",
             ]:
                 bv, tv = ref_data.get(m), cmp_data.get(m)
                 if bv and tv:
@@ -1479,7 +1524,7 @@ elif _active == "KPIs":
                         text=[f"{p:+.1f}%" for p in df_wf["Pct"]],
                         textposition="outside",
                         marker_color=["#22c55e" if v < 0 else "#ef4444" for v in df_wf["Delta"]],
-                        hovertemplate="%{y}: %{x:+.1f}s<extra></extra>",
+                        hovertemplate="%{y}: %{x:+.3f}<extra></extra>",
                     )
                 )
                 fig_wf.add_vline(x=0, line_width=2, line_color="#334155")
@@ -2265,6 +2310,7 @@ elif _active == "Cenários":
                     "p95_time_loss_s",
                     "mean_depart_delay_s",
                     "mean_stop_count",
+                    *EMISSION_METRICS,
                 ]
                 if k in df_all["metric_key"].values
             ]
@@ -2308,6 +2354,49 @@ elif _active == "Cenários":
                         )
                 ddf = pd.DataFrame(drows)
 
+            # ── emission deltas (CO2/fuel; raw and normalized views) ──────────
+            em_delta_rows = []
+            if baseline_rt and tsp_rt:
+                for metric_key in [
+                    "total_co2_mg",
+                    "total_co2_mg_per_vehicle",
+                    "total_co2_mg_per_vehicle_km",
+                    "total_fuel_mg",
+                    "total_fuel_mg_per_vehicle",
+                    "total_fuel_mg_per_vehicle_km",
+                ]:
+                    if metric_key not in df_all["metric_key"].values:
+                        continue
+                    em_label, em_unit, _ = KPI_META.get(
+                        metric_key, (metric_key, "", "")
+                    )
+                    em_df = df_all[df_all["metric_key"] == metric_key]
+                    em_piv = em_df.groupby(["Cenário", "Run type"])["Valor"].mean().reset_index()
+                    em_wide = em_piv.pivot(index="Cenário", columns="Run type", values="Valor")
+                    for scen, row in em_wide.iterrows():
+                        b = row.get(baseline_rt)
+                        t = row.get(tsp_rt)
+                        if b is None or t is None or b == 0:
+                            continue
+                        em_delta_rows.append(
+                            {
+                                "Métrica": em_label,
+                                "Unidade": em_unit,
+                                "Normalização": (
+                                    "Por veículo"
+                                    if "vehicle_km" not in metric_key
+                                    else "Por veículo-km"
+                                ),
+                                "Cenário": label_map.get(scen, scen),
+                                "Baseline": b,
+                                "TSP": t,
+                                "Δ abs": t - b,
+                                "Δ (%)": round((t - b) / abs(b) * 100, 1),
+                            }
+                        )
+
+            em_summary = pd.DataFrame(em_delta_rows)
+
             # ── header (title · class · best/worst badges) ──────────────────────
             with header_box:
                 badges = ""
@@ -2329,6 +2418,70 @@ elif _active == "Cenários":
                     "</div>",
                     unsafe_allow_html=True,
                 )
+
+            # ── Emission-focused summary: CO2/Fuel TSP vs Baseline (all seeds) ─────
+            if em_summary.empty:
+                st.info("Sem pares baseline + TSP com KPIs de emissões disponíveis para esta classe.")
+            else:
+                em_summary_display = em_summary.copy()
+                em_summary_display = em_summary_display.sort_values(
+                    ["Normalização", "Métrica", "Cenário"]
+                )
+                em_summary_display["Baseline"] = em_summary_display.apply(
+                    lambda row: fmt(row["Baseline"], str(row["Unidade"])), axis=1
+                )
+                em_summary_display["TSP"] = em_summary_display.apply(
+                    lambda row: fmt(row["TSP"], str(row["Unidade"])), axis=1
+                )
+                em_summary_display["Δ abs"] = em_summary_display.apply(
+                    lambda row: fmt(row["Δ abs"], str(row["Unidade"])), axis=1
+                )
+                em_summary_display["Δ (%)"] = em_summary_display["Δ (%)"].map(lambda x: f"{x:+.1f}%")
+                em_summary_display["Métrica"] = em_summary_display["Métrica"] + " (" + em_summary_display[
+                    "Unidade"
+                ] + ")"
+
+                section("Comparação de emissões TSP vs Baseline (normalização)")
+                st.markdown(
+                    "<p style='font-size:11px;font-weight:600;letter-spacing:0.08em;"
+                    "color:#9ca3af;text-transform:uppercase;margin:0 0 0.5rem'>"
+                    "Δ% por cenário — valores negativos = melhoria (TSP abaixo do baseline)"
+                    "</p>",
+                    unsafe_allow_html=True,
+                )
+                st.dataframe(
+                    em_summary_display[
+                        ["Métrica", "Normalização", "Cenário", "Baseline", "TSP", "Δ abs", "Δ (%)"]
+                    ],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                fig_em = px.bar(
+                    em_summary,
+                    x="Δ (%)",
+                    y="Cenário",
+                    color="Métrica",
+                    facet_col="Normalização",
+                    facet_col_wrap=2,
+                    orientation="h",
+                    barmode="group",
+                    height=360,
+                )
+                fig_em.update_layout(
+                    yaxis_title="",
+                    xaxis_title="Δ% face ao baseline (negativo = melhoria)",
+                    legend_title="Métrica",
+                    bargap=0.2,
+                    margin={"l": 160, "r": 80, "t": 20, "b": 24},
+                )
+                fig_em.update_traces(
+                    texttemplate="%{x:+.1f}%",
+                    textposition="outside",
+                    hovertemplate="Cenário: %{y}<br>Δ: %{x:+.1f}%<extra></extra>",
+                )
+                chart_layout(fig_em, "Impacto de CO2/Fuel do TSP por cenário", height=380)
+                st.plotly_chart(fig_em, use_container_width=True, config={"displayModeBar": False})
 
             # ── scenario detail — placed directly under the controls that drive
             #    it. Order within: objective card + headline cards → all-scenarios
