@@ -71,6 +71,11 @@ class ControllerContract:
     pedestrian_phase_required: bool
     pedestrian_phase_indices: list[int]
     signal_groups: dict[str, SignalGroupContract]
+    # Link indices de movimentos veiculares (não-internos), topologicamente
+    # estáveis entre programas WAUT. Distinguem verde veicular de verde pedonal
+    # na verificação de fase pedonal exclusiva. Vazio => sem profile -> a
+    # verificação recai na heurística service∪intergreen.
+    vehicle_link_indices: list[int] = field(default_factory=list)
 
     def signal_group_for_id(self, signal_group_id: str) -> SignalGroupContract | None:
         return self.signal_groups.get(signal_group_id)
@@ -327,6 +332,7 @@ class TraciSignalControlAdapter:
                     contract.service_green_phase_indices,
                     contract.intergreen_phase_indices,
                     contract.pedestrian_phase_indices,
+                    vehicle_link_indices=contract.vehicle_link_indices or None,
                 ):
                     problems.append(
                         f"{tls_id}: fase pedonal exclusiva configurada não encontrada; clearance pedonal não garantida"
@@ -728,6 +734,7 @@ def build_controller_contract(
         pedestrian_phase_required=pedestrian_required,
         pedestrian_phase_indices=pedestrian_phase_indices,
         signal_groups=signal_groups,
+        vehicle_link_indices=(_vehicle_link_indices(tls_profile) if tls_profile is not None else []),
     )
 
 
@@ -931,17 +938,31 @@ def _additional_signal_group_items(
     return [item for item in items if isinstance(item, dict)] if isinstance(items, list) else []
 
 
+def _vehicle_link_indices(tls_profile: TLSProfile) -> list[int]:
+    """Link indices de movimentos VEICULARES (conexões sem lanes internas ':').
+
+    As restantes conexões (de/para lanes internas) são travessias pedonais. É a
+    MESMA distinção usada por _pedestrian_phase_indices, extraída para um só
+    sítio, para distinguir verde veicular de verde pedonal na verificação de
+    clearance (uma fase pedonal exclusiva tem peões verdes e veículos vermelhos).
+    """
+    return sorted(
+        {
+            connection.link_index
+            for connection in tls_profile.connections
+            if not connection.from_edge.startswith(":")
+            and not connection.to_edge.startswith(":")
+        }
+    )
+
+
 def _pedestrian_phase_indices(tls_profile: TLSProfile) -> list[int]:
     pedestrian_indices = {
         connection.link_index
         for connection in tls_profile.connections
         if connection.from_edge.startswith(":") or connection.to_edge.startswith(":")
     }
-    vehicle_indices = {
-        connection.link_index
-        for connection in tls_profile.connections
-        if not connection.from_edge.startswith(":") and not connection.to_edge.startswith(":")
-    }
+    vehicle_indices = set(_vehicle_link_indices(tls_profile))
     result: list[int] = []
     for phase in tls_profile.phases:
         pedestrian_green = any(
@@ -1013,18 +1034,37 @@ def _has_configured_pedestrian_phase(
     service_green_phase_indices: list[int],
     intergreen_phase_indices: list[int],
     pedestrian_phase_indices: list[int],
+    vehicle_link_indices: list[int] | None = None,
 ) -> bool:
+    """Existe uma fase pedonal EXCLUSIVA (peões verdes, veículos vermelhos)?
+
+    É a garantia de que o early_green (truncagem de fase) não encurta a travessia
+    pedonal. Com ``vehicle_link_indices`` (classificação topológica dos links
+    veiculares, estável entre programas WAUT), verifica a exclusividade
+    DIRETAMENTE: a fase tem verde mas NENHUM link veicular verde. Sem essa info
+    (``None``) recai na heurística anterior — a fase pedonal tem de estar fora do
+    conjunto curado service∪intergreen. A heurística é necessária para configs
+    sem profile, mas falha quando service/intergreen são DERIVADOS (cobrem todas
+    as fases e a fase pedonal, que tem 'g' no link de peão, cai em service); é
+    por isso que o caminho com links é o correto para redes reais (OSM/WAUT).
+    """
     if not pedestrian_phase_indices:
         return False
     vehicular_phase_indices = set(service_green_phase_indices) | set(intergreen_phase_indices)
     for index in pedestrian_phase_indices:
-        if index in vehicular_phase_indices:
-            return False
         if not (0 <= index < len(states)):
-            return False
+            continue
         state = states[index]
-        if any(ch in {"G", "g"} for ch in state):
-            return True
+        if not any(ch in {"G", "g"} for ch in state):
+            continue  # sem qualquer verde -> não é fase pedonal
+        if vehicle_link_indices is not None:
+            vehicle_green = any(
+                link < len(state) and state[link] in {"G", "g"} for link in vehicle_link_indices
+            )
+            if not vehicle_green:
+                return True  # verde presente e nenhum veicular -> pedonal exclusiva
+        elif index not in vehicular_phase_indices:
+            return True  # fallback: fase fora do conjunto veicular curado
     return False
 
 

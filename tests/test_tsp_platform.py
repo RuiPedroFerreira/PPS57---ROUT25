@@ -580,6 +580,36 @@ class TSPPlatformTests(unittest.TestCase):
             any("fase pedonal exclusiva configurada" in problem for problem in configured_problems)
         )
 
+    def test_pedestrian_phase_detected_via_vehicle_links_when_service_is_derived(self) -> None:
+        # #64: com service/intergreen DERIVADOS (auto-discovery/reconcile) cobrem
+        # TODAS as fases, e a fase pedonal exclusiva — que tem 'g' no link de peão
+        # — cai em service, fazendo a heurística antiga falhar sempre. Com a
+        # classificação de links veiculares a exclusividade é verificada direta.
+        from pps57_tsp.signal_control import _has_configured_pedestrian_phase
+
+        states = ["GGr", "yyr", "rrG"]  # links 0,1 veiculares; link 2 = travessia pedonal
+        service_derived, intergreen_derived, ped = [0, 2], [1], [2]
+
+        # Sem links (fallback): a heurística falha (fase 2 está em service∪intergreen).
+        self.assertFalse(
+            _has_configured_pedestrian_phase(states, service_derived, intergreen_derived, ped)
+        )
+        # Com links veiculares [0,1]: fase 2 tem verde e NENHUM link veicular verde
+        # -> pedonal exclusiva reconhecida (a correção do #64).
+        self.assertTrue(
+            _has_configured_pedestrian_phase(
+                states, service_derived, intergreen_derived, ped, vehicle_link_indices=[0, 1]
+            )
+        )
+        # Fase com verde veicular E pedonal concorrente NÃO é exclusiva -> rejeitada
+        # (segurança preservada: truncar encurtaria a travessia concorrente).
+        concurrent = ["GGr", "yyr", "rGG"]  # fase 2: link 1 veicular verde + link 2 pedonal
+        self.assertFalse(
+            _has_configured_pedestrian_phase(
+                concurrent, [0, 2], [1], [2], vehicle_link_indices=[0, 1]
+            )
+        )
+
     def test_priority_score_tolerates_zero_normalisation_config(self) -> None:
         cits, tsp = configs()
         raw = copy.deepcopy(tsp.raw)
