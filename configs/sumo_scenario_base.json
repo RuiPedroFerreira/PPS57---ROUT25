@@ -497,7 +497,7 @@
       "lcKeepRight": "0.2",
       "lcSpeedGain": "2.0",
       "lcSublane": "1.5",
-      "emissionClass": "HBEFA3/zero",
+      "emissionClass": "HBEFA3/PC_G_EU6",
       "jmCrossingGap": "5",
       "jmIgnoreFoeProb": "0.1",
       "impatience": "1.0",

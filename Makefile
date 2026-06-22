@@ -63,7 +63,7 @@ cits-sumo: build
 	$(PYTHON) scripts/run_cits_emulation.py --mode sumo --steps 7200
 
 tsp-demonstrator:
-	$(PYTHON) scripts/run_tsp_demonstrator.py --steps 7200
+	$(PYTHON) scripts/run_tsp_demonstrator.py --steps 14400
 
 compare-tsp-rl: build
 	$(PYTHON) scripts/compare_tsp_baseline_rl.py --steps 7200 --train-rl

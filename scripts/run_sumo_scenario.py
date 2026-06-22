@@ -548,7 +548,9 @@ def collect_run_kpis(run_output_dir: Path) -> dict:
     kpis["insertion"] = parse_insertion_kpis(
         run_output_dir / "summary.xml", run_output_dir / "statistics.xml"
     )
-    kpis["emissions"] = parse_emissions(run_output_dir / "emissions.xml")
+    # Emissions are carried as per-vehicle trip totals inside tripinfo.xml (via
+    # the emissions device), not a per-step emission-output dump — see cfg.
+    kpis["emissions"] = parse_emissions(run_output_dir / "tripinfo.xml")
     return kpis
 
 
@@ -604,7 +606,7 @@ def write_tsp_config(
     return config_path
 
 
-GLOBAL_SUMO_OUTPUTS = ("tripinfo.xml", "summary.xml", "statistics.xml", "emissions.xml")
+GLOBAL_SUMO_OUTPUTS = ("tripinfo.xml", "summary.xml", "statistics.xml")
 
 
 def clear_global_sumo_outputs() -> None:

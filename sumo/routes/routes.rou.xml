@@ -23,7 +23,7 @@
   <vType id="car_cacc" vClass="passenger" length="5.0" accel="2.8" decel="5.0" emergencyDecel="8.0" sigma="0.0" tau="0.7" minGap="1.5" maxSpeed="13.89" speedFactor="normc(1.0,0.02,0.95,1.05)" carFollowModel="CACC" laneChangeModel="LC2013" lcAssertive="1.0" lcCooperative="1.0" lcImpatience="0.05" lcStrategic="1.0" lcKeepRight="0.5" emissionClass="HBEFA3/PC_G_EU6" jmCrossingGap="8" jmIgnoreFoeProb="0.0" impatience="0.0" actionStepLength="0.5" color="0.40,0.85,0.40"/>
   <vType id="car_acc_ev" vClass="passenger" length="5.0" accel="2.6" decel="4.8" emergencyDecel="7.5" sigma="0.05" tau="1.0" minGap="2.0" maxSpeed="13.89" speedFactor="normc(1.0,0.04,0.9,1.10)" carFollowModel="ACC" laneChangeModel="LC2013" lcAssertive="1.1" lcCooperative="0.85" lcImpatience="0.1" lcStrategic="1.0" lcKeepRight="0.7" emissionClass="HBEFA3/zero" jmCrossingGap="9" jmIgnoreFoeProb="0.0" impatience="0.15" actionStepLength="0.5" color="0.10,0.80,1.0"/>
   <vType id="car_cacc_ev" vClass="passenger" length="5.0" accel="2.8" decel="5.0" emergencyDecel="8.0" sigma="0.0" tau="0.7" minGap="1.5" maxSpeed="13.89" speedFactor="normc(1.0,0.02,0.95,1.05)" carFollowModel="CACC" laneChangeModel="LC2013" lcAssertive="1.0" lcCooperative="1.0" lcImpatience="0.05" lcStrategic="1.0" lcKeepRight="0.5" emissionClass="HBEFA3/zero" jmCrossingGap="8" jmIgnoreFoeProb="0.0" impatience="0.0" actionStepLength="0.5" color="0.20,0.95,0.55"/>
-  <vType id="motorcycle" vClass="motorcycle" length="2.2" accel="3.2" decel="5.5" emergencyDecel="8.5" sigma="0.55" tau="0.8" minGap="1.5" maxSpeed="16.67" speedFactor="normc(1.05,0.12,0.7,1.4)" carFollowModel="EIDM" delta="4.0" tpreview="3.0" tPersDrive="2.0" tPersEstimate="8.0" ccoolness="0.90" laneChangeModel="LC2013" lcAssertive="2.0" lcCooperative="0.4" lcImpatience="0.7" lcStrategic="1.5" lcKeepRight="0.2" lcSpeedGain="2.0" lcSublane="1.5" emissionClass="HBEFA3/zero" jmCrossingGap="5" jmIgnoreFoeProb="0.1" impatience="1.0" guiShape="motorcycle" color="1,0.55,0"/>
+  <vType id="motorcycle" vClass="motorcycle" length="2.2" accel="3.2" decel="5.5" emergencyDecel="8.5" sigma="0.55" tau="0.8" minGap="1.5" maxSpeed="16.67" speedFactor="normc(1.05,0.12,0.7,1.4)" carFollowModel="EIDM" delta="4.0" tpreview="3.0" tPersDrive="2.0" tPersEstimate="8.0" ccoolness="0.90" laneChangeModel="LC2013" lcAssertive="2.0" lcCooperative="0.4" lcImpatience="0.7" lcStrategic="1.5" lcKeepRight="0.2" lcSpeedGain="2.0" lcSublane="1.5" emissionClass="HBEFA3/PC_G_EU6" jmCrossingGap="5" jmIgnoreFoeProb="0.1" impatience="1.0" guiShape="motorcycle" color="1,0.55,0"/>
   <vType id="taxi" vClass="taxi" length="5.0" accel="2.6" decel="4.8" emergencyDecel="7.5" sigma="0.55" tau="1.0" minGap="2.2" maxSpeed="13.89" speedFactor="normc(1.05,0.10,0.8,1.3)" carFollowModel="EIDM" delta="4.0" tpreview="3.5" tPersDrive="2.5" tPersEstimate="9.0" ccoolness="0.92" laneChangeModel="LC2013" lcAssertive="1.5" lcCooperative="0.5" lcImpatience="0.6" lcStrategic="1.2" lcKeepRight="0.5" emissionClass="HBEFA3/PC_G_EU6" jmCrossingGap="7" jmIgnoreFoeProb="0.05" impatience="0.8" guiShape="taxi" color="1,0.85,0"/>
   <vType id="lcv" vClass="delivery" length="6.5" accel="1.8" decel="4.0" emergencyDecel="6.5" sigma="0.45" tau="1.2" minGap="2.8" maxSpeed="13.89" speedFactor="normc(0.95,0.08,0.7,1.15)" carFollowModel="EIDM" delta="4.0" tpreview="4.0" tPersDrive="3.0" tPersEstimate="10.0" ccoolness="0.95" laneChangeModel="LC2013" lcAssertive="0.8" lcCooperative="0.8" lcImpatience="0.2" lcStrategic="0.9" lcKeepRight="1.0" emissionClass="HBEFA3/LDV_D_EU6" jmCrossingGap="12" jmIgnoreFoeProb="0.0" impatience="0.3" guiShape="delivery" color="0.85,0.85,0.95"/>
   <vType id="hgv" vClass="truck" length="9.0" accel="1.2" decel="3.5" emergencyDecel="5.5" sigma="0.35" tau="1.6" minGap="3.5" maxSpeed="13.89" speedFactor="normc(0.90,0.06,0.75,1.05)" carFollowModel="EIDM" delta="4.0" tpreview="5.0" tPersDrive="3.5" tPersEstimate="11.0" ccoolness="0.97" laneChangeModel="LC2013" lcAssertive="0.6" lcCooperative="0.85" lcImpatience="0.15" lcStrategic="0.8" lcKeepRight="1.0" emissionClass="HBEFA3/HDV_D_EU6" jmCrossingGap="16" jmIgnoreFoeProb="0.0" impatience="0.2" guiShape="truck" color="0.4,0.4,0.45"/>
@@ -143,11 +143,11 @@
     <walk from="N_I2_I2" busStop="bs_bessa_w"/>
     <ride busStop="bs_marechal_w" lines="STCP502_PROXY_W"/>
   </personFlow>
-  <flow id="flow_minor_NS_I1" type="cross_street_mix" route="route_cross_NS_I1" begin="10" end="7200" period="exp(0.050000)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_SN_I1" type="cross_street_mix" route="route_cross_SN_I1" begin="14" end="7200" period="exp(0.041667)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_NS_I2" type="cross_street_mix" route="route_cross_NS_I2" begin="20" end="7200" period="exp(0.031250)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_outbound_turn_N_at_I1" type="urban_mix" route="route_main_outbound_turn_to_N_I1" begin="22" end="7200" period="exp(0.003571)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_N_to_city_at_I1" type="cross_street_mix" route="route_minor_N_I1_to_city" begin="25" end="7200" period="exp(0.012500)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_NS_I1" type="cross_street_mix" route="route_cross_NS_I1" begin="10" end="6900" period="exp(0.050000)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_SN_I1" type="cross_street_mix" route="route_cross_SN_I1" begin="14" end="6900" period="exp(0.041667)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_NS_I2" type="cross_street_mix" route="route_cross_NS_I2" begin="20" end="6900" period="exp(0.031250)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_outbound_turn_N_at_I1" type="urban_mix" route="route_main_outbound_turn_to_N_I1" begin="22" end="6900" period="exp(0.003571)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_N_to_city_at_I1" type="cross_street_mix" route="route_minor_N_I1_to_city" begin="25" end="6900" period="exp(0.012500)" departLane="best" departSpeed="max"/>
   <vehicle id="bus_STCP500_W_0025" type="bus_12m" route="route_boavista_east_to_west" depart="25.569" line="STCP500_PROXY_W" departLane="best" departSpeed="0">
     <stop busStop="bs_casa_musica_w" duration="21.239" parking="true"/>
     <stop busStop="bs_bessa_w" duration="26.559"/>
@@ -157,71 +157,71 @@
     <stop busStop="bs_praca_imperio_w" duration="23.426" parking="true"/>
     <stop busStop="bs_castelo_queijo_w" duration="18.234" parking="true"/>
   </vehicle>
-  <flow id="flow_minor_SN_I2" type="cross_street_mix" route="route_cross_SN_I2" begin="28" end="7200" period="exp(0.025000)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_NS_I3" type="cross_street_mix" route="route_cross_NS_I3" begin="30" end="7200" period="exp(0.031250)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_inbound_turn_N_at_I1" type="urban_mix" route="route_main_inbound_turn_to_N_I1" begin="30" end="7200" period="exp(0.005263)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_N_to_city_at_I2" type="cross_street_mix" route="route_minor_N_I2_to_city" begin="30" end="7200" period="exp(0.007812)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_outbound_turn_S_at_I1" type="urban_mix" route="route_main_outbound_turn_to_S_I1" begin="34" end="7200" period="exp(0.003571)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_S_to_city_at_I1" type="cross_street_mix" route="route_minor_S_I1_to_city" begin="35" end="7200" period="exp(0.010417)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_N_to_city_at_I3" type="cross_street_mix" route="route_minor_N_I3_to_city" begin="38" end="7200" period="exp(0.007812)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_NS_I4" type="cross_street_mix" route="route_cross_NS_I4" begin="40" end="7200" period="exp(0.020000)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_inbound_turn_S_at_I1" type="urban_mix" route="route_main_inbound_turn_to_S_I1" begin="40" end="7200" period="exp(0.005263)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_SN_I3" type="cross_street_mix" route="route_cross_SN_I3" begin="42" end="7200" period="exp(0.025000)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_S_to_city_at_I2" type="cross_street_mix" route="route_minor_S_I2_to_city" begin="42" end="7200" period="exp(0.006250)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_N_to_atlantic_at_I1" type="cross_street_mix" route="route_minor_N_I1_to_atlantic" begin="45" end="7200" period="exp(0.012500)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_N_to_city_at_I4" type="cross_street_mix" route="route_minor_N_I4_to_city" begin="48" end="7200" period="exp(0.005000)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_NS_I5" type="cross_street_mix" route="route_cross_NS_I5" begin="50" end="7200" period="exp(0.031250)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_outbound_turn_N_at_I2" type="urban_mix" route="route_main_outbound_turn_to_N_I2" begin="50" end="7200" period="exp(0.001818)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_S_to_city_at_I3" type="cross_street_mix" route="route_minor_S_I3_to_city" begin="50" end="7200" period="exp(0.006250)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_S_to_atlantic_at_I1" type="cross_street_mix" route="route_minor_S_I1_to_atlantic" begin="55" end="7200" period="exp(0.010417)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_N_to_atlantic_at_I2" type="cross_street_mix" route="route_minor_N_I2_to_atlantic" begin="55" end="7200" period="exp(0.007812)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_SN_I4" type="cross_street_mix" route="route_cross_SN_I4" begin="56" end="7200" period="exp(0.016667)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_N_to_city_at_I5" type="cross_street_mix" route="route_minor_N_I5_to_city" begin="58" end="7200" period="exp(0.007812)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_NS_I6" type="cross_street_mix" route="route_cross_NS_I6" begin="60" end="7200" period="exp(0.050000)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_inbound_turn_N_at_I2" type="urban_mix" route="route_main_inbound_turn_to_N_I2" begin="60" end="7200" period="exp(0.002667)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_outbound_turn_N_at_I6" type="urban_mix" route="route_main_outbound_turn_to_N_I6" begin="60" end="7200" period="exp(0.003571)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_N_to_atlantic_at_I3" type="cross_street_mix" route="route_minor_N_I3_to_atlantic" begin="62" end="7200" period="exp(0.007812)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_S_to_city_at_I4" type="cross_street_mix" route="route_minor_S_I4_to_city" begin="64" end="7200" period="exp(0.004167)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_inbound_turn_N_at_I6" type="urban_mix" route="route_main_inbound_turn_to_N_I6" begin="65" end="7200" period="exp(0.005263)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_N_to_city_at_I6" type="cross_street_mix" route="route_minor_N_I6_to_city" begin="65" end="7200" period="exp(0.012500)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_S_to_atlantic_at_I2" type="cross_street_mix" route="route_minor_S_I2_to_atlantic" begin="68" end="7200" period="exp(0.006250)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_SN_I5" type="cross_street_mix" route="route_cross_SN_I5" begin="70" end="7200" period="exp(0.025000)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_NS_I7" type="cross_street_mix" route="route_cross_NS_I7" begin="70" end="7200" period="exp(0.031250)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_outbound_turn_N_at_I3" type="urban_mix" route="route_main_outbound_turn_to_N_I3" begin="70" end="7200" period="exp(0.001818)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_S_to_city_at_I5" type="cross_street_mix" route="route_minor_S_I5_to_city" begin="72" end="7200" period="exp(0.006250)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_inbound_turn_S_at_I2" type="urban_mix" route="route_main_inbound_turn_to_S_I2" begin="75" end="7200" period="exp(0.002667)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_S_to_city_at_I6" type="cross_street_mix" route="route_minor_S_I6_to_city" begin="75" end="7200" period="exp(0.010417)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_S_to_atlantic_at_I3" type="cross_street_mix" route="route_minor_S_I3_to_atlantic" begin="78" end="7200" period="exp(0.006250)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_N_to_city_at_I7" type="cross_street_mix" route="route_minor_N_I7_to_city" begin="78" end="7200" period="exp(0.007812)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_outbound_turn_N_at_I5" type="urban_mix" route="route_main_outbound_turn_to_N_I5" begin="80" end="7200" period="exp(0.001818)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_N_to_atlantic_at_I5" type="cross_street_mix" route="route_minor_N_I5_to_atlantic" begin="82" end="7200" period="exp(0.007812)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_SN_I6" type="cross_street_mix" route="route_cross_SN_I6" begin="84" end="7200" period="exp(0.041667)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_outbound_turn_S_at_I2" type="urban_mix" route="route_main_outbound_turn_to_S_I2" begin="85" end="7200" period="exp(0.001818)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_N_to_atlantic_at_I4" type="cross_street_mix" route="route_minor_N_I4_to_atlantic" begin="88" end="7200" period="exp(0.005000)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_S_to_city_at_I7" type="cross_street_mix" route="route_minor_S_I7_to_city" begin="88" end="7200" period="exp(0.006250)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_inbound_turn_N_at_I3" type="urban_mix" route="route_main_inbound_turn_to_N_I3" begin="90" end="7200" period="exp(0.002667)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_outbound_turn_N_at_I7" type="urban_mix" route="route_main_outbound_turn_to_N_I7" begin="90" end="7200" period="exp(0.001818)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_N_to_atlantic_at_I6" type="cross_street_mix" route="route_minor_N_I6_to_atlantic" begin="92" end="7200" period="exp(0.012500)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_inbound_turn_S_at_I6" type="urban_mix" route="route_main_inbound_turn_to_S_I6" begin="95" end="7200" period="exp(0.005263)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_S_to_atlantic_at_I4" type="cross_street_mix" route="route_minor_S_I4_to_atlantic" begin="96" end="7200" period="exp(0.004167)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_SN_I7" type="cross_street_mix" route="route_cross_SN_I7" begin="98" end="7200" period="exp(0.025000)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_outbound_turn_N_at_I4" type="urban_mix" route="route_main_outbound_turn_to_N_I4" begin="100" end="7200" period="exp(0.001370)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_S_to_atlantic_at_I5" type="cross_street_mix" route="route_minor_S_I5_to_atlantic" begin="102" end="7200" period="exp(0.006250)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_inbound_turn_N_at_I5" type="urban_mix" route="route_main_inbound_turn_to_N_I5" begin="105" end="7200" period="exp(0.002667)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_N_to_atlantic_at_I7" type="cross_street_mix" route="route_minor_N_I7_to_atlantic" begin="105" end="7200" period="exp(0.007812)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_inbound_turn_S_at_I3" type="urban_mix" route="route_main_inbound_turn_to_S_I3" begin="110" end="7200" period="exp(0.002667)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_S_to_atlantic_at_I6" type="cross_street_mix" route="route_minor_S_I6_to_atlantic" begin="110" end="7200" period="exp(0.010417)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_inbound_turn_N_at_I7" type="urban_mix" route="route_main_inbound_turn_to_N_I7" begin="115" end="7200" period="exp(0.002667)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_outbound_turn_S_at_I3" type="urban_mix" route="route_main_outbound_turn_to_S_I3" begin="120" end="7200" period="exp(0.001818)" departLane="best" departSpeed="max"/>
-  <flow id="flow_minor_S_to_atlantic_at_I7" type="cross_street_mix" route="route_minor_S_I7_to_atlantic" begin="122" end="7200" period="exp(0.006250)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_outbound_turn_S_at_I6" type="urban_mix" route="route_main_outbound_turn_to_S_I6" begin="125" end="7200" period="exp(0.003571)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_inbound_turn_N_at_I4" type="urban_mix" route="route_main_inbound_turn_to_N_I4" begin="130" end="7200" period="exp(0.002000)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_inbound_turn_S_at_I7" type="urban_mix" route="route_main_inbound_turn_to_S_I7" begin="140" end="7200" period="exp(0.002667)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_inbound_turn_S_at_I5" type="urban_mix" route="route_main_inbound_turn_to_S_I5" begin="145" end="7200" period="exp(0.002667)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_inbound_turn_S_at_I4" type="urban_mix" route="route_main_inbound_turn_to_S_I4" begin="150" end="7200" period="exp(0.002000)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_outbound_turn_S_at_I5" type="urban_mix" route="route_main_outbound_turn_to_S_I5" begin="160" end="7200" period="exp(0.001818)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_outbound_turn_S_at_I4" type="urban_mix" route="route_main_outbound_turn_to_S_I4" begin="170" end="7200" period="exp(0.001370)" departLane="best" departSpeed="max"/>
-  <flow id="flow_main_outbound_turn_S_at_I7" type="urban_mix" route="route_main_outbound_turn_to_S_I7" begin="175" end="7200" period="exp(0.001818)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_SN_I2" type="cross_street_mix" route="route_cross_SN_I2" begin="28" end="6900" period="exp(0.025000)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_NS_I3" type="cross_street_mix" route="route_cross_NS_I3" begin="30" end="6900" period="exp(0.031250)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_inbound_turn_N_at_I1" type="urban_mix" route="route_main_inbound_turn_to_N_I1" begin="30" end="6900" period="exp(0.005263)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_N_to_city_at_I2" type="cross_street_mix" route="route_minor_N_I2_to_city" begin="30" end="6900" period="exp(0.007812)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_outbound_turn_S_at_I1" type="urban_mix" route="route_main_outbound_turn_to_S_I1" begin="34" end="6900" period="exp(0.003571)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_S_to_city_at_I1" type="cross_street_mix" route="route_minor_S_I1_to_city" begin="35" end="6900" period="exp(0.010417)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_N_to_city_at_I3" type="cross_street_mix" route="route_minor_N_I3_to_city" begin="38" end="6900" period="exp(0.007812)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_NS_I4" type="cross_street_mix" route="route_cross_NS_I4" begin="40" end="6900" period="exp(0.020000)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_inbound_turn_S_at_I1" type="urban_mix" route="route_main_inbound_turn_to_S_I1" begin="40" end="6900" period="exp(0.005263)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_SN_I3" type="cross_street_mix" route="route_cross_SN_I3" begin="42" end="6900" period="exp(0.025000)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_S_to_city_at_I2" type="cross_street_mix" route="route_minor_S_I2_to_city" begin="42" end="6900" period="exp(0.006250)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_N_to_atlantic_at_I1" type="cross_street_mix" route="route_minor_N_I1_to_atlantic" begin="45" end="6900" period="exp(0.012500)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_N_to_city_at_I4" type="cross_street_mix" route="route_minor_N_I4_to_city" begin="48" end="6900" period="exp(0.005000)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_NS_I5" type="cross_street_mix" route="route_cross_NS_I5" begin="50" end="6900" period="exp(0.031250)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_outbound_turn_N_at_I2" type="urban_mix" route="route_main_outbound_turn_to_N_I2" begin="50" end="6900" period="exp(0.001818)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_S_to_city_at_I3" type="cross_street_mix" route="route_minor_S_I3_to_city" begin="50" end="6900" period="exp(0.006250)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_S_to_atlantic_at_I1" type="cross_street_mix" route="route_minor_S_I1_to_atlantic" begin="55" end="6900" period="exp(0.010417)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_N_to_atlantic_at_I2" type="cross_street_mix" route="route_minor_N_I2_to_atlantic" begin="55" end="6900" period="exp(0.007812)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_SN_I4" type="cross_street_mix" route="route_cross_SN_I4" begin="56" end="6900" period="exp(0.016667)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_N_to_city_at_I5" type="cross_street_mix" route="route_minor_N_I5_to_city" begin="58" end="6900" period="exp(0.007812)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_NS_I6" type="cross_street_mix" route="route_cross_NS_I6" begin="60" end="6900" period="exp(0.050000)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_inbound_turn_N_at_I2" type="urban_mix" route="route_main_inbound_turn_to_N_I2" begin="60" end="6900" period="exp(0.002667)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_outbound_turn_N_at_I6" type="urban_mix" route="route_main_outbound_turn_to_N_I6" begin="60" end="6900" period="exp(0.003571)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_N_to_atlantic_at_I3" type="cross_street_mix" route="route_minor_N_I3_to_atlantic" begin="62" end="6900" period="exp(0.007812)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_S_to_city_at_I4" type="cross_street_mix" route="route_minor_S_I4_to_city" begin="64" end="6900" period="exp(0.004167)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_inbound_turn_N_at_I6" type="urban_mix" route="route_main_inbound_turn_to_N_I6" begin="65" end="6900" period="exp(0.005263)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_N_to_city_at_I6" type="cross_street_mix" route="route_minor_N_I6_to_city" begin="65" end="6900" period="exp(0.012500)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_S_to_atlantic_at_I2" type="cross_street_mix" route="route_minor_S_I2_to_atlantic" begin="68" end="6900" period="exp(0.006250)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_SN_I5" type="cross_street_mix" route="route_cross_SN_I5" begin="70" end="6900" period="exp(0.025000)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_NS_I7" type="cross_street_mix" route="route_cross_NS_I7" begin="70" end="6900" period="exp(0.031250)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_outbound_turn_N_at_I3" type="urban_mix" route="route_main_outbound_turn_to_N_I3" begin="70" end="6900" period="exp(0.001818)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_S_to_city_at_I5" type="cross_street_mix" route="route_minor_S_I5_to_city" begin="72" end="6900" period="exp(0.006250)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_inbound_turn_S_at_I2" type="urban_mix" route="route_main_inbound_turn_to_S_I2" begin="75" end="6900" period="exp(0.002667)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_S_to_city_at_I6" type="cross_street_mix" route="route_minor_S_I6_to_city" begin="75" end="6900" period="exp(0.010417)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_S_to_atlantic_at_I3" type="cross_street_mix" route="route_minor_S_I3_to_atlantic" begin="78" end="6900" period="exp(0.006250)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_N_to_city_at_I7" type="cross_street_mix" route="route_minor_N_I7_to_city" begin="78" end="6900" period="exp(0.007812)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_outbound_turn_N_at_I5" type="urban_mix" route="route_main_outbound_turn_to_N_I5" begin="80" end="6900" period="exp(0.001818)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_N_to_atlantic_at_I5" type="cross_street_mix" route="route_minor_N_I5_to_atlantic" begin="82" end="6900" period="exp(0.007812)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_SN_I6" type="cross_street_mix" route="route_cross_SN_I6" begin="84" end="6900" period="exp(0.041667)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_outbound_turn_S_at_I2" type="urban_mix" route="route_main_outbound_turn_to_S_I2" begin="85" end="6900" period="exp(0.001818)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_N_to_atlantic_at_I4" type="cross_street_mix" route="route_minor_N_I4_to_atlantic" begin="88" end="6900" period="exp(0.005000)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_S_to_city_at_I7" type="cross_street_mix" route="route_minor_S_I7_to_city" begin="88" end="6900" period="exp(0.006250)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_inbound_turn_N_at_I3" type="urban_mix" route="route_main_inbound_turn_to_N_I3" begin="90" end="6900" period="exp(0.002667)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_outbound_turn_N_at_I7" type="urban_mix" route="route_main_outbound_turn_to_N_I7" begin="90" end="6900" period="exp(0.001818)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_N_to_atlantic_at_I6" type="cross_street_mix" route="route_minor_N_I6_to_atlantic" begin="92" end="6900" period="exp(0.012500)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_inbound_turn_S_at_I6" type="urban_mix" route="route_main_inbound_turn_to_S_I6" begin="95" end="6900" period="exp(0.005263)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_S_to_atlantic_at_I4" type="cross_street_mix" route="route_minor_S_I4_to_atlantic" begin="96" end="6900" period="exp(0.004167)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_SN_I7" type="cross_street_mix" route="route_cross_SN_I7" begin="98" end="6900" period="exp(0.025000)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_outbound_turn_N_at_I4" type="urban_mix" route="route_main_outbound_turn_to_N_I4" begin="100" end="6900" period="exp(0.001370)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_S_to_atlantic_at_I5" type="cross_street_mix" route="route_minor_S_I5_to_atlantic" begin="102" end="6900" period="exp(0.006250)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_inbound_turn_N_at_I5" type="urban_mix" route="route_main_inbound_turn_to_N_I5" begin="105" end="6900" period="exp(0.002667)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_N_to_atlantic_at_I7" type="cross_street_mix" route="route_minor_N_I7_to_atlantic" begin="105" end="6900" period="exp(0.007812)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_inbound_turn_S_at_I3" type="urban_mix" route="route_main_inbound_turn_to_S_I3" begin="110" end="6900" period="exp(0.002667)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_S_to_atlantic_at_I6" type="cross_street_mix" route="route_minor_S_I6_to_atlantic" begin="110" end="6900" period="exp(0.010417)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_inbound_turn_N_at_I7" type="urban_mix" route="route_main_inbound_turn_to_N_I7" begin="115" end="6900" period="exp(0.002667)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_outbound_turn_S_at_I3" type="urban_mix" route="route_main_outbound_turn_to_S_I3" begin="120" end="6900" period="exp(0.001818)" departLane="best" departSpeed="max"/>
+  <flow id="flow_minor_S_to_atlantic_at_I7" type="cross_street_mix" route="route_minor_S_I7_to_atlantic" begin="122" end="6900" period="exp(0.006250)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_outbound_turn_S_at_I6" type="urban_mix" route="route_main_outbound_turn_to_S_I6" begin="125" end="6900" period="exp(0.003571)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_inbound_turn_N_at_I4" type="urban_mix" route="route_main_inbound_turn_to_N_I4" begin="130" end="6900" period="exp(0.002000)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_inbound_turn_S_at_I7" type="urban_mix" route="route_main_inbound_turn_to_S_I7" begin="140" end="6900" period="exp(0.002667)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_inbound_turn_S_at_I5" type="urban_mix" route="route_main_inbound_turn_to_S_I5" begin="145" end="6900" period="exp(0.002667)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_inbound_turn_S_at_I4" type="urban_mix" route="route_main_inbound_turn_to_S_I4" begin="150" end="6900" period="exp(0.002000)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_outbound_turn_S_at_I5" type="urban_mix" route="route_main_outbound_turn_to_S_I5" begin="160" end="6900" period="exp(0.001818)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_outbound_turn_S_at_I4" type="urban_mix" route="route_main_outbound_turn_to_S_I4" begin="170" end="6900" period="exp(0.001370)" departLane="best" departSpeed="max"/>
+  <flow id="flow_main_outbound_turn_S_at_I7" type="urban_mix" route="route_main_outbound_turn_to_S_I7" begin="175" end="6900" period="exp(0.001818)" departLane="best" departSpeed="max"/>
   <vehicle id="bus_STCP502_W_0211" type="bus_12m" route="route_boavista_east_to_west" depart="211.325" line="STCP502_PROXY_W" departLane="best" departSpeed="0">
     <stop busStop="bs_casa_musica_w" duration="22.19" parking="true"/>
     <stop busStop="bs_bessa_w" duration="17.093"/>
@@ -514,8 +514,8 @@
     <stop busStop="bs_bessa_e" duration="19.974"/>
     <stop busStop="bs_casa_musica_e" duration="21.468" parking="true"/>
   </vehicle>
-  <flow id="flow_car_inbound_west_to_east_am_peak_t6" type="urban_mix" route="route_boavista_west_to_east" begin="5400" end="7200" period="exp(0.160000)" departLane="best" departSpeed="max"/>
-  <flow id="flow_car_outbound_east_to_west_am_peak_t6" type="urban_mix" route="route_boavista_east_to_west" begin="5400" end="7200" period="exp(0.130770)" departLane="best" departSpeed="max"/>
+  <flow id="flow_car_inbound_west_to_east_am_peak_t6" type="urban_mix" route="route_boavista_west_to_east" begin="5400" end="6900" period="exp(0.160000)" departLane="best" departSpeed="max"/>
+  <flow id="flow_car_outbound_east_to_west_am_peak_t6" type="urban_mix" route="route_boavista_east_to_west" begin="5400" end="6900" period="exp(0.130770)" departLane="best" departSpeed="max"/>
   <vehicle id="bus_STCP502_W_5535" type="bus_12m" route="route_boavista_east_to_west" depart="5535.793" line="STCP502_PROXY_W" departLane="best" departSpeed="0">
     <stop busStop="bs_casa_musica_w" duration="20.856" parking="true"/>
     <stop busStop="bs_bessa_w" duration="13.401"/>

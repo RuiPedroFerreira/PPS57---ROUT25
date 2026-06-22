@@ -64,7 +64,13 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Accepted for platform command compatibility; not used.",
     )
-    parser.add_argument("--steps", type=int, default=7200, help="SUMO/TraCI steps for TSP runs.")
+    parser.add_argument(
+        "--steps",
+        type=int,
+        default=14400,
+        help="SUMO/TraCI steps for the TSP arms. The baseline arm is converted to "
+        "the same simulated horizon via the step length (14400 steps x 0.5s = 7200s).",
+    )
     parser.add_argument("--sumo-binary", default="sumo", help="SUMO binary for TraCI.")
     parser.add_argument(
         "--no-actuation",
@@ -192,12 +198,24 @@ def _path_from_root(raw: str) -> Path:
     return path if path.is_absolute() else ROOT / path
 
 
+def _step_length_s() -> float:
+    config = json.loads((ROOT / "configs/sumo_scenario_base.json").read_text(encoding="utf-8"))
+    return float(config.get("simulation_step_length_s", 1.0))
+
+
 def _run_baseline(steps: int | None) -> None:
     _build_network(tls_type="static")
     _require("sumo")
     cmd = ["sumo", "-c", "sumo/corredor.sumocfg", "--duration-log.statistics"]
     if steps is not None:
-        cmd.extend(["--end", str(int(steps))])
+        # `steps` counts TraCI steps for the TSP arms; plain SUMO's `--end` is in
+        # seconds. Convert via the step length so both arms cover the SAME
+        # simulated horizon. Without this the baseline ran `steps` seconds while
+        # the TSP arms ran `steps * step_length` seconds — half the horizon at
+        # the default 0.5s step — leaving the baseline with ~2x the vehicles and
+        # making the KPI comparison meaningless.
+        end_s = int(round(steps * _step_length_s()))
+        cmd.extend(["--end", str(end_s)])
     subprocess.run(cmd, cwd=ROOT, check=True, env=sumo_environment())
 
 

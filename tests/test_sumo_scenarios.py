@@ -582,7 +582,11 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
             program = intersections_by_id[tls_id].get("tls_program", {})
             expected = list(base_roles)
             if float(program.get("green_ped_s", 0)) > 0:
+                # The ped phase is split into walk + a clearance all-red so the
+                # ped→main_green transition keeps a pedestrian clearance interval.
                 expected.append("pedestrian")
+                if "all_red_cross_to_main_s" in program:
+                    expected.append("all_red_ped_to_main")
             self.assertEqual(phase_roles, expected, msg=tls_id)
 
     def test_build_tls_offsets_rejects_program_sum_mismatch(self) -> None:
@@ -1313,9 +1317,19 @@ class SumoKpiParsingTestCase(unittest.TestCase):
             if tls_id in ped_ids:
                 self.assertIn("pedestrian", roles, msg=tls_id)
                 ped_idx = roles.index("pedestrian")
-                # Pedestrian must be the LAST role (end of cycle, after all_red_cross_to_main).
-                self.assertEqual(ped_idx, len(roles) - 1, msg=tls_id)
-                self.assertEqual(durations[ped_idx], 12.0, msg=tls_id)
+                # The ped phase is split into walk + clearance: pedestrian is now
+                # second-to-last, followed by the all_red_ped_to_main clearance
+                # (end of cycle). Their durations sum to the original green_ped_s,
+                # so the cycle stays at 90s.
+                inter_program = inter["tls_program"]
+                clearance = float(inter_program["all_red_cross_to_main_s"])
+                self.assertEqual(roles[-1], "all_red_ped_to_main", msg=tls_id)
+                self.assertEqual(ped_idx, len(roles) - 2, msg=tls_id)
+                self.assertAlmostEqual(durations[ped_idx], 12.0 - clearance, msg=tls_id)
+                self.assertAlmostEqual(durations[-1], clearance, msg=tls_id)
+                self.assertAlmostEqual(
+                    durations[ped_idx] + durations[-1], 12.0, msg=tls_id
+                )
             else:
                 self.assertNotIn("pedestrian", roles, msg=tls_id)
 

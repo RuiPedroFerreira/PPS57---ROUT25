@@ -1164,9 +1164,13 @@ def build_tls_offsets(config: dict) -> ET.Element | None:
         # pedestrian roles are optional; when absent the post-build step
         # keeps the netconvert default layout unchanged. The cycle sum must
         # equal tls_cycle_s. The pedestrian phase is an exclusive Barnes
-        # Dance — main and cross go to red and crossings go to green — so no
-        # extra all-red is needed before returning to main_green (the ped
-        # phase already protects vehicles from crossings).
+        # Dance, but it STILL needs a clearance interval (flashing-don't-walk,
+        # modelled as all-red) before returning to main_green: pedestrians
+        # mid-crossing must clear the carriageway before vehicles get green.
+        # The Safety Layer's signal-program verification fail-closes on the
+        # ped→main_green transition otherwise, suppressing all early_green
+        # actuation. We carve that clearance out of the ped budget below so the
+        # cycle length is unchanged.
         role_pairs = [
             ("main_green", "green_main_s"),
             ("main_yellow", "yellow_main_s"),
@@ -1177,15 +1181,36 @@ def build_tls_offsets(config: dict) -> ET.Element | None:
             ("pedestrian", "green_ped_s"),
         ]
         emitted_sum = 0.0
+        ped_phase_elem: ET.Element | None = None
         for role, key in role_pairs:
             if key not in program:
                 continue
             duration = float(program[key])
             emitted_sum += duration
-            ET.SubElement(
+            elem = ET.SubElement(
                 tls_elem,
                 "phase",
                 {"role": role, "duration_s": f"{duration:.1f}"},
+            )
+            if role == "pedestrian":
+                ped_phase_elem = elem
+        # Split the pedestrian phase into walk + clearance, reusing the TLS's own
+        # cross→main intergreen as the clearance length (always >= the global
+        # safety all_red_s). emitted_sum is unchanged — time only moves from the
+        # ped walk into the clearance all-red — so the cycle check below holds.
+        if ped_phase_elem is not None and "all_red_cross_to_main_s" in program:
+            clearance = float(program["all_red_cross_to_main_s"])
+            walk = float(program["green_ped_s"]) - clearance
+            if walk <= 0:
+                raise ValueError(
+                    f"TLS {tls_id}: green_ped_s ({program['green_ped_s']}s) must exceed the "
+                    f"pedestrian clearance ({clearance:.1f}s) carved from it."
+                )
+            ped_phase_elem.attrib["duration_s"] = f"{walk:.1f}"
+            ET.SubElement(
+                tls_elem,
+                "phase",
+                {"role": "all_red_ped_to_main", "duration_s": f"{clearance:.1f}"},
             )
         if cycle_s > 0 and abs(emitted_sum - cycle_s) > 0.51:
             raise ValueError(

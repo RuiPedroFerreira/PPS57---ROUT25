@@ -7,7 +7,8 @@
     <phase role="cross_green" duration_s="39.0"/>
     <phase role="cross_yellow" duration_s="3.0"/>
     <phase role="all_red_cross_to_main" duration_s="1.0"/>
-    <phase role="pedestrian" duration_s="12.0"/>
+    <phase role="pedestrian" duration_s="11.0"/>
+    <phase role="all_red_ped_to_main" duration_s="1.0"/>
   </tls>
   <tls id="I2" offset_s="38.0">
     <phase role="main_green" duration_s="39.0"/>
@@ -16,7 +17,8 @@
     <phase role="cross_green" duration_s="31.0"/>
     <phase role="cross_yellow" duration_s="3.0"/>
     <phase role="all_red_cross_to_main" duration_s="1.0"/>
-    <phase role="pedestrian" duration_s="12.0"/>
+    <phase role="pedestrian" duration_s="11.0"/>
+    <phase role="all_red_ped_to_main" duration_s="1.0"/>
   </tls>
   <tls id="I3" offset_s="26.0">
     <phase role="main_green" duration_s="37.0"/>
@@ -25,7 +27,8 @@
     <phase role="cross_green" duration_s="31.0"/>
     <phase role="cross_yellow" duration_s="3.0"/>
     <phase role="all_red_cross_to_main" duration_s="2.0"/>
-    <phase role="pedestrian" duration_s="12.0"/>
+    <phase role="pedestrian" duration_s="10.0"/>
+    <phase role="all_red_ped_to_main" duration_s="2.0"/>
   </tls>
   <tls id="I4" offset_s="64.0">
     <phase role="main_green" duration_s="45.0"/>
@@ -34,7 +37,8 @@
     <phase role="cross_green" duration_s="23.0"/>
     <phase role="cross_yellow" duration_s="3.0"/>
     <phase role="all_red_cross_to_main" duration_s="2.0"/>
-    <phase role="pedestrian" duration_s="12.0"/>
+    <phase role="pedestrian" duration_s="10.0"/>
+    <phase role="all_red_ped_to_main" duration_s="2.0"/>
   </tls>
   <tls id="I5" offset_s="12.0">
     <phase role="main_green" duration_s="39.0"/>
@@ -43,7 +47,8 @@
     <phase role="cross_green" duration_s="31.0"/>
     <phase role="cross_yellow" duration_s="3.0"/>
     <phase role="all_red_cross_to_main" duration_s="1.0"/>
-    <phase role="pedestrian" duration_s="12.0"/>
+    <phase role="pedestrian" duration_s="11.0"/>
+    <phase role="all_red_ped_to_main" duration_s="1.0"/>
   </tls>
   <tls id="I7" offset_s="18.0">
     <phase role="main_green" duration_s="39.0"/>
@@ -52,6 +57,7 @@
     <phase role="cross_green" duration_s="31.0"/>
     <phase role="cross_yellow" duration_s="3.0"/>
     <phase role="all_red_cross_to_main" duration_s="1.0"/>
-    <phase role="pedestrian" duration_s="12.0"/>
+    <phase role="pedestrian" duration_s="11.0"/>
+    <phase role="all_red_ped_to_main" duration_s="1.0"/>
   </tls>
 </tlsOffsetOverrides>

@@ -249,13 +249,18 @@ def write_sumocfg(config: dict, artifacts: SumoArtifacts, *, output_dir: Path) -
     <tripinfo-output value="{rel(output_dir / "tripinfo.xml")}"/>
     <summary-output value="{rel(output_dir / "summary.xml")}"/>
     <statistic-output value="{rel(output_dir / "statistics.xml")}"/>
-    <emission-output value="{rel(output_dir / "emissions.xml")}"/>
+    <!-- Emissions are emitted as per-vehicle trip totals inside tripinfo
+         (the <emissions> child added by the emissions device below), not a
+         per-step emission-output dump. A raw dump is one row per vehicle per
+         0.5s step over the full horizon (hundreds of MB / millions of rows);
+         the trip totals are what the KPIs consume, at one row per vehicle. -->
   </output>
   <report>
     <duration-log.statistics value="true"/>
   </report>
   <processing>
     <time-to-teleport value="300"/>
+    <device.emissions.probability value="1.0"/>
 {ijb_lines}{actuated_lines}    <!-- Do not enable ignore-route-errors here: sorted route validation should
          fail loudly instead of silently dropping out-of-order vehicles. -->
   </processing>

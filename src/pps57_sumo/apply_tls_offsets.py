@@ -62,6 +62,11 @@ _PRECEDING_YELLOW_FOR_ALL_RED = {
     "all_red_cross_to_main": "cross_yellow",
 }
 _PED_INSERT_ROLE = "pedestrian"
+# All-red clearance inserted immediately AFTER the exclusive pedestrian phase,
+# before the cycle returns to main_green. Without it the ped->main_green
+# transition has no pedestrian clearance interval and the Safety Layer's
+# signal-program verification fail-closes, suppressing every early_green.
+_PED_ALL_RED_INSERT_ROLE = "all_red_ped_to_main"
 
 
 def apply_tls_offsets(net_path: Path, overrides_path: Path) -> int:
@@ -186,7 +191,7 @@ def _apply_phase_program(
             role_to_phase[role] = phase
 
     for role, duration in role_durations.items():
-        if role in _ALL_RED_INSERT_ROLES or role == _PED_INSERT_ROLE:
+        if role in _ALL_RED_INSERT_ROLES or role in (_PED_INSERT_ROLE, _PED_ALL_RED_INSERT_ROLE):
             continue
         phase = role_to_phase.get(role)
         if phase is None:
@@ -255,6 +260,19 @@ def _apply_phase_program(
         {"duration": f"{role_durations[_PED_INSERT_ROLE]:.1f}", "state": ped_state},
     )
     tl_logic.insert(anchor_idx + 1, ped_phase)
+
+    # Pedestrian clearance all-red, inserted right after the ped phase so the
+    # cycle never jumps from pedestrian-green straight to vehicle-green. Its
+    # duration is carved out of the ped budget by build_tls_offsets, so the
+    # overall cycle length is unchanged.
+    ped_all_red_s = role_durations.get(_PED_ALL_RED_INSERT_ROLE)
+    if ped_all_red_s is not None:
+        ped_clearance = ET.Element(
+            "phase",
+            {"duration": f"{ped_all_red_s:.1f}", "state": all_red_state},
+        )
+        ped_idx = list(tl_logic).index(ped_phase)
+        tl_logic.insert(ped_idx + 1, ped_clearance)
 
 
 def _strip_all_red_phases(tl_logic: ET.Element) -> None:

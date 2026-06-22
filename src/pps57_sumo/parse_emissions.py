@@ -1,9 +1,17 @@
-"""Aggregate per-vehicle emission/fuel KPIs from a SUMO emission-output XML.
+"""Aggregate per-vehicle emission/fuel KPIs from a SUMO emissions source.
 
-SUMO emits per-step `<vehicle>` entries within `<timestep>` elements whose
-CO2/NOx/PMx/fuel values are **per-step rates** (mg or ml emitted during that
-step), NOT cumulative — the per-vehicle series is non-monotone. Total emissions
-over a vehicle's trip are therefore the SUM of its per-step observations.
+Two source formats are accepted and produce identical aggregates:
+
+* **tripinfo emissions device** (preferred). With ``--device.emissions.probability
+  1`` and ``--tripinfo-output`` enabled, SUMO writes one ``<emissions .../>`` child
+  per ``<tripinfo>`` carrying the vehicle's *trip-total* absolutes (``CO2_abs``,
+  ``fuel_abs``, ...). One row per vehicle — orders of magnitude smaller than a
+  per-step dump and no summation needed.
+* **raw ``emission-output``** (legacy). Per-step ``<vehicle>`` entries inside
+  ``<timestep>`` elements whose CO2/NOx/PMx/fuel values are per-step *rates* (not
+  cumulative); the trip total is the SUM of a vehicle's per-step observations.
+  Kept so historical emission dumps still parse.
+
 Sustainability claims (TSP reduces CO2, fuel use, etc.) are only verifiable once
 this file is parsed — otherwise the KPIs are absent from the run summary.
 """
@@ -25,6 +33,54 @@ except ImportError:  # pragma: no cover - exercised in minimal CI images.
 METRICS = ("CO2", "CO", "NOx", "PMx", "HC", "fuel", "electricity")
 
 
+def _ingest_tripinfo(
+    elem: Any, per_vehicle: dict[str, dict[str, float]], per_vehicle_type: dict[str, str]
+) -> None:
+    """Read trip-total absolutes from a ``<tripinfo>``'s ``<emissions>`` child."""
+    vid = elem.attrib.get("id", "")
+    if not vid:
+        return
+    emissions = elem.find("emissions")
+    if emissions is None:
+        return
+    bucket = per_vehicle.setdefault(vid, {})
+    for metric in METRICS:
+        # The emissions device names trip totals "<METRIC>_abs" (mg; fuel in mg,
+        # electricity in Wh). These are already cumulative — no per-step sum.
+        value = emissions.attrib.get(f"{metric}_abs")
+        if value is None:
+            continue
+        try:
+            bucket[metric] = bucket.get(metric, 0.0) + float(value)
+        except ValueError:
+            continue
+    v_type = elem.attrib.get("vType")
+    if v_type and vid not in per_vehicle_type:
+        per_vehicle_type[vid] = v_type
+
+
+def _ingest_step_vehicle(
+    elem: Any, per_vehicle: dict[str, dict[str, float]], per_vehicle_type: dict[str, str]
+) -> None:
+    """Accumulate one per-step ``<vehicle>`` row from a raw emission-output dump."""
+    vid = elem.attrib.get("id", "")
+    if not vid:
+        return
+    bucket = per_vehicle.setdefault(vid, {})
+    for metric in METRICS:
+        value = elem.attrib.get(metric)
+        if value is None:
+            continue
+        try:
+            # Valores por-step (não cumulativos): o total da viagem é a soma.
+            bucket[metric] = bucket.get(metric, 0.0) + float(value)
+        except ValueError:
+            continue
+    v_type = elem.attrib.get("type") or elem.attrib.get("eclass")
+    if v_type and vid not in per_vehicle_type:
+        per_vehicle_type[vid] = v_type
+
+
 def parse_emissions(path: Path | None) -> dict[str, Any]:
     """Return aggregated emission/fuel KPIs for vehicles in a SUMO emission file.
 
@@ -39,26 +95,12 @@ def parse_emissions(path: Path | None) -> dict[str, Any]:
 
     try:
         for _event, elem in ET.iterparse(str(path), events=("end",)):
-            if elem.tag != "vehicle":
-                continue
-            vid = elem.attrib.get("id", "")
-            if not vid:
+            if elem.tag == "tripinfo":
+                _ingest_tripinfo(elem, per_vehicle, per_vehicle_type)
                 elem.clear()
-                continue
-            bucket = per_vehicle.setdefault(vid, {})
-            for metric in METRICS:
-                value = elem.attrib.get(metric)
-                if value is None:
-                    continue
-                try:
-                    # Valores por-step (não cumulativos): o total da viagem é a soma.
-                    bucket[metric] = bucket.get(metric, 0.0) + float(value)
-                except ValueError:
-                    continue
-            v_type = elem.attrib.get("type") or elem.attrib.get("eclass")
-            if v_type and vid not in per_vehicle_type:
-                per_vehicle_type[vid] = v_type
-            elem.clear()
+            elif elem.tag == "vehicle":
+                _ingest_step_vehicle(elem, per_vehicle, per_vehicle_type)
+                elem.clear()
     except ET.ParseError:
         out["parse_error"] = True
         return out

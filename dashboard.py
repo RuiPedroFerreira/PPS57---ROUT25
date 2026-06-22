@@ -686,7 +686,7 @@ def render_simulation_panel() -> None:
     )
     gc1, gc2 = st.columns(2)
     with gc1:
-        if st.button("Abrir SUMO-GUI · Baseline", use_container_width=True) and _run_streaming(
+        if st.button("Abrir SUMO-GUI · Baseline", width="stretch") and _run_streaming(
             [("build", BUILD_CMD)], "A construir a rede"
         ):
             _launch_detached(
@@ -694,7 +694,7 @@ def render_simulation_panel() -> None:
                 "Janela do SUMO (baseline) a abrir no ambiente de trabalho.",
             )
     with gc2:
-        if st.button("Abrir SUMO-GUI · TSP", use_container_width=True) and _run_streaming(
+        if st.button("Abrir SUMO-GUI · TSP", width="stretch") and _run_streaming(
             [("build", BUILD_CMD)], "A construir a rede"
         ):
             _launch_detached(
@@ -723,7 +723,7 @@ def render_simulation_panel() -> None:
     hc1, hc2, hc3 = st.columns(3)
     triggered: list[tuple[str, list[str]]] | None = None
     with hc1:
-        if st.button("Correr demonstrador TSP", use_container_width=True, type="primary"):
+        if st.button("Correr demonstrador TSP", width="stretch", type="primary"):
             triggered = [
                 ("build", BUILD_CMD),
                 (
@@ -732,7 +732,7 @@ def render_simulation_panel() -> None:
                 ),
             ]
     with hc2:
-        if st.button("Comparação Baseline vs RL", use_container_width=True):
+        if st.button("Comparação Baseline vs RL", width="stretch"):
             triggered = [
                 ("build", BUILD_CMD),
                 (
@@ -747,7 +747,7 @@ def render_simulation_panel() -> None:
                 ),
             ]
     with hc3:
-        if st.button("Cenários multi-seed", use_container_width=True):
+        if st.button("Cenários multi-seed", width="stretch"):
             triggered = [
                 (
                     "scenario-suite",
@@ -1016,7 +1016,7 @@ if st.session_state.drawer_open:
         # Navigation is vertically centred in the free space between the header
         # and the bottom group via .st-key-drawer_nav { margin: auto 0 }.
         with st.container(key="drawer_nav"):
-            if st.button("✕  Fechar", key="close_drawer", use_container_width=True):
+            if st.button("✕  Fechar", key="close_drawer", width="stretch"):
                 st.session_state.drawer_open = False
                 st.rerun()
 
@@ -1030,7 +1030,7 @@ if st.session_state.drawer_open:
                     if st.button(
                         _label,
                         key=f"nav_{_label}",
-                        use_container_width=True,
+                        width="stretch",
                         type="primary" if st.session_state.active_tab == _label else "secondary",
                     ):
                         st.session_state.active_tab = _label
@@ -1330,7 +1330,7 @@ if _active == "Resumo":
             chart_layout(fig_hero, "", height=280)
             fig_hero.update_layout(bargap=0.35)
             fig_hero.update_xaxes(range=[lo_v - pad, hi_v + pad])
-            st.plotly_chart(fig_hero, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig_hero, width="stretch", config={"displayModeBar": False})
 
             # ── legend: colour squares instead of a wall of italic text ─────────
             lg1, lg2 = st.columns(2)
@@ -1356,7 +1356,7 @@ if _active == "Resumo":
             for chip_col, (chip_label, chip_desc) in zip(chip_cols, nav_items, strict=False):
                 with chip_col:
                     if st.button(
-                        f"{chip_label} →", key=f"chip_{chip_label}", use_container_width=True
+                        f"{chip_label} →", key=f"chip_{chip_label}", width="stretch"
                     ):
                         st.session_state.active_tab = chip_label
                         st.rerun()
@@ -1394,7 +1394,7 @@ elif _active == "KPIs":
 
                     st.button(
                         "Ver autocarros",
-                        use_container_width=True,
+                        width="stretch",
                         on_click=_focus_buses,
                         help="Muda o filtro para a classe Autocarros.",
                     )
@@ -1485,7 +1485,7 @@ elif _active == "KPIs":
                 hovertemplate="%{y}<br>%{fullData.name}: %{x:.1f}<extra></extra>",
             )
             chart_layout(fig, "KPIs por cenário (segundos)")
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
             insight(
                 "Barras mais curtas = melhor desempenho nas métricas de tempo. "
                 "Compare o <strong>baseline</strong> (cinzento) com os cenários TSP para quantificar o ganho."
@@ -1531,7 +1531,7 @@ elif _active == "KPIs":
                 chart_layout(
                     fig_wf, "Ganho absoluto (s) — verde reduz, vermelho aumenta", height=320
                 )
-                st.plotly_chart(fig_wf, use_container_width=True, config={"displayModeBar": False})
+                st.plotly_chart(fig_wf, width="stretch", config={"displayModeBar": False})
                 insight(
                     "Verde = melhoria (redução do tempo). Vermelho = degradação. "
                     "A linha vertical é o cenário de referência. Percentagens = variação relativa."
@@ -1586,7 +1586,7 @@ elif _active == "KPIs":
 
                         st.dataframe(
                             df_comp.style.apply(_color_delta, subset=["Δ absoluto", "Δ relativo"]),
-                            use_container_width=True,
+                            width="stretch",
                             hide_index=True,
                         )
                         download_csv(df_comp, f"{ckey}.csv", key=f"dl_{ckey}")
@@ -1618,7 +1618,7 @@ elif _active == "KPIs":
             )
             chart_layout(fig_dist, "Perda de tempo: média e cauda da distribuição (P95)")
             fig_dist.update_layout(showlegend=False)
-            st.plotly_chart(fig_dist, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig_dist, width="stretch", config={"displayModeBar": False})
             insight(
                 "O P95 representa os 5% de viagens com pior desempenho — a cauda é relevante para "
                 "avaliar equidade e o pior caso. Um bom TSP reduz tanto a média como o P95."
@@ -1698,7 +1698,7 @@ elif _active == "Decisão":
                     )
                 )
                 chart_layout(fig_funnel, "Funil de decisão TSP", height=300)
-                st.plotly_chart(fig_funnel, use_container_width=True, config={"displayModeBar": False})
+                st.plotly_chart(fig_funnel, width="stretch", config={"displayModeBar": False})
             with col_m:
                 st.markdown("&nbsp;")
                 mm1, mm2 = st.columns(2)
@@ -1752,7 +1752,7 @@ elif _active == "Decisão":
                     df_na = pd.DataFrame(
                         [{"Categoria": k, "Decisões": v} for k, v in non_actionable.items() if v]
                     ).sort_values("Decisões", ascending=False)
-                    st.dataframe(df_na, use_container_width=True, hide_index=True)
+                    st.dataframe(df_na, width="stretch", hide_index=True)
                     st.caption(
                         "**Reavaliar** = o autocarro ainda está a ser seguido mas não é o momento "
                         "de actuar (fase ainda não pronta, verde mínimo por servir, benefício pequeno "
@@ -1780,7 +1780,7 @@ elif _active == "Decisão":
                 )
                 chart_layout(fig_pie, "Acções do motor TSP", height=320)
                 fig_pie.update_layout(showlegend=False)
-                st.plotly_chart(fig_pie, use_container_width=True, config={"displayModeBar": False})
+                st.plotly_chart(fig_pie, width="stretch", config={"displayModeBar": False})
             else:
                 st.caption("Sem acções registadas.")
         with col_legend:
@@ -1863,7 +1863,7 @@ elif _active == "Decisão":
             )
             chart_layout(fig_o, "", height=max(220, len(items) * 46 + 80))
             fig_o.update_xaxes(range=[0, max(vals_o) * 1.25 + 0.01])
-            st.plotly_chart(fig_o, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig_o, width="stretch", config={"displayModeBar": False})
             top_obj = labels_o[0] if labels_o else "—"
             insight(
                 "Contribuição média de cada objectivo para o priority score das decisões que "
@@ -1889,7 +1889,7 @@ elif _active == "Decisão":
                 height=max(260, len(df_sf) * 50 + 80),
             )
             chart_layout(fig_sf, "Safety Layer — motivos de bloqueio")
-            st.plotly_chart(fig_sf, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig_sf, width="stretch", config={"displayModeBar": False})
             insight(
                 "A Safety Layer bloqueia actuações que criem conflitos: amarelo insuficiente, "
                 "violação de verde mínimo/máximo, cooldown entre actuações ou conflito de fases."
@@ -1915,7 +1915,7 @@ elif _active == "Decisão":
                 for tid, d in per_tls.items()
             ]
             df_tls = pd.DataFrame(tls_rows).sort_values("Decisões", ascending=False)
-            st.dataframe(df_tls, use_container_width=True, hide_index=True)
+            st.dataframe(df_tls, width="stretch", hide_index=True)
             download_csv(df_tls, f"per_tls_{sel_run}.csv", key=f"dl_tls_{sel_run}")
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1999,7 +1999,7 @@ elif _active == "C-ITS":
                     fig_ct.update_layout(showlegend=False)
                     fig_ct.update_traces(hovertemplate="%{x}: %{y}<extra></extra>")
                     chart_layout(fig_ct, "Mensagens por protocolo C-ITS (escala log)")
-                    st.plotly_chart(fig_ct, use_container_width=True, config={"displayModeBar": False})
+                    st.plotly_chart(fig_ct, width="stretch", config={"displayModeBar": False})
                 with col_desc:
                     st.markdown("&nbsp;")
                     for mtype, mdesc in cits_descs.items():
@@ -2058,7 +2058,7 @@ elif _active == "C-ITS":
                 )
                 fig_prl.update_layout(showlegend=False)
                 chart_layout(fig_prl, "Pedidos de prioridade — estados no ciclo de vida")
-                st.plotly_chart(fig_prl, use_container_width=True, config={"displayModeBar": False})
+                st.plotly_chart(fig_prl, width="stretch", config={"displayModeBar": False})
                 insight(
                     "<strong>Granted</strong> = prioridade concedida. <strong>Cleared</strong> = "
                     "pedido concluído (autocarro passou). <strong>Expired</strong> = timeout sem "
@@ -2120,7 +2120,7 @@ elif _active == "vs RL":
             )
             fig_vc.update_layout(showlegend=False)
             chart_layout(fig_vc, "Veredictos da política RL vs baseline rule-based")
-            st.plotly_chart(fig_vc, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig_vc, width="stretch", config={"displayModeBar": False})
             insight(
                 "Cada decisão compara a acção da política RL com a rule-based. Veredicto positivo = "
                 "RL escolheu acção com melhor valor estimado de recompensa."
@@ -2145,7 +2145,7 @@ elif _active == "vs RL":
                     }
                 )
             df_rl = pd.DataFrame(rl_rows)
-            st.dataframe(df_rl, use_container_width=True, hide_index=True)
+            st.dataframe(df_rl, width="stretch", hide_index=True)
             download_csv(df_rl, "baseline_vs_rl_kpis.csv", key="dl_rl")
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2419,14 +2419,13 @@ elif _active == "Cenários":
                     unsafe_allow_html=True,
                 )
 
-            # ── Emission-focused summary: CO2/Fuel TSP vs Baseline (all seeds) ─────
+            # ── Emission-focused summary: CO2/Fuel TSP vs Baseline (selected scenario) ──
             if em_summary.empty:
                 st.info("Sem pares baseline + TSP com KPIs de emissões disponíveis para esta classe.")
             else:
-                em_summary_display = em_summary.copy()
-                em_summary_display = em_summary_display.sort_values(
-                    ["Normalização", "Métrica", "Cenário"]
-                )
+                sel_label = label_map.get(selected_scenario, selected_scenario)
+                em_summary_display = em_summary[em_summary["Cenário"] == sel_label].copy()
+                em_summary_display = em_summary_display.sort_values(["Normalização", "Métrica"])
                 em_summary_display["Baseline"] = em_summary_display.apply(
                     lambda row: fmt(row["Baseline"], str(row["Unidade"])), axis=1
                 )
@@ -2441,47 +2440,60 @@ elif _active == "Cenários":
                     "Unidade"
                 ] + ")"
 
-                section("Comparação de emissões TSP vs Baseline (normalização)")
+                section(f"Emissões TSP vs Baseline — {sel_label}")
                 st.markdown(
                     "<p style='font-size:11px;font-weight:600;letter-spacing:0.08em;"
                     "color:#9ca3af;text-transform:uppercase;margin:0 0 0.5rem'>"
-                    "Δ% por cenário — valores negativos = melhoria (TSP abaixo do baseline)"
+                    "Valores negativos = melhoria (TSP abaixo do baseline)"
                     "</p>",
                     unsafe_allow_html=True,
                 )
-                st.dataframe(
-                    em_summary_display[
-                        ["Métrica", "Normalização", "Cenário", "Baseline", "TSP", "Δ abs", "Δ (%)"]
-                    ],
-                    use_container_width=True,
-                    hide_index=True,
-                )
+                if em_summary_display.empty:
+                    st.info(f"Sem dados de emissões para o cenário «{sel_label}».")
+                else:
+                    st.dataframe(
+                        em_summary_display[
+                            ["Métrica", "Normalização", "Baseline", "TSP", "Δ abs", "Δ (%)"]
+                        ],
+                        width="stretch",
+                        hide_index=True,
+                    )
 
-                fig_em = px.bar(
-                    em_summary,
-                    x="Δ (%)",
-                    y="Cenário",
-                    color="Métrica",
-                    facet_col="Normalização",
-                    facet_col_wrap=2,
-                    orientation="h",
-                    barmode="group",
-                    height=360,
-                )
-                fig_em.update_layout(
-                    yaxis_title="",
-                    xaxis_title="Δ% face ao baseline (negativo = melhoria)",
-                    legend_title="Métrica",
-                    bargap=0.2,
-                    margin={"l": 160, "r": 80, "t": 20, "b": 24},
-                )
-                fig_em.update_traces(
-                    texttemplate="%{x:+.1f}%",
-                    textposition="outside",
-                    hovertemplate="Cenário: %{y}<br>Δ: %{x:+.1f}%<extra></extra>",
-                )
-                chart_layout(fig_em, "Impacto de CO2/Fuel do TSP por cenário", height=380)
-                st.plotly_chart(fig_em, use_container_width=True, config={"displayModeBar": False})
+                em_chart = em_summary[em_summary["Cenário"] == sel_label].copy()
+                em_chart["Métrica label"] = em_chart["Métrica"] + "\n(" + em_chart["Unidade"] + ")"
+                if not em_chart.empty:
+                    em_melt = em_chart.melt(
+                        id_vars=["Métrica label", "Normalização", "Unidade"],
+                        value_vars=["Baseline", "TSP"],
+                        var_name="Tipo",
+                        value_name="Valor",
+                    )
+                    fig_em = px.bar(
+                        em_melt,
+                        x="Tipo",
+                        y="Valor",
+                        color="Tipo",
+                        facet_col="Métrica label",
+                        facet_col_wrap=3,
+                        barmode="group",
+                        color_discrete_map={"Baseline": "#64748b", "TSP": "#2563eb"},
+                        height=420,
+                    )
+                    fig_em.update_layout(
+                        showlegend=True,
+                        legend_title="",
+                        margin={"l": 50, "r": 20, "t": 50, "b": 24},
+                    )
+                    fig_em.update_yaxes(title_text="")
+                    fig_em.update_xaxes(title_text="")
+                    fig_em.update_traces(
+                        texttemplate="%{y:.0f}",
+                        textposition="outside",
+                        hovertemplate="%{x}: %{y:.0f}<extra></extra>",
+                    )
+                    fig_em.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
+                    chart_layout(fig_em, f"CO2 / Combustível — Baseline vs TSP · {sel_label}", height=440)
+                    st.plotly_chart(fig_em, width="stretch", config={"displayModeBar": False})
 
             # ── scenario detail — placed directly under the controls that drive
             #    it. Order within: objective card + headline cards → all-scenarios
@@ -2638,7 +2650,7 @@ elif _active == "Cenários":
                 fig_d.update_yaxes(
                     title="", tickfont={"size": 13}, gridcolor="#f1f5f9", linecolor="#e2e8f0"
                 )
-                st.plotly_chart(fig_d, use_container_width=True, config={"displayModeBar": False})
+                st.plotly_chart(fig_d, width="stretch", config={"displayModeBar": False})
                 st.caption(
                     "*Verde = o TSP melhora o cenário; vermelho = piora. Mostra onde a "
                     "prioridade semafórica traz mais valor (autocarros atrasados, bunching) "
@@ -2673,7 +2685,7 @@ elif _active == "Cenários":
                 )
                 if "Seeds" in stats.columns:
                     stats["Seeds"] = stats["Seeds"].astype(int)
-                st.dataframe(stats, hide_index=True, use_container_width=True)
+                st.dataframe(stats, hide_index=True, width="stretch")
 
                 csv_bytes = stats.to_csv(index=False).encode("utf-8")
                 _, col_btn = st.columns([4, 1])
@@ -2684,7 +2696,7 @@ elif _active == "Cenários":
                         file_name=f"{selected_scenario}_{sel_metric_key}.csv",
                         mime="text/csv",
                         key="dl_scenario",
-                        use_container_width=True,
+                        width="stretch",
                     )
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2716,7 +2728,7 @@ elif _active == "Método":
                 pd.DataFrame(
                     {"Parâmetro": list(sim_params.keys()), "Valor": list(sim_params.values())}
                 ),
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
         with col_b:
@@ -2764,7 +2776,7 @@ elif _active == "Método":
             "Valor": "sumo/routes/routes.rou.xml — randomTrips com semente controlada",
         },
     ]
-    st.dataframe(pd.DataFrame(dp_rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(dp_rows), width="stretch", hide_index=True)
 
     if demo:
         section("Caminhos de evidência")
@@ -2775,7 +2787,7 @@ elif _active == "Método":
                     if atype != "root":
                         ev_rows.append({"Run": run_name, "Artefacto": atype, "Path": path})
             if ev_rows:
-                st.dataframe(pd.DataFrame(ev_rows), use_container_width=True, hide_index=True)
+                st.dataframe(pd.DataFrame(ev_rows), width="stretch", hide_index=True)
 
     # ── Glossário de métricas (relocated from the sidebar; searchable cards) ───
     section("Glossário de métricas")
