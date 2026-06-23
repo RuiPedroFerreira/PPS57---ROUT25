@@ -27,6 +27,7 @@ from pps57_sumo.parse_tripinfo import parse_tripinfo  # noqa: E402
 from pps57_sumo.scenarios import (  # noqa: E402
     apply_scenario_profile,
     load_catalog,
+    rematerialize_stochastic_incidents,
     scenario_summary,
     validate_scenario_catalog,
 )
@@ -492,6 +493,9 @@ def run_scenario_type(
 
     config = deepcopy(base_config)
     config["random_seed"] = int(seed)
+    # B40: re-draw stochastic incidents for THIS replication's seed (the base config
+    # carries the base-seed draw; without this every seed shares the same incidents).
+    rematerialize_stochastic_incidents(config)
     config.setdefault("detectors", {})
     config["detectors"]["e1_output"] = "../../e1_detectors.xml"
     config["detectors"]["e2_output"] = "../../e2_queues.xml"

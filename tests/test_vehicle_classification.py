@@ -20,6 +20,11 @@ class VehicleClassificationTestCase(unittest.TestCase):
         self.assertTrue(is_bus_like("vehicle_1", "transit_bus"))
         self.assertTrue(is_bus_like("vehicle_2", "bus"))
         self.assertFalse(is_bus_like("flow_car_delayed_bus_0", "car"))
+        # B37: a "bus*" type that is not a bus must not match; an uppercase ID prefix
+        # with the underscore boundary must match.
+        self.assertFalse(is_bus_like("car_1", "business_car"))
+        self.assertTrue(is_bus_like("BUS_5_0001", "car"))
+        self.assertTrue(is_bus_like("car_1", "bus_12m"))
 
 
 if __name__ == "__main__":
