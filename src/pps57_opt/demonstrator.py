@@ -350,10 +350,18 @@ def _verdict(comparisons: JsonDict) -> JsonDict:
             "status": "inconclusive_missing_bus_kpi",
             "reason": "The report could not find bus mean_time_loss_s in the SUMO KPIs.",
         }
-    if bus_loss_delta < 0 and (traffic_loss_delta is None or traffic_loss_delta <= 0):
+    if bus_loss_delta < 0 and traffic_loss_delta is not None and traffic_loss_delta <= 0:
         return {
             "status": "passes_primary_demonstrator_goal",
             "reason": "Bus time loss improved without increasing general traffic mean time loss.",
+        }
+    if bus_loss_delta < 0 and traffic_loss_delta is None:
+        # B20: bus improved but the general-traffic delta is missing — we cannot claim
+        # the no-cost goal without evidence the general traffic did not pay a cost.
+        return {
+            "status": "inconclusive_missing_general_traffic_kpi",
+            "reason": "Bus time loss improved but general_traffic mean_time_loss_s is missing, "
+            "so the no-cost claim cannot be verified.",
         }
     if bus_loss_delta < 0:
         return {

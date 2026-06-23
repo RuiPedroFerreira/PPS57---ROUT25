@@ -13,6 +13,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from pps57_opt.demonstrator import (  # noqa: E402
+    _verdict,
     build_demonstrator_report,
     load_demonstrator_run,
     render_demonstrator_markdown,
@@ -182,6 +183,37 @@ def _write_tsp_artifacts(root: Path, *, blocked: bool, rejected: bool) -> None:
         ),
         encoding="utf-8",
     )
+
+
+class DemonstratorVerdictTestCase(unittest.TestCase):
+    """B20: the primary-goal verdict must not pass on a missing general-traffic delta."""
+
+    @staticmethod
+    def _comparisons(rows: list[dict]) -> dict:
+        return {
+            "tsp_controller_vs_tsp_runtime": {
+                "rows": [{"metric": "applied_events", "tsp_controller": 5}]
+            },
+            "tsp_controller_vs_sumo_baseline_kpis": {"available": True, "rows": rows},
+        }
+
+    def test_missing_general_traffic_delta_is_inconclusive(self) -> None:
+        # bus improved (-10) but no general_traffic row → cannot claim the no-cost goal.
+        verdict = _verdict(
+            self._comparisons([{"group": "buses", "metric": "mean_time_loss_s", "delta": -10.0}])
+        )
+        self.assertEqual(verdict["status"], "inconclusive_missing_general_traffic_kpi")
+
+    def test_bus_improved_and_general_traffic_not_worse_passes(self) -> None:
+        verdict = _verdict(
+            self._comparisons(
+                [
+                    {"group": "buses", "metric": "mean_time_loss_s", "delta": -10.0},
+                    {"group": "general_traffic", "metric": "mean_time_loss_s", "delta": -2.0},
+                ]
+            )
+        )
+        self.assertEqual(verdict["status"], "passes_primary_demonstrator_goal")
 
 
 if __name__ == "__main__":

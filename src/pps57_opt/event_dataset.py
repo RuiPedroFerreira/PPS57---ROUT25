@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import bisect
 import json
+import sys
 from collections import Counter
 from collections.abc import Iterable
 from pathlib import Path
@@ -43,8 +44,17 @@ def build_event_training_rows(
         if item.get("message_type") != MessageType.SREM.value:
             continue
         token = _correlation_token_from_payload(item)
-        if token:
-            requests[token] = item
+        if not token:
+            continue
+        if token in requests:
+            # B24: keep the FIRST SREM for a correlation token; don't let a later
+            # duplicate silently overwrite it (last-wins).
+            print(
+                f"[warn] B24: SREM duplicado para correlation_token={token}; mantido o primeiro.",
+                file=sys.stderr,
+            )
+            continue
+        requests[token] = item
     spatem_index = _build_spatem_index(
         item for item in cits_rows if item.get("message_type") == MessageType.SPATEM.value
     )
@@ -141,7 +151,9 @@ def load_event_training_dataset(
     """
 
     raw_rows = list(_read_jsonl(Path(path)))
-    raw_rows.sort(key=lambda row: _float(row.get("timestamp_s") or 0.0))
+    # B45: a single corrupt/non-numeric timestamp_s must not abort the whole dataset
+    # sort (the per-row loop below already skips malformed rows individually).
+    raw_rows.sort(key=_safe_timestamp)
     last_applied_intervention_by_tls: dict[str, float] = {}
     intervention_actions = (
         set(intervention_actions)
@@ -423,6 +435,15 @@ def _network_value(value: str) -> Any:
 
 def _float(value: Any) -> float:
     return float(value)
+
+
+def _safe_timestamp(row: dict[str, Any]) -> float:
+    # B45: tolerant float for the pre-sort key — a malformed timestamp_s sorts as 0.0
+    # instead of raising ValueError and aborting the whole dataset build.
+    try:
+        return _float(row.get("timestamp_s") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _message_time_s(payload: dict[str, Any]) -> float:
