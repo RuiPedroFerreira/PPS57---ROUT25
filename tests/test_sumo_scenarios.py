@@ -845,6 +845,129 @@ class SumoKpiParsingTestCase(unittest.TestCase):
         kpis = parse_emissions(Path("/nonexistent/emissions.xml"))
         self.assertFalse(kpis["available"])
 
+    def test_emissions_parser_separates_electricity_wh_from_mass_mg(self) -> None:
+        # B13: electricity_abs is in watt-hours, not mg, so it must land under _wh.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "tripinfo.xml"
+            path.write_text(
+                "<tripinfos>"
+                '<tripinfo id="ev_1" vType="electric">'
+                '<emissions CO2_abs="0" fuel_abs="0" electricity_abs="1200" />'
+                "</tripinfo>"
+                "</tripinfos>",
+                encoding="utf-8",
+            )
+            kpis = parse_emissions(path)
+            self.assertNotIn("electricity", kpis.get("totals_mg", {}))
+            self.assertEqual(kpis["totals_wh"]["electricity"], 1200.0)
+
+    def test_emissions_parser_drops_metricless_vehicle(self) -> None:
+        # B14: a vehicle whose <emissions> has no parseable metric must not inflate
+        # vehicle_count (the empty setdefault bucket is dropped).
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "tripinfo.xml"
+            path.write_text(
+                "<tripinfos>"
+                '<tripinfo id="car_1" vType="car"><emissions CO2_abs="100" /></tripinfo>'
+                '<tripinfo id="car_2" vType="car"><emissions /></tripinfo>'
+                "</tripinfos>",
+                encoding="utf-8",
+            )
+            kpis = parse_emissions(path)
+            self.assertEqual(kpis["vehicle_count"], 1)
+
+    def test_emissions_parser_flags_duplicate_tripinfo_id(self) -> None:
+        # B15: a repeated trip-total row is a duplicate export — counted, not summed.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "tripinfo.xml"
+            path.write_text(
+                "<tripinfos>"
+                '<tripinfo id="car_1" vType="car"><emissions CO2_abs="100" /></tripinfo>'
+                '<tripinfo id="car_1" vType="car"><emissions CO2_abs="999" /></tripinfo>'
+                "</tripinfos>",
+                encoding="utf-8",
+            )
+            kpis = parse_emissions(path)
+            self.assertEqual(kpis["vehicle_count"], 1)
+            self.assertEqual(kpis["totals_mg"]["CO2"], 100.0)
+            self.assertEqual(kpis["duplicate_vehicle_count"], 1)
+
+    def test_detector_parser_excludes_no_vehicle_sentinel(self) -> None:
+        # B16: meanSpeed/meanOccupancy of -1 ("no vehicles in interval") is excluded
+        # from the mean instead of dragging it toward -1.
+        with tempfile.TemporaryDirectory() as tmp:
+            e2 = Path(tmp) / "e2.xml"
+            e2.write_text(
+                "<detector>"
+                '<interval id="e2_I2_I3_0" begin="0" end="60" meanOccupancy="20" meanSpeed="4" maxJamLengthInVehicles="2" />'
+                '<interval id="e2_I2_I3_0" begin="60" end="120" meanOccupancy="-1" meanSpeed="-1" maxJamLengthInVehicles="0" />'
+                "</detector>",
+                encoding="utf-8",
+            )
+            edge = parse_detector_kpis(e2_path=e2)["e2"]["edges"]["I2_I3"]
+            self.assertEqual(edge["mean_speed_mps"], 4.0)
+            self.assertEqual(edge["mean_occupancy_pct"], 20.0)
+
+    def test_detector_network_queue_none_when_no_queue_data(self) -> None:
+        # B17: no edge reported a queue => None, not a fake 0.
+        with tempfile.TemporaryDirectory() as tmp:
+            e2 = Path(tmp) / "e2.xml"
+            e2.write_text(
+                "<detector>"
+                '<interval id="e2_I2_I3_0" begin="0" end="60" meanOccupancy="5" meanSpeed="3" />'
+                "</detector>",
+                encoding="utf-8",
+            )
+            nq = parse_detector_kpis(e2_path=e2)["network_queue"]
+            self.assertIsNone(nq["max_queue_vehicles"])
+
+    def test_parse_insertion_parses_statistics_even_when_summary_malformed(self) -> None:
+        # B18: a malformed summary.xml flags parse_error but must NOT cancel the
+        # statistics parse — the safety counters still come through.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            summary = tmp_path / "summary.xml"
+            statistics = tmp_path / "statistics.xml"
+            summary.write_text("<summary><step time=", encoding="utf-8")
+            statistics.write_text(
+                "<statistics>"
+                '<vehicles loaded="2" inserted="2" running="0" waiting="0"/>'
+                '<teleports total="1" jam="1" yield="0" wrongLane="0"/>'
+                '<safety collisions="3" emergencyStops="0" emergencyBraking="0"/>'
+                "</statistics>",
+                encoding="utf-8",
+            )
+            parsed = parse_insertion_kpis(summary, statistics)
+        self.assertTrue(parsed["parse_error"])
+        self.assertEqual(parsed["collisions"], 3)
+        self.assertTrue(parsed["safety_statistics_complete"])
+
+    def test_tripinfo_parser_flags_parse_error(self) -> None:
+        # B12: a malformed tripinfo flags tripinfo_parse_error rather than yielding a
+        # mutilated dict read downstream as "no completed vehicles".
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "tripinfo.xml"
+            path.write_text("<tripinfos><tripinfo id=", encoding="utf-8")
+            kpis = parse_tripinfo(path)
+            self.assertTrue(kpis["tripinfo_parse_error"])
+            self.assertNotIn("all_vehicles", kpis)
+
+    def test_tripinfo_parser_reports_total_route_length(self) -> None:
+        # B11/B27: total_route_length_m is the SUM of route lengths (the correct
+        # per-vehicle-km denominator), not mean_route_length_m × vehicles.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "tripinfo.xml"
+            path.write_text(
+                "<tripinfos>"
+                '<tripinfo id="car_1" vType="car" depart="0" arrival="100" duration="100" routeLength="200" />'
+                '<tripinfo id="car_2" vType="car" depart="0" arrival="100" duration="100" routeLength="800" />'
+                "</tripinfos>",
+                encoding="utf-8",
+            )
+            allv = parse_tripinfo(path)["all_vehicles"]
+            self.assertEqual(allv["total_route_length_m"], 1000.0)
+            self.assertEqual(allv["mean_route_length_m"], 500.0)
+
     def test_full_generation_emits_all_new_artifacts(self) -> None:
         base = json.loads((ROOT / "configs/sumo_scenario_base.json").read_text(encoding="utf-8"))
         cfg = apply_scenario_profile(base, "baseline_am_peak")

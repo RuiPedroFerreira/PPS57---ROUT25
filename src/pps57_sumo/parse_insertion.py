@@ -70,25 +70,28 @@ def parse_insertion_kpis(summary_path: Path | None, statistics_path: Path | None
                 last_step = float(elem.attrib.get("time", last_step))
                 elem.clear()
         except (ET.ParseError, DefusedXmlException):
+            # B18: flag the summary failure but DON'T return — the statistics block
+            # below carries the safety telemetry and must still be parsed even when
+            # summary.xml is malformed (the early return dropped all safety KPIs).
             out["parse_error"] = True
-            return out
-        out["max_waiting_to_insert"] = max_waiting
-        out["max_waiting_at_time_s"] = max_waiting_t
-        out["steps"] = steps
-        out["backlog_step_count"] = backlog_intervals
-        out["final_loaded"] = last_loaded
-        out["final_inserted"] = last_inserted
-        out["final_running"] = last_running
-        out["final_time_s"] = last_step
-        # Genuine end-of-run insertion backlog = the final `waiting` count
-        # (vehicles whose depart time was reached but could not be inserted).
-        # `loaded - inserted` would over-report here: SUMO loads vehicles ahead
-        # of their depart time (route look-ahead), so on shortened runs
-        # (`--steps`/smoke) it counts not-yet-due future departures as a gap and
-        # trips the strict gate even when nothing is actually stuck. The earlier
-        # `- running` term was also wrong (running ⊆ inserted, double-count).
-        out["insertion_gap_at_end"] = max(0, last_waiting)
-        out["final_waiting"] = last_waiting
+        else:
+            out["max_waiting_to_insert"] = max_waiting
+            out["max_waiting_at_time_s"] = max_waiting_t
+            out["steps"] = steps
+            out["backlog_step_count"] = backlog_intervals
+            out["final_loaded"] = last_loaded
+            out["final_inserted"] = last_inserted
+            out["final_running"] = last_running
+            out["final_time_s"] = last_step
+            # Genuine end-of-run insertion backlog = the final `waiting` count
+            # (vehicles whose depart time was reached but could not be inserted).
+            # `loaded - inserted` would over-report here: SUMO loads vehicles ahead
+            # of their depart time (route look-ahead), so on shortened runs
+            # (`--steps`/smoke) it counts not-yet-due future departures as a gap and
+            # trips the strict gate even when nothing is actually stuck. The earlier
+            # `- running` term was also wrong (running ⊆ inserted, double-count).
+            out["insertion_gap_at_end"] = max(0, last_waiting)
+            out["final_waiting"] = last_waiting
 
     if statistics_path is not None and Path(statistics_path).exists():
         out["statistics_available"] = True

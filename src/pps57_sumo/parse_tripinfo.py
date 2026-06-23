@@ -40,6 +40,11 @@ def _mean(values: list[float | None]) -> float | None:
     return round(mean(cleaned), 3) if cleaned else None
 
 
+def _sum(values: list[float | None]) -> float | None:
+    cleaned = [v for v in values if v is not None]
+    return round(sum(cleaned), 3) if cleaned else None
+
+
 def _percentile(values: list[float | None], percentile: float) -> float | None:
     cleaned = sorted(v for v in values if v is not None)
     if not cleaned:
@@ -104,7 +109,10 @@ def parse_tripinfo(
             if root is not None:
                 root.clear()
     except (ET.ParseError, DefusedXmlException, OSError) as exc:
-        return {"source": str(path), "error": str(exc)}
+        # B12: flag a real parse failure so the verdict can fail with the right
+        # reason. Without it, the mutilated {source,error} dict (no all_vehicles
+        # block) was read downstream as "no completed vehicles" — the wrong reason.
+        return {"source": str(path), "error": str(exc), "tripinfo_parse_error": True}
 
     def group(field: str | None, expected: bool | None = None) -> list[dict]:
         if field is None:
@@ -158,6 +166,12 @@ def _summarize_items(items: list[dict]) -> dict:
         "mean_duration_s": _mean([row["duration"] for row in items]),
         "p95_duration_s": _percentile([row["duration"] for row in items], 0.95),
         "mean_route_length_m": _mean([row["routeLength"] for row in items]),
+        # B11/B27: the true fleet distance is the SUM of per-vehicle route lengths,
+        # not mean_route_length_m × vehicles (only exact when all routes are equal).
+        # Consumers must normalise per-vehicle-km against this, not the mean×count.
+        "total_route_length_m": _sum([row["routeLength"] for row in items]),
+        # B36: journey speed = routeLength/duration INCLUDES stopped time, so it
+        # diverges (lower) from instantaneous detector speeds. Labelled accordingly.
         "mean_speed_mps": _mean(
             [
                 (row["routeLength"] / row["duration"])
@@ -172,6 +186,8 @@ def _summarize_items(items: list[dict]) -> dict:
         "mean_time_loss_s": _mean([row["timeLoss"] for row in items]),
         "mean_depart_delay_s": _mean([row["departDelay"] for row in items]),
         "p95_time_loss_s": _percentile([row["timeLoss"] for row in items], 0.95),
+        # B35: SUMO `waitingCount` counts stop/slow EPISODES (incl. congestion
+        # stalls), not visits to scheduled stops — surfaced/labelled as such.
         "mean_stop_count": _mean([row["waitingCount"] for row in items]),
     }
 
