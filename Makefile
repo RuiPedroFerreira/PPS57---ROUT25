@@ -1,4 +1,4 @@
-.PHONY: validate build run gui kpis ingolstadt-list ingolstadt-smoke ingolstadt-run ingolstadt-suite scenario-list scenario-run scenario-suite sumo-smoke cits-sumo tsp-demonstrator compare-tsp-rl compare-sumo-kpis evaluate-decision-outcomes build-event-training-dataset tsp-sumo tsp-sumo-no-actuation tsp-gui tsp-gui-no-actuation optimize-offline train-rl-policy sort-routes test clean
+.PHONY: validate build run gui kpis ingolstadt-list ingolstadt-smoke ingolstadt-run ingolstadt-suite scenario-list scenario-run scenario-suite sumo-smoke cits-sumo tsp-demonstrator compare-tsp-rl compare-sumo-kpis evaluate-decision-outcomes build-event-training-dataset tsp-sumo tsp-sumo-no-actuation tsp-gui tsp-gui-no-actuation audit-protocol optimize-offline train-rl-policy sort-routes test clean
 
 # Hardening: cada receita corre como `bash -ec`, garantindo `set -e` mesmo
 # em linhas encadeadas e abortando à primeira falha. Sem isto, alguém a
@@ -8,8 +8,11 @@ SHELL := /bin/bash
 
 PYTHON := $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 
+# Pre-build static gate. --allow-unbuilt-network lets the network-profile check
+# DEFER (not silently pass) when the generated net.xml does not exist yet — the
+# fresh-clone bootstrap case. `build` re-validates fail-closed after netconvert.
 validate:
-	$(PYTHON) src/pps57_sumo/validate_project.py --root .
+	$(PYTHON) src/pps57_sumo/validate_project.py --root . --allow-unbuilt-network
 	$(PYTHON) -m json.tool configs/cits_v2x_config.json >/dev/null
 	$(PYTHON) -m json.tool configs/tsp_safety_config.json >/dev/null
 	$(PYTHON) -m json.tool configs/policy_training_config.json >/dev/null
@@ -18,8 +21,11 @@ validate:
 # `validate` corre antes de `build` para que toda a cadeia (run/cits-sumo/
 # tsp-sumo/etc., que dependem de build) execute o gate fail-closed de XML
 # bem-formado e rotas ordenadas. Antes ficava órfão e podia ser ignorado.
+# Após o netconvert gerar o net.xml, revalida-se SEM o opt-in de bootstrap, para
+# que o network-profile seja verificado fail-closed contra a rede real (B33).
 build: validate
 	$(PYTHON) src/pps57_sumo/build_network.py --config configs/sumo_scenario_base.json --base-dir sumo
+	$(PYTHON) src/pps57_sumo/validate_project.py --root .
 
 run: build
 	sumo -c sumo/corredor.sumocfg --duration-log.statistics
@@ -89,9 +95,19 @@ build-event-training-dataset:
 
 tsp-sumo: build
 	$(PYTHON) scripts/run_tsp_control.py --mode sumo --steps 7200
+	$(MAKE) audit-protocol
 
 tsp-sumo-no-actuation: build
 	$(PYTHON) scripts/run_tsp_control.py --mode sumo --steps 7200 --no-actuation
+	$(MAKE) audit-protocol
+
+# Fail-closed protocol audit (B30): inspecciona os artefactos do ciclo de vida
+# C-ITS/TSP (outputs/*.jsonl) e sai !=0 quando há violações de integridade —
+# SSEM final em falta, transições de estado ilegais, SSEM órfão ou erros de
+# actuação. Corre automaticamente após os fluxos headless tsp-sumo e é também
+# invocável standalone sobre os outputs/ já existentes.
+audit-protocol:
+	$(PYTHON) scripts/audit_protocol_lifecycle.py
 
 tsp-gui: build
 	$(PYTHON) scripts/run_tsp_control.py --mode sumo --gui --steps 7200
