@@ -12,6 +12,40 @@ from typing import Any
 
 from .lifecycle import PriorityRequestState, transition_request_state
 
+# Fail-closed protocol KPIs (B30): a non-zero count in any of these means the
+# audited lifecycle has integrity problems — a final SSEM was never delivered for
+# a live request, an illegal state transition occurred, an SSEM was delivered for a
+# request with no preceding SREM (orphan), or the controller reported an actuation
+# error. The audit CLI must exit non-zero when any are present.
+#
+# `controller_nacks` is deliberately NOT here: a NACK is the safety layer
+# legitimately rejecting an unsafe/late request (normal operation), not a protocol
+# integrity defect — gating on it would fail every run where the safety veto fires.
+PROTOCOL_VIOLATION_KEYS = (
+    "missing_final_ssem",
+    "invalid_state_transitions",
+    "orphan_ssem",
+    "actuation_errors",
+)
+
+
+def lifecycle_violations(report: dict[str, Any]) -> dict[str, int]:
+    """Return the subset of fail-closed protocol KPIs that are non-zero.
+
+    Empty result == clean lifecycle. A non-empty mapping (key -> count) means the
+    audit must be treated as a failure by callers.
+    """
+    kpis = report.get("protocol_kpis", {}) if isinstance(report, dict) else {}
+    violations: dict[str, int] = {}
+    for key in PROTOCOL_VIOLATION_KEYS:
+        try:
+            count = int(kpis.get(key, 0) or 0)
+        except (TypeError, ValueError):
+            count = 0
+        if count > 0:
+            violations[key] = count
+    return violations
+
 
 def audit_protocol_lifecycle(
     cits_messages_path: str | Path,

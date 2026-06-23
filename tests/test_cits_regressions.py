@@ -15,7 +15,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from pps57_cits.audit import audit_protocol_lifecycle
+from pps57_cits.audit import audit_protocol_lifecycle, lifecycle_violations
 from pps57_cits.config import (
     CITSConfig,
     PriorityMovementConfig,
@@ -213,6 +213,40 @@ class AuditSupersededSequenceTestCase(unittest.TestCase):
             cits_path.write_text(initial.to_json() + "\n", encoding="utf-8")
             audit = audit_protocol_lifecycle(cits_path)
         self.assertEqual(audit["protocol_kpis"]["missing_final_ssem"], 1)
+
+
+class LifecycleViolationsTestCase(unittest.TestCase):
+    """The fail-closed audit gate (B30) keys on real integrity defects only."""
+
+    def test_orphan_ssem_is_a_violation(self) -> None:
+        # An SSEM for a request with no preceding SREM is a protocol integrity
+        # defect and must fail the audit.
+        report = {"protocol_kpis": {"orphan_ssem": 2}}
+        self.assertEqual(lifecycle_violations(report), {"orphan_ssem": 2})
+
+    def test_controller_nacks_are_not_a_violation(self) -> None:
+        # A NACK is the safety layer legitimately vetoing an unsafe/late request —
+        # normal operation, not a defect — so it must not fail the audit.
+        report = {"protocol_kpis": {"controller_nacks": 7}}
+        self.assertEqual(lifecycle_violations(report), {})
+
+    def test_all_gated_keys_flag_and_clean_is_empty(self) -> None:
+        flagged = {
+            "missing_final_ssem": 1,
+            "invalid_state_transitions": 2,
+            "orphan_ssem": 3,
+            "actuation_errors": 4,
+        }
+        self.assertEqual(lifecycle_violations({"protocol_kpis": flagged}), flagged)
+        clean = {key: 0 for key in flagged}
+        self.assertEqual(lifecycle_violations({"protocol_kpis": clean}), {})
+
+    def test_non_numeric_counts_are_tolerated(self) -> None:
+        # A malformed count must not crash the gate; it is treated as 0 (the audit
+        # still writes the raw report for inspection).
+        report = {"protocol_kpis": {"orphan_ssem": None, "actuation_errors": "oops"}}
+        self.assertEqual(lifecycle_violations(report), {})
+        self.assertEqual(lifecycle_violations({}), {})
 
 
 class _FakeLaneDomain:
