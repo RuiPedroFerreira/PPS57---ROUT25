@@ -44,9 +44,9 @@ Temas transversais identificados (ver secção final): drift de contracto JSON e
 
 ### B2 — Suite summary sobrescrita por runs parciais
 
-- **Ficheiros:** `scripts/run_sumo_scenario.py` (L157-166); idem `scripts/run_ingolstadt_demo.py` (≈L608-610).
+- **Ficheiros:** `scripts/run_sumo_scenario.py` (L157-166).
 - **Bug:** qualquer invocação (mesmo `make scenario-run SCENARIO=...`) reescreve `reports/scenarios/scenario_suite_summary.json` apenas com os cenários daquela corrida.
-- **Impacto:** o tab "Cenários" e o `RESULTS.md` perdem os restantes cenários; só `make scenario-suite` (corrida completa) deixa o ficheiro consistente. Igual problema para `reports/ingolstadt/scenario_suite_summary.json`.
+- **Impacto:** o tab "Cenários" e o `RESULTS.md` perdem os restantes cenários; só `make scenario-suite` (corrida completa) deixa o ficheiro consistente.
 - **Fix sugerido:** ler o ficheiro existente, fazer merge pelo `scenario_id` e só depois reescrever; ou apenas escrever a suite quando `args.all`.
 
 ### B3 — `--steps` com semântica inconsistente entre scripts
@@ -91,7 +91,7 @@ Temas transversais identificados (ver secção final): drift de contracto JSON e
   Ficheiro: `scripts/run_sumo_scenario.py` (L426-432). `stdev = pstdev(values)` mas `ci95_*` vem de `mean_ci95` (amostral).
 
 - **B10 — p5/p95 aproximam min/max em n pequeno.**
-  Ficheiros: `scripts/run_sumo_scenario.py` (L422-423) e `scripts/run_ingolstadt_kpi_demo.py` (L91-96 com `int(0.95*n)` em vez de `ceil` / nearest-rank).
+  Ficheiro: `scripts/run_sumo_scenario.py` (L422-423).
 
 ### Parsers de XML
 
@@ -268,7 +268,7 @@ Temas transversais identificados (ver secção final): drift de contracto JSON e
   `scripts/run_sumo_scenario.py` `collect_run_kpis` (L590-606) chama `parse_tripinfo` e `parse_emissions` separadamente, cada um percorre o ficheiro inteiro.
 
 - **O3 — `parse_tripinfo.py` ainda usa `ET.parse` (DOM completo).**
-  `src/pps57_sumo/parse_tripinfo.py` (L56-57). Tripinfo de Ingolstadt é volumoso. `parse_emissions.py` já streama com `iterparse`.
+  `src/pps57_sumo/parse_tripinfo.py` (L56-57). Tripinfo city-wide é volumoso. `parse_emissions.py` já streama com `iterparse`.
 
 - **O4 — `_load_kpis_cached` é unbounded + deepcopy.**
   `scripts/run_sumo_scenario.py` (L948-967). Cresce indefinidamente em processos longos; cada chamada faz `deepcopy` do dict carregado.

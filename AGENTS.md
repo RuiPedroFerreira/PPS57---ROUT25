@@ -46,8 +46,3 @@ non-obvious, durable setup/run caveats.
   (populates `reports/tsp_demonstrator_report.json`, `*_kpis.json`) for the
   Resumo/KPIs tabs; `make compare-tsp-rl` for "vs RL"; `make scenario-suite
   RUN_TYPE=comparison` for "Cenários".
-
-### Optional: Ingolstadt city-wide scenario
-- `scripts/run_ingolstadt_demo.py` needs the third-party TUM-VT scenario cloned
-  into `.tools/ingolstadt` (network access required); see README. Not needed for
-  the synthetic-corridor pipeline, tests, lint, or the dashboard.
