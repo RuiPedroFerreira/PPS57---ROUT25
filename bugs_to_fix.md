@@ -25,7 +25,11 @@ Temas transversais identificados (ver secção final): drift de contracto JSON e
 >
 > Os números mantêm-se estáveis (não foram renumerados); a contagem do Sumário acima reflecte os itens originalmente inventariados, não o veredicto pós-revisão.
 
-> **Estado de resolução (2026-06-23).** Resolvidos no branch `fix/fail-closed-and-rl-tab`: **B1** (tab "vs RL" lê `decision_outcome_evaluation.json`), **B4** (gate fail-closed quando falta telemetria de `statistics.xml` — inclui o `int(float)` do parsing e o sinal `safety_statistics_complete`), **B26** (`safety_clean` só conta com telemetria presente), **B30** (auditoria de protocolo sai !=0, incl. `orphan_ssem`, e ligada ao `make`), **B33** (validação network-profile fail-closed com `--allow-unbuilt-network`). Todos os restantes (B2, B3, B5–B25, B27–B29, B32, B34–B52 e as optimizações O1–O14, exceto a reclassificação O8) continuam **em aberto**.
+> **Estado de resolução (2026-06-23).** Resolvidos no branch `fix/fail-closed-and-rl-tab`: **B1** (tab "vs RL" lê `decision_outcome_evaluation.json`), **B4** (gate fail-closed quando falta telemetria de `statistics.xml` — inclui o `int(float)` do parsing e o sinal `safety_statistics_complete`), **B26** (`safety_clean` só conta com telemetria presente), **B30** (auditoria de protocolo sai !=0, incl. `orphan_ssem`, e ligada ao `make`), **B33** (validação network-profile fail-closed com `--allow-unbuilt-network`).
+>
+> Optimizações resolvidas: **O3** (parse_tripinfo via `iterparse`), **O4** (cache de KPIs limitado com `lru_cache`), **O5** (lookup de SPATEM indexado, O(D·log S)), **O6** (streaming linha-a-linha dos `_read_jsonl`), **O9** (demonstrator reusa o runtime payload em vez de recomputar), **O10** (contagem de ficheiros sem materializar lista).
+>
+> Continuam **em aberto**: bugs B2, B3, B5–B25, B27–B29, B32, B34–B52; optimizações **O1/O2/O13** (reuso de netconvert entre seeds e single-pass tripinfo+emissions — exigem correr a suite SUMO para validar), **O7/O8** (ganho marginal vs risco em ficheiro crítico), **O11/O12** (impacto desprezável), **O14** (fiddly e arriscaria o teste do RESULTS.md).
 
 ---
 
