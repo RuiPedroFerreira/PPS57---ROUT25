@@ -2,8 +2,8 @@
 """Regressões dos instrumentos de evidência VIVOS.
 
 Cobre os instrumentos city-agnostic que continuam no caminho principal — o
-network-binding check e o empirical network-profile check (reorientados para a
-rede de Ingolstadt) — mais a sua config partilhada e o predicado fail-close.
+network-binding check e o empirical network-profile check (apontados à rede do
+corredor sintético) — mais a sua config partilhada e o predicado fail-close.
 Cada fixture é um vetor de verificação sintético, escolhido para o resultado ser
 calculável à mão: prova que os instrumentos se comportam como documentado, nada
 mais. NENHUM número é uma medição de tráfego.

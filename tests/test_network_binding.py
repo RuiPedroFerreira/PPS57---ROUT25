@@ -107,8 +107,8 @@ NOVIA_NET = """<?xml version="1.0" encoding="UTF-8"?>
 # OWN intLanes for internal-junction right-of-way. Here ":J_2" re-lists :J_0_0 and
 # :J_1_0 AFTER J. If via_slots is populated from every junction, the internal one
 # (last writer) shadows J's slots -> each connection's via resolves to an index
-# with no foe data and BOTH groups fail-close (conflict_source="none"). On the real
-# Ingolstadt net this silently dropped ~70% of controlled connections (12% -> 58%
+# with no foe data and BOTH groups fail-close (conflict_source="none"). On a large
+# real city-wide net this silently dropped ~70% of controlled connections (12% -> 58%
 # coverage once fixed). via_slots must come only from request-bearing junctions.
 INTERNAL_SHADOW_NET = """<?xml version="1.0" encoding="UTF-8"?>
 <net>

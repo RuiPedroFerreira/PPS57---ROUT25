@@ -1,4 +1,4 @@
-.PHONY: validate build run gui kpis ingolstadt-list ingolstadt-smoke ingolstadt-run ingolstadt-suite scenario-list scenario-run scenario-suite sumo-smoke cits-sumo tsp-demonstrator compare-tsp-rl compare-sumo-kpis evaluate-decision-outcomes build-event-training-dataset tsp-sumo tsp-sumo-no-actuation tsp-gui tsp-gui-no-actuation audit-protocol optimize-offline train-rl-policy sort-routes test clean
+.PHONY: validate build run gui kpis scenario-list scenario-run scenario-suite sumo-smoke cits-sumo tsp-demonstrator compare-tsp-rl compare-sumo-kpis evaluate-decision-outcomes build-event-training-dataset tsp-sumo tsp-sumo-no-actuation tsp-gui tsp-gui-no-actuation audit-protocol optimize-offline train-rl-policy sort-routes test clean
 
 # Hardening: cada receita corre como `bash -ec`, garantindo `set -e` mesmo
 # em linhas encadeadas e abortando à primeira falha. Sem isto, alguém a
@@ -41,21 +41,6 @@ RUN_TYPE ?= baseline
 # config (scenario_profiles[*].random_seeds); definir para correr um subconjunto.
 SUITE_RUN_TYPE ?= pair
 SUITE_SEEDS ?=
-INGOLSTADT_SCENARIO ?= city_am_peak
-INGOLSTADT_RUN_TYPE ?= pair
-INGOLSTADT_SEEDS ?= 57
-ingolstadt-list:
-	$(PYTHON) scripts/run_ingolstadt_demo.py --list
-
-ingolstadt-smoke:
-	$(PYTHON) scripts/run_ingolstadt_demo.py --scenario $(INGOLSTADT_SCENARIO) --run-type pair --steps 300 --seeds $(INGOLSTADT_SEEDS)
-
-ingolstadt-run:
-	$(PYTHON) scripts/run_ingolstadt_demo.py --scenario $(INGOLSTADT_SCENARIO) --run-type $(INGOLSTADT_RUN_TYPE) --seeds $(INGOLSTADT_SEEDS)
-
-ingolstadt-suite:
-	$(PYTHON) scripts/run_ingolstadt_demo.py --all --run-type pair --seeds $(INGOLSTADT_SEEDS)
-
 scenario-list:
 	$(PYTHON) scripts/run_sumo_scenario.py --list
 

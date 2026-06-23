@@ -3,35 +3,25 @@
 from __future__ import annotations
 
 import json
-import os
 import statistics
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-DATASET_INGOLSTADT = "ingolstadt"
 DATASET_SYNTHETIC = "synthetic"
 
-# Active headline dataset pin.
-#
-# The project has pivoted toward the real Ingolstadt city-wide scenario, but at this
-# stage the dashboard INTENTIONALLY presents the synthetic Boavista corridor: the
-# Ingolstadt runs are not display-ready (no e1/e2 detectors, no GTFS-derived bus
-# headways). Making this an explicit pin — rather than relying on which report dirs
-# happen to exist — stops a freshly generated Ingolstadt suite from silently taking
-# over the platform's headline. To flip the default once Ingolstadt is ready, set
-# PREFERRED_DATASET = DATASET_INGOLSTADT or export PPS57_DASHBOARD_DATASET=ingolstadt.
+# Single headline dataset: the synthetic Boavista corridor (e1/e2 detectors and
+# GTFS-derived bus headways). The earlier city-wide scenario pipeline was removed,
+# so the synthetic corridor is the only scenario dataset. DATASET_ENV_VAR is kept for
+# backward compatibility but no longer selects an alternative.
 DATASET_ENV_VAR = "PPS57_DASHBOARD_DATASET"
 PREFERRED_DATASET = DATASET_SYNTHETIC
 
 
 def discover_scenario_report_roots(reports_root: Path) -> dict[str, Path]:
-    """Return available scenario result roots, preferring Ingolstadt as reference."""
+    """Return available scenario result roots (the synthetic corridor)."""
     roots: dict[str, Path] = {}
-    ingolstadt = reports_root / "ingolstadt"
     synthetic = reports_root / "scenarios"
-    if _has_scenario_reports(ingolstadt):
-        roots[DATASET_INGOLSTADT] = ingolstadt
     if _has_scenario_reports(synthetic):
         roots[DATASET_SYNTHETIC] = synthetic
     return roots
@@ -47,28 +37,11 @@ def _has_scenario_reports(report_root: Path) -> bool:
 
 
 def default_scenario_dataset(reports_root: Path) -> str:
-    """Headline dataset the dashboard defaults to.
-
-    Honours the ``PPS57_DASHBOARD_DATASET`` override, then the ``PREFERRED_DATASET``
-    pin, then whatever scenario reports actually exist (synthetic first, since that is
-    the current pin). The explicit pin keeps the choice intentional: a generated
-    Ingolstadt suite never silently replaces the synthetic corridor on the platform.
-    """
-    roots = discover_scenario_report_roots(reports_root)
-    override = os.environ.get(DATASET_ENV_VAR)
-    if override in roots:
-        return override
-    if PREFERRED_DATASET in roots:
-        return PREFERRED_DATASET
-    for candidate in (DATASET_SYNTHETIC, DATASET_INGOLSTADT):
-        if candidate in roots:
-            return candidate
-    return PREFERRED_DATASET
+    """Headline dataset the dashboard defaults to (the synthetic corridor)."""
+    return DATASET_SYNTHETIC
 
 
-def scenario_catalog_path(root: Path, dataset: str) -> Path:
-    if dataset == DATASET_INGOLSTADT:
-        return root / "configs" / "scenario_catalog_ingolstadt.yaml"
+def scenario_catalog_path(root: Path, dataset: str = DATASET_SYNTHETIC) -> Path:
     return root / "configs" / "scenario_catalog.yaml"
 
 

@@ -31,9 +31,9 @@ from pps57_sumo.network_profile import load_network_profile  # noqa: E402
 
 
 def main() -> int:
-    net = ROOT / ".tools/ingol_run/ingolstadt_net.net.xml"
+    net = ROOT / "sumo/network/corredor.net.xml"
     if not net.exists():
-        raise SystemExit(f"net não encontrada: {net} (corre run_ingolstadt_demo.py)")
+        raise SystemExit(f"net não encontrada: {net} (corre `make build` para a gerar)")
     profile = load_network_profile(net)
     _requests, via_slots = _read_junction_tables(net)
 
@@ -89,7 +89,8 @@ def main() -> int:
           f"({100.0*groups_no_resolved/groups_total:.1f}%)")
     print(f"cobertura esperada: {100.0*(groups_total-groups_no_resolved)/groups_total:.1f}%")
 
-    out = ROOT / ".tools/ingol_run/out/binding_coverage_causes.json"
+    out = ROOT / "reports/validation/binding_coverage_causes.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps({
         "net": net.name,
         "controlled_connections": total_conn,

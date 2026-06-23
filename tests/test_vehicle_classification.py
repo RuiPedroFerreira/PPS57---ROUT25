@@ -14,7 +14,7 @@ from pps57_sumo.vehicle_classification import is_bus_like  # noqa: E402
 
 
 class VehicleClassificationTestCase(unittest.TestCase):
-    def test_bus_like_supports_synthetic_and_ingolstadt_ids(self) -> None:
+    def test_bus_like_supports_lowercase_and_capitalised_ids(self) -> None:
         self.assertTrue(is_bus_like("bus_STCP500_W_0000", "car"))
         self.assertTrue(is_bus_like("Bus_11_0001", "car"))
         self.assertTrue(is_bus_like("vehicle_1", "transit_bus"))

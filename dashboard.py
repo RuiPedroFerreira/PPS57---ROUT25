@@ -250,17 +250,12 @@ EMISSION_METRICS = [
 # metrics where an increase is an improvement (drives delta colouring)
 HIGHER_IS_BETTER = {"mean_speed_mps"}
 
-# Provenance of each scenario dataset, surfaced on the platform so headline numbers
-# always declare their source (and a generated Ingolstadt suite can never silently
-# masquerade as the synthetic corridor, nor vice-versa).
+# Provenance of the scenario dataset, surfaced on the platform so headline numbers
+# always declare their source.
 DATASET_PROVENANCE = {
     "synthetic": (
         "Corredor sintético — Av. da Boavista (Porto), proxy SUMO controlado · "
         "cenários emparelhados baseline vs TSP."
-    ),
-    "ingolstadt": (
-        "Ingolstadt city-wide (TUM-VT) — procura calibrada por detetores, PT via GTFS · "
-        "referência real."
     ),
 }
 
@@ -3031,7 +3026,6 @@ elif _active == "vs RL":
 elif _active == "KPIs":
     scenario_roots = discover_scenario_report_roots(REPORTS)
     dataset_labels = {
-        "ingolstadt": "Ingolstadt city-wide (referência real)",
         "synthetic": "Corredor sintético — Boavista",
     }
     dataset_ids = list(scenario_roots) or ["synthetic"]
@@ -3060,7 +3054,7 @@ elif _active == "KPIs":
             st.session_state.active_tab = "Demonstrador"
             st.rerun()
 
-    scenario_dir = scenario_roots.get(selected_dataset, REPORTS / "ingolstadt")
+    scenario_dir = scenario_roots.get(selected_dataset, REPORTS / "scenarios")
     scen_names = (
         sorted(p.name for p in scenario_dir.iterdir() if p.is_dir())
         if scenario_dir.exists()
@@ -3068,9 +3062,8 @@ elif _active == "KPIs":
     )
     if not scen_names:
         warn(
-            "Sem resultados de cenários Ingolstadt. Corre <code>make ingolstadt-suite</code> "
-            "para gerar baseline SUMO vs TSP emparelhados; o modo sintético continua "
-            "disponível se existirem reports em <code>reports/scenarios</code>."
+            "Sem resultados de cenários. Corre <code>make scenario-suite</code> para gerar "
+            "os cenários emparelhados baseline SUMO vs TSP em <code>reports/scenarios</code>."
         )
     else:
         # ── rich per-run KPI table: every scope from each kpis.json ───────────
@@ -3134,9 +3127,8 @@ elif _active == "KPIs":
 
             # ── label / catalog machinery (objective card = source of truth) ──
             label_map = dict(SCENARIO_LABELS)
-            # Scenario objectives come straight from the selected catalog
-            # (configs/) — the source of truth — so the dashboard never invents
-            # descriptions for the Ingolstadt reference set.
+            # Scenario objectives come straight from the catalog (configs/) — the
+            # source of truth — so the dashboard never invents scenario descriptions.
             scen_catalog = load_yaml(scenario_catalog_path(ROOT, selected_dataset)) or {}
             scen_meta = scen_catalog.get("scenarios") or {}
             label_map.update(catalog_label_map(scen_catalog))

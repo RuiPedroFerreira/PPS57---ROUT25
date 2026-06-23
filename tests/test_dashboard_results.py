@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
 import tempfile
 import unittest
@@ -25,78 +24,40 @@ from pps57_dashboard.results import (  # noqa: E402
 
 
 class DashboardResultsTestCase(unittest.TestCase):
-    def test_pins_synthetic_dataset_when_both_available(self) -> None:
-        # At this stage the dashboard pins the synthetic corridor as the headline
-        # dataset, so a generated Ingolstadt suite never silently replaces it. Both
-        # roots are still discovered (the KPIs tab can select either explicitly).
+    def test_discovers_synthetic_scenario_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             reports = Path(tmp) / "reports"
-            (reports / "ingolstadt").mkdir(parents=True)
             (reports / "scenarios").mkdir(parents=True)
-            (reports / "ingolstadt" / "scenario_suite_summary.json").write_text(
-                "{}", encoding="utf-8"
-            )
             (reports / "scenarios" / "scenario_suite_summary.json").write_text(
                 "{}", encoding="utf-8"
             )
             # B29: a root needs at least one seed kpis.json to count as available.
-            for base in ("ingolstadt", "scenarios"):
-                seed = reports / base / "city_am_peak" / "tsp_actuation" / "seed_57"
-                seed.mkdir(parents=True)
-                (seed / "kpis.json").write_text("{}", encoding="utf-8")
+            seed = reports / "scenarios" / "city_am_peak" / "tsp_actuation" / "seed_57"
+            seed.mkdir(parents=True)
+            (seed / "kpis.json").write_text("{}", encoding="utf-8")
             roots = discover_scenario_report_roots(reports)
             self.assertEqual(default_scenario_dataset(reports), "synthetic")
-            self.assertEqual(roots["ingolstadt"], reports / "ingolstadt")
             self.assertEqual(roots["synthetic"], reports / "scenarios")
 
-    def test_dataset_env_override_selects_ingolstadt(self) -> None:
-        from pps57_dashboard import results as results_mod
-
+    def test_summary_only_root_is_not_available(self) -> None:
+        # B29: a scenarios root with only the suite summary (no seed kpis.json) is an
+        # empty dataset and must not be discovered.
         with tempfile.TemporaryDirectory() as tmp:
             reports = Path(tmp) / "reports"
-            (reports / "ingolstadt").mkdir(parents=True)
-            (reports / "scenarios").mkdir(parents=True)
-            (reports / "ingolstadt" / "scenario_suite_summary.json").write_text(
-                "{}", encoding="utf-8"
-            )
-            (reports / "scenarios" / "scenario_suite_summary.json").write_text(
-                "{}", encoding="utf-8"
-            )
-            # B29: a root needs at least one seed kpis.json to count as available.
-            for base in ("ingolstadt", "scenarios"):
-                seed = reports / base / "city_am_peak" / "tsp_actuation" / "seed_57"
-                seed.mkdir(parents=True)
-                (seed / "kpis.json").write_text("{}", encoding="utf-8")
-            prev = os.environ.get(results_mod.DATASET_ENV_VAR)
-            os.environ[results_mod.DATASET_ENV_VAR] = "ingolstadt"
-            try:
-                self.assertEqual(default_scenario_dataset(reports), "ingolstadt")
-            finally:
-                if prev is None:
-                    os.environ.pop(results_mod.DATASET_ENV_VAR, None)
-                else:
-                    os.environ[results_mod.DATASET_ENV_VAR] = prev
-
-    def test_empty_ingolstadt_root_does_not_hide_synthetic_reports(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            reports = Path(tmp) / "reports"
-            (reports / "ingolstadt").mkdir(parents=True)
             (reports / "scenarios" / "baseline_am_peak").mkdir(parents=True)
             (reports / "scenarios" / "scenario_suite_summary.json").write_text(
                 "{}", encoding="utf-8"
             )
-
             roots = discover_scenario_report_roots(reports)
-
-            self.assertNotIn("ingolstadt", roots)
+            self.assertNotIn("synthetic", roots)
             self.assertEqual(default_scenario_dataset(reports), "synthetic")
 
-    def test_loads_ingolstadt_kpi_rows_from_reference_layout(self) -> None:
+    def test_loads_kpi_rows_from_reference_layout(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = (
                 Path(tmp)
                 / "reports"
-                / "ingolstadt"
+                / "scenarios"
                 / "city_am_peak"
                 / "tsp_actuation"
                 / "seed_57"
@@ -114,7 +75,7 @@ class DashboardResultsTestCase(unittest.TestCase):
                 encoding="utf-8",
             )
             rows = load_scenario_kpi_rows(
-                Path(tmp) / "reports" / "ingolstadt",
+                Path(tmp) / "reports" / "scenarios",
                 "buses",
                 {"mean_time_loss_s": ("Perda", "s", "desc")},
             )
@@ -265,10 +226,10 @@ class DashboardResultsTestCase(unittest.TestCase):
         self.assertEqual(sb["bus_improved"], 0)
         self.assertIsNone(sb["bus_delta_median_pct"])
 
-    def test_catalog_helpers_point_to_ingolstadt_reference(self) -> None:
+    def test_catalog_helper_points_to_synthetic_catalog(self) -> None:
         self.assertEqual(
-            scenario_catalog_path(ROOT, "ingolstadt").name,
-            "scenario_catalog_ingolstadt.yaml",
+            scenario_catalog_path(ROOT).name,
+            "scenario_catalog.yaml",
         )
         labels = catalog_label_map({"scenarios": {"city_am_peak": {"description": "AM"}}})
         self.assertEqual(labels["city_am_peak"], "AM")

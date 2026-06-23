@@ -751,7 +751,7 @@ class SumoKpiParsingTestCase(unittest.TestCase):
             self.assertEqual(kpis["bus_headways"]["STCP500:W"]["mean_headway_s"], 600)
             self.assertEqual(kpis["general_traffic"]["vehicles"], 1)
 
-    def test_tripinfo_parser_reports_ingolstadt_bus_line_kpis(self) -> None:
+    def test_tripinfo_parser_reports_capitalised_bus_line_kpis(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "tripinfo.xml"
             path.write_text(
