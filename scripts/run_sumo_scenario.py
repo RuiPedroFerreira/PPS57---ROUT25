@@ -160,7 +160,24 @@ def main() -> int:
     }
     reports_dir = ROOT / args.reports_dir
     reports_dir.mkdir(parents=True, exist_ok=True)
-    (reports_dir / "scenario_suite_summary.json").write_text(
+    summary_path = reports_dir / "scenario_suite_summary.json"
+    # B2: a single-scenario run (make scenario-run) must NOT drop the other
+    # scenarios already in the suite summary. Merge by scenario_id, overriding only
+    # the ones just (re)run. A full `--all` run intentionally replaces everything.
+    if not args.all and summary_path.exists():
+        try:
+            existing = json.loads(summary_path.read_text(encoding="utf-8"))
+            merged = {
+                s.get("scenario_id"): s
+                for s in existing.get("scenarios", [])
+                if isinstance(s, dict) and s.get("scenario_id")
+            }
+        except (OSError, ValueError):
+            merged = {}
+        for summary in run_summaries:
+            merged[summary.get("scenario_id")] = summary
+        scenario_report = {"scenario_count": len(merged), "scenarios": list(merged.values())}
+    summary_path.write_text(
         json.dumps(scenario_report, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
@@ -378,9 +395,14 @@ def _aggregate_replications(runs: list[dict]) -> dict:
     kpi_paths = [run.get("kpis") for run in runs if run.get("kpis")]
     aggregate["kpi_paths"] = kpi_paths
     summaries = [_load_kpis(p) for p in kpi_paths if p]
-    summaries = [s for s in summaries if s]
-    if summaries:
-        aggregate["kpi_aggregate"] = _compute_kpi_aggregate(summaries)
+    loaded = [s for s in summaries if s]
+    if loaded:
+        aggregate["kpi_aggregate"] = _compute_kpi_aggregate(loaded)
+    # B8: surface how many seeds actually fed the aggregate vs how many were
+    # expected, so a silently-dropped (missing/unreadable) kpis.json is visible
+    # instead of the mean/CI quietly shrinking to the loaded subset.
+    aggregate["kpi_aggregate_n"] = len(loaded)
+    aggregate["kpi_aggregate_dropped"] = len(kpi_paths) - len(loaded)
     return aggregate
 
 
@@ -419,15 +441,22 @@ def _compute_kpi_aggregate(kpis_list: list[dict]) -> dict:
             out.update({"stdev": None, "p5": None, "p95": None})
             return out
         sorted_v = sorted(values)
-        p5_idx = max(0, int(round((len(sorted_v) - 1) * 0.05)))
-        p95_idx = min(len(sorted_v) - 1, int(round((len(sorted_v) - 1) * 0.95)))
-        # `stdev` (populacional) mantido para retrocompatibilidade; `stdev_sample`
-        # e `ci95_*` são as estatísticas de inferência.
+        if len(sorted_v) >= 2:
+            # B10: interpolated percentiles (statistics.quantiles) instead of a
+            # nearest-rank index that collapsed p5/p95 to min/max for small n.
+            cuts = statistics.quantiles(sorted_v, n=100, method="inclusive")
+            p5 = round(cuts[4], 3)
+            p95 = round(cuts[94], 3)
+        else:
+            p5 = p95 = round(sorted_v[0], 3)
+        # B9: `stdev` now uses the SAMPLE stdev (statistics.stdev), consistent with
+        # the sample-based ci95_* (was populacional pstdev — a different basis in
+        # the same aggregate, so a consumer re-deriving a CI from it disagreed).
         out.update(
             {
-                "stdev": round(statistics.pstdev(values), 3) if len(values) > 1 else 0.0,
-                "p5": round(sorted_v[p5_idx], 3),
-                "p95": round(sorted_v[p95_idx], 3),
+                "stdev": round(statistics.stdev(values), 3) if len(values) > 1 else 0.0,
+                "p5": p5,
+                "p95": p95,
             }
         )
         return out
@@ -747,12 +776,38 @@ def _paired_significance(
     }
 
 
+def _mean_kpis_for_compare(run: dict) -> dict | None:
+    """Build a KPI dict from the multi-seed means (kpi_aggregate) for compare_kpis.
+
+    B5: the point-delta comparison and the absolute gates must use the mean KPIs
+    across seeds — not the first seed's kpis.json — so they agree with the paired
+    CI95 instead of riding on a single replication. Returns None when there is no
+    aggregate (caller falls back to the first-seed kpis.json).
+    """
+    aggregate = run.get("kpi_aggregate")
+    if not isinstance(aggregate, dict):
+        return None
+
+    def _mean(key: str) -> float | None:
+        entry = aggregate.get(key)
+        return entry.get("mean") if isinstance(entry, dict) else None
+
+    return {
+        "buses": {"mean_time_loss_s": _mean("bus_mean_time_loss_s")},
+        "general_traffic": {"mean_time_loss_s": _mean("general_mean_time_loss_s")},
+        "detectors": {
+            "network_queue": {"max_queue_vehicles": _mean("max_network_queue_vehicles")}
+        },
+    }
+
+
 def compare_scenario_runs(runs: dict[str, dict]) -> dict:
-    baseline = _load_kpis(runs.get("baseline", {}).get("kpis"))
     baseline_run = runs.get("baseline", {})
+    baseline = _mean_kpis_for_compare(baseline_run) or _load_kpis(baseline_run.get("kpis"))
     comparisons: dict[str, dict] = {}
     for run_type in ("tsp_actuation",):
-        candidate = _load_kpis(runs.get(run_type, {}).get("kpis"))
+        candidate_run = runs.get(run_type, {})
+        candidate = _mean_kpis_for_compare(candidate_run) or _load_kpis(candidate_run.get("kpis"))
         if not baseline or not candidate:
             continue
         comparison = compare_kpis(baseline, candidate)
@@ -831,6 +886,11 @@ def _metric_delta(
 def run_verdict(kpis: dict) -> dict:
     if kpis.get("missing_tripinfo"):
         return {"status": "fail", "reasons": ["missing_tripinfo"]}
+    # B12: a tripinfo that exists but failed to parse yields a mutilated dict (no
+    # all_vehicles block). Fail with the right reason instead of the misleading
+    # "no_completed_vehicles" the empty block would otherwise trigger.
+    if kpis.get("tripinfo_parse_error"):
+        return {"status": "fail", "reasons": ["tripinfo_parse_error"]}
     reasons = []
     inconclusive = []
     thresholds = _sumo_quality_thresholds(kpis)
@@ -987,29 +1047,45 @@ def render_scenario_report(summary: dict) -> str:
         "",
         f"Verdict: **{summary.get('verdict', {}).get('status', 'unknown')}**",
         "",
-        "| Run | Status | Vehicles | Buses | Bus timeLoss | General timeLoss | Max queue | Total CO2 (mg) | Total fuel (mg) |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Run | Seeds | Status | Vehicles | Buses | Bus timeLoss | General timeLoss | Max queue | Total CO2 (mg) | Total fuel (mg) |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for run_type, run in summary.get("runs", {}).items():
         kpis = _load_kpis(run.get("kpis")) or {}
+        aggregate = run.get("kpi_aggregate") if isinstance(run.get("kpi_aggregate"), dict) else {}
+
+        # B6: when there are multiple seeds, show the across-seed MEAN (kpi_aggregate)
+        # rather than the first seed's value unsignalled; the Seeds column makes the
+        # replication count explicit. Falls back to the first-seed value otherwise.
+        def _val(agg_key: str, fallback: Any) -> Any:
+            entry = aggregate.get(agg_key)
+            if isinstance(entry, dict) and entry.get("mean") is not None:
+                return round(entry["mean"], 3)
+            return fallback
+
         emissions_totals = (
             kpis.get("emissions", {}).get("totals_mg", {})
             if isinstance(kpis.get("emissions"), dict)
             else {}
         )
         lines.append(
-            "| {run} | {status} | {veh} | {bus} | {bus_loss} | {gen_loss} | {queue} | {co2} | {fuel} |".format(
+            "| {run} | {seeds} | {status} | {veh} | {bus} | {bus_loss} | {gen_loss} | {queue} | {co2} | {fuel} |".format(
                 run=run_type,
+                seeds=run.get("replication_count", 1),
                 status=run.get("run_verdict", {}).get("status", run.get("status")),
                 veh=kpis.get("all_vehicles", {}).get("vehicles", ""),
                 bus=kpis.get("buses", {}).get("vehicles", ""),
-                bus_loss=kpis.get("buses", {}).get("mean_time_loss_s", ""),
-                gen_loss=kpis.get("general_traffic", {}).get("mean_time_loss_s", ""),
-                queue=kpis.get("detectors", {})
-                .get("network_queue", {})
-                .get("max_queue_vehicles", ""),
-                co2=emissions_totals.get("CO2", ""),
-                fuel=emissions_totals.get("fuel", ""),
+                bus_loss=_val("bus_mean_time_loss_s", kpis.get("buses", {}).get("mean_time_loss_s", "")),
+                gen_loss=_val(
+                    "general_mean_time_loss_s",
+                    kpis.get("general_traffic", {}).get("mean_time_loss_s", ""),
+                ),
+                queue=_val(
+                    "max_network_queue_vehicles",
+                    kpis.get("detectors", {}).get("network_queue", {}).get("max_queue_vehicles", ""),
+                ),
+                co2=_val("total_co2_mg", emissions_totals.get("CO2", "")),
+                fuel=_val("total_fuel_mg", emissions_totals.get("fuel", "")),
             )
         )
 
@@ -1183,9 +1259,16 @@ def render_results_doc(report: dict) -> str:
             continue
         sig = cmp.get("bus_time_loss_replication_significance")
         point = cmp.get("bus_time_loss", {})
-        n = sig.get("n") if sig else "1"
+        # B7: show the real seed count instead of a hard-coded "1" when several
+        # seeds ran but no paired CI was computed; the verdict states so explicitly.
+        seed_count = len(s.get("seeds", [])) or 1
+        n = sig.get("n") if sig else seed_count
         mean_imp = f"{sig['mean_improvement']:+.1f}" if sig else "—"
-        verdict = sig.get("verdict", "single_seed_no_ci") if sig else "single_seed_no_ci"
+        verdict = (
+            sig.get("verdict", "single_seed_no_ci")
+            if sig
+            else ("no_paired_ci" if seed_count > 1 else "single_seed_no_ci")
+        )
         reg_pct = point.get("regression_pct")
         # regression_pct é positivo quando o TSP piora; mostramos como melhoria (-)
         pt = f"{-reg_pct:+.1f}%" if isinstance(reg_pct, (int, float)) else "—"
@@ -1209,8 +1292,13 @@ def render_results_doc(report: dict) -> str:
             lines.append(f"| {s['scenario_id']} | pendente | — | — |")
             continue
         sig = cmp.get("general_traffic_time_loss_replication_significance")
+        seed_count = len(s.get("seeds", [])) or 1
         mean_imp = f"{sig['mean_improvement']:+.1f}" if sig else "—"
-        verdict = sig.get("verdict", "single_seed_no_ci") if sig else "single_seed_no_ci"
+        verdict = (
+            sig.get("verdict", "single_seed_no_ci")
+            if sig
+            else ("no_paired_ci" if seed_count > 1 else "single_seed_no_ci")
+        )
         lines.append(f"| {s['scenario_id']} | {mean_imp} | {_ci_cell(sig)} | {verdict} |")
 
     lines += [

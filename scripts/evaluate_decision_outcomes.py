@@ -20,6 +20,7 @@ from pps57_opt.config import load_policy_optimization_config  # noqa: E402
 from pps57_opt.event_dataset import write_event_training_dataset  # noqa: E402
 from pps57_opt.outcome_evaluator import write_decision_outcome_evaluation  # noqa: E402
 from pps57_opt.rl_trainer import TabularQLearningController  # noqa: E402
+from pps57_sumo.parse_tripinfo import parse_tripinfo  # noqa: E402
 from pps57_tsp.config import load_tsp_config  # noqa: E402
 from pps57_tsp.controller import TSPControlController  # noqa: E402
 
@@ -49,8 +50,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--steps",
         type=int,
-        default=7200,
-        help="SUMO/TraCI steps when generating fresh paired runs.",
+        default=14400,
+        help="SUMO/TraCI steps when generating fresh paired runs (14400 × 0.5s/step "
+        "= full 7200s window; B3: the old default 7200 covered only half the window).",
     )
     parser.add_argument("--sumo-binary", default="sumo", help="SUMO binary for TraCI.")
     parser.add_argument(
@@ -89,8 +91,17 @@ def main() -> int:
     optimization_config = load_policy_optimization_config(ROOT / args.policy_config, root=ROOT)
     policy_report = tsp_config.path_from_root(args.policy_report)
 
-    baseline_kpis = _read_optional_json(args.baseline_kpis)
-    rl_kpis = _read_optional_json(args.rl_kpis)
+    # B22: the two roots must be supplied together. Passing only one used to fall
+    # through to a fresh SUMO run that overwrites outputs/ — surprising and silent.
+    if bool(args.baseline_root) != bool(args.rl_root):
+        raise SystemExit(
+            "B22: --baseline-root e --rl-root têm de ser fornecidos JUNTOS; passar só um "
+            "faria fallback silencioso a um run SUMO novo (sobrescrevendo outputs/)."
+        )
+    # B23: when explicit KPIs are not given, derive them from a tripinfo.xml under the
+    # provided root so network_impact_verdict isn't stuck at inconclusive_without_kpis.
+    baseline_kpis = _read_optional_json(args.baseline_kpis) or _kpis_from_root(args.baseline_root)
+    rl_kpis = _read_optional_json(args.rl_kpis) or _kpis_from_root(args.rl_root)
     if args.baseline_root and args.rl_root:
         payload = _evaluate_existing_roots(
             baseline_root=args.baseline_root,
@@ -221,6 +232,23 @@ def _read_optional_json(path: Path | None) -> dict | None:
     if path is None:
         return None
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _kpis_from_root(root: Path | None) -> dict | None:
+    """B23: derive KPIs from a tripinfo.xml under `root` when none were passed.
+
+    Lets network_impact_verdict be computed from a real run directory instead of
+    staying at inconclusive_without_kpis. Returns None when no usable tripinfo exists.
+    """
+    if root is None:
+        return None
+    for rel in ("tripinfo.xml", "outputs/tripinfo.xml"):
+        candidate = Path(root) / rel
+        if candidate.exists():
+            kpis = parse_tripinfo(candidate)
+            if not kpis.get("tripinfo_parse_error"):
+                return kpis
+    return None
 
 
 def _copy_tsp_artifacts(source_root: Path, dest_root: Path) -> None:

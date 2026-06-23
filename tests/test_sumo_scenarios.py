@@ -38,7 +38,9 @@ if str(SCRIPTS) not in sys.path:
 
 from run_sumo_scenario import (  # noqa: E402
     _assert_horizon_not_truncated,
+    _compute_kpi_aggregate,
     _effective_end_s,
+    _mean_kpis_for_compare,
     compare_kpis,
     copy_global_sumo_outputs,
     render_results_doc,
@@ -1657,6 +1659,37 @@ class SumoKpiParsingTestCase(unittest.TestCase):
         verdict = run_verdict(kpis)
         self.assertEqual(verdict["status"], "inconclusive")
         self.assertEqual(verdict["reasons"], ["sumo_safety_statistics_unavailable"])
+
+    def test_run_verdict_fails_on_tripinfo_parse_error(self) -> None:
+        # B12: a tripinfo that exists but fails to parse fails with the right reason,
+        # not the misleading "no_completed_vehicles".
+        verdict = run_verdict({"tripinfo_parse_error": True, "source": "x"})
+        self.assertEqual(verdict, {"status": "fail", "reasons": ["tripinfo_parse_error"]})
+
+    def test_kpi_aggregate_uses_sample_stdev_and_bounded_percentiles(self) -> None:
+        # B9: stdev is the sample stdev (consistent with ci95); B10: p5/p95 stay
+        # within [min, max] via interpolation.
+        kpis_list = [{"buses": {"mean_time_loss_s": v}} for v in (10.0, 20.0, 30.0)]
+        agg = _compute_kpi_aggregate(kpis_list)["bus_mean_time_loss_s"]
+        self.assertEqual(agg["mean"], 20.0)
+        self.assertEqual(agg["stdev"], 10.0)  # statistics.stdev([10,20,30]) == 10.0
+        self.assertEqual(agg["stdev_sample"], 10.0)
+        self.assertTrue(10.0 <= agg["p5"] <= agg["p95"] <= 30.0)
+
+    def test_mean_kpis_for_compare_uses_aggregate_means(self) -> None:
+        # B5: the point comparison uses the across-seed means, not the first seed.
+        run = {
+            "kpi_aggregate": {
+                "bus_mean_time_loss_s": {"mean": 50.0},
+                "general_mean_time_loss_s": {"mean": 30.0},
+                "max_network_queue_vehicles": {"mean": 12.0},
+            }
+        }
+        mean_kpis = _mean_kpis_for_compare(run)
+        self.assertEqual(mean_kpis["buses"]["mean_time_loss_s"], 50.0)
+        self.assertEqual(mean_kpis["general_traffic"]["mean_time_loss_s"], 30.0)
+        self.assertEqual(mean_kpis["detectors"]["network_queue"]["max_queue_vehicles"], 12.0)
+        self.assertIsNone(_mean_kpis_for_compare({}))
 
     def test_steps_convert_to_effective_end_seconds(self) -> None:
         base = json.loads((ROOT / "configs/sumo_scenario_base.json").read_text(encoding="utf-8"))

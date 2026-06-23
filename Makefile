@@ -63,7 +63,7 @@ tsp-demonstrator:
 	$(PYTHON) scripts/run_tsp_demonstrator.py --steps 14400
 
 compare-tsp-rl: build
-	$(PYTHON) scripts/compare_tsp_baseline_rl.py --steps 7200 --train-rl
+	$(PYTHON) scripts/compare_tsp_baseline_rl.py --steps 14400 --train-rl
 
 # Compara dois ficheiros de KPIs SUMO já gerados (parse_tripinfo). Os caminhos
 # são overridable: make compare-sumo-kpis BASELINE_KPIS=... RL_KPIS=...
@@ -73,7 +73,7 @@ compare-sumo-kpis:
 	$(PYTHON) scripts/compare_sumo_kpis.py --baseline-kpis $(BASELINE_KPIS) --rl-kpis $(RL_KPIS)
 
 evaluate-decision-outcomes: build
-	$(PYTHON) scripts/evaluate_decision_outcomes.py --steps 7200 --train-rl
+	$(PYTHON) scripts/evaluate_decision_outcomes.py --steps 14400 --train-rl
 
 build-event-training-dataset:
 	$(PYTHON) scripts/build_event_training_dataset.py
