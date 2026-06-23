@@ -148,9 +148,12 @@ def main() -> int:
     print(f"- json: {tsp_config.path_from_root(args.json_out)}")
     print(f"- markdown: {tsp_config.path_from_root(args.md_out)}")
     print(
-        f"- baseline snapshot: {baseline_snapshot} ({len(list(baseline_snapshot.rglob('*')))} files)"
+        f"- baseline snapshot: {baseline_snapshot} "
+        f"({sum(1 for _ in baseline_snapshot.rglob('*'))} files)"
     )
-    print(f"- rl snapshot:       {rl_snapshot} ({len(list(rl_snapshot.rglob('*')))} files)")
+    print(
+        f"- rl snapshot:       {rl_snapshot} ({sum(1 for _ in rl_snapshot.rglob('*'))} files)"
+    )
     return 0
 
 

@@ -9,7 +9,7 @@ import shutil
 import statistics
 import sys
 from copy import deepcopy
-from functools import cache
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -957,12 +957,14 @@ def scenario_verdict(summary: dict) -> dict:
     return {"status": "pass", "reasons": reasons}
 
 
-@cache
+@lru_cache(maxsize=512)
 def _load_kpis_cached(path_str: str, mtime: float) -> dict | None:
     # kpis.json is written once per run then read many times (paired significance
     # ×2, the point comparison, and the scenario/suite/RESULTS reports). Caching on
     # (path, mtime) collapses ~10 reads+parses of each file into one, while the
     # mtime key stays correct if a file is regenerated within the same process.
+    # Bounded (vs functools.cache) so long-lived processes don't grow without limit;
+    # 512 comfortably covers a full suite's scenarios×seeds×run_types kpis.json set.
     return json.loads(Path(path_str).read_text(encoding="utf-8"))
 
 
