@@ -20,6 +20,8 @@ from pps57_cits.models import SignalState
 from pps57_opt.config import load_policy_optimization_config
 from pps57_opt.dataset import build_offline_scenarios
 from pps57_opt.event_dataset import (
+    _build_spatem_index,
+    _latest_spatem,
     load_event_training_dataset,
     load_event_training_scenarios,
 )
@@ -346,6 +348,41 @@ class OutcomePairingTests(unittest.TestCase):
         self.assertEqual(payload["missing_rl_count"], 1)
         verdicts = sorted(str(row["verdict"]) for row in payload["rows"])
         self.assertEqual(verdicts, ["missing_baseline", "missing_rl"])
+
+
+class LatestSpatemIndexTests(unittest.TestCase):
+    """O5: the indexed SPATEM lookup preserves the previous latest-<=-timestamp
+    semantics, including the max()-by-time first-occurrence tie-break."""
+
+    @staticmethod
+    def _spatem(tls_id: str, time_s: float, tag: str) -> dict:
+        return {"tls_id": tls_id, "timestamp_s": time_s, "tag": tag}
+
+    def test_returns_latest_spatem_at_or_before_timestamp(self) -> None:
+        rows = [
+            self._spatem("J1", 5.0, "a"),
+            self._spatem("J1", 15.0, "c"),
+            self._spatem("J1", 10.0, "b"),
+            self._spatem("J2", 12.0, "x"),
+        ]
+        index = _build_spatem_index(rows)
+        self.assertEqual(_latest_spatem(index, "J1", 12.0)["tag"], "b")
+        self.assertEqual(_latest_spatem(index, "J1", 15.0)["tag"], "c")
+        self.assertEqual(_latest_spatem(index, "J2", 99.0)["tag"], "x")
+
+    def test_empty_when_no_spatem_or_all_after_timestamp(self) -> None:
+        index = _build_spatem_index([self._spatem("J1", 20.0, "a")])
+        self.assertEqual(_latest_spatem(index, "J1", 19.0), {})
+        self.assertEqual(_latest_spatem(index, "JX", 99.0), {})
+
+    def test_tie_break_returns_first_occurrence_in_log_order(self) -> None:
+        rows = [
+            self._spatem("J1", 8.0, "first"),
+            self._spatem("J1", 8.0, "second"),
+            self._spatem("J1", 3.0, "older"),
+        ]
+        index = _build_spatem_index(rows)
+        self.assertEqual(_latest_spatem(index, "J1", 10.0)["tag"], "first")
 
 
 if __name__ == "__main__":

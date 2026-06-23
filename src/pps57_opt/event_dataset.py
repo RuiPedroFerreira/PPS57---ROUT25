@@ -8,6 +8,7 @@ top-level) **não são** compatíveis e devem ser regenerados.
 
 from __future__ import annotations
 
+import bisect
 import json
 from collections import Counter
 from collections.abc import Iterable
@@ -44,9 +45,9 @@ def build_event_training_rows(
         token = _correlation_token_from_payload(item)
         if token:
             requests[token] = item
-    spatem_rows = [
+    spatem_index = _build_spatem_index(
         item for item in cits_rows if item.get("message_type") == MessageType.SPATEM.value
-    ]
+    )
     decisions = [item for item in _read_jsonl(Path(decision_log)) if item.get("request_id")]
     actuations_by_decision = {
         str(item.get("decision_id")): item
@@ -59,7 +60,7 @@ def build_event_training_rows(
         request = requests.get(str(decision.get("request_id")), {})
         actuation = actuations_by_decision.get(str(decision.get("decision_id")), {})
         signal_state = _latest_spatem(
-            spatem_rows, str(decision.get("tls_id")), _float(decision.get("timestamp_s"))
+            spatem_index, str(decision.get("tls_id")), _float(decision.get("timestamp_s"))
         )
         rows.append(
             {
@@ -261,24 +262,55 @@ def _read_jsonl(path: Path) -> Iterable[dict[str, Any]]:
     if not path.exists():
         return []
     rows: list[dict[str, Any]] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        rows.append(json.loads(line))
+    # Stream the file handle instead of read_text().splitlines(): the latter held
+    # the whole file as one string plus a full list of lines; iterating the handle
+    # keeps only one line resident at a time (supports multi-GB JSONL).
+    with path.open(encoding="utf-8") as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            rows.append(json.loads(line))
     return rows
 
 
+def _build_spatem_index(
+    spatem_rows: Iterable[dict[str, Any]],
+) -> dict[str, tuple[list[float], list[dict[str, Any]]]]:
+    """Group SPATEMs by tls_id, each sorted ascending by message time.
+
+    Returns {tls_id: (times, items)} where items[i] is the SPATEM at times[i]. This
+    turns _latest_spatem from an O(SPATEMs) scan per decision into an O(log S)
+    bisect, so the build is O(D·log S) instead of O(D·S). Python's stable sort keeps
+    log order among equal timestamps so the previous max()-by-time tie-break (first
+    occurrence of the maximum time) is reproduced exactly.
+    """
+    grouped: dict[str, list[tuple[float, dict[str, Any]]]] = {}
+    for item in spatem_rows:
+        grouped.setdefault(str(item.get("tls_id")), []).append((_message_time_s(item), item))
+    index: dict[str, tuple[list[float], list[dict[str, Any]]]] = {}
+    for tls_id, pairs in grouped.items():
+        pairs.sort(key=lambda pair: pair[0])
+        index[tls_id] = ([time for time, _ in pairs], [item for _, item in pairs])
+    return index
+
+
 def _latest_spatem(
-    spatem_rows: list[dict[str, Any]], tls_id: str, timestamp_s: float
+    spatem_index: dict[str, tuple[list[float], list[dict[str, Any]]]],
+    tls_id: str,
+    timestamp_s: float,
 ) -> dict[str, Any]:
-    candidates = [
-        item
-        for item in spatem_rows
-        if str(item.get("tls_id")) == tls_id and _message_time_s(item) <= timestamp_s
-    ]
-    if not candidates:
+    entry = spatem_index.get(tls_id)
+    if not entry:
         return {}
-    return max(candidates, key=_message_time_s)
+    times, items = entry
+    upper = bisect.bisect_right(times, timestamp_s)
+    if upper == 0:
+        return {}
+    # Largest message time <= timestamp_s; return its FIRST occurrence in log order
+    # to match the previous max(candidates, key=_message_time_s) tie-break.
+    max_time = times[upper - 1]
+    first = bisect.bisect_left(times, max_time, 0, upper)
+    return items[first]
 
 
 def _correlation_token_from_payload(payload: dict[str, Any]) -> str:

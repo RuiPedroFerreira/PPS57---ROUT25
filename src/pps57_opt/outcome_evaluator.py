@@ -456,9 +456,10 @@ def _row_delta(rows: list[Row], metric: str) -> float | None:
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
-    return [
-        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
-    ]
+    # Stream the file handle instead of read_text().splitlines(), so a multi-GB log
+    # is parsed line-by-line rather than held entirely in memory as a string + list.
+    with path.open(encoding="utf-8") as handle:
+        return [json.loads(line) for line in handle if line.strip()]
 
 
 def _fmt(value: Any) -> str:
