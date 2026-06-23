@@ -836,6 +836,18 @@ def run_verdict(kpis: dict) -> dict:
     thresholds = _sumo_quality_thresholds(kpis)
     insertion = kpis.get("insertion", {})
 
+    # Fail-closed safety gate (B4): the collision / teleport / emergency-braking /
+    # vehicles-waiting counters all come from statistics.xml. Keying on file
+    # existence alone is not enough — a present-but-empty statistics.xml (aborted or
+    # short TraCI run) parses cleanly yet carries none of those counters, and the
+    # gates below would then read them as 0 via `or 0`, passing every safety gate
+    # with no evidence. parse_insertion sets safety_statistics_complete only when the
+    # <vehicles>/<teleports>/<safety> blocks were all actually read, so gate on that.
+    # Mark the run inconclusive when telemetry is incomplete; a real hard failure
+    # elsewhere still dominates (inconclusive is only returned when no reasons fire).
+    if not insertion.get("safety_statistics_complete"):
+        inconclusive.append("sumo_safety_statistics_unavailable")
+
     if kpis.get("all_vehicles", {}).get("vehicles", 0) <= 0:
         reasons.append("no_completed_vehicles")
     if kpis.get("buses", {}).get("vehicles", 0) <= 0:

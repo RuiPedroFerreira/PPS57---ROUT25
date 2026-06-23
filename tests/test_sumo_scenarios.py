@@ -1458,6 +1458,7 @@ class SumoKpiParsingTestCase(unittest.TestCase):
                 "teleports_total": 1,
                 "emergency_braking": 3,
                 "collisions": 0,
+                "safety_statistics_complete": True,
             },
         }
         verdict = run_verdict(kpis)
@@ -1482,6 +1483,7 @@ class SumoKpiParsingTestCase(unittest.TestCase):
                 "teleports_total": 0,
                 "emergency_braking": 0,
                 "collisions": 0,
+                "safety_statistics_complete": True,
             },
         }
         verdict = run_verdict(kpis)
@@ -1508,9 +1510,30 @@ class SumoKpiParsingTestCase(unittest.TestCase):
                 "teleports_total": 0,
                 "emergency_braking": 2,
                 "collisions": 0,
+                "safety_statistics_complete": True,
             },
         }
         self.assertEqual(run_verdict(kpis), {"status": "pass", "reasons": []})
+
+    def test_run_verdict_inconclusive_when_safety_statistics_incomplete(self) -> None:
+        # B4 gap closure: a present-but-empty statistics.xml parses cleanly but
+        # carries no <vehicles>/<teleports>/<safety> blocks, so parse_insertion sets
+        # safety_statistics_complete=False. A run with completed vehicles+buses and
+        # no hard failures must then be inconclusive (no safety evidence), never a
+        # silent "pass" from the gates reading the missing counters as 0 via `or 0`.
+        kpis = {
+            "all_vehicles": {"vehicles": 100},
+            "buses": {"vehicles": 5},
+            "scenario": {"max_steps": 7200},
+            "insertion": {
+                "steps": 7200,
+                "backlog_step_count": 0,
+                "safety_statistics_complete": False,
+            },
+        }
+        verdict = run_verdict(kpis)
+        self.assertEqual(verdict["status"], "inconclusive")
+        self.assertEqual(verdict["reasons"], ["sumo_safety_statistics_unavailable"])
 
     def test_steps_convert_to_effective_end_seconds(self) -> None:
         base = json.loads((ROOT / "configs/sumo_scenario_base.json").read_text(encoding="utf-8"))
@@ -1596,6 +1619,30 @@ class SumoKpiParsingTestCase(unittest.TestCase):
         self.assertEqual(parsed["teleports_total"], 1)
         self.assertEqual(parsed["collisions"], 0)
         self.assertEqual(parsed["emergency_braking"], 3)
+        # A full <vehicles>/<teleports>/<safety> block means the verdict can trust
+        # the safety counters (B4).
+        self.assertTrue(parsed["safety_statistics_complete"])
+
+    def test_parse_insertion_flags_empty_statistics_as_incomplete(self) -> None:
+        # B4 gap: an aborted/short TraCI run can leave an empty <statistics/> that
+        # parses without error yet carries no safety counters. The file exists, so
+        # statistics_available is True and there is no parse error — but
+        # safety_statistics_complete must be False so run_verdict treats the safety
+        # telemetry as missing instead of reading absent counters as 0.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            summary = tmp_path / "summary.xml"
+            statistics = tmp_path / "statistics.xml"
+            summary.write_text(
+                '<summary><step time="0.0" loaded="2" inserted="1" running="1" waiting="0"/></summary>',
+                encoding="utf-8",
+            )
+            statistics.write_text("<statistics></statistics>", encoding="utf-8")
+            parsed = parse_insertion_kpis(summary, statistics)
+        self.assertTrue(parsed["statistics_available"])
+        self.assertNotIn("statistics_parse_error", parsed)
+        self.assertFalse(parsed["safety_statistics_complete"])
+        self.assertNotIn("collisions", parsed)
 
     def test_shared_build_command_uses_realism_flags(self) -> None:
         base = json.loads((ROOT / "configs/sumo_scenario_base.json").read_text(encoding="utf-8"))
