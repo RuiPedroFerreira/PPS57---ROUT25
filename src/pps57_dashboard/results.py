@@ -463,8 +463,17 @@ def scenario_scoreboard(rows: list[dict]) -> dict[str, Any]:
         if gen_b is not None and gen_t is not None and (gen_t - gen_b) > 90:
             out["general_cost_over_90s"] += 1
 
-        if not mean(scen, tsp_rt, "safety", "collisions") and not mean(
-            scen, tsp_rt, "safety", "teleports_jam"
+        # Fail-closed (B26): only count a scenario as safety-clean when we actually
+        # have telemetry showing zero. The old `not mean(...)` read a missing row
+        # (mean() -> None) as 0, so scenarios with no safety data were tallied as
+        # "clean" and inflated the headline. Require both counters present and zero.
+        collisions = mean(scen, tsp_rt, "safety", "collisions")
+        teleports_jam = mean(scen, tsp_rt, "safety", "teleports_jam")
+        if (
+            collisions is not None
+            and teleports_jam is not None
+            and collisions == 0
+            and teleports_jam == 0
         ):
             out["safety_clean"] += 1
 
