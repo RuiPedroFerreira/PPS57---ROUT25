@@ -25,11 +25,18 @@ Temas transversais identificados (ver secção final): drift de contracto JSON e
 >
 > Os números mantêm-se estáveis (não foram renumerados); a contagem do Sumário acima reflecte os itens originalmente inventariados, não o veredicto pós-revisão.
 
-> **Estado de resolução (2026-06-23).** Resolvidos no branch `fix/fail-closed-and-rl-tab`: **B1** (tab "vs RL" lê `decision_outcome_evaluation.json`), **B4** (gate fail-closed quando falta telemetria de `statistics.xml` — inclui o `int(float)` do parsing e o sinal `safety_statistics_complete`), **B26** (`safety_clean` só conta com telemetria presente), **B30** (auditoria de protocolo sai !=0, incl. `orphan_ssem`, e ligada ao `make`), **B33** (validação network-profile fail-closed com `--allow-unbuilt-network`).
+> **Estado de resolução — TODOS os bugs fechados (2026-06-23).** No branch `fix/fail-closed-and-rl-tab`, **B1–B52 estão todos resolvidos, caducos ou são falsos positivos**, com testes de regressão. Por waves:
 >
-> Optimizações resolvidas: **O3** (parse_tripinfo via `iterparse`), **O4** (cache de KPIs limitado com `lru_cache`), **O5** (lookup de SPATEM indexado, O(D·log S)), **O6** (streaming linha-a-linha dos `_read_jsonl`), **O9** (demonstrator reusa o runtime payload em vez de recomputar), **O10** (contagem de ficheiros sem materializar lista).
+> - **Fail-closed / rl-tab:** B1, B4, B26, B30 (incl. `orphan_ssem` + ligado ao `make`), B33.
+> - **Wave 1 — parsers:** B11, B12, B13, B14, B15, B16, B17, B18, B27, B35, B36.
+> - **Wave 2 — dashboard:** B25, B28, B29.
+> - **Wave 3 — multi-seed/--steps/scripts:** B2, B3, B5, B6, B7, B8, B9, B10, B21, B22, B23, B43, B44, B46.
+> - **Wave 4 — demonstrador/outcome/event:** B19, B20, B24, B45.
+> - **Wave 5 — stats/scenarios/build/classificação:** B37, B38, B39, B40, B41, B42.
+> - **Wave 6 — diagnósticos:** B47, B49, B50, B51, B52.
+> - **B31** — falso positivo (sem fix). **B34** — resolvido por desenho (a contagem de partidas é preservada; headway é legitimamente `None` numa única partida). **B32, B48** — caducos: `verify_issue68_fix.py` e `diagnose_tls_blockers.py` foram removidos com o pipeline Ingolstadt.
 >
-> Continuam **em aberto**: bugs B2, B3, B5–B25, B27–B29, B32, B34–B52; optimizações **O1/O2/O13** (reuso de netconvert entre seeds e single-pass tripinfo+emissions — exigem correr a suite SUMO para validar), **O7/O8** (ganho marginal vs risco em ficheiro crítico), **O11/O12** (impacto desprezável), **O14** (fiddly e arriscaria o teste do RESULTS.md).
+> **Optimizações:** resolvidas **O3, O4, O5, O6, O9, O10**. Continuam em aberto **O1/O2/O13** (reuso de netconvert entre seeds e single-pass tripinfo+emissions — exigem correr a suite SUMO para validar), **O7/O8** (ganho marginal vs risco em ficheiro crítico), **O11/O12** (impacto desprezável), **O14** (fiddly, arriscaria o teste do RESULTS.md).
 
 ---
 
