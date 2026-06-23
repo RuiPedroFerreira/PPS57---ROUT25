@@ -19,6 +19,14 @@ Escopo coberto:
 
 Temas transversais identificados (ver secção final): drift de contracto JSON entre scripts e dashboard; gates a passar silenciosamente quando faltam dados; mistura de níveis de agregação no mesmo relatório; `--steps` com semânticas inconsistentes entre scripts; reprodutibilidade incompleta nas réplicas multi-seed; fórmula errada de per-vehicle-km nas normalizações de emissões.
 
+> **Revisão de verificação (2026-06-23).** Todos os itens foram confirmados contra o código commitado (`90d275b`). A esmagadora maioria é real. Correcções assinaladas inline abaixo:
+> - **B31 — falso positivo** (premissa errada sobre a semântica do TraCI).
+> - **B14**, **B45** e **O8 — parcialmente reais**: a mecânica existe, mas um detalhe da descrição está incorrecto.
+>
+> Os números mantêm-se estáveis (não foram renumerados); a contagem do Sumário acima reflecte os itens originalmente inventariados, não o veredicto pós-revisão.
+
+> **Estado de resolução (2026-06-23).** Resolvidos no branch `fix/fail-closed-and-rl-tab`: **B1** (tab "vs RL" lê `decision_outcome_evaluation.json`), **B4** (gate fail-closed quando falta telemetria de `statistics.xml` — inclui o `int(float)` do parsing e o sinal `safety_statistics_complete`), **B26** (`safety_clean` só conta com telemetria presente), **B30** (auditoria de protocolo sai !=0, incl. `orphan_ssem`, e ligada ao `make`), **B33** (validação network-profile fail-closed com `--allow-unbuilt-network`). Todos os restantes (B2, B3, B5–B25, B27–B29, B32, B34–B52 e as optimizações O1–O14, exceto a reclassificação O8) continuam **em aberto**.
+
 ---
 
 ## 🔴 Críticos (alta severidade — quebram directamente o que o dashboard mostra)
@@ -95,9 +103,10 @@ Temas transversais identificados (ver secção final): drift de contracto JSON e
   Ficheiro: `src/pps57_sumo/parse_emissions.py` (L48-49, L136-160).
   Todas as chaves de output (`totals_mg`, `bus_totals_mg`, `mean_per_vehicle_mg`) usam `_mg`, mas para electricity são watt-hours. Unidades enganadoras para qualquer consumer eléctrico.
 
-- **B14 — Veículos sem atributos inflacionam `vehicle_count`/`bus_count`.**
+- **B14 — Veículos sem atributos inflacionam `vehicle_count`/`bus_count`.** *(parcialmente real)*
   Ficheiro: `src/pps57_sumo/parse_emissions.py` (L62-115).
   `setdefault` cria buckets vazios; eles contam para o denominador mas não para `totals_mg`, biaseando per-vehicle normalisations.
+  **⚠️ Correcção da revisão (2026-06-23):** a inflação de `vehicle_count`/`bus_count` é real no caminho `_ingest_step_vehicle` (`setdefault` em L69; contagens em L124/L161). Mas o enviesamento das *per-vehicle normalisations* **não se concretiza**: `mean_per_vehicle_mg` usa `samples` (que excluem `None`, L130-139) e o dashboard normaliza sobre `vehicles` do *tripinfo*, não sobre este `vehicle_count`. O caminho `_ingest_tripinfo` também não cria bucket vazio (`return` antes do `setdefault`).
 
 - **B15 — Duplicação silenciosa em `id` repetido.**
   Ficheiro: `src/pps57_sumo/parse_emissions.py` (L36-56).
@@ -169,9 +178,10 @@ Temas transversais identificados (ver secção final): drift de contracto JSON e
   Ficheiro: `scripts/audit_protocol_lifecycle.py` (L29-32).
   Imprime `OK audit` e retorna 0 independentemente de `protocol_kpis.missing_final_ssem`, `invalid_state_transitions`, `actuation_errors`.
 
-- **B31 — `traci.simulationStep(x)` interpretado como "step até x".**
+- **B31 — `traci.simulationStep(x)` interpretado como "step até x".** *(FALSO POSITIVO)*
   Ficheiro: `scripts/empirical_network_profile_check.py` (L115, L262-268).
-  `simulationStep(x)` avança **por** `x` segundos; o script soma `sim_time_s + duration` etc. como argumento, divergindo das labels `time_s` registadas. O `phase_trace_after_setPhaseDuration` fica não-fiável.
+  ~~`simulationStep(x)` avança **por** `x` segundos; o script soma `sim_time_s + duration` etc. como argumento, divergindo das labels `time_s` registadas. O `phase_trace_after_setPhaseDuration` fica não-fiável.~~
+  **⚠️ Correcção da revisão (2026-06-23): falso positivo.** A premissa está invertida — no TraCI, `simulationStep(t)` avança **até** ao tempo absoluto `t`, não "por `t`". O código passa tempos-alvo absolutos (`sim_time_s + duration`, `+1.0`, `+4.0`) **e regista-os como label** (L262-268), logo coincidem em vez de divergirem; a trace é consistente. O único risco residual — arredondamento ao limite de passo quando o `step-length` não divide o alvo — é diferente do que o item descreve e tem impacto menor.
 
 - **B32 — Contagens hard-coded no verifier de regressão.**
   Ficheiro: `scripts/verify_issue68_fix.py` (L114-116).
@@ -218,8 +228,9 @@ Temas transversais identificados (ver secção final): drift de contracto JSON e
 - **B44 — Tripinfo ausente prossegue snapshot com `kpis: null`.**
   `scripts/run_tsp_demonstrator.py` (L262-286). Sem warning ao operador.
 
-- **B45 — Parsing de `network_state` quebra em `:` interno; `_float` não tolera não-numérico.**
+- **B45 — Parsing de `network_state` quebra em `:` interno; `_float` não tolera não-numérico.** *(parcialmente real)*
   `src/pps57_opt/event_dataset.py` (L351-365, L392-394). Um JSONL corrupto aborta o build do dataset todo.
+  **⚠️ Correcção da revisão (2026-06-23):** `_float` ser um `float(value)` cru (sem `try/except`) é real, mas a afirmação "um JSONL corrupto aborta o build todo" é **maioritariamente falsa**: o loop principal de linhas apanha `(ProtocolCodecError, TypeError, ValueError)` e salta a linha (L174-178), e `_network_metrics` também apanha `ValueError`. Existe **um** único call-site verdadeiramente desprotegido — a `_float` na chave de ordenação `raw_rows.sort(key=...)` (≈L143) — esse sim pode abortar o build. O `split(":", 1)` usa só o primeiro `:` como fronteira, pelo que um `:` interno no *valor* é preservado; só uma *chave* com `:` seria mal partida.
 
 - **B46 — Smoke estrutural por substring.**
   `scripts/sumo_smoke.py` (L24-30, L81-85). Match case-insensitive na linha inteira; linhas benignas com "collision with" em contexto não relacionado podem falhar smoke.
@@ -267,8 +278,9 @@ Temas transversais identificados (ver secção final): drift de contracto JSON e
 - **O7 — `_append` redefinido em cada iteração.**
   `src/pps57_dashboard/results.py` (L127-149). Closure recriada milhares de vezes ao percorrer uma suite.
 
-- **O8 — Net XML parseado várias vezes nos scripts de diagnóstico.**
+- **O8 — Net XML parseado várias vezes nos scripts de diagnóstico.** *(parcialmente real)*
   `scripts/diagnose_binding_coverage.py` (L37-41), `scripts/diagnose_tls_blockers.py`, `scripts/analyze_issue68_all_red.py`. Memoizar `load_network_profile`.
+  **⚠️ Correcção da revisão (2026-06-23):** o net XML é mesmo parseado várias vezes, **mas** a sub-afirmação "memoizar `load_network_profile`" parte de uma premissa errada: `load_network_profile` **já está memoizado** via `@lru_cache(maxsize=8)` (`src/pps57_sumo/network_profile.py:311`). A redundância vem de `_read_junction_tables` (`network_binding.py`, `ET.fromstring`) e de chamadas `ET.fromstring` directas (`diagnose_binding_coverage.py:41`), que é o que deve ser memoizado.
 
 - **O9 — `demonstrator._runtime_delta` chama `_run_payload` duas vezes.**
   `src/pps57_opt/demonstrator.py` (L309-324). Recomputa counters/per-TLS stats/green-time/score attribution duas vezes para os mesmos runs.
