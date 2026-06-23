@@ -39,6 +39,11 @@ class DashboardResultsTestCase(unittest.TestCase):
             (reports / "scenarios" / "scenario_suite_summary.json").write_text(
                 "{}", encoding="utf-8"
             )
+            # B29: a root needs at least one seed kpis.json to count as available.
+            for base in ("ingolstadt", "scenarios"):
+                seed = reports / base / "city_am_peak" / "tsp_actuation" / "seed_57"
+                seed.mkdir(parents=True)
+                (seed / "kpis.json").write_text("{}", encoding="utf-8")
             roots = discover_scenario_report_roots(reports)
             self.assertEqual(default_scenario_dataset(reports), "synthetic")
             self.assertEqual(roots["ingolstadt"], reports / "ingolstadt")
@@ -57,6 +62,11 @@ class DashboardResultsTestCase(unittest.TestCase):
             (reports / "scenarios" / "scenario_suite_summary.json").write_text(
                 "{}", encoding="utf-8"
             )
+            # B29: a root needs at least one seed kpis.json to count as available.
+            for base in ("ingolstadt", "scenarios"):
+                seed = reports / base / "city_am_peak" / "tsp_actuation" / "seed_57"
+                seed.mkdir(parents=True)
+                (seed / "kpis.json").write_text("{}", encoding="utf-8")
             prev = os.environ.get(results_mod.DATASET_ENV_VAR)
             os.environ[results_mod.DATASET_ENV_VAR] = "ingolstadt"
             try:
@@ -125,6 +135,9 @@ class DashboardResultsTestCase(unittest.TestCase):
                             "vehicles": 100,
                             "mean_time_loss_s": 50.0,
                             "mean_route_length_m": 2000.0,
+                            # B27: per-vehicle-km now normalises against the SUM of
+                            # route lengths (here 100 vehicles × 2000 m = 200 000 m).
+                            "total_route_length_m": 200000.0,
                         },
                         "buses": {
                             "vehicles": 10,
@@ -177,7 +190,7 @@ class DashboardResultsTestCase(unittest.TestCase):
             self.assertEqual(flat[("safety", "collisions")], 0.0)
             self.assertEqual(flat[("safety", "emergency_braking")], 7.0)
             self.assertEqual(flat[("emissions", "total_nox_mg")], 20.0)
-            # per-vehicle-km = total / (route_m * vehicles / 1000) = 1000 / 200
+            # per-vehicle-km = total_co2 / (total_route_length_m / 1000) = 1000 / 200
             self.assertEqual(flat[("emissions", "total_co2_mg_per_vehicle_km")], 5.0)
             # legacy `intervals_above_8_veh` is surfaced under the corrected canonical key
             self.assertEqual(flat[("network", "edge_intervals_above_8_veh")], 5.0)

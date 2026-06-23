@@ -69,9 +69,10 @@ KPI_META = {
         "Percentil 95 — descreve o pior cenário para 95% dos veículos. Menor é melhor.",
     ),
     "mean_speed_mps": (
-        "Velocidade média",
+        "Velocidade média de viagem",
         "m/s",
-        "Velocidade média ao longo do trajecto. Maior é melhor.",
+        "Velocidade média de viagem (routeLength/duração, inclui tempo parado); "
+        "diverge das velocidades instantâneas dos detectores. Maior é melhor.",
     ),
     "mean_depart_delay_s": (
         "Atraso de partida médio",
@@ -79,9 +80,10 @@ KPI_META = {
         "Tempo de espera antes de entrar na rede. Menor é melhor.",
     ),
     "mean_stop_count": (
-        "Paragens médias",
+        "Episódios de paragem médios",
         "",
-        "Número médio de paragens por veículo. Menor é melhor.",
+        "Média de episódios de paragem/abrandamento por veículo (waitingCount do "
+        "SUMO — inclui paragens por congestão), não visitas a paragens. Menor é melhor.",
     ),
     "total_co2_mg": (
         "CO2 total",
@@ -2994,7 +2996,19 @@ elif _active == "vs RL":
             rl_rows = []
             for r in kpi_eval["rows"]:
                 mk = r.get("metric", "")
-                lab, _, _ = KPI_META.get(mk, (mk, "", ""))
+                # B25: the outcome evaluator emits composite "group:metric" keys
+                # (e.g. "buses:mean_time_loss_s"); split so KPI_META (keyed by the
+                # bare metric) resolves to a friendly label instead of the raw key.
+                grp, sep, metric_only = mk.partition(":")
+                base_key = metric_only if sep else mk
+                lab, _, _ = KPI_META.get(base_key, (base_key, "", ""))
+                if sep:
+                    grp_label = {
+                        "all_vehicles": "Todos",
+                        "buses": "Autocarros",
+                        "general_traffic": "Tráfego geral",
+                    }.get(grp, grp)
+                    lab = f"{grp_label}: {lab}"
                 bv, rv = r.get("baseline"), r.get("rl")
                 p = pct(bv, rv)
                 rl_rows.append(

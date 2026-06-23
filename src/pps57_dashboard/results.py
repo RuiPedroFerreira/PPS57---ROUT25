@@ -38,10 +38,11 @@ def discover_scenario_report_roots(reports_root: Path) -> dict[str, Path]:
 
 
 def _has_scenario_reports(report_root: Path) -> bool:
-    if (report_root / "scenario_suite_summary.json").exists():
-        return True
     if not report_root.exists():
         return False
+    # B29: a bare scenario_suite_summary.json (no per-seed kpis.json) is an empty
+    # dataset — requiring at least one kpis.json stops the dashboard pinning a blank
+    # root (e.g. after a partial run that wrote only the summary, cf. B2).
     return any(report_root.glob("*/*/seed_*/kpis.json"))
 
 
@@ -159,7 +160,6 @@ def load_scenario_kpi_rows(
                                 vehicle_count = bus_count
 
                             vehicle_count_f = _to_float(vehicle_count)
-                            route_len_f = _to_float(data.get("mean_route_length_m"))
                             if vehicle_count_f and vehicle_count_f > 0:
                                 if co2_total is not None:
                                     co2_f = _to_float(co2_total)
@@ -171,22 +171,30 @@ def load_scenario_kpi_rows(
                                     if fuel_f is not None:
                                         _append("total_fuel_mg_per_vehicle", fuel_f / vehicle_count_f)
 
-                            if route_len_f and route_len_f > 0 and vehicle_count_f and vehicle_count_f > 0:
-                                total_distance_m = route_len_f * vehicle_count_f
-                                if total_distance_m > 0:
-                                    dist_km = total_distance_m / 1000
-                                    if co2_total is not None:
-                                        co2_f = _to_float(co2_total)
-                                        if co2_f is not None:
-                                            _append("total_co2_mg_per_vehicle_km", co2_f / dist_km)
-                                    if fuel_total is not None:
-                                        fuel_f = _to_float(fuel_total)
-                                        if fuel_f is not None:
-                                            _append("total_fuel_mg_per_vehicle_km", fuel_f / dist_km)
+                            # B27: normalise per-vehicle-km against the SUM of route
+                            # lengths (total_route_length_m), not mean_route_length_m ×
+                            # vehicles, which only matches when all routes are equal.
+                            total_route_m = _to_float(data.get("total_route_length_m"))
+                            if total_route_m and total_route_m > 0:
+                                dist_km = total_route_m / 1000
+                                if co2_total is not None:
+                                    co2_f = _to_float(co2_total)
+                                    if co2_f is not None:
+                                        _append("total_co2_mg_per_vehicle_km", co2_f / dist_km)
+                                if fuel_total is not None:
+                                    fuel_f = _to_float(fuel_total)
+                                    if fuel_f is not None:
+                                        _append("total_fuel_mg_per_vehicle_km", fuel_f / dist_km)
 
                 for metric_key, meta in kpi_meta.items():
                     value = data.get(metric_key)
                     if value is None:
+                        continue
+                    # B28: coerce to float like the emissions branch and
+                    # load_scenario_run_table do, so "Valor" never mixes str/int/float
+                    # dtypes (which breaks pandas/plotly aggregations downstream).
+                    value_f = _to_float(value)
+                    if value_f is None:
                         continue
                     label = meta[0] if isinstance(meta, (tuple, list)) and meta else metric_key
                     rows.append(
@@ -196,7 +204,7 @@ def load_scenario_kpi_rows(
                             "Seed": seed_dir.name,
                             "metric_key": metric_key,
                             "Métrica": label,
-                            "Valor": value,
+                            "Valor": value_f,
                         }
                     )
     return rows
@@ -353,11 +361,11 @@ def load_scenario_run_table(report_root: Path) -> list[dict]:
                 emissions = kpis.get("emissions")
                 if isinstance(emissions, dict):
                     all_block = kpis.get("all_vehicles") or {}
-                    veh = _f(all_block.get("vehicles"))
-                    route = _f(all_block.get("mean_route_length_m"))
-                    # Identical denominator to load_scenario_kpi_rows so the
-                    # per-vehicle-km values stay consistent across the dashboard.
-                    dist_km = (route * veh / 1000) if (route and veh) else None
+                    # B27: per-vehicle-km denominator is the SUM of route lengths
+                    # (total_route_length_m), identical to load_scenario_kpi_rows, so
+                    # the values stay consistent and correct for heterogeneous routes.
+                    total_route = _f(all_block.get("total_route_length_m"))
+                    dist_km = (total_route / 1000) if total_route else None
                     totals = emissions.get("totals_mg")
                     if isinstance(totals, dict):
                         for sp in EMISSION_SPECIES:
