@@ -18,8 +18,12 @@ from pps57_sumo.vehicle_classification import DEFAULT_BUS_ID_PREFIXES, is_bus_li
 # M4: defusedxml em vez do stdlib — tripinfo vem de simulações externas.
 try:
     from defusedxml import ElementTree as ET  # type: ignore[import-untyped]
+    from defusedxml.common import DefusedXmlException  # type: ignore[import-untyped]
 except ImportError:  # pragma: no cover - exercised in minimal CI images.
     from xml.etree import ElementTree as ET  # type: ignore[no-redef]
+
+    class DefusedXmlException(Exception):  # type: ignore[no-redef]
+        """Unreachable stub — defusedxml not installed, so its exceptions cannot fire."""
 
 
 def _num(value: str | None) -> float | None:
@@ -53,41 +57,54 @@ def parse_tripinfo(
     bus_id_prefixes: tuple[str, ...] = DEFAULT_BUS_ID_PREFIXES,
     line_attr_names: tuple[str, ...] = DEFAULT_LINE_ATTR_NAMES,
 ) -> dict:
-    try:
-        tree = ET.parse(path)
-    except Exception as exc:
-        return {"source": str(path), "error": str(exc)}
     rows = []
-    for node in tree.getroot().iter("tripinfo"):
-        vehicle_id = node.attrib.get("id", "")
-        vehicle_type = node.attrib.get("vType", "")
-        attrs = dict(node.attrib)
-        is_bus = is_bus_like(vehicle_id, vehicle_type, bus_id_prefixes=bus_id_prefixes)
-        vehicle_type_lc = vehicle_type.lower()
-        is_emergency = vehicle_id.startswith(("ev_", "emergency_")) or vehicle_type_lc in {
-            "emergency_vehicle",
-            "emergency",
-        }
-        is_priority = is_bus or is_emergency
-        rows.append(
-            {
-                "id": vehicle_id,
-                "vType": vehicle_type,
-                "is_bus": is_bus,
-                "is_emergency": is_emergency,
-                "is_priority": is_priority,
-                "line_key": _line_key(vehicle_id, attrs, line_attr_names),
-                "direction": _direction_key(vehicle_id, attrs),
-                "depart": _num(node.attrib.get("depart")),
-                "arrival": _num(node.attrib.get("arrival")),
-                "duration": _num(node.attrib.get("duration")),
-                "routeLength": _num(node.attrib.get("routeLength")),
-                "waitingTime": _num(node.attrib.get("waitingTime")),
-                "timeLoss": _num(node.attrib.get("timeLoss")),
-                "departDelay": _num(node.attrib.get("departDelay")),
-                "waitingCount": _num(node.attrib.get("waitingCount")),
+    try:
+        # Stream tripinfo rows: city-wide dumps hold tens of thousands of trips, so
+        # iterparse + elem.clear()/root.clear() keeps memory flat where the previous
+        # ET.parse built the entire DOM up front (mirrors parse_emissions).
+        context = ET.iterparse(str(path), events=("start", "end"))
+        root = None
+        for event, node in context:
+            if event == "start":
+                if root is None:
+                    root = node
+                continue
+            if node.tag != "tripinfo":
+                continue
+            vehicle_id = node.attrib.get("id", "")
+            vehicle_type = node.attrib.get("vType", "")
+            attrs = dict(node.attrib)
+            is_bus = is_bus_like(vehicle_id, vehicle_type, bus_id_prefixes=bus_id_prefixes)
+            vehicle_type_lc = vehicle_type.lower()
+            is_emergency = vehicle_id.startswith(("ev_", "emergency_")) or vehicle_type_lc in {
+                "emergency_vehicle",
+                "emergency",
             }
-        )
+            is_priority = is_bus or is_emergency
+            rows.append(
+                {
+                    "id": vehicle_id,
+                    "vType": vehicle_type,
+                    "is_bus": is_bus,
+                    "is_emergency": is_emergency,
+                    "is_priority": is_priority,
+                    "line_key": _line_key(vehicle_id, attrs, line_attr_names),
+                    "direction": _direction_key(vehicle_id, attrs),
+                    "depart": _num(node.attrib.get("depart")),
+                    "arrival": _num(node.attrib.get("arrival")),
+                    "duration": _num(node.attrib.get("duration")),
+                    "routeLength": _num(node.attrib.get("routeLength")),
+                    "waitingTime": _num(node.attrib.get("waitingTime")),
+                    "timeLoss": _num(node.attrib.get("timeLoss")),
+                    "departDelay": _num(node.attrib.get("departDelay")),
+                    "waitingCount": _num(node.attrib.get("waitingCount")),
+                }
+            )
+            node.clear()
+            if root is not None:
+                root.clear()
+    except (ET.ParseError, DefusedXmlException, OSError) as exc:
+        return {"source": str(path), "error": str(exc)}
 
     def group(field: str | None, expected: bool | None = None) -> list[dict]:
         if field is None:
