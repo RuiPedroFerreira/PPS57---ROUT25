@@ -29,6 +29,12 @@ kpis:
 
 SCENARIO ?= baseline_am_peak
 RUN_TYPE ?= baseline
+# A suite tem de correr OS DOIS braços (baseline + tsp_actuation) para produzir as
+# comparações emparelhadas; RUN_TYPE=baseline sozinho gera só metade e deixa
+# comparisons={} (era o bug). SUITE_SEEDS vazio => usa as seeds por cenário do
+# config (scenario_profiles[*].random_seeds); definir para correr um subconjunto.
+SUITE_RUN_TYPE ?= pair
+SUITE_SEEDS ?=
 INGOLSTADT_SCENARIO ?= city_am_peak
 INGOLSTADT_RUN_TYPE ?= pair
 INGOLSTADT_SEEDS ?= 57
@@ -51,7 +57,7 @@ scenario-run:
 	$(PYTHON) scripts/run_sumo_scenario.py --scenario $(SCENARIO) --run-type $(RUN_TYPE)
 
 scenario-suite:
-	$(PYTHON) scripts/run_sumo_scenario.py --all --run-type $(RUN_TYPE)
+	$(PYTHON) scripts/run_sumo_scenario.py --all --run-type $(SUITE_RUN_TYPE) $(if $(SUITE_SEEDS),--seeds $(SUITE_SEEDS))
 
 sumo-smoke:
 	$(PYTHON) scripts/sumo_smoke.py

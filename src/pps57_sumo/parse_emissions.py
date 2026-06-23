@@ -94,10 +94,22 @@ def parse_emissions(path: Path | None) -> dict[str, Any]:
     per_vehicle_type: dict[str, str] = {}
 
     try:
-        for _event, elem in ET.iterparse(str(path), events=("end",)):
+        # Track the root so parsed top-level <tripinfo> rows can be dropped, keeping
+        # memory flat on city-wide dumps (tens of thousands of vehicles). The legacy
+        # per-step <vehicle> rows are nested in <timestep> and only `elem.clear()`
+        # themselves — clearing the root there would detach the in-progress timestep.
+        context = ET.iterparse(str(path), events=("start", "end"))
+        root = None
+        for event, elem in context:
+            if event == "start":
+                if root is None:
+                    root = elem
+                continue
             if elem.tag == "tripinfo":
                 _ingest_tripinfo(elem, per_vehicle, per_vehicle_type)
                 elem.clear()
+                if root is not None:
+                    root.clear()
             elif elem.tag == "vehicle":
                 _ingest_step_vehicle(elem, per_vehicle, per_vehicle_type)
                 elem.clear()
@@ -133,11 +145,18 @@ def parse_emissions(path: Path | None) -> dict[str, Any]:
     ]
     if bus_ids:
         bus_totals = dict.fromkeys(METRICS, 0.0)
+        bus_samples: dict[str, list[float]] = {metric: [] for metric in METRICS}
         for vid in bus_ids:
             for metric in METRICS:
-                bus_totals[metric] += per_vehicle[vid].get(metric, 0.0)
+                value = per_vehicle[vid].get(metric)
+                if value is None:
+                    continue
+                bus_totals[metric] += value
+                bus_samples[metric].append(value)
+        # Same inclusion rule as totals_mg above (keep a species if any bus reported
+        # it), instead of the inconsistent ">0" filter this block used before.
         out["bus_totals_mg"] = {
-            metric: round(bus_totals[metric], 3) for metric in METRICS if bus_totals[metric] > 0
+            metric: round(bus_totals[metric], 3) for metric in METRICS if bus_samples[metric]
         }
         out["bus_count"] = len(bus_ids)
     return out

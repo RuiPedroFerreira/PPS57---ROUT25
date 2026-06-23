@@ -273,7 +273,7 @@ Simulação — and the Cenários tab reads `reports/ingolstadt/` plus
 | `make kpis` | Parse `outputs/tripinfo.xml` into `reports/baseline_kpis.json` | Needs tripinfo |
 | `make scenario-list` | List configured SUMO validation scenarios and estimated demand | No |
 | `make scenario-run SCENARIO=baseline_am_peak RUN_TYPE=baseline` | Generate, run and export KPIs for one scenario/run type | Yes |
-| `make scenario-suite RUN_TYPE=baseline` | Run every configured scenario and export per-scenario KPIs | Yes |
+| `make scenario-suite` | Run every scenario for **both** arms (baseline + tsp_actuation) over all configured seeds, export per-scenario KPIs + paired comparisons, and regenerate `RESULTS.md` | Yes |
 | `make cits-sumo` | Run C-ITS emulation connected to SUMO/TraCI | Yes |
 | `make tsp-demonstrator` | Run SUMO baseline, direct TSP and TSP with simulated controller, then write evidence reports | Yes |
 | `make tsp-sumo` | Run TSP with SUMO and TraCI actuation | Yes |
@@ -388,12 +388,19 @@ public-transport service assumptions, event configuration and KPI focus.
 make scenario-list
 make scenario-run SCENARIO=baseline_am_peak
 make scenario-run SCENARIO=cross_traffic_pressure RUN_TYPE=comparison
-make scenario-suite RUN_TYPE=baseline
+make scenario-suite                      # both arms, all seeds, full 2h window
+make scenario-suite SUITE_SEEDS=57       # quick single-seed pass (no CI95)
 ```
 
 Supported run types are `baseline` (controller dry-run, no actuation) and
 `tsp_actuation` (real actuation). `pair`, `comparison`, and `all` are retained
-aliases that all resolve to `baseline` + `tsp_actuation`.
+aliases that all resolve to `baseline` + `tsp_actuation`; `make scenario-suite`
+uses `pair` by default so the paired comparison is always produced.
+
+The simulated horizon is the configured `simulation_end_s` (7200 s = 2 h at
+0.5 s/step). `--steps` counts **steps, not seconds**: passing a `--steps` that
+would halt before the demand window ends is now rejected unless you add
+`--allow-short-horizon` (deliberate smoke run).
 
 Scenario KPIs include tripinfo metrics (duration, speed, waiting time,
 timeLoss, bus headways and priority/general/emergency vehicle groups) plus E1/E2

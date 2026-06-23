@@ -55,14 +55,20 @@ def _network_queue_summary(e2_payload: dict) -> dict:
             "max_queue_vehicles": None,
             "mean_queue_vehicles": None,
             "mean_occupancy_pct": None,
-            "intervals_above_8_veh": 0,
+            "edge_intervals_above_8_veh": 0,
         }
     return {
         "edge_count": len(edge_summaries),
         "max_queue_vehicles": max(item["max_queue_vehicles"] or 0 for item in edge_summaries),
         "mean_queue_vehicles": _avg(item["mean_queue_vehicles"] for item in edge_summaries),
         "mean_occupancy_pct": _avg(item["mean_occupancy_pct"] for item in edge_summaries),
-        "intervals_above_8_veh": int(sum(item["intervals_above_8_veh"] for item in edge_summaries)),
+        # Network-level name is `edge_intervals_above_8_veh`: it is the SUM over edges
+        # of each edge's congested-interval count, i.e. edge×interval occurrences (it
+        # scales with network size), not the number of time-intervals the whole
+        # network exceeded 8. The per-detector count below stays `intervals_above_8_veh`.
+        "edge_intervals_above_8_veh": int(
+            sum(item["intervals_above_8_veh"] for item in edge_summaries)
+        ),
     }
 
 

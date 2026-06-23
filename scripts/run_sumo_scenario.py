@@ -7,9 +7,9 @@ import argparse
 import json
 import shutil
 import statistics
-import subprocess
 import sys
 from copy import deepcopy
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +19,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from pps57_cits.config import load_cits_config  # noqa: E402
-from pps57_sumo.build_network import build_sumo_artifacts, sumo_environment  # noqa: E402
+from pps57_sumo.build_network import build_sumo_artifacts  # noqa: E402
 from pps57_sumo.detector_kpis import parse_detector_kpis  # noqa: E402
 from pps57_sumo.parse_emissions import parse_emissions  # noqa: E402
 from pps57_sumo.parse_insertion import parse_insertion_kpis  # noqa: E402
@@ -64,7 +64,21 @@ def parse_args() -> argparse.Namespace:
         "--steps",
         type=int,
         default=None,
-        help="Optional max simulation steps. Reported effective horizon is steps * simulation_step_length_s.",
+        help=(
+            "Optional max simulation steps (NOT seconds). Effective horizon is "
+            "steps * simulation_step_length_s. Omit to run the full configured "
+            "simulation_end_s window. Passing fewer steps than the demand window "
+            "is rejected unless --allow-short-horizon is set (see that flag)."
+        ),
+    )
+    parser.add_argument(
+        "--allow-short-horizon",
+        action="store_true",
+        help=(
+            "Permit --steps to halt the run before the configured demand window "
+            "ends (deliberate smoke/debug run). Without this, a truncating --steps "
+            "fails fast so a partial run is never silently reported as a full one."
+        ),
     )
     parser.add_argument(
         "--seeds",
@@ -153,6 +167,14 @@ def main() -> int:
     (reports_dir / "scenario_suite_report.md").write_text(
         render_suite_report(scenario_report), encoding="utf-8"
     )
+    # RESULTS.md é o documento de resultados de topo: gerado a partir dos dados
+    # (nunca escrito à mão) para garantir rastreabilidade. Só a suite completa o
+    # reescreve — um run de cenário único não deve substituir o relatório global.
+    if args.all and not args.generate_only:
+        (ROOT / "RESULTS.md").write_text(
+            render_results_doc(scenario_report), encoding="utf-8"
+        )
+        print("RESULTS.md regenerado a partir de reports/scenarios/scenario_suite_summary.json")
     print(json.dumps(scenario_report, indent=2, ensure_ascii=False))
     # Propaga o veredito para o exit code: qualquer cenário executado com veredito
     # != "pass" (fail/inconclusive) tem de falhar o processo, senão CI/make engolem
@@ -172,6 +194,7 @@ def run_scenario(
     args: argparse.Namespace, base_config: dict, catalog: dict, scenario_id: str
 ) -> dict:
     config = apply_scenario_profile(base_config, scenario_id)
+    _assert_horizon_not_truncated(config, args, scenario_id)
     scenario_output_dir = ROOT / args.outputs_dir / scenario_id
     scenario_report_dir = ROOT / args.reports_dir / scenario_id
     scenario_output_dir.mkdir(parents=True, exist_ok=True)
@@ -510,6 +533,35 @@ def _effective_end_s(config: dict, requested_steps: int | None) -> float:
     return min(configured_end, requested_end)
 
 
+def _assert_horizon_not_truncated(
+    config: dict, args: argparse.Namespace, scenario_id: str
+) -> None:
+    """Fail fast when ``--steps`` would halt the run before the demand window ends.
+
+    ``--steps`` counts TraCI *steps*, not seconds: at 0.5 s/step, ``--steps 7200``
+    stops the sim at 3600 s, i.e. half of the configured 7200 s (2 h) window. That
+    is exactly the defect that made 7 of 8 scenarios run 1 h instead of 2 h — the
+    demand keeps emitting past the halt, so ~half the vehicles never depart and
+    every KPI reflects a partial run while still looking "clean". Reject it unless
+    the caller explicitly opts into a short run.
+    """
+    if args.steps is None or getattr(args, "allow_short_horizon", False):
+        return
+    step_length = float(config.get("simulation_step_length_s", 1.0))
+    configured_end = float(config.get("simulation_end_s", 7200))
+    effective_end = _effective_end_s(config, args.steps)
+    if effective_end < configured_end:
+        full_steps = int(round(configured_end / step_length)) if step_length else 0
+        raise SystemExit(
+            f"[{scenario_id}] --steps {args.steps} @ {step_length}s/step = "
+            f"{effective_end:.0f}s horizon, truncating the configured "
+            f"{configured_end:.0f}s demand window (~{configured_end - effective_end:.0f}s "
+            f"of demand would never depart, biasing every KPI). Omit --steps to run the "
+            f"full window, pass --steps {full_steps} for the full {configured_end:.0f}s, "
+            f"or --allow-short-horizon for a deliberate smoke run."
+        )
+
+
 def run_tsp(
     args: argparse.Namespace,
     scenario_id: str,
@@ -622,10 +674,14 @@ def clear_global_sumo_outputs() -> None:
 
 
 def copy_global_sumo_outputs(run_output_dir: Path) -> None:
+    # Always overwrite the per-run copy when SUMO has produced a fresh global
+    # output. Previously this skipped the copy if the per-run file already existed,
+    # so re-running a scenario/seed dir without `make clean` kept the PREVIOUS run's
+    # tripinfo/summary/statistics and collect_run_kpis parsed stale data as fresh.
     for name in GLOBAL_SUMO_OUTPUTS:
         source = ROOT / "outputs" / name
         target = run_output_dir / name
-        if source.exists() and not target.exists():
+        if source.exists():
             shutil.copy2(source, target)
 
 
@@ -836,6 +892,12 @@ def run_verdict(kpis: dict) -> dict:
 
 def _sumo_quality_thresholds(kpis: dict) -> dict[str, float | int]:
     scenario_thresholds = kpis.get("scenario", {}).get("sumo_quality_thresholds", {})
+    # Fallback only: every pipeline run carries its own thresholds from
+    # configs/sumo_scenario_base.json (merged in via apply_scenario_profile and
+    # stored under kpis["scenario"]). These defaults MIRROR that file — the source
+    # of truth — and must be kept in sync with it if it is recalibrated. (8 teleports
+    # and 150 insertion-gap are deliberate: 3 was too tight, 0 unsatisfiable — see
+    # the `note` field there.)
     defaults: dict[str, float | int] = {
         "max_collisions": 0,
         "max_teleports_total": 8,
@@ -856,28 +918,53 @@ def _sumo_quality_thresholds(kpis: dict) -> dict[str, float | int]:
 
 
 def scenario_verdict(summary: dict) -> dict:
+    # Status is derived from structured flags, not by substring-matching the reason
+    # strings: a hard fail in any run or comparison dominates; an inconclusive run
+    # only downgrades the scenario to "inconclusive" when nothing actually failed.
+    # The reason strings keep their ":inconclusive:" marker purely for readability.
     reasons = []
+    has_fail = False
+    has_inconclusive = False
     for run_type, run in summary.get("runs", {}).items():
         verdict = run.get("run_verdict", {})
-        if verdict.get("status") == "fail":
+        status = verdict.get("status")
+        if status == "fail":
+            has_fail = True
             reasons.append(f"{run_type}:{','.join(verdict.get('reasons', []))}")
-        elif verdict.get("status") == "inconclusive":
+        elif status == "inconclusive":
+            has_inconclusive = True
             reasons.append(f"{run_type}:inconclusive:{','.join(verdict.get('reasons', []))}")
     for key, comparison in summary.get("comparisons", {}).items():
         if comparison.get("verdict") == "fail":
+            has_fail = True
             reasons.append(f"{key}:{','.join(comparison.get('fail_reasons', []))}")
-    if any(":inconclusive:" not in reason for reason in reasons):
+    if has_fail:
         return {"status": "fail", "reasons": reasons}
-    return {"status": "inconclusive" if reasons else "pass", "reasons": reasons}
+    if has_inconclusive:
+        return {"status": "inconclusive", "reasons": reasons}
+    return {"status": "pass", "reasons": reasons}
+
+
+@cache
+def _load_kpis_cached(path_str: str, mtime: float) -> dict | None:
+    # kpis.json is written once per run then read many times (paired significance
+    # ×2, the point comparison, and the scenario/suite/RESULTS reports). Caching on
+    # (path, mtime) collapses ~10 reads+parses of each file into one, while the
+    # mtime key stays correct if a file is regenerated within the same process.
+    return json.loads(Path(path_str).read_text(encoding="utf-8"))
 
 
 def _load_kpis(rel: str | None) -> dict | None:
+    # Returns a fresh deepcopy of the (path, mtime)-cached parse, so callers may treat
+    # the result as owned/mutable without corrupting the shared cache entry. The cache
+    # still collapses the ~10 reads+parses of each kpis.json into one disk read.
     if not rel:
         return None
     path = ROOT / rel
     if not path.exists():
         return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    cached = _load_kpis_cached(str(path), path.stat().st_mtime)
+    return deepcopy(cached) if cached is not None else None
 
 
 def render_scenario_report(summary: dict) -> str:
@@ -944,33 +1031,233 @@ def render_scenario_report(summary: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _scenario_horizon_s(scenario: dict) -> float | None:
+    """Effective simulated horizon (s) for a scenario, read back from its runs."""
+    for run in scenario.get("runs", {}).values():
+        end = run.get("effective_end_s")
+        if isinstance(end, (int, float)):
+            return float(end)
+    return None
+
+
+def _bus_significance(scenario: dict) -> dict | None:
+    cmp = scenario.get("comparisons", {}).get("baseline_vs_tsp_actuation", {})
+    return cmp.get("bus_time_loss_replication_significance") if isinstance(cmp, dict) else None
+
+
 def render_suite_report(report: dict) -> str:
     lines = [
         "# Scenario Suite Report",
         "",
-        "| Scenario | Verdict | Runs | Comparisons |",
-        "|---|---:|---:|---:|",
+        "| Scenario | Verdict | Seeds | Horizonte (s) | Comparisons | Bus timeLoss (sig.) |",
+        "|---|---:|---:|---:|---:|---|",
     ]
     for scenario in report.get("scenarios", []):
+        seeds = scenario.get("seeds", [])
+        horizon = _scenario_horizon_s(scenario)
+        horizon_cell = f"{horizon:.0f}" if horizon is not None else "—"
+        sig = _bus_significance(scenario)
+        sig_cell = f"{sig.get('verdict', '')} ({sig.get('mean_improvement', '')}s)" if sig else "—"
         lines.append(
-            f"| {scenario['scenario_id']} | {scenario.get('verdict', {}).get('status', 'unknown')} | "
-            f"{len(scenario.get('runs', {}))} | {len(scenario.get('comparisons', {}))} |"
+            f"| {scenario['scenario_id']} | "
+            f"{scenario.get('verdict', {}).get('status', 'unknown')} | "
+            f"{len(seeds)} | {horizon_cell} | "
+            f"{len(scenario.get('comparisons', {}))} | {sig_cell} |"
         )
+    return "\n".join(lines) + "\n"
+
+
+# Preâmbulo estático de metodologia para o RESULTS.md gerado. É raciocínio (não
+# uma alegação numérica), por isso é seguro mantê-lo fixo; todos os NÚMEROS abaixo
+# dele saem de reports/scenarios/scenario_suite_summary.json.
+_RESULTS_METHODOLOGY = """\
+_Documento gerado automaticamente por `scripts/run_sumo_scenario.py` a partir de
+`reports/scenarios/scenario_suite_summary.json`. **Não editar à mão** — corre
+`make scenario-suite` (opcionalmente após `make clean`) para o regenerar a partir
+dos dados._
+
+## Desenho da avaliação
+
+Cada cenário é uma **comparação emparelhada** entre o braço `baseline` (o controlador
+TSP em dry-run: decide mas nunca atua) e o braço `tsp_actuation` (idêntico, mas a
+aplicar os comandos aprovados), sobre o conjunto de seeds configurado em
+`scenario_profiles[*].random_seeds`. Como ambos os braços partilham procura, geometria
+e seed, qualquer diferença medida é atribuível à atuação e não à máquina de execução.
+
+Cada run cobre a janela completa de procura (`simulation_end_s`); a guarda
+`--allow-short-horizon` impede que um `--steps` curto trunque a janela sem aviso.
+Os ganhos por seed são emparelhados e reportados como média com intervalo de
+confiança a 95 % (t-Student); o efeito só é **significativo quando o IC95 exclui
+zero**. Com poucas seeds os intervalos são largos — uma direção consistente não é
+o mesmo que um tamanho de efeito provado.
+"""
+
+
+def _arm_aggregate_mean(run: dict, agg_key: str) -> float | None:
+    agg = run.get("kpi_aggregate", {})
+    stat = agg.get(agg_key) if isinstance(agg, dict) else None
+    if isinstance(stat, dict) and isinstance(stat.get("mean"), (int, float)):
+        return float(stat["mean"])
+    return None
+
+
+def _arm_emission_total(run: dict, gas: str, agg_key: str) -> float | None:
+    """Mean total emission across seeds; falls back to the (single-seed) KPI file."""
+    mean = _arm_aggregate_mean(run, agg_key)
+    if mean is not None:
+        return mean
+    kpis = _load_kpis(run.get("kpis"))
+    if kpis:
+        value = kpis.get("emissions", {}).get("totals_mg", {}).get(gas)
+        if isinstance(value, (int, float)):
+            return float(value)
+    return None
+
+
+def _pct_delta(baseline: float | None, candidate: float | None) -> str:
+    if baseline is None or candidate is None or baseline == 0:
+        return "—"
+    return f"{100 * (candidate - baseline) / baseline:+.1f}%"
+
+
+def _ci_cell(sig: dict | None) -> str:
+    if not sig or sig.get("ci95_low") is None or sig.get("ci95_high") is None:
+        return "—"
+    return f"[{sig['ci95_low']:+.1f}, {sig['ci95_high']:+.1f}]"
+
+
+def render_results_doc(report: dict) -> str:
+    """Build the repo-root RESULTS.md entirely from the suite summary (no hand-typed
+    numbers). Scenarios without a completed paired comparison render as 'pendente'."""
+    scenarios = report.get("scenarios", [])
+    horizons = {h for s in scenarios if (h := _scenario_horizon_s(s)) is not None}
+    steps = {
+        run.get("step_length_s")
+        for s in scenarios
+        for run in s.get("runs", {}).values()
+        if isinstance(run.get("step_length_s"), (int, float))
+    }
+    total_runs = sum(len(s.get("seeds", [])) * len(s.get("runs", {})) for s in scenarios)
+    horizon_txt = (
+        f"{next(iter(horizons)):.0f}s (~{next(iter(horizons)) / 3600:.1f}h)"
+        if len(horizons) == 1
+        else "variável entre cenários (ver tabela de qualidade)"
+        if horizons
+        else "—"
+    )
+    step_txt = f"{next(iter(steps))}s" if len(steps) == 1 else "—"
+
+    lines = [
+        "# Results",
+        "",
+        _RESULTS_METHODOLOGY,
+        "",
+        f"**Cobertura:** {len(scenarios)} cenários · {total_runs} runs SUMO · "
+        f"janela {horizon_txt} · passo {step_txt}.",
+        "",
+        "## Impacto no transporte público (atraso dos autocarros)",
+        "",
+        "Melhoria = redução do `buses.mean_time_loss_s` vs baseline (emparelhada por seed).",
+        "",
+        "| Cenário | seeds (n) | Melhoria média (s) | IC95 (s) | Veredito estatístico | Δ ponto seed-base (%) |",
+        "|---|---:|---:|---:|---|---:|",
+    ]
+    for s in scenarios:
+        cmp = s.get("comparisons", {}).get("baseline_vs_tsp_actuation", {})
+        if not cmp:
+            lines.append(f"| {s['scenario_id']} | {len(s.get('seeds', []))} | pendente | — | — | — |")
+            continue
+        sig = cmp.get("bus_time_loss_replication_significance")
+        point = cmp.get("bus_time_loss", {})
+        n = sig.get("n") if sig else "1"
+        mean_imp = f"{sig['mean_improvement']:+.1f}" if sig else "—"
+        verdict = sig.get("verdict", "single_seed_no_ci") if sig else "single_seed_no_ci"
+        reg_pct = point.get("regression_pct")
+        # regression_pct é positivo quando o TSP piora; mostramos como melhoria (-)
+        pt = f"{-reg_pct:+.1f}%" if isinstance(reg_pct, (int, float)) else "—"
+        lines.append(
+            f"| {s['scenario_id']} | {n} | {mean_imp} | {_ci_cell(sig)} | {verdict} | {pt} |"
+        )
+
+    lines += [
+        "",
+        "## Impacto no tráfego geral",
+        "",
+        "Mesma convenção: melhoria = redução do `general_traffic.mean_time_loss_s`. "
+        "Um custo real do TSP aparece como `significant_regression`.",
+        "",
+        "| Cenário | Melhoria média (s) | IC95 (s) | Veredito estatístico |",
+        "|---|---:|---:|---|",
+    ]
+    for s in scenarios:
+        cmp = s.get("comparisons", {}).get("baseline_vs_tsp_actuation", {})
+        if not cmp:
+            lines.append(f"| {s['scenario_id']} | pendente | — | — |")
+            continue
+        sig = cmp.get("general_traffic_time_loss_replication_significance")
+        mean_imp = f"{sig['mean_improvement']:+.1f}" if sig else "—"
+        verdict = sig.get("verdict", "single_seed_no_ci") if sig else "single_seed_no_ci"
+        lines.append(f"| {s['scenario_id']} | {mean_imp} | {_ci_cell(sig)} | {verdict} |")
+
+    lines += [
+        "",
+        "## Emissões (TSP vs baseline)",
+        "",
+        "Total de frota por run; média entre seeds quando disponível. Negativo = redução.",
+        "",
+        "| Cenário | CO2 Δ | Combustível Δ |",
+        "|---|---:|---:|",
+    ]
+    for s in scenarios:
+        runs = s.get("runs", {})
+        base, tsp = runs.get("baseline", {}), runs.get("tsp_actuation", {})
+        if not base or not tsp:
+            lines.append(f"| {s['scenario_id']} | pendente | pendente |")
+            continue
+        co2 = _pct_delta(
+            _arm_emission_total(base, "CO2", "total_co2_mg"),
+            _arm_emission_total(tsp, "CO2", "total_co2_mg"),
+        )
+        fuel = _pct_delta(
+            _arm_emission_total(base, "fuel", "total_fuel_mg"),
+            _arm_emission_total(tsp, "fuel", "total_fuel_mg"),
+        )
+        lines.append(f"| {s['scenario_id']} | {co2} | {fuel} |")
+
+    lines += [
+        "",
+        "## Qualidade e viabilidade da simulação",
+        "",
+        "| Cenário | Veredito | Horizonte (s) | seeds | Comparações |",
+        "|---|---|---:|---:|---:|",
+    ]
+    for s in scenarios:
+        horizon = _scenario_horizon_s(s)
+        horizon_cell = f"{horizon:.0f}" if horizon is not None else "—"
+        lines.append(
+            f"| {s['scenario_id']} | {s.get('verdict', {}).get('status', 'unknown')} | "
+            f"{horizon_cell} | {len(s.get('seeds', []))} | {len(s.get('comparisons', {}))} |"
+        )
+
+    lines += [
+        "",
+        "## Reprodução",
+        "",
+        "```bash",
+        "make clean          # limpa outputs/reports de cenário (preserva os .md versionados)",
+        "make scenario-suite # corre os 8 cenários, ambos os braços, todas as seeds, janela completa",
+        "```",
+        "",
+        "Os números acima são regenerados no fim de `make scenario-suite`. Para mais seeds "
+        "(IC95 mais apertado) edita `scenario_profiles[*].random_seeds` em "
+        "`configs/sumo_scenario_base.json` ou corre `make scenario-suite SUITE_SEEDS=\"17 42 57 …\"`.",
+    ]
     return "\n".join(lines) + "\n"
 
 
 def _require(binary: str) -> None:
     if shutil.which(binary) is None:
         raise SystemExit(f"Required binary not found in PATH: {binary}")
-
-
-def _run(cmd: list[str]) -> None:
-    print("$ " + " ".join(cmd))
-    # Forward SUMO_HOME so the binary can find data/xsd/ and enable XML
-    # validation. Without it, sumo logs "Environment variable SUMO_HOME is not
-    # set properly, disabling XML validation" and silently accepts malformed
-    # additional files.
-    subprocess.run(cmd, cwd=ROOT, check=True, env=sumo_environment())
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
 [theme]
 primaryColor = "#1d6ef5"
-backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f0f4f8"
+# Soft canvas (not pure white) so the white cards and app chrome read as layered
+# surfaces — gives the dashboard depth. Cards/charts set their own white bg.
+backgroundColor = "#f6f8fb"
+secondaryBackgroundColor = "#eef2f8"
 textColor = "#111827"
 font = "sans serif"

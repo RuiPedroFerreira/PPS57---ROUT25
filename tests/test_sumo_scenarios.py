@@ -36,7 +36,15 @@ SCRIPTS = ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-from run_sumo_scenario import _effective_end_s, compare_kpis, run_verdict  # noqa: E402
+from run_sumo_scenario import (  # noqa: E402
+    _assert_horizon_not_truncated,
+    _effective_end_s,
+    compare_kpis,
+    copy_global_sumo_outputs,
+    render_results_doc,
+    run_verdict,
+    scenario_verdict,
+)
 
 
 class SumoScenarioProfilesTestCase(unittest.TestCase):
@@ -803,7 +811,7 @@ class SumoKpiParsingTestCase(unittest.TestCase):
             kpis = parse_detector_kpis(e2_path=e2)
             self.assertEqual(kpis["network_queue"]["edge_count"], 1)
             self.assertEqual(kpis["network_queue"]["max_queue_vehicles"], 12)
-            self.assertEqual(kpis["network_queue"]["intervals_above_8_veh"], 2)
+            self.assertEqual(kpis["network_queue"]["edge_intervals_above_8_veh"], 2)
 
     def test_emissions_parser_aggregates_per_vehicle_totals(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1365,6 +1373,69 @@ class SumoKpiParsingTestCase(unittest.TestCase):
         self.assertEqual(comparison["verdict"], "fail")
         self.assertIn("general_traffic_time_loss_penalty_gt_90s", comparison["fail_reasons"])
 
+    def test_copy_global_sumo_outputs_overwrites_stale_per_run_file(self) -> None:
+        # Re-running a scenario/seed dir (without `make clean`) must refresh the
+        # per-run SUMO outputs, not keep a stale copy from a previous run.
+        import run_sumo_scenario as rss
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "outputs").mkdir()
+            (root / "outputs" / "tripinfo.xml").write_text("FRESH", encoding="utf-8")
+            run_dir = root / "run"
+            run_dir.mkdir()
+            (run_dir / "tripinfo.xml").write_text("STALE", encoding="utf-8")
+            original_root = rss.ROOT
+            rss.ROOT = root
+            try:
+                copy_global_sumo_outputs(run_dir)
+            finally:
+                rss.ROOT = original_root
+            self.assertEqual((run_dir / "tripinfo.xml").read_text(encoding="utf-8"), "FRESH")
+
+    def test_scenario_verdict_prioritises_fail_over_inconclusive(self) -> None:
+        # pass — nothing failed or was inconclusive
+        s_pass = {
+            "runs": {"baseline": {"run_verdict": {"status": "pass", "reasons": []}}},
+            "comparisons": {},
+        }
+        self.assertEqual(scenario_verdict(s_pass)["status"], "pass")
+        # inconclusive — only an inconclusive run, nothing actually failed
+        s_inc = {
+            "runs": {
+                "baseline": {
+                    "run_verdict": {
+                        "status": "inconclusive",
+                        "reasons": ["no_completed_buses_in_short_smoke_run"],
+                    }
+                }
+            },
+            "comparisons": {},
+        }
+        self.assertEqual(scenario_verdict(s_inc)["status"], "inconclusive")
+        # fail dominates even when another arm is only inconclusive
+        s_fail = {
+            "runs": {
+                "baseline": {"run_verdict": {"status": "inconclusive", "reasons": ["x"]}},
+                "tsp_actuation": {
+                    "run_verdict": {"status": "fail", "reasons": ["sumo_collisions_gt_threshold"]}
+                },
+            },
+            "comparisons": {},
+        }
+        self.assertEqual(scenario_verdict(s_fail)["status"], "fail")
+        # a comparison failure alone also fails the scenario
+        s_cmp = {
+            "runs": {},
+            "comparisons": {
+                "baseline_vs_tsp_actuation": {
+                    "verdict": "fail",
+                    "fail_reasons": ["network_queue_gt_30_vehicles"],
+                }
+            },
+        }
+        self.assertEqual(scenario_verdict(s_cmp)["status"], "fail")
+
     def test_run_verdict_fails_sumo_health_gates(self) -> None:
         kpis = {
             "all_vehicles": {"vehicles": 100},
@@ -1446,6 +1517,60 @@ class SumoKpiParsingTestCase(unittest.TestCase):
         cfg = apply_scenario_profile(base, "baseline_am_peak")
         self.assertEqual(_effective_end_s(cfg, 600), 300.0)
         self.assertEqual(_effective_end_s(cfg, None), 7200.0)
+
+    def test_truncating_steps_are_rejected_by_horizon_guard(self) -> None:
+        # Regressão do bug 1h vs 2h: --steps 7200 @ 0.5s/step = 3600s corta a
+        # janela de 7200s e tem de falhar fast; a janela completa e o opt-in passam.
+        import argparse
+
+        base = json.loads((ROOT / "configs/sumo_scenario_base.json").read_text(encoding="utf-8"))
+        cfg = apply_scenario_profile(base, "congested_am_peak")
+
+        def args(steps, allow=False):
+            return argparse.Namespace(steps=steps, allow_short_horizon=allow)
+
+        with self.assertRaises(SystemExit):
+            _assert_horizon_not_truncated(cfg, args(7200), "congested_am_peak")
+        # Janela completa (14400 passos), sem --steps, e opt-in explícito não levantam.
+        _assert_horizon_not_truncated(cfg, args(14400), "congested_am_peak")
+        _assert_horizon_not_truncated(cfg, args(None), "congested_am_peak")
+        _assert_horizon_not_truncated(cfg, args(7200, allow=True), "congested_am_peak")
+
+    def test_render_results_doc_is_data_driven(self) -> None:
+        # Sem comparações -> 'pendente' (nunca números inventados); com bloco de
+        # significância -> reporta a média e o IC95 reais.
+        empty = {"scenarios": [{"scenario_id": "s", "seeds": [57], "runs": {}, "comparisons": {}}]}
+        self.assertIn("pendente", render_results_doc(empty))
+
+        populated = {
+            "scenarios": [
+                {
+                    "scenario_id": "delayed_bus_westbound",
+                    "seeds": [17, 42, 57],
+                    "verdict": {"status": "pass"},
+                    "runs": {
+                        "baseline": {"step_length_s": 0.5, "effective_end_s": 7200.0},
+                        "tsp_actuation": {"step_length_s": 0.5, "effective_end_s": 7200.0},
+                    },
+                    "comparisons": {
+                        "baseline_vs_tsp_actuation": {
+                            "bus_time_loss": {"regression_pct": -28.3},
+                            "bus_time_loss_replication_significance": {
+                                "n": 3,
+                                "mean_improvement": 70.5,
+                                "ci95_low": 40.1,
+                                "ci95_high": 100.9,
+                                "verdict": "significant_improvement",
+                            },
+                        }
+                    },
+                }
+            ]
+        }
+        doc = render_results_doc(populated)
+        self.assertIn("significant_improvement", doc)
+        self.assertIn("+70.5", doc)
+        self.assertIn("[+40.1, +100.9]", doc)
 
     def test_parse_insertion_reads_sumo_safety_stats(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -37,7 +37,9 @@ sumo/outputs/
 
 # Editor / tooling metadata (downloads helpers, gh cache, etc.)
 .tools/
-.claude/
+# Ignore local Claude Code config (settings.local.json, locks) but track shared skills.
+.claude/*
+!.claude/skills/
 
 # Source patch artifacts already applied to the repository.
 *.patch

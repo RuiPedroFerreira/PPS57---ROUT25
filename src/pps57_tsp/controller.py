@@ -8,6 +8,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+from pps57_cits.audit import audit_protocol_lifecycle
 from pps57_cits.broker import InMemoryMessageBroker
 from pps57_cits.config import CITSConfig
 from pps57_cits.event_logger import CITSJsonlLogger, IncrementalCITSSummary
@@ -318,6 +319,11 @@ class TSPControlController:
             self.tsp_config.logging.get("summary_report", "reports/tsp_emulation_summary.json")
         )
         cits_summary_dict = cits_summary.to_dict()
+        # SREM→SSEM resolution latencies, reconstructed from the just-written JSONL
+        # (real message generation_time_ms). The logger `with` block has closed by
+        # now, so the file is flushed. Folded into the run summary so the report and
+        # dashboard expose C-ITS responsiveness without re-reading raw logs.
+        cits_latency_ms = audit_protocol_lifecycle(cits_log_path)["latency_ms"]
         return write_tsp_summary(
             summary_path,
             decisions,
@@ -349,6 +355,7 @@ class TSPControlController:
                     cits_summary_dict.get("processing_messages", 0),
                 ),
                 "cits_rejected_messages": cits_summary_dict["rejected_messages"],
+                "cits_latency_ms": cits_latency_ms,
                 "priority_request_lifecycle": self.request_store.to_summary(),
                 "recovery_debt_by_tls_s": {
                     tls_id: round(value, 3)

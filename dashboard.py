@@ -19,6 +19,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 import yaml
+from streamlit_echarts import JsCode, st_echarts
 
 ROOT = Path(__file__).parent
 REPORTS = ROOT / "reports"
@@ -31,8 +32,9 @@ from pps57_dashboard.results import (  # noqa: E402
     catalog_label_map,
     default_scenario_dataset,
     discover_scenario_report_roots,
-    load_scenario_kpi_rows,
+    load_scenario_run_table,
     scenario_catalog_path,
+    scenario_scoreboard,
 )
 
 # ── constants ─────────────────────────────────────────────────────────────────
@@ -111,6 +113,127 @@ KPI_META = {
         "mg/km",
         "Combustível normalizado por quilómetro percorrido. Menor é melhor.",
     ),
+    # ── reliability / tail ──────────────────────────────────────────────────
+    "p95_duration_s": (
+        "Duração P95",
+        "s",
+        "Percentil 95 da duração de viagem — o pior caso para 95% dos veículos. Menor é melhor.",
+    ),
+    # ── network / queues (detectores E2) ────────────────────────────────────
+    "max_queue_vehicles": (
+        "Fila máxima",
+        "veíc.",
+        "Maior fila observada no pior troço da rede (detectores E2). Menor é melhor.",
+    ),
+    "mean_queue_vehicles": (
+        "Fila média",
+        "veíc.",
+        "Fila média por intervalo na rede (detectores E2). Menor é melhor.",
+    ),
+    "edge_intervals_above_8_veh": (
+        "Arco-intervalos congestionados",
+        "",
+        "Ocorrências de fila ≥8 veículos somadas sobre arcos e intervalos (arco×intervalo, "
+        "detectores E2) — escala com o tamanho da rede. Menor é melhor.",
+    ),
+    "mean_occupancy_pct": (
+        "Ocupação média",
+        "%",
+        "Ocupação média dos detectores ao longo da simulação. Menor é melhor.",
+    ),
+    # ── safety / viability (insertion + statistics) ─────────────────────────
+    "collisions": (
+        "Colisões",
+        "",
+        "Colisões registadas na simulação. Limiar de qualidade: 0. Menor é melhor.",
+    ),
+    "teleports_total": (
+        "Teleports",
+        "",
+        "Veículos teletransportados (gridlock ou yield prolongado). Limiar: ≤ 3. Menor é melhor.",
+    ),
+    "teleports_jam": (
+        "Teleports por gridlock",
+        "",
+        "Teletransportes causados por bloqueio total. Limiar: 0. Menor é melhor.",
+    ),
+    "emergency_braking": (
+        "Travagens de emergência",
+        "",
+        "Travagens bruscas (proxy de conforto/segurança). Limiar: ≤ 150 (e ≤ 30/1000 veíc.). Menor é melhor.",
+    ),
+    "max_waiting_to_insert": (
+        "Espera máx. p/ inserção",
+        "s",
+        "Maior espera de um veículo para entrar na rede. Limiar: ≤ 150 s. Menor é melhor.",
+    ),
+    "final_waiting": (
+        "Backlog no fim",
+        "veíc.",
+        "Veículos ainda à espera de entrar no fim da simulação. Limiar: ≤ 150. Menor é melhor.",
+    ),
+    "backlog_step_count": (
+        "Passos com backlog",
+        "",
+        "Número de passos de simulação com fila de inserção pendente. Menor é melhor.",
+    ),
+    # ── air quality (poluentes para além do CO2) ────────────────────────────
+    "total_nox_mg": (
+        "NOx total",
+        "mg",
+        "Óxidos de azoto — poluente de saúde urbana. Menor é melhor.",
+    ),
+    "total_nox_mg_per_vehicle_km": (
+        "NOx por veículo-km",
+        "mg/km",
+        "NOx normalizado por quilómetro percorrido. Menor é melhor.",
+    ),
+    "total_pmx_mg": (
+        "Partículas (PMx) total",
+        "mg",
+        "Matéria particulada — poluente de saúde urbana. Menor é melhor.",
+    ),
+    "total_pmx_mg_per_vehicle_km": (
+        "PMx por veículo-km",
+        "mg/km",
+        "PMx normalizado por quilómetro percorrido. Menor é melhor.",
+    ),
+    "total_co_mg": (
+        "CO total",
+        "mg",
+        "Monóxido de carbono. Menor é melhor.",
+    ),
+    "total_co_mg_per_vehicle_km": (
+        "CO por veículo-km",
+        "mg/km",
+        "CO normalizado por quilómetro percorrido. Menor é melhor.",
+    ),
+    "total_hc_mg": (
+        "HC total",
+        "mg",
+        "Hidrocarbonetos. Menor é melhor.",
+    ),
+    "total_hc_mg_per_vehicle_km": (
+        "HC por veículo-km",
+        "mg/km",
+        "HC normalizado por quilómetro percorrido. Menor é melhor.",
+    ),
+    # ── bus regularity / headways ───────────────────────────────────────────
+    "mean_headway_s": (
+        "Headway médio",
+        "s",
+        "Intervalo médio entre autocarros da mesma linha/sentido. Contexto operacional (orientado pela procura).",
+    ),
+    "headway_amplitude_s": (
+        "Amplitude de headway",
+        "s",
+        "Diferença entre o maior e o menor headway — proxy coarse de bunching (poucas partidas). Menor é melhor.",
+    ),
+    "departures": (
+        "Partidas",
+        "",
+        "Número de partidas observadas da linha/sentido na simulação.",
+    ),
 }
 
 EMISSION_METRICS = [
@@ -125,10 +248,36 @@ EMISSION_METRICS = [
 # metrics where an increase is an improvement (drives delta colouring)
 HIGHER_IS_BETTER = {"mean_speed_mps"}
 
+# Provenance of each scenario dataset, surfaced on the platform so headline numbers
+# always declare their source (and a generated Ingolstadt suite can never silently
+# masquerade as the synthetic corridor, nor vice-versa).
+DATASET_PROVENANCE = {
+    "synthetic": (
+        "Corredor sintético — Av. da Boavista (Porto), proxy SUMO controlado · "
+        "cenários emparelhados baseline vs TSP."
+    ),
+    "ingolstadt": (
+        "Ingolstadt city-wide (TUM-VT) — procura calibrada por detetores, PT via GTFS · "
+        "referência real."
+    ),
+}
+
+
+def dataset_provenance(dataset: str) -> str:
+    return DATASET_PROVENANCE.get(dataset, dataset)
+
+# ── semantic colours ──────────────────────────────────────────────────────────
+# One canonical green/red pair, used everywhere a chart (or card) encodes
+# improvement vs cost — so every figure across the dashboard speaks the same two
+# colours instead of a mix of near-identical greens/reds.
+COLOR_GOOD = "#16a34a"  # improvement / win
+COLOR_BAD = "#dc2626"  # degradation / cost
+COLOR_EMERGENCY = "#dc2626"
+
 ACTION_META = {
     "green_extension": (
         "Extensão de verde",
-        "#22c55e",
+        COLOR_GOOD,
         "Alonga a fase verde actual para deixar passar o autocarro.",
     ),
     "early_green": (
@@ -137,7 +286,7 @@ ACTION_META = {
         "Avança o início da fase verde para a aproximação do autocarro.",
     ),
     "no_action": ("Sem acção", "#94a3b8", "Nenhuma intervenção necessária neste ciclo."),
-    "reject": ("Rejeitado", "#ef4444", "Pedido recusado por critério de elegibilidade."),
+    "reject": ("Rejeitado", COLOR_BAD, "Pedido recusado por critério de elegibilidade."),
     "reevaluate_next_cycle": (
         "Reavaliar no ciclo",
         "#f59e0b",
@@ -153,6 +302,19 @@ OBJECTIVE_LABELS = {
     "proximity": "Proximidade (ETA)",
 }
 
+# Friendly PT labels per operational scenario id — shared by the KPIs tab and the
+# Resumo overview so both read the same names. Catalog descriptions override these.
+SCENARIO_LABELS = {
+    "bunched_buses": "Bunching de autocarros",
+    "emergency_vehicle_conflict": "Conflito c/ emergência",
+    "congested_am_peak": "Congestionamento AM",
+    "baseline_am_peak": "Pico AM (base)",
+    "baseline_off_peak": "Fora de pico (base)",
+    "congested_delayed_bus": "Autocarro atrasado c/ congestionamento",
+    "cross_traffic_pressure": "Pressão tráfego cruzado",
+    "delayed_bus_westbound": "Autocarro atrasado sentido Oeste",
+}
+
 PALETTE = {
     "sumo_baseline": "#64748b",
     "baseline": "#64748b",
@@ -160,20 +322,25 @@ PALETTE = {
     "tsp_controller": "#7c3aed",
 }
 
-# semantic colours (consistent across the whole dashboard)
-COLOR_GOOD = "#16a34a"  # improvement
-COLOR_BAD = "#dc2626"  # degradation / cost
-COLOR_EMERGENCY = "#dc2626"
-
 # ── CSS ───────────────────────────────────────────────────────────────────────
 
 CSS = """
 <style>
-html, body, [class*="css"] { font-family: "Inter", "Segoe UI", system-ui, sans-serif; }
+/* Inter is referenced throughout this stylesheet — load it so the typography is
+   actually rendered in Inter (not the system fallback) and looks crisp. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+html, body, [class*="css"], [data-testid="stAppViewContainer"], .stApp {
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility; }
 
 /* page header */
 .page-header { border-bottom: 3px solid #1d6ef5; padding-bottom: 12px; margin-bottom: 6px;
                margin-top: 2.5rem; }  /* clear Streamlit's 60px fixed top header */
+.page-header .kicker { font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+                       letter-spacing: 0.12em; color: #1d6ef5; margin: 0 0 5px; }
 .page-header h1 { font-size: 1.55rem; font-weight: 700; color: #0f172a; margin: 0 0 2px; letter-spacing: -0.4px; }
 .page-header .subtitle { font-size: 0.82rem; color: #64748b; margin: 0; }
 .badge { display:inline-block; background:#eff6ff; border:1px solid #bfdbfe; color:#1d4ed8;
@@ -199,7 +366,7 @@ html, body, [class*="css"] { font-family: "Inter", "Segoe UI", system-ui, sans-s
 .sb-sub { font-size:0.75rem; color:#64748b; }
 .file-row { display:flex; align-items:center; gap:7px; font-size:0.75rem; color:#374151; padding:3px 0; }
 .dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
-.dot-ok  { background:#22c55e; }
+.dot-ok  { background:#16a34a; }
 .dot-off { background:#cbd5e1; }
 
 /* verdict banner — single styled card; the left accent reflects the status */
@@ -207,9 +374,9 @@ html, body, [class*="css"] { font-family: "Inter", "Segoe UI", system-ui, sans-s
                 border-radius:8px; padding:1rem 1.25rem; margin-bottom:1.5rem; }
 .verdict-card .verdict-headline { font-size:15px; font-weight:700; color:#92400e; margin:0 0 3px; }
 .verdict-card .verdict-support  { font-size:13px; color:#78716c; margin:0; line-height:1.5; }
-.verdict-card.is-pass    { border-left-color:#22c55e; }
+.verdict-card.is-pass    { border-left-color:#16a34a; }
 .verdict-card.is-pass .verdict-headline    { color:#15803d; }
-.verdict-card.is-fail    { border-left-color:#ef4444; }
+.verdict-card.is-fail    { border-left-color:#dc2626; }
 .verdict-card.is-fail .verdict-headline    { color:#b91c1c; }
 .verdict-card.is-unknown { border-left-color:#94a3b8; }
 .verdict-card.is-unknown .verdict-headline { color:#475569; }
@@ -217,6 +384,10 @@ html, body, [class*="css"] { font-family: "Inter", "Segoe UI", system-ui, sans-s
 /* section label */
 .section-label { font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.1em;
                  color:#94a3b8; margin:26px 0 8px; border-bottom:1px solid #f1f5f9; padding-bottom:4px; }
+
+/* chart block title (more prominent than section-label) */
+.chart-title { font-size:1.05rem; font-weight:700; color:#0f172a; margin:1.6rem 0 2px; letter-spacing:-0.2px; }
+.chart-desc  { font-size:0.8rem; color:#64748b; margin:0 0 10px; line-height:1.5; }
 
 /* insight + warning boxes */
 .insight { background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px; padding:10px 14px;
@@ -259,7 +430,7 @@ section.main > div { padding-top: 1rem; }
 .kpi-card { border:1px solid #e5e7eb; border-radius:12px; padding:1.25rem; position:relative;
             overflow:hidden; background:#ffffff; }
 .kpi-card::before { content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:transparent; }
-.kpi-card.kpi-good::before { background:#22c55e; }
+.kpi-card.kpi-good::before { background:#16a34a; }
 .kpi-card.kpi-bad::before  { background:#dc2626; }
 .kpi-card .kpi-label { font-size:12px; color:#6b7280; font-weight:600; margin:0; }
 .kpi-card .kpi-value { font-size:28px; font-weight:700; color:#0f172a; line-height:1.15; margin:4px 0 0; }
@@ -341,7 +512,13 @@ header[data-testid="stHeader"] { display: none !important; }
   justify-content: flex-start !important; width: 100% !important; }
 .st-key-drawer_panel button p { text-align: left !important; margin: 0 !important; }
 .st-key-drawer_panel button:hover { background: #f3f4f6 !important; color: #111827 !important; }
-.st-key-drawer_panel button[kind="primary"] { background: #eff6ff !important; color: #1d4ed8 !important; font-weight: 500 !important; }
+.st-key-drawer_panel button[kind="primary"] {
+  background: #eff6ff !important; color: #1d4ed8 !important; font-weight: 600 !important;
+  box-shadow: inset 3px 0 0 #1d4ed8 !important; }
+/* nav icons (Material Symbols) — muted grey by default, brand-blue when active */
+.st-key-drawer_panel button [data-testid="stIconMaterial"] { font-size: 18px !important; color: #9ca3af !important; }
+.st-key-drawer_panel button:hover [data-testid="stIconMaterial"] { color: #6b7280 !important; }
+.st-key-drawer_panel button[kind="primary"] [data-testid="stIconMaterial"] { color: #1d4ed8 !important; }
 .st-key-drawer_panel [data-testid="stSelectbox"],
 .st-key-drawer_panel [data-testid="stCaptionContainer"] { padding-left: 12px; padding-right: 12px; }
 /* filter helper line + a clear, card-like select so its purpose reads at a glance.
@@ -354,12 +531,19 @@ header[data-testid="stHeader"] { display: none !important; }
 .st-key-drawer_panel [data-baseweb="select"] > div {
   background: #ffffff !important; border-radius: 9px !important; min-height: 40px; }
 .st-key-drawer_panel [data-testid="stSelectbox"] label { display: none; }
-/* navigation spread across the whole white area between the header and the
-   bottom group: its wrapper grows to fill the slack (flex:1) and the nav block
-   distributes its items evenly over that full height (space-evenly). */
+/* navigation: the wrapper grows to fill the slack (flex:1); the nav itself is
+   top-aligned and grouped (flex-start, tight gap) so the items read as clusters
+   under their section labels, with the bottom group pinned below the slack. */
 .st-key-drawer_panel > div:has(> .st-key-drawer_nav) {
   flex: 1 1 auto !important; display: flex !important; flex-direction: column !important; }
-.st-key-drawer_nav { flex: 1 1 auto; justify-content: space-evenly !important; gap: 0; }
+.st-key-drawer_nav { flex: 1 1 auto; justify-content: flex-start !important; gap: 2px;
+  padding-top: 16px; /* matches the 16px section-label top padding so the header→Fechar
+                        gap shares the drawer's vertical rhythm */ }
+/* Same compact-spacing fix as drawer_bottom: Streamlit gives markdown containers a
+   negative bottom margin that pulls the following nav button UP onto the section
+   label, so the button's hover highlight paints over "ANÁLISE"/"REFERÊNCIA".
+   Neutralise it here — each .drawer-section-label carries its own padding. */
+.st-key-drawer_nav [data-testid="stMarkdownContainer"] { margin-bottom: 0 !important; }
 .st-key-drawer_bottom { gap: 0; }
 
 /* drawer decorative bits */
@@ -369,7 +553,9 @@ header[data-testid="stHeader"] { display: none !important; }
 .drawer-head .dh-logo span { color: #10b981; }
 .drawer-head .dh-sub { font-size: 11px; color: #6b7280; }
 .drawer-section-label { font-size: 9.5px; font-weight: 700; letter-spacing: 0.11em; text-transform: uppercase;
-                        color: #9ca3af; padding: 16px 14px 5px; }
+                        color: #9ca3af; padding: 16px 14px 5px;
+                        /* keep the label above any adjacent button hover highlight */
+                        position: relative; z-index: 1; }
 .nav-divider { height: 0.5px; background: #eef1f5; margin: 10px 14px; }
 .status-block { margin: 12px 12px 4px; padding: 11px 12px; border: 0.5px solid #e5e7eb; border-radius: 10px;
                 background: #f9fafb; }
@@ -392,7 +578,7 @@ header[data-testid="stHeader"] { display: none !important; }
   color: #0f172a; font-weight: 700; font-size: 14px; padding: 0.85rem 1.1rem; box-shadow: none; }
 .st-key-explore_chips button:hover { background: #f9fafb; border-color: #cbd5e1; }
 
-/* glossary + reading-guide cards (relocated from the sidebar to the Método tab) */
+/* glossary + reading-guide cards (relocated from the sidebar to the Documentação tab) */
 .gloss-card { background:#ffffff; border:1px solid #e2e8f0; border-radius:8px;
               padding:0.6rem 0.75rem; margin-bottom:0.5rem; }
 .gloss-term { font-size:13px; font-weight:600; color:#0f172a; margin-bottom:0.2rem;
@@ -405,6 +591,93 @@ header[data-testid="stHeader"] { display: none !important; }
                        justify-content:center; flex-shrink:0; margin-top:1px; }
 .step-card .step-title { font-size:13px; font-weight:600; color:#0f172a; margin-bottom:0.2rem; }
 .step-card .step-body { font-size:12px; color:#64748b; line-height:1.55; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   POLISH LAYER — typography depth and micro-interactions layered on top of the
+   structural rules above. Kept in one block so the visual refresh is easy to
+   read and revert without touching the drawer/topbar machinery.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* App chrome (topbar + bottom brand bar) becomes a translucent, blurred surface
+   that floats over the soft canvas — content scrolls subtly beneath it. */
+.topbar, .page-footer {
+  background: rgba(255,255,255,0.82) !important;
+  backdrop-filter: saturate(180%) blur(10px);
+  -webkit-backdrop-filter: saturate(180%) blur(10px);
+  box-shadow: 0 1px 2px rgba(16,24,40,0.04); }
+
+/* Lighter horizontal rules (Streamlit "---") so section breaks read as hairlines. */
+hr { border: none !important; border-top: 1px solid #eef1f5 !important; margin: 1.4rem 0 !important; }
+
+/* Card depth — a subtle two-layer shadow, consistent across every card surface.
+   stat-card has no background of its own, so give it white to sit on the canvas. */
+.stat-card { background: #ffffff; }
+.verdict-card, .kpi-card, .stat-card, .gloss-card, .scen-obj, .flow-step,
+.status-block, .step, .step-card {
+  box-shadow: 0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.05); }
+
+/* Lift the interactive-feeling cards on hover. */
+.kpi-card, .stat-card, .gloss-card, .step {
+  transition: box-shadow .18s ease, transform .18s ease, border-color .18s ease; }
+.kpi-card:hover, .stat-card:hover, .gloss-card:hover, .step:hover {
+  box-shadow: 0 6px 16px rgba(16,24,40,0.09), 0 2px 5px rgba(16,24,40,0.05);
+  transform: translateY(-2px); }
+
+/* Explore chips (real buttons) get the same gentle motion as the cards. */
+.st-key-explore_chips button {
+  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
+.st-key-explore_chips button:hover {
+  box-shadow: 0 6px 16px rgba(16,24,40,0.09); transform: translateY(-2px); }
+
+/* Native bordered metrics (st.metric(border=True)) — match the card radius/shadow. */
+[data-testid="stMetric"] {
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.05); }
+
+/* Refined, unobtrusive scrollbars. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px;
+  border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; background-clip: content-box; }
+* { scrollbar-color: #cbd5e1 transparent; scrollbar-width: thin; }
+
+/* Plotly charts read as clean white cards floating on the soft canvas, matching
+   the KPI/stat card surfaces. The figures already paint a white paper, so the
+   card just frames them with a hairline border, radius and soft shadow. */
+[data-testid="stPlotlyChart"] {
+  background: #ffffff;
+  border: 1px solid #e9eef5;
+  border-radius: 14px;
+  padding: 14px 16px 8px;
+  box-shadow: 0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.05); }
+[data-testid="stPlotlyChart"] .svg-container { border-radius: 12px; }
+
+/* Resumo hero — the headline statement with its key figure pulled large, so the
+   single most important number leads the whole dashboard. */
+.hero-lead { display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin:8px 0 22px; }
+.hero-figure { font-size:3.4rem; font-weight:800; line-height:1; letter-spacing:-0.03em;
+               color:#0f172a; flex-shrink:0;
+               font-variant-numeric:tabular-nums; font-feature-settings:"tnum"; }
+.hero-figure.is-good  { color:#15803d; }
+.hero-figure.is-bad   { color:#b91c1c; }
+.hero-figure.is-brand { color:#1d4ed8; }
+/* No max-width: the statement uses the free horizontal space (one line on wide
+   screens, bounded by the 1500px content column); short statements stay short. */
+.hero-statement { font-size:1.06rem; font-weight:500; color:#334155; line-height:1.55; }
+.hero-statement strong { color:#0f172a; font-weight:700; }
+
+/* Documentação tab — caveat cards (amber accent) + a light key→value spec list
+   (cleaner and more compact than a Streamlit dataframe for short metadata). */
+.doc-limit { background:#ffffff; border:1px solid #f1f5f9; border-left:3px solid #f59e0b;
+  border-radius:8px; padding:10px 14px; margin-bottom:8px; font-size:0.82rem;
+  color:#475569; line-height:1.55; box-shadow:0 1px 2px rgba(16,24,40,0.04); }
+.spec-table { border:1px solid #e5e7eb; border-radius:10px; overflow:hidden; background:#ffffff;
+  box-shadow:0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.05); }
+.spec-row { display:flex; gap:1rem; padding:9px 14px; border-top:1px solid #f1f5f9; font-size:0.83rem; }
+.spec-row:first-child { border-top:none; }
+.spec-k { flex:0 0 190px; color:#64748b; font-weight:600; }
+.spec-v { color:#0f172a; word-break:break-word; }
 </style>
 """
 
@@ -435,6 +708,19 @@ def load_json(path: Path) -> dict | None:
     if not path.exists():
         return None
     return _read_json(str(path), path.stat().st_mtime)
+
+
+@st.cache_data(show_spinner=False)
+def _cits_latency_from_jsonl(path_str: str, mtime: float) -> dict:
+    """SREM→SSEM latency summary computed on demand from a cits_messages.jsonl.
+
+    Fallback for reports generated before `cits_latency_ms` was folded into the run
+    summary — lets the C-ITS tab surface real latency without re-running SUMO. The
+    import is local so the C-ITS package only loads when this tab needs it; `mtime`
+    keeps the cache fresh when the log changes."""
+    from pps57_cits.audit import audit_protocol_lifecycle
+
+    return audit_protocol_lifecycle(path_str).get("latency_ms", {})
 
 
 @st.cache_data(show_spinner=False)
@@ -496,6 +782,33 @@ def file_mtime(path: Path) -> str | None:
     return None
 
 
+def _reports_fingerprint(report_root: Path) -> float:
+    """Cheap change-signal for a scenario report root: the suite summary's mtime
+    (rewritten at the end of every suite run), falling back to the dir mtime. Lets the
+    per-run table be cached across reruns without re-reading every seed_*/kpis.json."""
+    summary = report_root / "scenario_suite_summary.json"
+    try:
+        if summary.exists():
+            return summary.stat().st_mtime
+        return report_root.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+@st.cache_data(show_spinner=False)
+def _scenario_run_table_cached(report_root_str: str, fingerprint: float) -> list[dict]:
+    # `fingerprint` is part of the cache key so the entry invalidates when the suite is
+    # regenerated (same mtime-keyed pattern as _read_json).
+    return load_scenario_run_table(Path(report_root_str))
+
+
+def scenario_run_table(report_root: Path) -> list[dict]:
+    """Cached `load_scenario_run_table`. The Resumo and KPIs tabs both load this table
+    and Streamlit reruns top-to-bottom on every interaction, so without caching each
+    rerun re-reads and re-parses every seed_*/kpis.json from disk multiple times."""
+    return _scenario_run_table_cached(str(report_root), _reports_fingerprint(report_root))
+
+
 def fmt(val, unit: str = "") -> str:
     if val is None:
         return "—"
@@ -504,7 +817,9 @@ def fmt(val, unit: str = "") -> str:
 
 
 def pct(baseline, candidate) -> float | None:
-    if baseline and candidate is not None and baseline != 0:
+    # `baseline` truthiness already excludes 0/0.0/None, so the prior `baseline != 0`
+    # was redundant. abs() keeps the sign reflecting (candidate - baseline) direction.
+    if baseline and candidate is not None:
         return (candidate - baseline) / abs(baseline) * 100
     return None
 
@@ -531,6 +846,29 @@ def insight(text: str) -> None:
 
 def warn(text: str) -> None:
     st.markdown(f'<div class="warn-box">{text}</div>', unsafe_allow_html=True)
+
+
+def hero_lead(figure: str, statement_html: str, tone: str = "is-brand") -> None:
+    """Tab lead line: the single key figure pulled large beside a one-sentence
+    statement. `tone` ∈ {"is-good", "is-bad", "is-brand", ""} colours the figure
+    (green = a win, red = a cost, brand-blue = a neutral volume/activity figure)."""
+    cls = f"hero-figure {tone}".strip()
+    st.markdown(
+        f'<div class="hero-lead"><span class="{cls}">{figure}</span>'
+        f'<span class="hero-statement">{statement_html}</span></div>',
+        unsafe_allow_html=True,
+    )
+
+
+def spec_table(rows: list[tuple[str, str]]) -> None:
+    """Lightweight key→value spec list for the Documentação page — cleaner and
+    more compact than a Streamlit dataframe for short metadata."""
+    body = "".join(
+        f'<div class="spec-row"><span class="spec-k">{k}</span>'
+        f'<span class="spec-v">{v}</span></div>'
+        for k, v in rows
+    )
+    st.markdown(f'<div class="spec-table">{body}</div>', unsafe_allow_html=True)
 
 
 def render_kpi_card(col, metric_key: str, value, baseline_val=None) -> None:
@@ -562,6 +900,45 @@ def render_kpi_card(col, metric_key: str, value, baseline_val=None) -> None:
     )
 
 
+def render_scoreboard(sb: dict) -> None:
+    """Executive scoreboard summarising the TSP effect across every scenario.
+
+    Uses native bordered metrics (no tab-specific CSS) so it renders identically in
+    the Resumo and KPIs tabs. Counts come from `scenario_scoreboard` — every figure
+    traces back to the paired kpis.json runs. Renders nothing without scenario data."""
+    n = sb.get("n_scenarios") or 0
+    if not n:
+        return
+    med = sb.get("bus_delta_median_pct")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric(
+        "Ganho no autocarro",
+        f"{sb['bus_improved']}/{n}",
+        help="Cenários em que o TSP reduz a perda de tempo média do autocarro.",
+        border=True,
+    )
+    c2.metric(
+        "Mediana Δ perda bus",
+        f"{med:+.1f}%" if med is not None else "—",
+        help="Mediana da variação da perda de tempo do autocarro (TSP vs baseline). "
+        "Negativo = melhoria.",
+        border=True,
+    )
+    c3.metric(
+        "Segurança preservada",
+        f"{sb['safety_clean']}/{n}",
+        help="Cenários sem colisões e sem teleports por gridlock no run TSP.",
+        border=True,
+    )
+    c4.metric(
+        "Custo no geral > 90 s",
+        f"{sb['general_cost_over_90s']}/{n}",
+        help="Cenários onde o tráfego geral piora além do limiar de 90 s do pipeline. "
+        "Menos é melhor.",
+        border=True,
+    )
+
+
 def download_csv(df: pd.DataFrame, filename: str, key: str, label: str = "Exportar CSV") -> None:
     st.download_button(
         label,
@@ -581,15 +958,23 @@ def chart_layout(fig: go.Figure, title: str = "", height: int = 380) -> go.Figur
             "pad": {"b": 8},
         },
         paper_bgcolor="white",
-        plot_bgcolor="#f8fafc",
-        font={"family": "Inter, system-ui, sans-serif", "color": "#374151", "size": 11},
+        plot_bgcolor="white",
+        font={"family": "Inter, system-ui, sans-serif", "color": "#475569", "size": 11},
         legend={"bgcolor": "rgba(0,0,0,0)", "borderwidth": 0, "font": {"size": 11}},
         margin={"t": 44, "b": 36, "l": 8, "r": 8},
         height=height,
-        hoverlabel={"font_size": 12, "font_family": "Inter, system-ui"},
+        hoverlabel={
+            "bgcolor": "white",
+            "bordercolor": "#e2e8f0",
+            "font_size": 12,
+            "font_family": "Inter, system-ui",
+            "font_color": "#0f172a",
+        },
     )
-    fig.update_xaxes(gridcolor="#f1f5f9", linecolor="#e2e8f0", tickfont={"size": 11})
-    fig.update_yaxes(gridcolor="#f1f5f9", linecolor="#e2e8f0", tickfont={"size": 11})
+    fig.update_xaxes(gridcolor="#eef2f7", linecolor="#e2e8f0", tickfont={"size": 11})
+    fig.update_yaxes(gridcolor="#eef2f7", linecolor="#e2e8f0", tickfont={"size": 11})
+    # Soft rounded bar corners — applies only to bar traces (funnels/pies ignored).
+    fig.update_traces(marker_cornerradius=4, selector={"type": "bar"})
     return fig
 
 
@@ -784,6 +1169,184 @@ def render_simulation_panel() -> None:
         )
 
 
+def render_scenario_overview(metric_key: str = "mean_time_loss_s") -> None:
+    """Per-scenario Δ% (TSP vs baseline) for bus vs general traffic — the core TSP
+    trade-off across every operational scenario, rendered in the Resumo tab. Reads
+    the rich per-run table so it always shows BOTH classes (independent of the global
+    vehicle-class filter); renders nothing without paired baseline+TSP data."""
+    roots = discover_scenario_report_roots(REPORTS)
+    dataset = default_scenario_dataset(REPORTS)
+    scenario_dir = roots.get(dataset)
+    if scenario_dir is None or not scenario_dir.exists():
+        return
+    rows = scenario_run_table(scenario_dir)
+    if not rows:
+        return
+    tdf = pd.DataFrame(rows)
+    run_types_all = sorted(tdf["Run type"].unique())
+    baseline_rt = next((r for r in run_types_all if "baseline" in r), None)
+    tsp_rt = next((r for r in run_types_all if "tsp" in r), None)
+    if not (baseline_rt and tsp_rt):
+        return
+    label_map = dict(SCENARIO_LABELS)
+    label_map.update(catalog_label_map(load_yaml(scenario_catalog_path(ROOT, dataset)) or {}))
+
+    def _delta_pct(scen: str, scope: str) -> float | None:
+        def _mean(rt: str) -> float | None:
+            vals = tdf.loc[
+                (tdf["Cenário"] == scen)
+                & (tdf["Run type"] == rt)
+                & (tdf["scope"] == scope)
+                & (tdf["metric_key"] == metric_key),
+                "Valor",
+            ]
+            return float(vals.mean()) if len(vals) else None
+
+        b, t = _mean(baseline_rt), _mean(tsp_rt)
+        if b and t is not None and b != 0:
+            return round((t - b) / abs(b) * 100, 1)
+        return None
+
+    drows = []
+    for scen in sorted(tdf["Cenário"].unique()):
+        bus = _delta_pct(scen, "buses")
+        gen = _delta_pct(scen, "general_traffic")
+        if bus is None and gen is None:
+            continue
+        drows.append({"label": label_map.get(scen, scen), "bus": bus, "gen": gen})
+    if not drows:
+        return
+    # Sorted so the biggest bus gains sit at the top of the chart.
+    cdf = pd.DataFrame(drows).sort_values("bus", ascending=False, na_position="first")
+
+    metric_label = KPI_META.get(metric_key, (metric_key, "", ""))[0]
+    st.markdown(
+        '<p class="chart-title">Autocarro vs tráfego geral, por cenário</p>'
+        '<p class="chart-desc">Variação percentual da '
+        f"<em>{metric_label.lower()}</em> (TSP vs baseline) em cada cenário, lado a "
+        "lado para as duas classes. À esquerda do zero = melhoria; à direita = custo.</p>",
+        unsafe_allow_html=True,
+    )
+
+    nums = [v for v in cdf["bus"].tolist() + cdf["gen"].tolist() if v is not None]
+    lo, hi = min(nums + [0.0]), max(nums + [0.0])
+    pad = max(3.0, (hi - lo) * 0.22)
+    chart_h = max(340, len(cdf) * 58 + 80)
+    BUS_COLOR, GEN_COLOR = "#2563eb", "#f59e0b"  # colourblind-safe blue/orange pair
+
+    def _series(name: str, col: str, color: str) -> dict:
+        return {
+            "name": name,
+            "type": "bar",
+            "barMaxWidth": 15,
+            "barGap": "30%",
+            "itemStyle": {"color": color, "borderRadius": 3},
+            "data": [
+                None
+                if v is None
+                else {
+                    "value": round(v, 1),
+                    "label": {
+                        "show": True,
+                        "position": "left" if v < 0 else "right",
+                        "formatter": f"{v:+.1f}%",
+                        "color": "#475569",
+                        "fontSize": 10,
+                        "fontFamily": "Inter, system-ui, sans-serif",
+                    },
+                }
+                for v in cdf[col]
+            ],
+        }
+
+    scen_option = {
+        "backgroundColor": "white",
+        "grid": {"left": "38%", "right": "12%", "top": "13%", "bottom": "10%"},
+        "legend": {
+            "data": ["Autocarro", "Tráfego geral"],
+            "top": "1%",
+            "icon": "roundRect",
+            "itemWidth": 12,
+            "itemHeight": 12,
+            "textStyle": {
+                "color": "#374151",
+                "fontSize": 12,
+                "fontFamily": "Inter, system-ui, sans-serif",
+            },
+        },
+        "tooltip": {
+            "trigger": "axis",
+            "axisPointer": {"type": "shadow"},
+            "backgroundColor": "white",
+            "borderColor": "#e2e8f0",
+            "borderWidth": 1,
+            "textStyle": {"color": "#0f172a", "fontSize": 12, "fontFamily": "Inter, system-ui, sans-serif"},
+            "formatter": JsCode(
+                "function(ps){var s='<b>'+ps[0].name+'</b>';"
+                "ps.forEach(function(p){var v=p.value;"
+                "if(v&&typeof v==='object'){v=v.value;}"
+                "if(v==null)return;var sign=v<0?'✅':'⚠️';"
+                "s+='<br/>'+p.marker+p.seriesName+': '+sign+' '+(v>0?'+':'')+v+'%';});"
+                "return s;}"
+            ),
+        },
+        "xAxis": {
+            "type": "value",
+            "min": round(lo - pad, 1),
+            "max": round(hi + pad, 1),
+            "axisLabel": {
+                "color": "#94a3b8",
+                "fontSize": 11,
+                "formatter": JsCode("function(v){return v+'%';}"),
+            },
+            "name": f"Δ% face ao baseline · {metric_label.lower()} (negativo = melhoria)",
+            "nameLocation": "middle",
+            "nameGap": 30,
+            "nameTextStyle": {"color": "#94a3b8", "fontSize": 11, "fontFamily": "Inter, system-ui, sans-serif"},
+            "splitLine": {"lineStyle": {"color": "#f1f5f9"}},
+            "axisLine": {"lineStyle": {"color": "#e2e8f0"}},
+            "axisTick": {"show": False},
+        },
+        "yAxis": {
+            "type": "category",
+            "data": cdf["label"].tolist(),
+            "axisLabel": {
+                "color": "#374151",
+                "fontSize": 12,
+                "fontFamily": "Inter, system-ui, sans-serif",
+                "width": 280,
+                "overflow": "truncate",
+                "ellipsis": "…",
+            },
+            "axisLine": {"lineStyle": {"color": "#e2e8f0"}},
+            "axisTick": {"show": False},
+        },
+        "series": [
+            {
+                **_series("Autocarro", "bus", BUS_COLOR),
+                "markLine": {
+                    "silent": True,
+                    "symbol": "none",
+                    "data": [{"xAxis": 0}],
+                    "lineStyle": {"color": "#9ca3af", "width": 1.5, "type": "dotted"},
+                    "label": {"show": False},
+                },
+            },
+            _series("Tráfego geral", "gen", GEN_COLOR),
+        ],
+        "animation": True,
+        "animationDuration": 700,
+        "animationEasing": "cubicOut",
+    }
+    st_echarts(scen_option, height=f"{chart_h}px", key="resumo_scenario_overview")
+    st.caption(
+        "Azul = autocarro · laranja = tráfego geral. À esquerda do zero = o TSP "
+        "melhora (reduz a perda de tempo); à direita = custo. Mostra onde a prioridade "
+        "vale mais (autocarros atrasados, pressão transversal) e onde tem custo "
+        "(dois autocarros muito próximos)."
+    )
+
+
 # ── page config ───────────────────────────────────────────────────────────────
 
 st.set_page_config(
@@ -824,9 +1387,9 @@ def class_vehicle_count(cls_key: str) -> int:
     return max((kp.get(cls_key, {}).get("vehicles", 0) or 0 for kp in run_kpis.values()), default=0)
 
 
-# ── drawer content data (glossary + reading guide, rendered in the Método tab) ──
+# ── drawer content data (glossary + reading guide, rendered in the Documentação tab) ──
 
-# Glossary entries (the Método-tab search filters reactively on every keystroke)
+# Glossary entries (the Documentação-tab search filters reactively on every keystroke)
 GLOSSARY = [
     {
         "term": "Perda de tempo média",
@@ -910,7 +1473,7 @@ STEPS = [
     {
         "n": "4",
         "title": "Explora os separadores",
-        "body": "Cada separador aprofunda um aspecto: KPIs detalha por métrica, Cenários mostra os 8 casos operacionais, Decisão explica o algoritmo.",
+        "body": "Cada separador aprofunda um aspecto: KPIs mostra os KPIs por cenário operacional (baseline vs TSP), Decisão explica o algoritmo e C-ITS as mensagens V2X.",
     },
     {
         "n": "5",
@@ -958,16 +1521,74 @@ def _sync_vehicle_class() -> None:
     """Persist the drawer selectbox choice into the non-widget session key."""
     st.session_state.vehicle_class_display = st.session_state.drawer_class_select
 
+
+def _sync_vehicle_class_kpis() -> None:
+    """Mirror of _sync_vehicle_class for the in-tab (KPIs) class selector — both
+    widgets write the same canonical key, so changing the class in either place
+    stays consistent across reruns."""
+    st.session_state.vehicle_class_display = st.session_state.kpis_class_select
+
 # ── drawer navigation model + system status ───────────────────────────────────
 
-TABS = ["Resumo", "KPIs", "Decisão", "C-ITS", "vs RL", "Cenários", "Método", "Simulação"]
+# "Demonstrador" is a drill-down view reachable from the "KPIs" tab — it is not a
+# top-level nav entry (kept out of NAV_GROUPS on purpose).
+TABS = ["Resumo", "KPIs", "Decisão", "C-ITS", "vs RL", "Documentação", "Simulação"]
 
 NAV_GROUPS = [
     (None, ["Resumo"]),
     ("Análise", ["KPIs", "Decisão", "C-ITS", "vs RL"]),
-    ("Exploração", ["Cenários"]),
-    ("Referência", ["Método", "Simulação"]),
+    ("Referência", ["Documentação", "Simulação"]),
 ]
+
+# Material Symbols icon per view — gives the drawer nav scannability and hierarchy.
+NAV_ICONS = {
+    "Resumo": ":material/dashboard:",
+    "KPIs": ":material/query_stats:",
+    "Decisão": ":material/account_tree:",
+    "C-ITS": ":material/cell_tower:",
+    "vs RL": ":material/smart_toy:",
+    "Documentação": ":material/menu_book:",
+    "Simulação": ":material/play_circle:",
+}
+
+# Per-tab page header — the project kicker + badges + freshness line stay constant
+# while the title and description adapt to the active view (title, subtitle).
+TAB_HEADERS = {
+    "Resumo": (
+        "Resumo executivo",
+        "",
+    ),
+    "KPIs": (
+        "KPIs por cenário",
+        "Escolhe um cenário operacional e vê os KPIs baseline vs TSP — cartões, deltas, "
+        "emissões e a comparação entre todos os cenários, por classe de veículo.",
+    ),
+    "Decisão": (
+        "Motor de decisão TSP",
+        "Da avaliação à actuação: funil de decisões, acções concedidas, verde injectado e bloqueios da Safety Layer.",
+    ),
+    "C-ITS": (
+        "Comunicação C-ITS (V2X)",
+        "Mensagens de prioridade trocadas entre veículos e semáforos (MAPEM · SPATEM · SREM · SSEM) e ciclo de vida dos pedidos.",
+    ),
+    "vs RL": (
+        "Baseline vs Reinforcement Learning",
+        "Comparação da política RL treinada com a regra heurística — decisão a decisão e em KPIs de rede.",
+    ),
+    "Demonstrador": (
+        "Corredor demonstrador",
+        "Comparação baseline vs TSP no corredor demonstrador — vista detalhada acedida "
+        "a partir dos KPIs. A análise RL está na tab «vs RL».",
+    ),
+    "Documentação": (
+        "Documentação",
+        "Como ler os resultados: guia de leitura, glossário, configuração das runs, fontes de dados e limitações.",
+    ),
+    "Simulação": (
+        "Simulação",
+        "Lança runs SUMO a partir da dashboard — visualização no SUMO-GUI ou modo headless para regenerar os reports.",
+    ),
+}
 
 report_files = {
     "Baseline KPIs": REPORTS / "baseline_kpis.json",
@@ -1016,7 +1637,9 @@ if st.session_state.drawer_open:
         # Navigation is vertically centred in the free space between the header
         # and the bottom group via .st-key-drawer_nav { margin: auto 0 }.
         with st.container(key="drawer_nav"):
-            if st.button("✕  Fechar", key="close_drawer", width="stretch"):
+            if st.button(
+                "Fechar", icon=":material/close:", key="close_drawer", width="stretch"
+            ):
                 st.session_state.drawer_open = False
                 st.rerun()
 
@@ -1029,6 +1652,7 @@ if st.session_state.drawer_open:
                 for _label in group_tabs:
                     if st.button(
                         _label,
+                        icon=NAV_ICONS.get(_label),
                         key=f"nav_{_label}",
                         width="stretch",
                         type="primary" if st.session_state.active_tab == _label else "secondary",
@@ -1102,17 +1726,18 @@ if demo:
 _hdr_r25 = logo_uri(PUBLIC / "route25_logo.png", strip_white=True)
 _hdr_cap = logo_uri(PUBLIC / "CAP_LOGO.png")
 
+_active_tab = st.session_state.active_tab
+_htitle, _hsub = TAB_HEADERS.get(_active_tab, (_active_tab, ""))
+
 st.markdown(
     f"""
 <div class="page-header">
-  <h1>PPS57 · Análise de Simulação TSP
+  <p class="kicker">PPS57 · Análise TSP</p>
+  <h1>{_htitle}
     <span class="badge">Linha 25 · Porto</span>
     <span class="badge">SUMO 1.26</span>
   </h1>
-  <p class="subtitle">
-    Comparação entre Baseline SUMO sem prioridade semafórica, TSP Rule-based e TSP com controlador simulado.
-    Projecto PPS 57 — Programa de Apoio à Densificação e Extensão da Rede de Transporte Público.
-  </p>
+  {f'<p class="subtitle">{_hsub}</p>' if _hsub else ""}
 </div>
 <p class="freshness">
   {"Última actualização dos dados: <strong>" + fresh + "</strong>" if fresh else "Sem dados carregados"}
@@ -1243,25 +1868,42 @@ if _active == "Resumo":
         bus = next((r for r in hero if r["key"] in ("buses", "priority_vehicles")), None)
         gen = next((r for r in hero if r["key"] == "general_traffic"), None)
 
-        # ── plain-language headline ───────────────────────────────────────────
+        # ── plain-language headline — the key figure pulled large ─────────────
         if bus:
-            verb = "reduz" if bus["pct"] < 0 else "aumenta"
+            # Decide direction from the *rounded* value so the figure, the verb and
+            # the colour never disagree: a delta of -0.3% rounds to 0 and must read
+            # as "no change" (neutral), not as a green "-0%" or a red "+0%".
+            bus_pct_r = round(bus["pct"])
+            if bus_pct_r == 0:
+                verb, bus_tone, bus_figure = (
+                    "mantém praticamente inalterada",
+                    "is-brand",
+                    "≈0%",
+                )
+            else:
+                improved = bus_pct_r < 0
+                verb = "reduz" if improved else "aumenta"
+                bus_tone = "is-good" if improved else "is-bad"
+                bus_figure = f"{bus_pct_r:+d}%"
             gen_txt = ""
             if gen:
                 if abs(gen["pct"]) < 2:
-                    gen_txt = " com impacto praticamente nulo no tráfego geral"
+                    gen_txt = ", com impacto praticamente nulo no tráfego geral"
                 elif gen["pct"] < 0:
                     gen_txt = f" e ainda melhora o tráfego geral em {abs(gen['pct']):.0f}%"
                 else:
-                    gen_txt = f" a um custo de {gen['pct']:.0f}% no tráfego geral"
-            st.markdown(
-                f"#### O TSP {verb} a perda de tempo do transporte público em "
-                f"**{abs(bus['pct']):.0f}%**{gen_txt}."
+                    gen_txt = f", a um custo de {gen['pct']:.0f}% no tráfego geral"
+            hero_lead(
+                bus_figure,
+                f"O TSP <strong>{verb}</strong> a perda de tempo do transporte "
+                f"público{gen_txt}.",
+                tone=bus_tone,
             )
 
         # ── headline metrics (the win, in the priority class) ─────────────────
         if bus:
             bcls = bus["key"]
+            section(f"Impacto do TSP · {bus['Classe'].lower()} ({bus['n']} veículos)")
             m1, m2, m3 = st.columns(3)
             render_kpi_card(
                 m1,
@@ -1282,74 +1924,151 @@ if _active == "Resumo":
                 bk.get(bcls, {}).get("mean_speed_mps"),
             )
             st.caption(
-                f"Classe {bus['Classe'].lower()} ({bus['n']} veículos) · "
-                f"{primary_tsp} vs {baseline_key}. Verde = melhoria, vermelho = custo."
+                "Fonte: corredor demonstrador (run único baseline vs TSP, SUMO sem "
+                "prioridade) · barra verde = melhoria, vermelha = custo · passa o rato "
+                "sobre cada cartão para a definição."
             )
 
         # ── hero chart: who benefits ──────────────────────────────────────────
-        # Title lives above the chart (st.markdown/section), not inside the figure.
-        section("Quem ganha com o TSP — variação da perda de tempo por classe")
+        st.markdown(
+            '<p class="chart-title">Quem ganha com o TSP</p>'
+            '<p class="chart-desc">Variação percentual da perda de tempo média por classe de veículo'
+            " — TSP vs Baseline (SUMO sem prioridade semafórica).</p>",
+            unsafe_allow_html=True,
+        )
         if hero:
             dfh = pd.DataFrame(hero)
-            # Absolute delta in seconds per class — shown alongside the % so the
-            # magnitude is visible (e.g. -22% reads as ~-72 s/bus, while +0.3% on
-            # general traffic is well under a second). The % alone understates how
-            # asymmetric — and favourable — the tradeoff is.
             dfh["delta_s"] = dfh["tsp"] - dfh["baseline"]
 
             def _fmt_delta_s(ds: float) -> str:
-                # sub-10 s deltas keep one decimal so tiny costs don't round to "+1 s"
                 return f"{ds:+.1f} s" if abs(ds) < 10 else f"{ds:+.0f} s"
 
-            bar_labels = [
-                f"{p:+.1f}% · {_fmt_delta_s(ds)}"
-                for p, ds in zip(dfh["pct"], dfh["delta_s"], strict=False)
-            ]
-
-            # Diverging x-axis centred on zero. Range comes from the data (plus zero)
-            # and is padded enough that the now-wider outside labels stay inside the
-            # figure — never hardcoded, never clipped.
             vals = dfh["pct"].tolist()
             lo_v, hi_v = min(vals + [0.0]), max(vals + [0.0])
-            pad = max(3.0, (hi_v - lo_v) * 0.32)
-            fig_hero = go.Figure(
-                go.Bar(
-                    x=dfh["pct"],
-                    y=dfh["Classe"],
-                    orientation="h",
-                    marker_color=[COLOR_GOOD if p < 0 else COLOR_BAD for p in dfh["pct"]],
-                    text=bar_labels,
-                    textposition="outside",
-                    cliponaxis=False,
-                    customdata=dfh[["baseline", "tsp", "n"]].values,
-                    hovertemplate="%{y}: %{x:+.1f}%<br>%{customdata[0]:.0f}s → %{customdata[1]:.0f}s "
-                    "(n=%{customdata[2]})<extra></extra>",
+            pad = max(4.0, (hi_v - lo_v) * 0.38)
+
+            echarts_data = [
+                {
+                    "value": round(p, 2),
+                    "itemStyle": {"color": COLOR_GOOD if p < 0 else COLOR_BAD, "borderRadius": 3},
+                    "label": {
+                        "show": True,
+                        "position": "left" if p < 0 else "right",
+                        "formatter": f"{p:+.1f}%  {_fmt_delta_s(ds)}",
+                        "color": "#374151",
+                        "fontSize": 11,
+                        "fontFamily": "Inter, system-ui, sans-serif",
+                    },
+                    "baseline": round(b, 1),
+                    "tsp_val": round(t, 1),
+                    "n": int(n),
+                }
+                for p, ds, b, t, n in zip(
+                    dfh["pct"], dfh["delta_s"], dfh["baseline"], dfh["tsp"], dfh["n"],
+                    strict=False,
+                )
+            ]
+            hero_option = {
+                "backgroundColor": "white",
+                "grid": {"left": "22%", "right": "16%", "top": "4%", "bottom": "8%"},
+                "tooltip": {
+                    "trigger": "item",
+                    "backgroundColor": "white",
+                    "borderColor": "#e2e8f0",
+                    "borderWidth": 1,
+                    "textStyle": {"color": "#0f172a", "fontSize": 12, "fontFamily": "Inter, system-ui, sans-serif"},
+                    "formatter": JsCode(
+                        "function(p){"
+                        "var s=p.data.baseline+'s → '+p.data.tsp_val+'s (n='+p.data.n+')';"
+                        "var sign=p.value<0?'✅':'⚠️';"
+                        "return '<b>'+p.name+'</b><br/>'+sign+' '+(p.value>0?'+':'')+p.value+'%<br/><span style=\"color:#64748b\">'+s+'</span>';}"
+                    ),
+                },
+                "xAxis": {
+                    "type": "value",
+                    "min": round(lo_v - pad, 1),
+                    "max": round(hi_v + pad, 1),
+                    "axisLabel": {"color": "#94a3b8", "fontSize": 11},
+                    "splitLine": {"lineStyle": {"color": "#f1f5f9"}},
+                    "axisLine": {"lineStyle": {"color": "#e2e8f0"}},
+                    "axisTick": {"show": False},
+                },
+                "yAxis": {
+                    "type": "category",
+                    "data": dfh["Classe"].tolist(),
+                    "axisLabel": {"color": "#374151", "fontSize": 13, "fontFamily": "Inter, system-ui, sans-serif"},
+                    "axisLine": {"lineStyle": {"color": "#e2e8f0"}},
+                    "axisTick": {"show": False},
+                },
+                "series": [
+                    {
+                        "type": "bar",
+                        "data": echarts_data,
+                        "barMaxWidth": 36,
+                        "markLine": {
+                            "silent": True,
+                            "symbol": "none",
+                            "data": [{"xAxis": 0}],
+                            "lineStyle": {"color": "#6b7280", "width": 1},
+                            "label": {"show": False},
+                        },
+                    }
+                ],
+                "animation": True,
+                "animationDuration": 600,
+                "animationEasing": "cubicOut",
+            }
+            st_echarts(hero_option, height="280px", key="resumo_hero_chart")
+
+            # ── legend + objective text under the chart ───────────────────────
+            st.caption(
+                ":green[■] Melhoria (barra à esquerda)  ·  :red[■] Custo (barra à direita)  ·  eixo centrado em zero"
+                + (
+                    " · Emergência não aparece aqui (cenário base sem veículos de emergência) — "
+                    "ver separador **KPIs → emergency_vehicle_conflict**."
+                    if not any(r["key"] == "emergency_vehicles" for r in hero)
+                    else ""
                 )
             )
-            fig_hero.add_vline(x=0, line_color="#6b7280", line_width=1)
-            chart_layout(fig_hero, "", height=280)
-            fig_hero.update_layout(bargap=0.35)
-            fig_hero.update_xaxes(range=[lo_v - pad, hi_v + pad])
-            st.plotly_chart(fig_hero, width="stretch", config={"displayModeBar": False})
 
-            # ── legend: colour squares instead of a wall of italic text ─────────
-            lg1, lg2 = st.columns(2)
-            lg1.markdown(":green[■] **Melhoria** (barras à esquerda)")
-            lg2.markdown(":red[■] **Custo** (barras à direita)")
-            if not any(r["key"] == "emergency_vehicles" for r in hero):
+        # ── breadth across the operational scenarios — adds the safety and
+        #    air-quality dimensions that the single demonstrator report lacks ──
+        _scn_roots = discover_scenario_report_roots(REPORTS)
+        _scn_dataset = default_scenario_dataset(REPORTS)
+        _scn_dir = _scn_roots.get(_scn_dataset)
+        if _scn_dir and _scn_dir.exists():
+            _sb = scenario_scoreboard(scenario_run_table(_scn_dir))
+            if _sb["n_scenarios"]:
+                section(f"Robustez em {_sb['n_scenarios']} cenários operacionais")
                 st.caption(
-                    "Emergência não aparece aqui (o cenário base não tem veículos de emergência). "
-                    "Vê o separador **Cenários → emergency_vehicle_conflict** para o caso de emergência."
+                    "Fonte · "
+                    + dataset_provenance(_scn_dataset)
+                    + " — suite de cenários, distinta do corredor demonstrador acima."
                 )
+                render_scoreboard(_sb)
+                _all_safe = _sb["safety_clean"] == _sb["n_scenarios"]
+                insight(
+                    (
+                        "Segurança preservada em <strong>todos</strong> os cenários"
+                        if _all_safe
+                        else f"Segurança preservada em {_sb['safety_clean']}/{_sb['n_scenarios']} cenários"
+                    )
+                    + " (0 colisões, 0 teleports por gridlock); "
+                    + f"NOx reduzido em {_sb['nox_improved']}/{_sb['n_scenarios']}. "
+                    + "Detalhe completo no separador <strong>KPIs</strong>."
+                )
+
+        # ── per-scenario overview (zoom-out) — impacto do TSP em todos os cenários
+        render_scenario_overview()
 
         # ── navigation chips: click jumps to the matching view ────────────────
         # Real st.buttons (styled as cards via .st-key-explore_chips) set
         # active_tab and rerun — the drawer-driven equivalent of the old tabs.
         section("Explorar em detalhe")
         nav_items = [
-            ("KPIs", "Comparação detalhada entre cenários, por classe e métrica."),
+            ("KPIs", "KPIs por cenário operacional — baseline vs TSP, por classe e métrica."),
             ("Decisão", "O que o algoritmo decidiu e porquê."),
-            ("Cenários", "Impacto do TSP nas 8 situações operacionais."),
+            ("vs RL", "Política RL treinada vs regra heurística TSP."),
         ]
         with st.container(key="explore_chips"):
             chip_cols = st.columns(3)
@@ -1366,9 +2085,26 @@ if _active == "Resumo":
 # TAB 1 — KPI comparison
 # ═══════════════════════════════════════════════════════════════════════════════
 
-elif _active == "KPIs":
+elif _active == "Demonstrador":
+    # Drill-down acedido a partir da tab "KPIs" (não está na navegação). Mantém a
+    # comparação baseline vs TSP do corredor demonstrador, sem a perder. O braço
+    # controller/RL é deliberadamente excluído daqui — a análise RL vive só na
+    # tab "vs RL".
+    if st.button("← Voltar aos KPIs", key="demo_back"):
+        st.session_state.active_tab = "KPIs"
+        st.rerun()
+    # Filtra os braços controller/RL para que o RL não apareça fora da tab "vs RL".
+    run_kpis = {
+        k: v
+        for k, v in run_kpis.items()
+        if not any(tok in k.lower() for tok in ("controller", "rl"))
+    }
+    cls_data = {label: get_kpi(kpis, vehicle_cls) for label, kpis in run_kpis.items()}
+    baseline_key = next((k for k in run_kpis if "baseline" in k.lower()), None)
+    tsp_keys = [k for k in run_kpis if k != baseline_key]
+    primary_tsp = tsp_keys[0] if tsp_keys else None
     if not cls_data:
-        st.info("Sem dados de KPI disponíveis.")
+        st.info("Sem dados de KPI do corredor demonstrador disponíveis.")
     else:
         # ── contextual hint: TSP gains live in the bus class ──────────────────
         bus_n = cls_counts.get("buses", 0)
@@ -1523,7 +2259,7 @@ elif _active == "KPIs":
                         orientation="h",
                         text=[f"{p:+.1f}%" for p in df_wf["Pct"]],
                         textposition="outside",
-                        marker_color=["#22c55e" if v < 0 else "#ef4444" for v in df_wf["Delta"]],
+                        marker_color=[COLOR_GOOD if v < 0 else COLOR_BAD for v in df_wf["Delta"]],
                         hovertemplate="%{y}: %{x:+.3f}<extra></extra>",
                     )
                 )
@@ -1540,10 +2276,10 @@ elif _active == "KPIs":
         # ── detailed comparison tables ────────────────────────────────────────
         if demo:
             section("Tabelas de comparação detalhada")
+            # Só TSP vs Baseline — as tabelas do controller/RL ficam reservadas à
+            # tab "vs RL".
             comp_map = [
                 ("tsp_vs_sumo_baseline_kpis", "TSP vs Baseline"),
-                ("tsp_controller_vs_sumo_baseline_kpis", "TSP+Controller vs Baseline"),
-                ("tsp_controller_vs_tsp_runtime", "TSP+Controller vs TSP"),
             ]
             for ckey, title in comp_map:
                 comp = demo.get("comparisons", {}).get(ckey, {})
@@ -1632,14 +2368,16 @@ elif _active == "Decisão":
     if not demo:
         st.info("Report do demonstrador não disponível.")
     else:
-        all_labels = list(demo.get("runs", {}).keys())
-        sel_run = st.selectbox(
-            "Run TSP",
-            options=all_labels,
-            index=next((i for i, k in enumerate(all_labels) if k != "sumo_baseline"), 0),
-            help="Escolhe a run cujo motor de decisão queres analisar.",
+        runs_all = list(demo.get("runs", {}).keys())
+        tsp_run_keys = [k for k in runs_all if k != "sumo_baseline"]
+        # Sem selector: a análise do motor de decisão é sempre de uma run de actuação
+        # TSP (o baseline não toma decisões). Escolhe-se automaticamente o controlador
+        # completo, depois a regra TSP, depois a primeira run disponível.
+        sel_run = next(
+            (k for k in ("tsp_controller", "tsp") if k in tsp_run_keys),
+            tsp_run_keys[0] if tsp_run_keys else (runs_all[0] if runs_all else ""),
         )
-        runtime = demo["runs"][sel_run].get("runtime", {})
+        runtime = demo["runs"].get(sel_run, {}).get("runtime", {})
 
         total = runtime.get("total_decisions", 0)
         applied = runtime.get("applied_events", 0)
@@ -1651,7 +2389,7 @@ elif _active == "Decisão":
         # (reavaliar / rejeitar / sem acção) são não-actuações deliberadas, não
         # "aplicações falhadas" — por isso o denominador honesto da taxa de
         # aplicação é o nº de decisões ACCIONÁVEIS, não o total de avaliações.
-        actionable = by_action.get("green_extension", 0) + by_action.get("early_green", 0)
+        actionable = (by_action.get("green_extension") or 0) + (by_action.get("early_green") or 0)
         non_actionable = {
             "Reavaliar no ciclo seguinte": by_action.get("reevaluate_next_cycle", 0),
             "Rejeitadas (score abaixo do limiar)": by_action.get("reject", 0),
@@ -1661,28 +2399,27 @@ elif _active == "Decisão":
         # ── plain-language headline (lead with the story) ─────────────────────
         if total > 0:
             ar_txt = f"{applied / actionable * 100:.0f}%" if actionable else "—"
-            block_txt = (
-                f" A Safety Layer bloqueou **{blocked}** por segurança."
+            block_html = (
+                f" A Safety Layer bloqueou <strong>{blocked}</strong> por segurança."
                 if blocked
                 else " Nenhuma foi bloqueada pela Safety Layer."
             )
-            st.markdown(
-                f"#### De **{total}** decisões avaliadas, **{actionable}** propuseram mudar o "
-                f"semáforo e **{applied}** foram aplicadas ({ar_txt}).{block_txt}"
-            )
-            st.caption(
-                "O motor reavalia cada autocarro várias vezes na aproximação; a maioria das "
-                "avaliações conclui, correctamente, que não há nada a fazer naquele instante."
+            hero_lead(
+                f"{applied}",
+                "actuações TSP aplicadas na rede — de "
+                f"<strong>{actionable}</strong> accionáveis em "
+                f"<strong>{total}</strong> decisões avaliadas ({ar_txt}).{block_html}",
             )
 
         section("Pipeline de decisão — do seguimento à actuação")
         if total == 0:
             warn(
-                "Esta run não gerou decisões TSP. Selecciona uma run TSP "
-                "(ex. <code>tsp</code> ou <code>tsp_controller</code>) para ver a análise."
+                "A run TSP analisada não gerou decisões — provavelmente uma simulação demasiado "
+                "curta. Corre o demonstrador com mais passos (≥3600) no separador "
+                "<strong>Simulação</strong> para os autocarros entrarem na rede e o motor actuar."
             )
         else:
-            col_f, col_m = st.columns([1, 1])
+            col_f, col_m = st.columns([1, 1], vertical_alignment="center")
             with col_f:
                 fig_funnel = go.Figure(
                     go.Funnel(
@@ -1693,14 +2430,13 @@ elif _active == "Decisão":
                         ],
                         x=[total, actionable, applied],
                         textinfo="value+percent initial",
-                        marker_color=["#94a3b8", "#1d6ef5", "#22c55e"],
+                        marker_color=["#94a3b8", "#1d6ef5", COLOR_GOOD],
                         hovertemplate="%{y}: %{x}<extra></extra>",
                     )
                 )
                 chart_layout(fig_funnel, "Funil de decisão TSP", height=300)
                 st.plotly_chart(fig_funnel, width="stretch", config={"displayModeBar": False})
             with col_m:
-                st.markdown("&nbsp;")
                 mm1, mm2 = st.columns(2)
                 mm1.metric(
                     "Decisões avaliadas",
@@ -1761,7 +2497,7 @@ elif _active == "Decisão":
                     )
 
         section("Distribuição de acções decididas")
-        col_pie, col_legend = st.columns([1, 1])
+        col_pie, col_legend = st.columns([1, 1], vertical_alignment="center")
         with col_pie:
             if by_action:
                 labels_a = list(by_action.keys())
@@ -1784,7 +2520,6 @@ elif _active == "Decisão":
             else:
                 st.caption("Sem acções registadas.")
         with col_legend:
-            st.markdown("&nbsp;")
             for key, (label, color, desc) in ACTION_META.items():
                 count = by_action.get(key)
                 cstr = f" · {count}" if count else ""
@@ -1838,8 +2573,9 @@ elif _active == "Decisão":
             )
             insight(
                 "Esta é a <strong>intensidade</strong> da prioridade: quanto verde o TSP "
-                "efectivamente injectou na rede. Liga-se à equidade — esse verde é depois "
-                "compensado às outras fases (ver <strong>C-ITS → Compensação de verde</strong>)."
+                "efectivamente injectou na rede. Esse verde é emprestado às outras fases; o "
+                "TSP inclui um mecanismo de compensação que o pode devolver em ciclos "
+                "seguintes para preservar a equidade semafórica."
             )
         else:
             st.caption("Sem extensões de verde aplicadas nesta run.")
@@ -1885,10 +2621,18 @@ elif _active == "Decisão":
                 x="Bloqueios",
                 y="Motivo",
                 orientation="h",
-                color_discrete_sequence=["#ef4444"],
+                text="Bloqueios",
+                color_discrete_sequence=[COLOR_BAD],
                 height=max(260, len(df_sf) * 50 + 80),
             )
+            fig_sf.update_traces(
+                texttemplate="%{x:.0f}",
+                textposition="outside",
+                cliponaxis=False,
+                hovertemplate="%{y}: %{x} bloqueios<extra></extra>",
+            )
             chart_layout(fig_sf, "Safety Layer — motivos de bloqueio")
+            fig_sf.update_xaxes(range=[0, (df_sf["Bloqueios"].max() or 1) * 1.18])
             st.plotly_chart(fig_sf, width="stretch", config={"displayModeBar": False})
             insight(
                 "A Safety Layer bloqueia actuações que criem conflitos: amarelo insuficiente, "
@@ -1930,31 +2674,35 @@ elif _active == "C-ITS":
         if not tsp_run_keys:
             st.info("Sem runs TSP disponíveis.")
         else:
-            sel_cits_run = st.selectbox(
-                "Run",
-                tsp_run_keys,
-                key="cits_run",
-                help="Run cujo tráfego C-ITS (V2X) queres inspeccionar.",
+            # O tráfego C-ITS (V2X) só existe nas runs de actuação TSP — o baseline
+            # não troca mensagens de prioridade — por isso não há selector de run:
+            # mostra-se directamente a run de actuação (preferindo o controlador
+            # completo, depois a regra TSP, depois a primeira disponível).
+            sel_cits_run = next(
+                (k for k in ("tsp_controller", "tsp") if k in tsp_run_keys),
+                tsp_run_keys[0],
             )
             summ = demo["runs"][sel_cits_run].get("summary", {})
             by_type = summ.get("cits_by_type", {})
             prl = summ.get("priority_request_lifecycle", {})
 
             # ── plain-language intro: the V2X conversation ────────────────────
-            srem_n = by_type.get("SREM", 0)
-            ssem_n = by_type.get("SSEM", 0)
-            granted_n = prl.get("granted_requests", 0)
-            tracked_n = prl.get("tracked_requests", 0)
+            srem_n = by_type.get("SREM") or 0
+            ssem_n = by_type.get("SSEM") or 0
+            granted_n = prl.get("granted_requests") or 0
+            tracked_n = prl.get("tracked_requests") or 0
             if srem_n or ssem_n:
-                grant_txt = (
-                    f", e **{granted_n}** dos **{tracked_n}** pedidos foram concedidos"
+                grant_html = (
+                    f", e <strong>{granted_n}</strong> dos <strong>{tracked_n}</strong> "
+                    "pedidos foram concedidos"
                     if tracked_n
                     else ""
                 )
-                st.markdown(
-                    f"#### Os veículos prioritários e os semáforos trocaram **{srem_n + ssem_n:,}** "
-                    f"mensagens de prioridade — **{srem_n:,}** pedidos (SREM) e **{ssem_n:,}** "
-                    f"respostas (SSEM){grant_txt}."
+                hero_lead(
+                    f"{srem_n + ssem_n:,}",
+                    "mensagens de prioridade trocadas entre veículos prioritários e "
+                    f"semáforos — <strong>{srem_n:,}</strong> pedidos (SREM) e "
+                    f"<strong>{ssem_n:,}</strong> respostas (SSEM){grant_html}.",
                 )
             st.markdown(
                 """
@@ -1971,7 +2719,8 @@ elif _active == "C-ITS":
                 unsafe_allow_html=True,
             )
             st.caption(
-                "É esta conversa V2X (vehicle-to-everything) que alimenta o motor de decisão TSP."
+                "Camada de comunicação V2X que fornece, em tempo real, os dados de entrada "
+                "do motor de decisão TSP."
             )
 
             section("Volume de mensagens C-ITS por tipo")
@@ -2033,49 +2782,153 @@ elif _active == "C-ITS":
                 mc4.metric("Taxa de entrega", rate, border=True)
                 if mt.get("dropped", 0) == 0:
                     insight(
-                        "Taxa de entrega: <strong>100%</strong> — nenhuma mensagem perdida no canal C-ITS simulado."
+                        "Entrega de <strong>100%</strong>: nesta corrida o canal V2X está "
+                        "configurado como ideal (sem perdas, latência ou jitter), por isso o valor "
+                        "é esperado <em>por construção</em> — um sanity-check ao transporte, não uma "
+                        "robustez emergente. Modelar perda/latência exige activar o transporte na "
+                        "configuração C-ITS."
                     )
+
+            section("Latência do protocolo (SREM → SSEM)")
+            latency = summ.get("cits_latency_ms")
+            if not latency:
+                # Reports gerados antes deste KPI não trazem a latência no sumário;
+                # calcula-se na hora a partir do JSONL da run (sem re-correr SUMO).
+                _ep = (demo.get("evidence_paths") or {}).get(sel_cits_run) or {}
+                _root = _ep.get("root")
+                if _root:
+                    _jsonl = Path(_root) / "outputs" / "cits_messages.jsonl"
+                    if _jsonl.exists():
+                        latency = _cits_latency_from_jsonl(str(_jsonl), _jsonl.stat().st_mtime)
+            proc = (latency or {}).get("srem_to_processing") or {}
+            final = (latency or {}).get("srem_to_final") or {}
+
+            def _ms_to_s(ms) -> str:
+                return f"{ms / 1000:.1f} s" if isinstance(ms, (int, float)) else "—"
+
+            if proc.get("count") or final.get("count"):
+                la1, la2 = st.columns(2)
+                la1.metric(
+                    "SREM → processamento (médio)",
+                    _ms_to_s(proc.get("avg")),
+                    help="Tempo simulado médio até o RSU acusar o pedido (processing). "
+                    f"Mín {_ms_to_s(proc.get('min'))} · máx {_ms_to_s(proc.get('max'))} · "
+                    f"n={proc.get('count', 0)} pares.",
+                    border=True,
+                )
+                la2.metric(
+                    "SREM → resposta final (médio)",
+                    _ms_to_s(final.get("avg")),
+                    help="Tempo simulado médio até à decisão final (concedido/recusado). "
+                    f"Mín {_ms_to_s(final.get('min'))} · máx {_ms_to_s(final.get('max'))} · "
+                    f"n={final.get('count', 0)} pares.",
+                    border=True,
+                )
+                insight(
+                    "Medido em <strong>tempo de simulação</strong> a partir do "
+                    "<code>generation_time_ms</code> das mensagens (do primeiro SREM de um pedido "
+                    "até ao SSEM). Como o canal de transporte é ideal (sem latência de rede), "
+                    "isto reflecte o tempo de <strong>resolução do pedido</strong> ao longo da "
+                    "aproximação do autocarro — não latência de comunicação."
+                )
+            else:
+                st.caption("Sem pares SREM→SSEM suficientes para medir latência neste cenário.")
 
             section("Ciclo de vida dos pedidos de prioridade (SREM/SSEM)")
             prl = summ.get("priority_request_lifecycle", {})
             if prl:
-                lifecycle = {
-                    "Tracked": prl.get("tracked_requests", 0),
-                    "Granted": prl.get("granted_requests", 0),
-                    "Cleared": prl.get("cleared_requests", 0),
-                    "Expired": prl.get("expired_requests", 0),
-                }
-                df_prl = pd.DataFrame(
-                    {"Estado": list(lifecycle.keys()), "Pedidos": list(lifecycle.values())}
-                )
-                fig_prl = px.bar(
-                    df_prl,
-                    x="Estado",
-                    y="Pedidos",
-                    color="Estado",
-                    color_discrete_sequence=["#1d6ef5", "#22c55e", "#94a3b8", "#ef4444"],
-                    height=300,
-                )
-                fig_prl.update_layout(showlegend=False)
-                chart_layout(fig_prl, "Pedidos de prioridade — estados no ciclo de vida")
-                st.plotly_chart(fig_prl, width="stretch", config={"displayModeBar": False})
-                insight(
-                    "<strong>Granted</strong> = prioridade concedida. <strong>Cleared</strong> = "
-                    "pedido concluído (autocarro passou). <strong>Expired</strong> = timeout sem "
-                    "concessão. Granted/Tracked = taxa de sucesso do TSP."
-                )
-
-            gc = summ.get("green_compensation", {})
-            if gc.get("enabled"):
-                section("Compensação de verde (equidade)")
-                g1, g2, g3 = st.columns(3)
-                g1.metric("Eventos de compensação", gc.get("events", 0), border=True)
-                g2.metric("Verde concedido (s)", fmt(gc.get("granted_s_total")), border=True)
-                g3.metric("Verde recuperado (s)", fmt(gc.get("reclaimed_s_total")), border=True)
-                insight(
-                    'A compensação devolve nos ciclos seguintes o verde "emprestado" às outras '
-                    "fases para dar prioridade ao autocarro, mantendo a equidade semafórica."
-                )
+                tracked = prl.get("tracked_requests") or 0
+                granted = prl.get("granted_requests") or 0
+                # `by_status` parte os pedidos seguidos pelo ESTADO FINAL
+                # (resolvido + expirado = seguidos). Os campos cleared_requests /
+                # expired_requests do sumário são contadores de eventos cumulativos
+                # (incrementam a cada passo em que um pedido limpa/expira) e por isso
+                # excedem `tracked` — não servem para o gráfico de estados.
+                by_status = prl.get("by_status") or {}
+                cleared = by_status.get("cleared", 0)
+                expired = by_status.get("expired", 0)
+                active = prl.get("active_requests") or 0
+                if tracked:
+                    grant_rate = granted / tracked * 100
+                    lc1, lc2, lc3, lc4 = st.columns(4)
+                    lc1.metric(
+                        "Pedidos seguidos",
+                        f"{tracked}",
+                        help="Pedidos de prioridade únicos (SREM) seguidos até ao desfecho final.",
+                        border=True,
+                    )
+                    lc2.metric(
+                        "Concedidos",
+                        f"{granted}",
+                        help=f"Pedidos que receberam prioridade (verde). Taxa de concessão {grant_rate:.0f}%.",
+                        border=True,
+                    )
+                    lc3.metric(
+                        "Resolvidos",
+                        f"{cleared}",
+                        help="Estado final: o autocarro passou o cruzamento (pedido concluído).",
+                        border=True,
+                    )
+                    lc4.metric(
+                        "Expirados",
+                        f"{expired}",
+                        help="Estado final: timeout sem concessão (TTL excedido).",
+                        border=True,
+                    )
+                    # Honest partition: a single stacked bar where Resolvidos + Expirados
+                    # (+ Ativos, se os houver) somam exactamente os pedidos seguidos.
+                    bar_rows = [
+                        ("Resolvidos", cleared, COLOR_GOOD),
+                        ("Expirados", expired, COLOR_BAD),
+                    ]
+                    if active:
+                        bar_rows.append(("Ativos", active, "#94a3b8"))
+                    bar_rows = [(name, n, col) for name, n, col in bar_rows if n]
+                    if bar_rows:
+                        df_lc = pd.DataFrame(
+                            {
+                                "Desfecho": [r[0] for r in bar_rows],
+                                "Pedidos": [r[1] for r in bar_rows],
+                                "_": ["Desfecho final"] * len(bar_rows),
+                            }
+                        )
+                        fig_lc = px.bar(
+                            df_lc,
+                            x="Pedidos",
+                            y="_",
+                            color="Desfecho",
+                            orientation="h",
+                            text="Pedidos",
+                            color_discrete_map={r[0]: r[2] for r in bar_rows},
+                            height=200,
+                        )
+                        fig_lc.update_traces(
+                            textposition="inside",
+                            insidetextanchor="middle",
+                            textfont={"size": 13, "color": "white"},
+                            hovertemplate="%{fullData.name}: %{x} pedidos<extra></extra>",
+                        )
+                        fig_lc.update_layout(
+                            barmode="stack",
+                            legend_title="",
+                            margin={"t": 44, "b": 16, "l": 8, "r": 8},
+                        )
+                        fig_lc.update_yaxes(title_text="", showticklabels=False)
+                        fig_lc.update_xaxes(title_text="")
+                        chart_layout(fig_lc, f"Desfecho dos {tracked} pedidos seguidos", height=200)
+                        st.plotly_chart(fig_lc, width="stretch", config={"displayModeBar": False})
+                    _parts = cleared + expired + active
+                    _eq = (
+                        "= todos os pedidos seguidos"
+                        if _parts == tracked
+                        else f"de {tracked} seguidos"
+                    )
+                    insight(
+                        f"<strong>Resolvidos + Expirados = {cleared} + {expired} = {_parts}</strong> {_eq}. "
+                        f"<strong>Concedidos</strong> ({granted}) é o subconjunto que recebeu prioridade "
+                        f"— taxa de concessão {grant_rate:.0f}%. Um pedido pode ser concedido e ainda "
+                        "assim contar como «resolvido» quando o autocarro acaba por passar."
+                    )
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 4 — Baseline vs RL
@@ -2089,10 +2942,11 @@ elif _active == "vs RL":
         )
     else:
         matched = rl_comparison.get("matched_decision_count", 0) or 0
-        net_verdict = rl_comparison.get("network_impact_verdict", "—")
-        st.markdown(
-            f"#### Comparámos **{matched}** decisões da política RL com a baseline rule-based. "
-            f"Veredicto de impacto na rede: **{net_verdict}**."
+        net_verdict = rl_comparison.get("network_impact_verdict") or "—"
+        hero_lead(
+            f"{matched}",
+            "decisões da política RL comparadas com a baseline rule-based — veredicto "
+            f"de impacto na rede: <strong>{net_verdict}</strong>.",
         )
         st.caption(
             "A política RL é treinada offline e avaliada contra a regra heurística; aqui vê-se "
@@ -2103,7 +2957,7 @@ elif _active == "vs RL":
         rc1.metric("Decisões comparadas", matched, border=True)
         rc2.metric("Veredicto de rede", net_verdict, border=True)
         rc3.metric(
-            "Tipo de avaliação", rl_comparison.get("evaluation", "—").replace("_", " "), border=True
+            "Tipo de avaliação", (rl_comparison.get("evaluation") or "—").replace("_", " "), border=True
         )
 
         section("Distribuição de veredictos por decisão")
@@ -2115,7 +2969,7 @@ elif _active == "vs RL":
                 x="Veredicto",
                 y="Contagem",
                 color="Veredicto",
-                color_discrete_sequence=["#22c55e", "#ef4444", "#94a3b8", "#f59e0b"],
+                color_discrete_sequence=[COLOR_GOOD, COLOR_BAD, "#94a3b8", "#f59e0b"],
                 height=320,
             )
             fig_vc.update_layout(showlegend=False)
@@ -2152,13 +3006,13 @@ elif _active == "vs RL":
 # TAB 5 — Scenarios
 # ═══════════════════════════════════════════════════════════════════════════════
 
-elif _active == "Cenários":
+elif _active == "KPIs":
     scenario_roots = discover_scenario_report_roots(REPORTS)
     dataset_labels = {
-        "ingolstadt": "Ingolstadt city-wide reference",
-        "synthetic": "Synthetic corridor demonstrator",
+        "ingolstadt": "Ingolstadt city-wide (referência real)",
+        "synthetic": "Corredor sintético — Boavista",
     }
-    dataset_ids = list(scenario_roots) or ["ingolstadt"]
+    dataset_ids = list(scenario_roots) or ["synthetic"]
     default_dataset = default_scenario_dataset(REPORTS)
     default_idx = dataset_ids.index(default_dataset) if default_dataset in dataset_ids else 0
     selected_dataset = st.selectbox(
@@ -2168,6 +3022,22 @@ elif _active == "Cenários":
         format_func=lambda item: dataset_labels.get(item, item),
         key="scenario_dataset",
     )
+    st.caption("Dataset activo · " + dataset_provenance(selected_dataset))
+
+    # Drill-down sempre acessível para a comparação de estratégias do corredor
+    # demonstrador (baseline vs TSP), independente do estado dos cenários.
+    _dlc, _ = st.columns([2, 3])
+    with _dlc:
+        if st.button(
+            "Comparação de estratégias · corredor demonstrador →",
+            key="goto_demo",
+            width="stretch",
+            help="Vista detalhada baseline vs TSP no corredor demonstrador. "
+            "A análise RL dedicada está na tab «vs RL».",
+        ):
+            st.session_state.active_tab = "Demonstrador"
+            st.rerun()
+
     scenario_dir = scenario_roots.get(selected_dataset, REPORTS / "ingolstadt")
     scen_names = (
         sorted(p.name for p in scenario_dir.iterdir() if p.is_dir())
@@ -2181,13 +3051,16 @@ elif _active == "Cenários":
             "disponível se existirem reports em <code>reports/scenarios</code>."
         )
     else:
-        # ── load every scenario/run-type/seed into one long dataframe ─────────
-        rows = load_scenario_kpi_rows(scenario_dir, vehicle_cls, KPI_META)
+        # ── rich per-run KPI table: every scope from each kpis.json ───────────
+        # Unlike the legacy single-class loader, this reads the whole kpis.json so
+        # we can juxtapose bus vs general traffic, queues, safety and air quality
+        # from the same run. Source of truth: reports/<dataset>/*/*/seed_*/kpis.json.
+        table_rows = scenario_run_table(scenario_dir)
 
-        if not rows:
+        if not table_rows:
             st.info(
-                f"Cenários presentes mas sem KPIs para a classe '{vehicle_cls_label}'. "
-                "Experimenta 'Todos os veículos' ou 'Autocarros'."
+                "Cenários presentes mas sem KPIs legíveis nos kpis.json. "
+                "Corre a suite para (re)gerar os resultados emparelhados baseline vs TSP."
             )
         else:
             # ── single injected <style> block for this tab ────────────────────
@@ -2221,27 +3094,24 @@ elif _active == "Cenários":
 .scen-obj-chips { display:flex; flex-wrap:wrap; gap:0.4rem; margin-top:0.85rem; }
 .scen-chip { background:#eef2ff; color:#4338ca; border:1px solid #e0e7ff; border-radius:99px;
              padding:0.18rem 0.65rem; font-size:11.5px; font-weight:500; }
+.class-tag { font-size:13px; font-weight:700; color:#0f172a; margin:0.4rem 0 0.2rem; }
 </style>
 """,
                 unsafe_allow_html=True,
             )
 
-            df_all = pd.DataFrame(rows)
-            run_types_all = sorted(df_all["Run type"].unique())
+            GOOD, BAD, GREY = "#16a34a", "#dc2626", "#94a3b8"
+            BASE_COL, TSP_COL = "#64748b", "#2563eb"
+
+            tdf = pd.DataFrame(table_rows)
+            run_types_all = sorted(tdf["Run type"].unique())
             baseline_rt = next((r for r in run_types_all if "baseline" in r), None)
             tsp_rt = next((r for r in run_types_all if "tsp" in r), None)
-            n_scen = df_all["Cenário"].nunique()
+            scen_list = sorted(tdf["Cenário"].unique())
+            n_scen = len(scen_list)
 
-            label_map = {
-                "bunched_buses": "Bunching de autocarros",
-                "emergency_vehicle_conflict": "Conflito c/ emergência",
-                "congested_am_peak": "Congestionamento AM",
-                "baseline_am_peak": "Pico AM (base)",
-                "baseline_off_peak": "Fora de pico (base)",
-                "congested_delayed_bus": "Autocarro atrasado c/ congestionamento",
-                "cross_traffic_pressure": "Pressão tráfego cruzado",
-                "delayed_bus_westbound": "Autocarro atrasado sentido Oeste",
-            }
+            # ── label / catalog machinery (objective card = source of truth) ──
+            label_map = dict(SCENARIO_LABELS)
             # Scenario objectives come straight from the selected catalog
             # (configs/) — the source of truth — so the dashboard never invents
             # descriptions for the Ingolstadt reference set.
@@ -2298,498 +3168,460 @@ elif _active == "Cenários":
                 "lateral_impact_near_zero": "Impacto lateral quase nulo",
             }
 
-            # Lower-is-better metrics only: keeps the "negativo = melhoria" framing and
-            # the green=Δ<0 colouring valid. Speed is excluded here on purpose (it would
-            # invert that framing).
-            metric_keys = [
-                k
-                for k in [
-                    "mean_time_loss_s",
-                    "mean_waiting_time_s",
-                    "mean_duration_s",
-                    "p95_time_loss_s",
-                    "mean_depart_delay_s",
-                    "mean_stop_count",
-                    *EMISSION_METRICS,
-                ]
-                if k in df_all["metric_key"].values
+            # ── value accessor: mean over seeds for one cell ──────────────────
+            def _agg(scen, rt, scope, metric_key):
+                if rt is None:
+                    return None
+                mask = (
+                    (tdf["Cenário"] == scen)
+                    & (tdf["Run type"] == rt)
+                    & (tdf["scope"] == scope)
+                    & (tdf["metric_key"] == metric_key)
+                )
+                vals = tdf.loc[mask, "Valor"]
+                return float(vals.mean()) if len(vals) else None
+
+            def _absdelta(b, t):
+                return (t - b) if (b is not None and t is not None) else None
+
+            # ── headline synthesis across all scenarios ───────────────────────
+            sb = scenario_scoreboard(table_rows)
+            if sb["n_scenarios"]:
+                med = sb["bus_delta_median_pct"]
+                if med is not None and med < 0:
+                    hero_lead(
+                        f"{sb['bus_improved']}/{sb['n_scenarios']}",
+                        "cenários em que o TSP <strong>reduz</strong> a perda de tempo do "
+                        f"autocarro (mediana {med:+.1f}%), com segurança preservada em "
+                        f"{sb['safety_clean']}/{sb['n_scenarios']}.",
+                        tone="is-good",
+                    )
+                elif med is not None and med > 0:
+                    hero_lead(
+                        f"{sb['bus_improved']}/{sb['n_scenarios']}",
+                        "cenários com ganho no autocarro — efeito global misto "
+                        f"(mediana {med:+.1f}%). Ver o detalhe por cenário abaixo.",
+                        tone="is-bad",
+                    )
+                render_scoreboard(sb)
+
+            # ═════════════════════════════════════════════════════════════════
+            # ① VISÃO GERAL — todos os cenários de relance
+            # ═════════════════════════════════════════════════════════════════
+            section(f"Visão geral — impacto do TSP nos {n_scen} cenários")
+            ov_rows = []
+            for scen in scen_list:
+                bus_b = _agg(scen, baseline_rt, "buses", "mean_time_loss_s")
+                bus_t = _agg(scen, tsp_rt, "buses", "mean_time_loss_s")
+                gen_b = _agg(scen, baseline_rt, "general_traffic", "mean_time_loss_s")
+                gen_t = _agg(scen, tsp_rt, "general_traffic", "mean_time_loss_s")
+                q_b = _agg(scen, baseline_rt, "network", "max_queue_vehicles")
+                q_t = _agg(scen, tsp_rt, "network", "max_queue_vehicles")
+                eb_b = _agg(scen, baseline_rt, "safety", "emergency_braking")
+                eb_t = _agg(scen, tsp_rt, "safety", "emergency_braking")
+                coll_t = _agg(scen, tsp_rt, "safety", "collisions")
+                jam_t = _agg(scen, tsp_rt, "safety", "teleports_jam")
+                bus_d = pct(bus_b, bus_t)
+                gen_d = pct(gen_b, gen_t)
+                gen_penalty = _absdelta(gen_b, gen_t)
+                # Safety/net verdict MIRRORS the repo's own gates
+                # (run_sumo_scenario.compare_scenario_runs): collisions=0 ∧
+                # jam-teleports=0, and the general-traffic penalty must stay ≤ ~90 s.
+                safe = (not coll_t) and (not jam_t)
+                if bus_d is None:
+                    verdict = "—"
+                elif bus_d < 0 and (gen_penalty is None or gen_penalty <= 90) and safe:
+                    verdict = "✅ favorável"
+                elif bus_d > 0:
+                    verdict = "⚠️ bus pior"
+                elif not safe:
+                    verdict = "⛔ segurança"
+                else:
+                    verdict = "➖ neutro"
+                ov_rows.append(
+                    {
+                        "Cenário": label_map.get(scen, scen),
+                        "Bus Δ% perda tempo": bus_d,
+                        "Geral Δ% perda tempo": gen_d,
+                        "Fila máx Δ": _absdelta(q_b, q_t),
+                        "Trav. emerg. Δ": _absdelta(eb_b, eb_t),
+                        "Segurança": "✓" if safe else "✗",
+                        "Veredicto": verdict,
+                    }
+                )
+            ov = pd.DataFrame(ov_rows)
+            delta_cols = [
+                "Bus Δ% perda tempo",
+                "Geral Δ% perda tempo",
+                "Fila máx Δ",
+                "Trav. emerg. Δ",
             ]
-            metric_options = [KPI_META[k][0] for k in metric_keys]
-            label_to_key = {KPI_META[k][0]: k for k in metric_keys}
 
-            # ── header placeholder (filled after the controls choose the metric) ─
-            header_box = st.container()
+            def _delta_color(v):
+                # green = improvement (TSP below baseline); red = cost.
+                if v is None or (isinstance(v, float) and pd.isna(v)):
+                    return ""
+                if v < 0:
+                    return "background-color:#dcfce7;color:#15803d"
+                if v > 0:
+                    return "background-color:#fee2e2;color:#b91c1c"
+                return ""
 
-            # ── unified controls — drive BOTH the overview chart and the detail ─
-            col_metric, col_scenario, col_sort = st.columns([2, 2, 1], vertical_alignment="bottom")
-            with col_metric:
-                selected_metric = st.selectbox("Métrica", metric_options, key="scen_metric")
-            with col_scenario:
+            def _style_overview(frame):
+                # Styler for COLOURS only; number formatting is column_config's job
+                # (per the data-display guidance).
+                styles = pd.DataFrame("", index=frame.index, columns=frame.columns)
+                for col in delta_cols:
+                    if col in frame.columns:
+                        styles[col] = frame[col].map(_delta_color)
+                return styles
+
+            st.dataframe(
+                ov.style.apply(_style_overview, axis=None),
+                width="stretch",
+                hide_index=True,
+                column_config={
+                    "Bus Δ% perda tempo": st.column_config.NumberColumn(
+                        format="%+.1f%%", help="Variação da perda de tempo dos autocarros (TSP vs baseline)."
+                    ),
+                    "Geral Δ% perda tempo": st.column_config.NumberColumn(
+                        format="%+.1f%%", help="Variação da perda de tempo do tráfego geral — o custo do TSP."
+                    ),
+                    "Fila máx Δ": st.column_config.NumberColumn(
+                        format="%+.0f", help="Variação da fila máxima na rede (veículos)."
+                    ),
+                    "Trav. emerg. Δ": st.column_config.NumberColumn(
+                        format="%+.0f", help="Variação do nº de travagens de emergência."
+                    ),
+                },
+            )
+            insight(
+                "Verde = melhoria (TSP abaixo do baseline) · vermelho = custo. "
+                "O <strong>veredicto</strong> espelha os gates do próprio pipeline: "
+                "autocarro melhora, tráfego geral não penalizado &gt; ~90&nbsp;s, "
+                "sem colisões nem teleports por gridlock."
+            )
+            download_csv(ov, "kpis_visao_geral.csv", key="dl_overview")
+            st.caption(
+                "Estimativas pontuais, single-seed (seed 57). Sem barras de erro — "
+                "não há réplicas em disco para intervalos de confiança."
+            )
+
+            # ═════════════════════════════════════════════════════════════════
+            # ② DETALHE POR CENÁRIO
+            # ═════════════════════════════════════════════════════════════════
+            section("Detalhe por cenário")
+            col_scen, col_class = st.columns([3, 2], vertical_alignment="bottom")
+            with col_scen:
                 selected_scenario = st.selectbox(
-                    "Cenário (detalhe)",
-                    scen_names,
+                    "Cenário",
+                    scen_list,
                     format_func=lambda s: label_map.get(s, s),
                     key="scen_detail",
                 )
-            with col_sort:
-                sort_asc = st.toggle("Ordenar ↑", value=False, key="scen_sort")
-            sel_metric_key = label_to_key[selected_metric]
-
-            # ── per-scenario Δ% (TSP vs baseline) for the selected metric ───────
-            dfm = df_all[df_all["metric_key"] == sel_metric_key]
-            piv = dfm.groupby(["Cenário", "Run type"])["Valor"].mean().reset_index()
-            ddf = pd.DataFrame()
-            if baseline_rt and tsp_rt:
-                wide = piv.pivot(index="Cenário", columns="Run type", values="Valor")
-                drows = []
-                for scen, r in wide.iterrows():
-                    b, t = r.get(baseline_rt), r.get(tsp_rt)
-                    if b and t is not None and b != 0:
-                        drows.append(
-                            {
-                                "scen": scen,
-                                "label": label_map.get(scen, scen),
-                                "delta": round((t - b) / abs(b) * 100, 1),
-                            }
-                        )
-                ddf = pd.DataFrame(drows)
-
-            # ── emission deltas (CO2/fuel; raw and normalized views) ──────────
-            em_delta_rows = []
-            if baseline_rt and tsp_rt:
-                for metric_key in [
-                    "total_co2_mg",
-                    "total_co2_mg_per_vehicle",
-                    "total_co2_mg_per_vehicle_km",
-                    "total_fuel_mg",
-                    "total_fuel_mg_per_vehicle",
-                    "total_fuel_mg_per_vehicle_km",
-                ]:
-                    if metric_key not in df_all["metric_key"].values:
-                        continue
-                    em_label, em_unit, _ = KPI_META.get(
-                        metric_key, (metric_key, "", "")
-                    )
-                    em_df = df_all[df_all["metric_key"] == metric_key]
-                    em_piv = em_df.groupby(["Cenário", "Run type"])["Valor"].mean().reset_index()
-                    em_wide = em_piv.pivot(index="Cenário", columns="Run type", values="Valor")
-                    for scen, row in em_wide.iterrows():
-                        b = row.get(baseline_rt)
-                        t = row.get(tsp_rt)
-                        if b is None or t is None or b == 0:
-                            continue
-                        em_delta_rows.append(
-                            {
-                                "Métrica": em_label,
-                                "Unidade": em_unit,
-                                "Normalização": (
-                                    "Por veículo"
-                                    if "vehicle_km" not in metric_key
-                                    else "Por veículo-km"
-                                ),
-                                "Cenário": label_map.get(scen, scen),
-                                "Baseline": b,
-                                "TSP": t,
-                                "Δ abs": t - b,
-                                "Δ (%)": round((t - b) / abs(b) * 100, 1),
-                            }
-                        )
-
-            em_summary = pd.DataFrame(em_delta_rows)
-
-            # ── header (title · class · best/worst badges) ──────────────────────
-            with header_box:
-                badges = ""
-                if not ddf.empty:
-                    b_row = ddf.loc[ddf["delta"].idxmin()]  # most negative = biggest gain
-                    w_row = ddf.loc[ddf["delta"].idxmax()]  # most positive = worst case
-                    badges = (
-                        f'<span class="badge-green">Maior ganho: {b_row["label"]} '
-                        f"({b_row['delta']:+.1f}%)</span>"
-                        f'<span class="badge-red">Pior caso: {w_row["label"]} '
-                        f"({w_row['delta']:+.1f}%)</span>"
-                    )
-                st.markdown(
-                    '<div class="scenario-header">'
-                    f'<div class="scenario-title">Impacto do TSP nos {n_scen} cenários operacionais</div>'
-                    '<div class="scenario-sub">Comparação baseline vs TSP por situação de tráfego'
-                    f" · classe: {vehicle_cls_label}</div>"
-                    f'<div class="scenario-badges">{badges}</div>'
-                    "</div>",
-                    unsafe_allow_html=True,
+            with col_class:
+                st.selectbox(
+                    "Classe de veículo (filtro global)",
+                    options=CLASS_OPTIONS,
+                    index=CLASS_OPTIONS.index(selected_class),
+                    key="kpis_class_select",
+                    on_change=_sync_vehicle_class_kpis,
+                    help="Aplica-se às outras tabs. O trade-off abaixo mostra sempre "
+                    "autocarro e tráfego geral, independente deste filtro.",
                 )
+            sel = selected_scenario
+            sel_label = label_map.get(sel, sel)
 
-            # ── Emission-focused summary: CO2/Fuel TSP vs Baseline (selected scenario) ──
-            if em_summary.empty:
-                st.info("Sem pares baseline + TSP com KPIs de emissões disponíveis para esta classe.")
-            else:
-                sel_label = label_map.get(selected_scenario, selected_scenario)
-                em_summary_display = em_summary[em_summary["Cenário"] == sel_label].copy()
-                em_summary_display = em_summary_display.sort_values(["Normalização", "Métrica"])
-                em_summary_display["Baseline"] = em_summary_display.apply(
-                    lambda row: fmt(row["Baseline"], str(row["Unidade"])), axis=1
-                )
-                em_summary_display["TSP"] = em_summary_display.apply(
-                    lambda row: fmt(row["TSP"], str(row["Unidade"])), axis=1
-                )
-                em_summary_display["Δ abs"] = em_summary_display.apply(
-                    lambda row: fmt(row["Δ abs"], str(row["Unidade"])), axis=1
-                )
-                em_summary_display["Δ (%)"] = em_summary_display["Δ (%)"].map(lambda x: f"{x:+.1f}%")
-                em_summary_display["Métrica"] = em_summary_display["Métrica"] + " (" + em_summary_display[
-                    "Unidade"
-                ] + ")"
-
-                section(f"Emissões TSP vs Baseline — {sel_label}")
-                st.markdown(
-                    "<p style='font-size:11px;font-weight:600;letter-spacing:0.08em;"
-                    "color:#9ca3af;text-transform:uppercase;margin:0 0 0.5rem'>"
-                    "Valores negativos = melhoria (TSP abaixo do baseline)"
-                    "</p>",
-                    unsafe_allow_html=True,
-                )
-                if em_summary_display.empty:
-                    st.info(f"Sem dados de emissões para o cenário «{sel_label}».")
-                else:
-                    st.dataframe(
-                        em_summary_display[
-                            ["Métrica", "Normalização", "Baseline", "TSP", "Δ abs", "Δ (%)"]
-                        ],
-                        width="stretch",
-                        hide_index=True,
-                    )
-
-                em_chart = em_summary[em_summary["Cenário"] == sel_label].copy()
-                em_chart["Métrica label"] = em_chart["Métrica"] + "\n(" + em_chart["Unidade"] + ")"
-                if not em_chart.empty:
-                    em_melt = em_chart.melt(
-                        id_vars=["Métrica label", "Normalização", "Unidade"],
-                        value_vars=["Baseline", "TSP"],
-                        var_name="Tipo",
-                        value_name="Valor",
-                    )
-                    fig_em = px.bar(
-                        em_melt,
-                        x="Tipo",
-                        y="Valor",
-                        color="Tipo",
-                        facet_col="Métrica label",
-                        facet_col_wrap=3,
-                        barmode="group",
-                        color_discrete_map={"Baseline": "#64748b", "TSP": "#2563eb"},
-                        height=420,
-                    )
-                    fig_em.update_layout(
-                        showlegend=True,
-                        legend_title="",
-                        margin={"l": 50, "r": 20, "t": 50, "b": 24},
-                    )
-                    fig_em.update_yaxes(title_text="")
-                    fig_em.update_xaxes(title_text="")
-                    fig_em.update_traces(
-                        texttemplate="%{y:.0f}",
-                        textposition="outside",
-                        hovertemplate="%{x}: %{y:.0f}<extra></extra>",
-                    )
-                    fig_em.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
-                    chart_layout(fig_em, f"CO2 / Combustível — Baseline vs TSP · {sel_label}", height=440)
-                    st.plotly_chart(fig_em, width="stretch", config={"displayModeBar": False})
-
-            # ── scenario detail — placed directly under the controls that drive
-            #    it. Order within: objective card + headline cards → all-scenarios
-            #    overview → this scenario's raw stats table + export. ─────────────
-            st.markdown("---")
-            st.markdown(
-                "<p style='font-size:11px;font-weight:600;letter-spacing:0.08em;"
-                "color:#9ca3af;text-transform:uppercase;margin-bottom:0.5rem'>"
-                "DETALHE POR CENÁRIO</p>",
-                unsafe_allow_html=True,
-            )
-
-            # ── scenario detail panel ───────────────────────────────────────────
-            st.markdown(
-                f"#### {label_map.get(selected_scenario, selected_scenario)} · {selected_metric}"
-            )
-
-            # ── dynamic objective card (what this scenario is for) ──────────────
-            # Reacts to the "Cenário (detalhe)" selectbox; content is read verbatim
-            # from the scenario catalog so it stays in sync with the source of truth.
-            meta = scen_meta.get(selected_scenario) or {}
-            if meta:
-                rows_html = ""
-                if meta.get("expected_use"):
-                    rows_html += (
+            # ── scenario objective card (catalog source of truth) ─────────────
+            _scen_meta = scen_meta.get(sel) or {}
+            if _scen_meta:
+                _rows_html = ""
+                if _scen_meta.get("expected_use"):
+                    _rows_html += (
                         '<div class="scen-obj-row"><div class="scen-obj-lbl">Objetivo</div>'
-                        f'<p class="scen-obj-txt">{meta["expected_use"].strip()}</p></div>'
+                        f'<p class="scen-obj-txt">{_scen_meta["expected_use"].strip()}</p></div>'
                     )
-                if meta.get("realism_basis"):
-                    rows_html += (
+                if _scen_meta.get("realism_basis"):
+                    _rows_html += (
                         '<div class="scen-obj-row"><div class="scen-obj-lbl muted">'
-                        'Porquê é realista</div>'
-                        f'<p class="scen-obj-txt muted">{meta["realism_basis"].strip()}</p></div>'
+                        "Porquê é realista</div>"
+                        f'<p class="scen-obj-txt muted">{_scen_meta["realism_basis"].strip()}</p></div>'
                     )
-                chips_html = ""
-                focus = meta.get("kpi_focus") or []
-                if focus:
-                    chips = "".join(
+                _chips_html = ""
+                _focus = _scen_meta.get("kpi_focus") or []
+                if _focus:
+                    _chips = "".join(
                         f'<span class="scen-chip">'
                         f'{kpi_focus_pt.get(k, k.replace("_", " ").capitalize())}</span>'
-                        for k in focus
+                        for k in _focus
                     )
-                    chips_html = (
+                    _chips_html = (
                         '<div class="scen-obj-row"><div class="scen-obj-lbl muted">Foco de KPIs'
-                        f'</div><div class="scen-obj-chips">{chips}</div></div>'
+                        f'</div><div class="scen-obj-chips">{_chips}</div></div>'
                     )
-                icon = scen_icon.get(selected_scenario, "📊")
-                desc = (meta.get("description") or "").strip()
+                _icon = scen_icon.get(sel, "📊")
+                _desc = (_scen_meta.get("description") or "").strip()
                 st.markdown(
                     '<div class="scen-obj">'
-                    f'<div class="scen-obj-head"><span class="scen-obj-icon">{icon}</span>'
-                    f'<span class="scen-obj-desc">{desc}</span></div>'
-                    f"{rows_html}{chips_html}</div>",
+                    f'<div class="scen-obj-head"><span class="scen-obj-icon">{_icon}</span>'
+                    f'<span class="scen-obj-desc">{_desc}</span></div>'
+                    f"{_rows_html}{_chips_html}</div>",
                     unsafe_allow_html=True,
                 )
 
-            sdf = df_all[
-                (df_all["Cenário"] == selected_scenario) & (df_all["metric_key"] == sel_metric_key)
-            ]
-            arm_vals = sdf.groupby("Run type")["Valor"].mean()
-            bval = arm_vals.get(baseline_rt) if baseline_rt else None
-            tval = arm_vals.get(tsp_rt) if tsp_rt else None
-            unit = KPI_META[sel_metric_key][1]
-            unit_disp = unit if unit else "—"
+            # ── ▸ Trade-off: autocarro vs tráfego geral ───────────────────────
+            section(f"Trade-off TSP · {sel_label}")
+            _tradeoff = ["mean_time_loss_s", "mean_waiting_time_s", "mean_duration_s"]
 
-            detail_ok = not (bval is None or tval is None or bval == 0)
-            if not detail_ok:
-                st.info("Sem valores baseline + TSP para este cenário e métrica nesta classe.")
-            else:
-                delta = (tval - bval) / abs(bval) * 100
-                improved = delta < 0  # lower-is-better metrics only on this tab
-                tone = "stat-positive" if improved else "stat-negative"
-                c1, c2, c3 = st.columns(3)
-                c1.markdown(
-                    '<div class="stat-card"><div class="stat-label">Baseline</div>'
-                    f'<div class="stat-value stat-neutral">{bval:.1f}</div>'
-                    f'<div class="stat-unit">{unit_disp}</div></div>',
-                    unsafe_allow_html=True,
-                )
-                c2.markdown(
-                    '<div class="stat-card"><div class="stat-label">TSP</div>'
-                    f'<div class="stat-value {tone}">{tval:.1f}</div>'
-                    f'<div class="stat-unit">{unit_disp}</div></div>',
-                    unsafe_allow_html=True,
-                )
-                c3.markdown(
-                    '<div class="stat-card"><div class="stat-label">Δ variação</div>'
-                    f'<div class="stat-value {tone}">{delta:+.1f}%</div>'
-                    '<div class="stat-unit">face ao baseline</div></div>',
-                    unsafe_allow_html=True,
-                )
-
-                n_seeds = int(sdf.groupby("Run type")["Seed"].nunique().max() or 0)
-                if n_seeds <= 1:
-                    st.info(
-                        "Com 1 seed por arm, estes valores são determinísticos — sem intervalo "
-                        "de confiança. Para análise estatística robusta, corre com múltiplos "
-                        "seeds (--seeds 57 98 99)."
-                    )
-                else:
-                    st.info(
-                        f"{n_seeds} seeds por arm — a tabela de estatísticas descritivas resume "
-                        "média e dispersão entre seeds."
+            def _render_class_row(scope_key):
+                cols = st.columns(len(_tradeoff))
+                for col, mk in zip(cols, _tradeoff, strict=False):
+                    render_kpi_card(
+                        col,
+                        mk,
+                        _agg(sel, tsp_rt, scope_key, mk),
+                        _agg(sel, baseline_rt, scope_key, mk),
                     )
 
-            # ── all-scenarios overview (zoom out) — sits right after the selected
-            #    scenario's headline cards. Depends only on ddf, so it renders even
-            #    when the selected scenario has no paired data; the raw stats table
-            #    + export follow below. ───────────────────────────────────────────
-            st.markdown("---")
-            st.markdown(
-                "<p style='font-size:11px;font-weight:600;letter-spacing:0.08em;"
-                "color:#9ca3af;text-transform:uppercase;margin-bottom:0.5rem'>"
-                "VISÃO GERAL · COMPARAÇÃO ENTRE CENÁRIOS</p>",
-                unsafe_allow_html=True,
+            st.markdown('<div class="class-tag">🚌 Autocarro &nbsp;·&nbsp; baseline → TSP</div>', unsafe_allow_html=True)
+            _render_class_row("buses")
+            st.markdown('<div class="class-tag">🚗 Tráfego geral &nbsp;·&nbsp; baseline → TSP</div>', unsafe_allow_html=True)
+            _render_class_row("general_traffic")
+            insight(
+                "O TSP é um <strong>trade-off</strong>: ganha tempo para o autocarro, "
+                "idealmente sem penalizar o tráfego geral. Verde = melhoria, vermelho = custo "
+                "(cada cartão mostra o valor TSP e o delta vs baseline)."
             )
-            if ddf.empty:
-                st.info("Sem par baseline + TSP para calcular o impacto por cenário.")
-            else:
-                cdf = ddf.sort_values("delta", ascending=sort_asc)
-                vals = cdf["delta"].tolist()
-                lo, hi = min(vals + [0.0]), max(vals + [0.0])
-                pad = max(3.0, (hi - lo) * 0.18)
-                fig_d = go.Figure(
-                    go.Bar(
-                        x=cdf["delta"],
-                        y=cdf["label"],
-                        orientation="h",
-                        marker_color=["#16a34a" if d < 0 else "#dc2626" for d in cdf["delta"]],
-                        texttemplate="%{x:.1f}%",
-                        textposition="outside",
-                        cliponaxis=False,
-                        hovertemplate="%{y}: %{x:+.1f}%<extra></extra>",
-                    )
+
+            # ── ▸ Fiabilidade / cauda (P95) ───────────────────────────────────
+            section(f"Fiabilidade · {sel_label} — cauda da distribuição (P95)")
+            _rel = ["p95_time_loss_s", "p95_duration_s"]
+            st.markdown('<div class="class-tag">🚌 Autocarro</div>', unsafe_allow_html=True)
+            _rb = st.columns(len(_rel))
+            for col, mk in zip(_rb, _rel, strict=False):
+                render_kpi_card(col, mk, _agg(sel, tsp_rt, "buses", mk), _agg(sel, baseline_rt, "buses", mk))
+            st.markdown('<div class="class-tag">🚗 Tráfego geral</div>', unsafe_allow_html=True)
+            _rg = st.columns(len(_rel))
+            for col, mk in zip(_rg, _rel, strict=False):
+                render_kpi_card(col, mk, _agg(sel, tsp_rt, "general_traffic", mk), _agg(sel, baseline_rt, "general_traffic", mk))
+            insight(
+                "O P95 descreve o pior caso para 95% dos veículos. Aproximar o P95 da média "
+                "significa viagens mais previsíveis — não só mais rápidas."
+            )
+
+            # ── ▸ Saúde da rede & segurança ───────────────────────────────────
+            section(f"Saúde da rede & segurança · {sel_label}")
+            # Thresholds mirror scenario.sumo_quality_thresholds (identical across the
+            # suite) — the pipeline's own documented quality gates, not new criteria.
+            safety_specs = [
+                ("network", "max_queue_vehicles", "≤ 30", lambda t: t is None or t <= 30),
+                ("network", "edge_intervals_above_8_veh", "—", None),
+                ("safety", "teleports_total", "≤ 3", lambda t: t is None or t <= 3),
+                ("safety", "teleports_jam", "0", lambda t: not t),
+                ("safety", "collisions", "0", lambda t: not t),
+                ("safety", "emergency_braking", "≤ 150", lambda t: t is None or t <= 150),
+                ("safety", "max_waiting_to_insert", "≤ 150 s", lambda t: t is None or t <= 150),
+                ("safety", "final_waiting", "≤ 150", lambda t: t is None or t <= 150),
+            ]
+            srows = []
+            for scope_key, mk, thr, ok in safety_specs:
+                b = _agg(sel, baseline_rt, scope_key, mk)
+                t = _agg(sel, tsp_rt, scope_key, mk)
+                if b is None and t is None:
+                    continue
+                lbl, unit, _ = KPI_META.get(mk, (mk, "", ""))
+                state = "—"
+                if ok is not None and t is not None:
+                    state = "✓ ok" if ok(t) else "✗ excede"
+                srows.append(
+                    {
+                        "Indicador": lbl + (f" ({unit})" if unit else ""),
+                        "Baseline": b,
+                        "TSP": t,
+                        "Δ": _absdelta(b, t),
+                        "Limiar": thr,
+                        "Estado": state,
+                    }
                 )
-                fig_d.add_vline(x=0, line_color="#9ca3af", line_width=1.5, line_dash="dot")
-                fig_d.update_layout(
-                    paper_bgcolor="white",
-                    plot_bgcolor="#f8fafc",
-                    font={"family": "Inter, system-ui, sans-serif", "color": "#374151", "size": 11},
-                    margin={"l": 220, "r": 80, "t": 20, "b": 40},
-                    bargap=0.4,
-                    height=320,
-                    showlegend=False,
-                    xaxis_title="Δ% face ao baseline (negativo = melhoria)",
+            if srows:
+                st.dataframe(
+                    pd.DataFrame(srows),
+                    width="stretch",
+                    hide_index=True,
+                    column_config={
+                        "Baseline": st.column_config.NumberColumn(format="%.0f"),
+                        "TSP": st.column_config.NumberColumn(format="%.0f"),
+                        "Δ": st.column_config.NumberColumn(format="%+.0f"),
+                    },
                 )
-                fig_d.update_xaxes(
-                    range=[lo - pad, hi + pad],
-                    gridcolor="#f1f5f9",
-                    linecolor="#e2e8f0",
-                    zeroline=False,
-                    tickfont={"size": 11},
-                )
-                fig_d.update_yaxes(
-                    title="", tickfont={"size": 13}, gridcolor="#f1f5f9", linecolor="#e2e8f0"
-                )
-                st.plotly_chart(fig_d, width="stretch", config={"displayModeBar": False})
-                st.caption(
-                    "*Verde = o TSP melhora o cenário; vermelho = piora. Mostra onde a "
-                    "prioridade semafórica traz mais valor (autocarros atrasados, bunching) "
-                    "e onde tem custo.*"
+                insight(
+                    "Os limiares são os gates de qualidade do próprio pipeline "
+                    "(<code>scenario.sumo_quality_thresholds</code>). O objetivo do TSP é "
+                    "melhorar o autocarro <strong>sem</strong> empurrar nenhum destes para fora do limiar."
                 )
 
-            # ── per-scenario raw stats + export (the selected scenario's numbers,
-            #    kept below the overview so the headline cards lead) ──────────────
-            if detail_ok:
-                st.markdown("---")
-                st.markdown(
-                    f"**Estatísticas descritivas · {label_map.get(selected_scenario, selected_scenario)}**"
-                )
-                u = f" ({unit})" if unit else ""
-                stats = (
-                    sdf.groupby("Run type")["Valor"]
-                    .agg(["mean", "std", "min", "max", "count"])
-                    .rename(
-                        columns={
-                            "mean": f"Média{u}",
-                            "std": f"Desvio-padrão{u}",
-                            "min": f"Mín{u}",
-                            "max": f"Máx{u}",
-                            "count": "Seeds",
+            # ── ▸ Regularidade dos autocarros (headways) ──────────────────────
+            section(f"Regularidade dos autocarros · {sel_label} — headways")
+            hd = tdf[(tdf["Cenário"] == sel) & (tdf["scope"] == "headway")]
+            if hd.empty:
+                st.info("Sem dados de headway para este cenário.")
+            else:
+                lines = sorted(x for x in hd["Linha"].dropna().unique())
+
+                def _hv(line_id, rt, mk):
+                    if rt is None:
+                        return None
+                    m = (
+                        (tdf["Cenário"] == sel)
+                        & (tdf["scope"] == "headway")
+                        & (tdf.get("Linha") == line_id)
+                        & (tdf["Run type"] == rt)
+                        & (tdf["metric_key"] == mk)
+                    )
+                    vals = tdf.loc[m, "Valor"]
+                    return float(vals.mean()) if len(vals) else None
+
+                hrows = []
+                for ln in lines:
+                    hrows.append(
+                        {
+                            "Linha": ln,
+                            "Headway médio base (s)": _hv(ln, baseline_rt, "mean_headway_s"),
+                            "Headway médio TSP (s)": _hv(ln, tsp_rt, "mean_headway_s"),
+                            "Amplitude base (s)": _hv(ln, baseline_rt, "headway_amplitude_s"),
+                            "Amplitude TSP (s)": _hv(ln, tsp_rt, "headway_amplitude_s"),
                         }
                     )
+                hdf = pd.DataFrame(hrows)
+                st.dataframe(
+                    hdf,
+                    width="stretch",
+                    hide_index=True,
+                    column_config={
+                        c: st.column_config.NumberColumn(format="%.0f")
+                        for c in hdf.columns
+                        if c != "Linha"
+                    },
                 )
-                stats = stats.dropna(axis=1, how="all").round(2)
-                stats = stats.reset_index().rename(columns={"Run type": "Arm"})
-                stats["Arm"] = (
-                    stats["Arm"].map({baseline_rt: "Baseline", tsp_rt: "TSP"}).fillna(stats["Arm"])
+                amp = hdf[["Linha", "Amplitude base (s)", "Amplitude TSP (s)"]].melt(
+                    "Linha", var_name="Arm", value_name="Amplitude (s)"
                 )
-                if "Seeds" in stats.columns:
-                    stats["Seeds"] = stats["Seeds"].astype(int)
-                st.dataframe(stats, hide_index=True, width="stretch")
+                amp["Arm"] = amp["Arm"].map(
+                    {"Amplitude base (s)": "Baseline", "Amplitude TSP (s)": "TSP"}
+                )
+                fig_h = px.bar(
+                    amp.dropna(subset=["Amplitude (s)"]),
+                    x="Linha",
+                    y="Amplitude (s)",
+                    color="Arm",
+                    barmode="group",
+                    color_discrete_map={"Baseline": BASE_COL, "TSP": TSP_COL},
+                )
+                fig_h.update_layout(legend_title="", margin={"t": 44, "b": 30, "l": 8, "r": 8})
+                chart_layout(fig_h, f"Amplitude de headway por linha — {sel_label}", height=300)
+                st.plotly_chart(fig_h, width="stretch", config={"displayModeBar": False})
+                insight(
+                    "A amplitude (máx − mín) é um proxy <em>coarse</em> de bunching "
+                    "(poucas partidas por linha, só média/mín/máx em disco). "
+                    "Menor amplitude = serviço mais regular."
+                )
 
-                csv_bytes = stats.to_csv(index=False).encode("utf-8")
-                _, col_btn = st.columns([4, 1])
-                with col_btn:
-                    st.download_button(
-                        "⬇ Exportar CSV",
-                        data=csv_bytes,
-                        file_name=f"{selected_scenario}_{sel_metric_key}.csv",
-                        mime="text/csv",
-                        key="dl_scenario",
+            # ── ▸ Emissões & qualidade do ar ──────────────────────────────────
+            section(f"Emissões & qualidade do ar · {sel_label}")
+            em_species = [
+                ("total_co2_mg_per_vehicle_km", "CO2"),
+                ("total_fuel_mg_per_vehicle_km", "Combustível"),
+                ("total_nox_mg_per_vehicle_km", "NOx"),
+                ("total_pmx_mg_per_vehicle_km", "PMx"),
+            ]
+            erows = []
+            for mk, name in em_species:
+                b = _agg(sel, baseline_rt, "emissions", mk)
+                t = _agg(sel, tsp_rt, "emissions", mk)
+                if b is None and t is None:
+                    continue
+                erows.append({"Poluente": name, "Baseline": b, "TSP": t, "Δ (%)": pct(b, t)})
+            if not erows:
+                st.info("Sem dados de emissões para este cenário.")
+            else:
+                edf = pd.DataFrame(erows)
+                col_tbl, col_chart = st.columns([2, 3])
+                with col_tbl:
+                    st.dataframe(
+                        edf,
                         width="stretch",
+                        hide_index=True,
+                        column_config={
+                            "Baseline": st.column_config.NumberColumn(
+                                "Baseline (mg/veíc-km)", format="%.0f"
+                            ),
+                            "TSP": st.column_config.NumberColumn(
+                                "TSP (mg/veíc-km)", format="%.0f"
+                            ),
+                            "Δ (%)": st.column_config.NumberColumn(format="%+.1f%%"),
+                        },
                     )
+                with col_chart:
+                    ed = edf.dropna(subset=["Δ (%)"]).copy()
+                    if ed.empty:
+                        st.info("Sem pares baseline + TSP para o gráfico de emissões.")
+                    else:
+                        ed["Efeito"] = ed["Δ (%)"].map(
+                            lambda v: "Melhoria" if v < 0 else ("Custo" if v > 0 else "Neutro")
+                        )
+                        fig_e = px.bar(
+                            ed,
+                            x="Poluente",
+                            y="Δ (%)",
+                            color="Efeito",
+                            color_discrete_map={"Melhoria": GOOD, "Custo": BAD, "Neutro": GREY},
+                        )
+                        fig_e.update_traces(
+                            texttemplate="%{y:+.1f}%",
+                            textposition="outside",
+                            hovertemplate="%{x}: %{y:+.1f}%<extra></extra>",
+                        )
+                        fig_e.update_layout(legend_title="", margin={"t": 44, "b": 30, "l": 8, "r": 8})
+                        chart_layout(
+                            fig_e, f"Δ emissões por poluente (TSP vs baseline) · {sel_label}", height=320
+                        )
+                        st.plotly_chart(fig_e, width="stretch", config={"displayModeBar": False})
+                insight(
+                    "Valores por <strong>veículo-km</strong> (a normalização comparável entre arms). "
+                    "Negativo = o TSP reduziu o poluente. NOx e PMx são os poluentes mais relevantes "
+                    "para a saúde urbana."
+                )
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 6 — Metodologia
 # ═══════════════════════════════════════════════════════════════════════════════
 
-elif _active == "Método":
-    st.markdown("#### Como ler estes resultados — fontes, parâmetros e limites da simulação.")
+elif _active == "Documentação":
+    st.markdown("#### Documentação — como ler os resultados, fontes e limites da simulação")
     st.caption(
-        "Tudo nesta dashboard vem de runs SUMO/TraCI reais (não há números inventados). "
-        "Esta página documenta a configuração, o que está calibrado e o que não está, e as "
-        "limitações a ter em conta na interpretação."
+        "Tudo nesta dashboard vem de runs SUMO/TraCI reais — não há números inventados. "
+        "Esta página reúne o guia de leitura, o glossário de métricas, a configuração de cada "
+        "run, as fontes de dados e as limitações a ter em conta na interpretação."
     )
-    section("Configuração da simulação")
-    if demo:
-        sel_run_meta = st.selectbox("Run", list(demo.get("runs", {}).keys()), key="meta_run")
-        summ_m = demo["runs"][sel_run_meta].get("summary", {})
-        col_a, col_b = st.columns(2)
-        with col_a:
-            sim_params = {
-                "Modo": summ_m.get("mode", "—"),
-                "Passos (steps)": summ_m.get("steps", "—"),
-                "Cenário": summ_m.get("scenario_id", "—"),
-                "Política runtime": summ_m.get("policy_mode", "—"),
-                "Actuação activa": str(summ_m.get("actuation_enabled", "—")),
-                "Runtime policy carregada": str(summ_m.get("runtime_policy_loaded", "—")),
-            }
-            st.dataframe(
-                pd.DataFrame(
-                    {"Parâmetro": list(sim_params.keys()), "Valor": list(sim_params.values())}
-                ),
-                width="stretch",
-                hide_index=True,
-            )
-        with col_b:
-            sp_ver = summ_m.get("signal_program_verification", {})
-            st.markdown("**Verificação do programa semafórico**")
-            problems = sp_ver.get("problems", [])
-            if not problems:
-                st.success("Sem problemas no programa semafórico.")
-            else:
-                for p in problems:
-                    st.error(p)
-            if summ_m.get("actuation_downgraded") or sp_ver.get("actuation_downgraded"):
-                st.warning("Actuação foi downgraded para modo seguro.")
+    with st.container(horizontal=True):
+        st.badge("Dados reais SUMO/TraCI", icon=":material/verified:", color="green")
+        st.badge("Fonte de verdade rastreável", icon=":material/dataset:", color="blue")
+        st.badge("Modelo microscópico de tráfego", icon=":material/hub:", color="violet")
 
-    section("Limitações conhecidas")
-    limitations = demo.get("limitations", []) if demo else []
-    standard_limits = [
-        "Os KPIs são calculados apenas sobre veículos que completaram a viagem durante a janela simulada. "
-        "Runs com durações distintas produzem amostras de populações diferentes e não são directamente comparáveis.",
-        "A simulação usa um modelo de tráfego microscópico (SUMO) calibrado com dados de rede, mas não com "
-        "contagens de tráfego reais do CMP/IMT — os valores absolutos são indicativos, não previsões operacionais.",
-        "A Safety Layer pode não ser exercida em runs curtas (0 bloqueios). Os caminhos de segurança são "
-        "cobertos por testes unitários mas requerem cenários de stress para aparecer em evidência de runtime.",
-        "Autocarros (Linha 25) requerem duração de simulação suficiente para entrar na rede. "
-        "Runs com menos de 3600 steps podem não incluir nenhuma viagem de autocarro completa.",
-    ]
-    for lim in limitations + standard_limits:
-        st.markdown(f"- {lim}")
+    # ── orientação primeiro: como ler, depois o vocabulário ───────────────────
+    section("Guia de leitura")
+    for step in STEPS:
+        st.markdown(
+            f'<div class="step-card">'
+            f'<div class="step-num">{step["n"]}</div>'
+            f"<div>"
+            f'<div class="step-title">{step["title"]}</div>'
+            f'<div class="step-body">{step["body"]}</div>'
+            f"</div></div>",
+            unsafe_allow_html=True,
+        )
 
-    section("Fontes de dados")
-    data_policy = demo.get("data_policy", {}) if demo else {}
-    dp_rows = [
-        {"Campo": "Fonte operacional", "Valor": data_policy.get("operational_data_source", "—")},
-        {
-            "Campo": "Dados sintéticos",
-            "Valor": str(data_policy.get("synthetic_operational_data", "—")),
-        },
-        {
-            "Campo": "Rede viária",
-            "Valor": "sumo/plain/corredor.{nod,edg}.xml — geometria manual da Boavista",
-        },
-        {"Campo": "Paragens", "Valor": "sumo/additional/bus_stops.add.xml"},
-        {
-            "Campo": "Rotas",
-            "Valor": "sumo/routes/routes.rou.xml — randomTrips com semente controlada",
-        },
-    ]
-    st.dataframe(pd.DataFrame(dp_rows), width="stretch", hide_index=True)
-
-    if demo:
-        section("Caminhos de evidência")
-        with st.expander("Ver caminhos dos artefactos gerados"):
-            ev_rows = []
-            for run_name, paths in demo.get("evidence_paths", {}).items():
-                for atype, path in paths.items():
-                    if atype != "root":
-                        ev_rows.append({"Run": run_name, "Artefacto": atype, "Path": path})
-            if ev_rows:
-                st.dataframe(pd.DataFrame(ev_rows), width="stretch", hide_index=True)
-
-    # ── Glossário de métricas (relocated from the sidebar; searchable cards) ───
     section("Glossário de métricas")
     gloss_query = st.text_input(
         "Pesquisar métrica",
@@ -2810,6 +3642,7 @@ elif _active == "Método":
     if not gloss_filtered:
         st.caption("Nenhuma métrica encontrada.")
     else:
+        st.caption(f"A mostrar {len(gloss_filtered)} de {len(GLOSSARY)} métricas.")
         gloss_cols = st.columns(2)
         for gi, entry in enumerate(gloss_filtered):
             with gloss_cols[gi % 2]:
@@ -2817,24 +3650,81 @@ elif _active == "Método":
                     f'<div class="gloss-card">'
                     f'<div class="gloss-term">{entry["term"]}'
                     f'<span class="gloss-unit">{entry["unit"]}</span></div>'
-                    f'<div class="gloss-def">{entry["def"]}</div>'
-                    f"</div>",
+                    f'<div class="gloss-def">{entry["def"]}</div></div>',
                     unsafe_allow_html=True,
                 )
 
-    # ── Guia de leitura (relocated from the sidebar; numbered step cards) ──────
-    section("Guia de leitura")
-    for step in STEPS:
-        st.markdown(
-            f'<div class="step-card">'
-            f'<div class="step-num">{step["n"]}</div>'
-            f"<div>"
-            f'<div class="step-title">{step["title"]}</div>'
-            f'<div class="step-body">{step["body"]}</div>'
-            f"</div>"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
+    # ── proveniência: o que foi corrido e de onde vêm os dados ─────────────────
+    section("Configuração da simulação")
+    if demo:
+        sel_run_meta = st.selectbox("Run", list(demo.get("runs", {}).keys()), key="meta_run")
+        summ_m = demo["runs"][sel_run_meta].get("summary", {})
+        col_a, col_b = st.columns(2)
+        with col_a:
+            spec_table(
+                [
+                    ("Modo", str(summ_m.get("mode", "—"))),
+                    ("Passos (steps)", str(summ_m.get("steps", "—"))),
+                    ("Cenário", str(summ_m.get("scenario_id", "—"))),
+                    ("Política runtime", str(summ_m.get("policy_mode", "—"))),
+                    ("Actuação activa", str(summ_m.get("actuation_enabled", "—"))),
+                    ("Runtime policy carregada", str(summ_m.get("runtime_policy_loaded", "—"))),
+                ]
+            )
+        with col_b:
+            sp_ver = summ_m.get("signal_program_verification", {})
+            st.markdown("**Verificação do programa semafórico**")
+            problems = sp_ver.get("problems", [])
+            if not problems:
+                st.success("Sem problemas no programa semafórico.", icon=":material/check_circle:")
+            else:
+                for p in problems:
+                    st.error(p, icon=":material/error:")
+            if summ_m.get("actuation_downgraded") or sp_ver.get("actuation_downgraded"):
+                st.warning("Actuação foi downgraded para modo seguro.", icon=":material/warning:")
+    else:
+        st.caption("Sem report carregado — corre o demonstrador no separador Simulação.")
+
+    section("Fontes de dados")
+    data_policy = demo.get("data_policy", {}) if demo else {}
+    spec_table(
+        [
+            ("Fonte operacional", str(data_policy.get("operational_data_source", "—"))),
+            ("Dados sintéticos", str(data_policy.get("synthetic_operational_data", "—"))),
+            ("Rede viária", "sumo/plain/corredor.{nod,edg}.xml — geometria manual da Boavista"),
+            ("Paragens", "sumo/additional/bus_stops.add.xml"),
+            ("Rotas", "sumo/routes/routes.rou.xml — randomTrips com semente controlada"),
+        ]
+    )
+
+    # ── ressalvas + reprodutibilidade ─────────────────────────────────────────
+    section("Limitações conhecidas")
+    limitations = demo.get("limitations", []) if demo else []
+    standard_limits = [
+        "Os KPIs são calculados apenas sobre veículos que completaram a viagem durante a janela simulada. "
+        "Runs com durações distintas produzem amostras de populações diferentes e não são directamente comparáveis.",
+        "A simulação usa um modelo de tráfego microscópico (SUMO) calibrado com dados de rede, mas não com "
+        "contagens de tráfego reais do CMP/IMT — os valores absolutos são indicativos, não previsões operacionais.",
+        "A Safety Layer pode não ser exercida em runs curtas (0 bloqueios). Os caminhos de segurança são "
+        "cobertos por testes unitários mas requerem cenários de stress para aparecer em evidência de runtime.",
+        "Autocarros (Linha 25) requerem duração de simulação suficiente para entrar na rede. "
+        "Runs com menos de 3600 steps podem não incluir nenhuma viagem de autocarro completa.",
+    ]
+    for lim in limitations + standard_limits:
+        st.markdown(f'<div class="doc-limit">{lim}</div>', unsafe_allow_html=True)
+
+    if demo:
+        section("Caminhos de evidência")
+        with st.expander("Ver caminhos dos artefactos gerados", icon=":material/folder:"):
+            ev_rows = []
+            for run_name, paths in demo.get("evidence_paths", {}).items():
+                for atype, path in paths.items():
+                    if atype != "root":
+                        ev_rows.append({"Run": run_name, "Artefacto": atype, "Path": path})
+            if ev_rows:
+                st.dataframe(pd.DataFrame(ev_rows), width="stretch", hide_index=True)
+            else:
+                st.caption("Sem caminhos de evidência registados nesta run.")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 7 — Simulação

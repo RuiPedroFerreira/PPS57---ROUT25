@@ -121,7 +121,7 @@ def main() -> int:
     try:
         if baseline_root is None:
             print("[DEMO] Running SUMO baseline without TSP.")
-            _run_baseline(args.steps)
+            _run_baseline(args.steps, args.sumo_binary)
             _write_current_kpis("sumo_baseline")
             baseline_root = _snapshot_artifacts(snapshot_root / "sumo_baseline", "sumo_baseline")
 
@@ -203,10 +203,10 @@ def _step_length_s() -> float:
     return float(config.get("simulation_step_length_s", 1.0))
 
 
-def _run_baseline(steps: int | None) -> None:
+def _run_baseline(steps: int | None, sumo_binary: str) -> None:
     _build_network(tls_type="static")
-    _require("sumo")
-    cmd = ["sumo", "-c", "sumo/corredor.sumocfg", "--duration-log.statistics"]
+    _require(sumo_binary)
+    cmd = [sumo_binary, "-c", "sumo/corredor.sumocfg", "--duration-log.statistics"]
     if steps is not None:
         # `steps` counts TraCI steps for the TSP arms; plain SUMO's `--end` is in
         # seconds. Convert via the step length so both arms cover the SAME

@@ -3,11 +3,26 @@
 from __future__ import annotations
 
 import json
+import os
+import statistics
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
 DATASET_INGOLSTADT = "ingolstadt"
 DATASET_SYNTHETIC = "synthetic"
+
+# Active headline dataset pin.
+#
+# The project has pivoted toward the real Ingolstadt city-wide scenario, but at this
+# stage the dashboard INTENTIONALLY presents the synthetic Boavista corridor: the
+# Ingolstadt runs are not display-ready (no e1/e2 detectors, no GTFS-derived bus
+# headways). Making this an explicit pin — rather than relying on which report dirs
+# happen to exist — stops a freshly generated Ingolstadt suite from silently taking
+# over the platform's headline. To flip the default once Ingolstadt is ready, set
+# PREFERRED_DATASET = DATASET_INGOLSTADT or export PPS57_DASHBOARD_DATASET=ingolstadt.
+DATASET_ENV_VAR = "PPS57_DASHBOARD_DATASET"
+PREFERRED_DATASET = DATASET_SYNTHETIC
 
 
 def discover_scenario_report_roots(reports_root: Path) -> dict[str, Path]:
@@ -31,12 +46,23 @@ def _has_scenario_reports(report_root: Path) -> bool:
 
 
 def default_scenario_dataset(reports_root: Path) -> str:
+    """Headline dataset the dashboard defaults to.
+
+    Honours the ``PPS57_DASHBOARD_DATASET`` override, then the ``PREFERRED_DATASET``
+    pin, then whatever scenario reports actually exist (synthetic first, since that is
+    the current pin). The explicit pin keeps the choice intentional: a generated
+    Ingolstadt suite never silently replaces the synthetic corridor on the platform.
+    """
     roots = discover_scenario_report_roots(reports_root)
-    if DATASET_INGOLSTADT in roots:
-        return DATASET_INGOLSTADT
-    if DATASET_SYNTHETIC in roots:
-        return DATASET_SYNTHETIC
-    return DATASET_INGOLSTADT
+    override = os.environ.get(DATASET_ENV_VAR)
+    if override in roots:
+        return override
+    if PREFERRED_DATASET in roots:
+        return PREFERRED_DATASET
+    for candidate in (DATASET_SYNTHETIC, DATASET_INGOLSTADT):
+        if candidate in roots:
+            return candidate
+    return PREFERRED_DATASET
 
 
 def scenario_catalog_path(root: Path, dataset: str) -> Path:
@@ -95,7 +121,17 @@ def load_scenario_kpi_rows(
                         else:
                             bus_count = None
 
-                        def _append(metric_key: str, value: Any) -> None:
+                        # Loop-derived names bound as keyword-only defaults so the
+                        # closure captures the current iteration (avoids late
+                        # binding); callers only ever pass metric_key + value.
+                        def _append(
+                            metric_key: str,
+                            value: Any,
+                            *,
+                            _scen: str = scenario_dir.name,
+                            _run: str = run_dir.name,
+                            _seed: str = seed_dir.name,
+                        ) -> None:
                             if value is None:
                                 return
                             value_f = _to_float(value)
@@ -103,9 +139,9 @@ def load_scenario_kpi_rows(
                                 return
                             rows.append(
                                 {
-                                    "Cenário": scenario_dir.name,
-                                    "Run type": run_dir.name,
-                                    "Seed": seed_dir.name,
+                                    "Cenário": _scen,
+                                    "Run type": _run,
+                                    "Seed": _seed,
                                     "metric_key": metric_key,
                                     "Métrica": kpi_meta.get(metric_key, (metric_key, "", ""))[0],
                                     "Valor": value_f,
@@ -175,3 +211,273 @@ def catalog_label_map(catalog: dict[str, Any]) -> dict[str, str]:
         for scenario_id, entry in scenarios.items()
         if isinstance(entry, dict)
     }
+
+
+# ── rich per-run table ──────────────────────────────────────────────────────────
+# `load_scenario_kpi_rows` above serves the legacy single-class views: it filters to
+# one vehicle class and the KPI_META metric set. The richer KPIs tab instead needs
+# to juxtapose bus vs general traffic, queues, safety counters and air-quality
+# pollutants from the SAME run, so it reads the whole kpis.json once per run via the
+# loader below. Every value traces straight back to a field in kpis.json — the only
+# arithmetic is documented normalisation (per-vehicle-km, kept identical to the
+# legacy loader) and headway amplitude (= max − min of the per-line headways).
+
+# Vehicle-class blocks whose scalar metrics we surface, keyed by the kpis.json block.
+CLASS_SCOPES = (
+    "all_vehicles",
+    "buses",
+    "general_traffic",
+    "priority_vehicles",
+    "emergency_vehicles",
+)
+CLASS_METRICS = (
+    "vehicles",
+    "mean_time_loss_s",
+    "mean_waiting_time_s",
+    "mean_duration_s",
+    "mean_depart_delay_s",
+    "mean_speed_mps",
+    "mean_stop_count",
+    "p95_time_loss_s",
+    "p95_duration_s",
+    "mean_route_length_m",
+)
+NETWORK_METRICS = (
+    "max_queue_vehicles",
+    "mean_queue_vehicles",
+    "mean_occupancy_pct",
+    # Sum of edge-intervals with a ≥8-veh queue (scales with network size). Renamed
+    # from the ambiguous `intervals_above_8_veh`; legacy reports are mapped below.
+    "edge_intervals_above_8_veh",
+)
+SAFETY_METRICS = (
+    "teleports_total",
+    "teleports_jam",
+    "collisions",
+    "emergency_braking",
+    "max_waiting_to_insert",
+    "final_waiting",
+    "backlog_step_count",
+)
+# Order = display priority. CO2/fuel are the headline pair; NOx/PMx are the urban
+# air-quality pollutants; CO/HC are kept for completeness.
+EMISSION_SPECIES = ("CO2", "fuel", "NOx", "PMx", "CO", "HC")
+
+
+def load_scenario_run_table(report_root: Path) -> list[dict]:
+    """Return tidy per-scenario/run/seed KPI rows across *all* scopes.
+
+    Each row is ``{Cenário, Run type, Seed, scope, metric_key, Valor}`` (headway
+    rows also carry ``Linha``). ``scope`` groups the metric family: a vehicle-class
+    id (e.g. ``"buses"``), ``"network"``, ``"safety"``, ``"emissions"``,
+    ``"emissions_bus"`` or ``"headway"``. Multi-seed roots emit one row per seed;
+    callers aggregate by mean over seeds (same pattern as the legacy loader).
+    """
+    rows: list[dict] = []
+    if not report_root.exists():
+        return rows
+
+    def _f(val: Any) -> float | None:
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            return None
+
+    def _add(
+        ctx: tuple[str, str, str],
+        scope: str,
+        metric_key: str,
+        value: Any,
+        line: str | None = None,
+    ) -> None:
+        v = _f(value)
+        if v is None:
+            return
+        row = {
+            "Cenário": ctx[0],
+            "Run type": ctx[1],
+            "Seed": ctx[2],
+            "scope": scope,
+            "metric_key": metric_key,
+            "Valor": v,
+        }
+        if line is not None:
+            row["Linha"] = line
+        rows.append(row)
+
+    for scenario_dir in sorted(p for p in report_root.iterdir() if p.is_dir()):
+        for run_dir in sorted(p for p in scenario_dir.iterdir() if p.is_dir()):
+            for seed_dir in sorted(p for p in run_dir.iterdir() if p.is_dir()):
+                kpi_path = seed_dir / "kpis.json"
+                if not kpi_path.exists():
+                    continue
+                try:
+                    kpis = json.loads(kpi_path.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                if not isinstance(kpis, dict):
+                    continue
+                ctx = (scenario_dir.name, run_dir.name, seed_dir.name)
+
+                # per vehicle class -------------------------------------------------
+                for scope in CLASS_SCOPES:
+                    block = kpis.get(scope)
+                    if isinstance(block, dict):
+                        for metric_key in CLASS_METRICS:
+                            _add(ctx, scope, metric_key, block.get(metric_key))
+
+                # network / queues --------------------------------------------------
+                detectors = kpis.get("detectors")
+                if isinstance(detectors, dict):
+                    nq = detectors.get("network_queue")
+                    if isinstance(nq, dict):
+                        # Back-compat: older reports stored the network-level count
+                        # under `intervals_above_8_veh`. Surface it under the corrected
+                        # canonical key so existing reports keep showing the metric
+                        # without regenerating the suite.
+                        if (
+                            "edge_intervals_above_8_veh" not in nq
+                            and "intervals_above_8_veh" in nq
+                        ):
+                            nq = {**nq, "edge_intervals_above_8_veh": nq["intervals_above_8_veh"]}
+                        for metric_key in NETWORK_METRICS:
+                            _add(ctx, "network", metric_key, nq.get(metric_key))
+
+                # safety / viability ------------------------------------------------
+                insertion = kpis.get("insertion")
+                if isinstance(insertion, dict):
+                    for metric_key in SAFETY_METRICS:
+                        _add(ctx, "safety", metric_key, insertion.get(metric_key))
+
+                # emissions: fleet totals + per-vehicle-km --------------------------
+                emissions = kpis.get("emissions")
+                if isinstance(emissions, dict):
+                    all_block = kpis.get("all_vehicles") or {}
+                    veh = _f(all_block.get("vehicles"))
+                    route = _f(all_block.get("mean_route_length_m"))
+                    # Identical denominator to load_scenario_kpi_rows so the
+                    # per-vehicle-km values stay consistent across the dashboard.
+                    dist_km = (route * veh / 1000) if (route and veh) else None
+                    totals = emissions.get("totals_mg")
+                    if isinstance(totals, dict):
+                        for sp in EMISSION_SPECIES:
+                            tot = _f(totals.get(sp))
+                            if tot is None:
+                                continue
+                            key = sp.lower()
+                            _add(ctx, "emissions", f"total_{key}_mg", tot)
+                            if dist_km and dist_km > 0:
+                                _add(
+                                    ctx,
+                                    "emissions",
+                                    f"total_{key}_mg_per_vehicle_km",
+                                    tot / dist_km,
+                                )
+                    bus_totals = emissions.get("bus_totals_mg")
+                    if isinstance(bus_totals, dict):
+                        for sp in EMISSION_SPECIES:
+                            tot = _f(bus_totals.get(sp))
+                            if tot is not None:
+                                _add(ctx, "emissions_bus", f"total_{sp.lower()}_mg", tot)
+
+                # bus headways (per line:direction) ---------------------------------
+                headways = kpis.get("bus_headways")
+                if isinstance(headways, dict):
+                    for line_id, hv in headways.items():
+                        if not isinstance(hv, dict):
+                            continue
+                        _add(ctx, "headway", "mean_headway_s", hv.get("mean_headway_s"), line_id)
+                        _add(ctx, "headway", "departures", hv.get("departures"), line_id)
+                        min_h = _f(hv.get("min_headway_s"))
+                        max_h = _f(hv.get("max_headway_s"))
+                        if min_h is not None and max_h is not None:
+                            _add(ctx, "headway", "headway_amplitude_s", max_h - min_h, line_id)
+    return rows
+
+
+def scenario_scoreboard(rows: list[dict]) -> dict[str, Any]:
+    """Cross-scenario summary of the TSP effect from ``load_scenario_run_table`` rows.
+
+    Pure aggregation feeding the Resumo and KPIs headlines. For each scenario it
+    compares the TSP arm to the baseline arm and tallies:
+
+    - ``bus_improved`` / ``bus_delta_median_pct`` — scenarios where bus time loss
+      drops, and the median Δ%.
+    - ``general_cost_over_90s`` — scenarios whose general-traffic time loss rises
+      beyond the pipeline's 90 s gate.
+    - ``safety_clean`` — scenarios with no collisions and no gridlock teleports.
+    - ``queue_worsened`` / ``nox_improved`` — congestion and air-quality direction.
+
+    Empty or single-arm data yields zeros and a ``None`` median (callers guard on
+    ``n_scenarios``). Mirrors the verdict logic in run_sumo_scenario, so nothing is
+    invented beyond the documented thresholds.
+    """
+    out: dict[str, Any] = {
+        "n_scenarios": 0,
+        "bus_improved": 0,
+        "bus_delta_median_pct": None,
+        "general_cost_over_90s": 0,
+        "safety_clean": 0,
+        "queue_worsened": 0,
+        "nox_improved": 0,
+    }
+    if not rows:
+        return out
+
+    run_types = sorted({r["Run type"] for r in rows})
+    # Prefer the exact arm names; fall back to substring only if the pipeline ever
+    # renames them (and never let the tsp pick collide with the baseline arm).
+    baseline_rt = (
+        "baseline" if "baseline" in run_types else next((r for r in run_types if "baseline" in r), None)
+    )
+    tsp_rt = (
+        "tsp_actuation"
+        if "tsp_actuation" in run_types
+        else next((r for r in run_types if r != baseline_rt and "tsp" in r), None)
+    )
+    scenarios = sorted({r["Cenário"] for r in rows})
+    out["n_scenarios"] = len(scenarios)
+    if not (baseline_rt and tsp_rt):
+        return out
+
+    acc: dict[tuple[str, str, str, str], list[float]] = defaultdict(list)
+    for r in rows:
+        acc[(r["Cenário"], r["Run type"], r["scope"], r["metric_key"])].append(r["Valor"])
+
+    def mean(scen: str, rt: str, scope: str, metric_key: str) -> float | None:
+        vals = acc.get((scen, rt, scope, metric_key))
+        return (sum(vals) / len(vals)) if vals else None
+
+    bus_deltas: list[float] = []
+    for scen in scenarios:
+        bus_b = mean(scen, baseline_rt, "buses", "mean_time_loss_s")
+        bus_t = mean(scen, tsp_rt, "buses", "mean_time_loss_s")
+        if bus_b and bus_t is not None and bus_b != 0:
+            delta = (bus_t - bus_b) / abs(bus_b) * 100
+            bus_deltas.append(delta)
+            if delta < 0:
+                out["bus_improved"] += 1
+
+        gen_b = mean(scen, baseline_rt, "general_traffic", "mean_time_loss_s")
+        gen_t = mean(scen, tsp_rt, "general_traffic", "mean_time_loss_s")
+        if gen_b is not None and gen_t is not None and (gen_t - gen_b) > 90:
+            out["general_cost_over_90s"] += 1
+
+        if not mean(scen, tsp_rt, "safety", "collisions") and not mean(
+            scen, tsp_rt, "safety", "teleports_jam"
+        ):
+            out["safety_clean"] += 1
+
+        q_b = mean(scen, baseline_rt, "network", "max_queue_vehicles")
+        q_t = mean(scen, tsp_rt, "network", "max_queue_vehicles")
+        if q_b is not None and q_t is not None and q_t > q_b:
+            out["queue_worsened"] += 1
+
+        nox_b = mean(scen, baseline_rt, "emissions", "total_nox_mg_per_vehicle_km")
+        nox_t = mean(scen, tsp_rt, "emissions", "total_nox_mg_per_vehicle_km")
+        if nox_b and nox_t is not None and nox_t < nox_b:
+            out["nox_improved"] += 1
+
+    if bus_deltas:
+        out["bus_delta_median_pct"] = round(statistics.median(bus_deltas), 1)
+    return out
