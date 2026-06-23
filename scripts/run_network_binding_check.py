@@ -121,9 +121,12 @@ def main() -> None:
         ],
         "fail_close_groups_before_sample": before[:20],
         "fail_close_groups_after": after,
+        # B51: before==0 means the network was ALREADY fully covered — a correct
+        # state, reported as "already_clean" (a success), not the ambiguous "noop"
+        # that read like a failed/inconclusive check.
         "verdict": "pass"
         if (len(before) > 0 and len(after) == 0)
-        else ("noop" if len(before) == 0 else "review"),
+        else ("already_clean" if len(before) == 0 else "review"),
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(

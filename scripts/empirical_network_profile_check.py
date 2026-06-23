@@ -184,6 +184,12 @@ def _compare_profile_to_traci(profile: NetworkProfile, traci_module: Any) -> dic
                 "intergreen_phase_indices": tls.intergreen_phase_indices,
             }
         )
+    # B47: the loop above only walks the TraCI id list, so also report TLS that exist
+    # in the offline profile but are absent from TraCI (the other direction).
+    traci_ids = set(traci_module.trafficlight.getIDList())
+    for tls_id in sorted(profile.tls_profiles):
+        if tls_id not in traci_ids:
+            mismatches.append(f"{tls_id}: in profile but absent from TraCI")
     return {"mismatches": mismatches, "checked_tls": checked}
 
 

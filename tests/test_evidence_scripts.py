@@ -75,6 +75,15 @@ class SharedEvidenceConfigTests(unittest.TestCase):
         self.assertEqual(envelope, (float(band["min"]), float(band["max"])))
         self.assertEqual(source, band["source"])
 
+    def test_running_time_envelope_reports_clear_error_on_bad_config(self) -> None:
+        # B52: malformed config raises a clear KeyError/ValueError, not a raw deref.
+        with self.assertRaises(KeyError):
+            _evidence_common.running_time_envelope({})
+        with self.assertRaises(ValueError):
+            _evidence_common.running_time_envelope(
+                {"tsp_face_validity": {"bus_running_time_improvement_pct": {"min": 1.0}}}
+            )
+
 
 def _contract(groups: dict) -> ControllerContract:
     return ControllerContract(

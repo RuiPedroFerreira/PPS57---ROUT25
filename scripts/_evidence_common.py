@@ -112,5 +112,18 @@ def running_time_envelope(config: dict) -> tuple[tuple[float, float], str]:
     Reads ``tsp_face_validity.bus_running_time_improvement_pct`` from the loaded
     validation config so the demo's gate cannot drift from the sourced band.
     """
-    band = config["tsp_face_validity"]["bus_running_time_improvement_pct"]
-    return (float(band["min"]), float(band["max"])), str(band["source"])
+    # B52: validate the shape with clear messages instead of a raw KeyError/TypeError.
+    face = config.get("tsp_face_validity")
+    if not isinstance(face, dict):
+        raise KeyError("validation_config: secção 'tsp_face_validity' em falta ou inválida.")
+    band = face.get("bus_running_time_improvement_pct")
+    if not isinstance(band, dict) or not {"min", "max", "source"} <= band.keys():
+        raise ValueError(
+            "validation_config: 'bus_running_time_improvement_pct' precisa de min/max/source."
+        )
+    try:
+        return (float(band["min"]), float(band["max"])), str(band["source"])
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"validation_config: min/max de bus_running_time_improvement_pct não numéricos: {exc}"
+        ) from exc
