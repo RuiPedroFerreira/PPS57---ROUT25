@@ -68,7 +68,7 @@ class NetworkProfileTests(unittest.TestCase):
             self.assertEqual(movement_b.target_phase_index, 3)
             self.assertIn(movement_b.signal_group_id, movement_a.conflicts_with)
 
-    def test_validate_skips_missing_generated_network_before_build(self) -> None:
+    def test_validate_defers_unbuilt_generated_network_only_with_optin(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             cits = {
@@ -76,11 +76,25 @@ class NetworkProfileTests(unittest.TestCase):
                 "network_discovery": {"enabled": True},
                 "intersections": [],
             }
-            validate_network_profile_config(root, cits, {})
+            # B33 — fail-closed by default: a missing generated net.xml is a hard
+            # error unless the caller opts into the pre-build bootstrap. Force the
+            # env opt-in off so the default path is deterministic regardless of the
+            # developer's shell.
+            with patch.dict(os.environ, {"PPS57_ALLOW_UNBUILT_NETWORK": "0"}):
+                with self.assertRaises(SystemExit):
+                    validate_network_profile_config(root, cits, {})
+                # The env opt-in (=1) DEFERS instead of raising — `make build`
+                # re-validates fail-closed once netconvert has produced the net.
+                with patch.dict(os.environ, {"PPS57_ALLOW_UNBUILT_NETWORK": "1"}):
+                    validate_network_profile_config(root, cits, {})
+            # The explicit parameter also defers, independent of the environment.
+            validate_network_profile_config(root, cits, {}, allow_unbuilt_network=True)
 
+            # An imported (non-generated) path that is missing always fails closed,
+            # even with the bootstrap opt-in — only the generated net path defers.
             cits["sumo"]["network"] = "imported/missing.net.xml"
             with self.assertRaises(SystemExit):
-                validate_network_profile_config(root, cits, {})
+                validate_network_profile_config(root, cits, {}, allow_unbuilt_network=True)
 
     def test_generated_contract_supports_imported_map_without_phase_mapping(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

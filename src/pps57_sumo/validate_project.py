@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -96,7 +97,7 @@ def _require_number(holder: dict[str, Any], key: str, context: str) -> float:
     return float(value)
 
 
-def validate_safety_configs(root: Path) -> None:
+def validate_safety_configs(root: Path, *, allow_unbuilt_network: bool | None = None) -> None:
     """Verifica invariantes numéricas safety-critical de cits/tsp config.
 
     Estes ficheiros não tinham validação semântica: uma inversão como
@@ -491,11 +492,29 @@ def validate_safety_configs(root: Path) -> None:
         if not isinstance(value, (int, float)) or value < 0:
             raise SystemExit(f"Config inválida: controller_simulation.{key} deve ser >= 0.")
 
-    validate_network_profile_config(root, cits, tsp)
+    validate_network_profile_config(root, cits, tsp, allow_unbuilt_network=allow_unbuilt_network)
     print("OK config: invariantes safety-critical de cits/tsp config verificadas.")
 
 
-def validate_network_profile_config(root: Path, cits: dict[str, Any], tsp: dict[str, Any]) -> None:
+def validate_network_profile_config(
+    root: Path,
+    cits: dict[str, Any],
+    tsp: dict[str, Any],
+    *,
+    allow_unbuilt_network: bool | None = None,
+) -> None:
+    # B33 — fail-closed by default. The previous code printed "SKIP ... OK" and
+    # returned when the generated net.xml was absent, so an invalid network profile
+    # (intersections/TLS that don't exist in the net) silently passed static
+    # validation and never got checked. Now a missing net is a hard failure UNLESS
+    # the caller explicitly opts into the pre-build bootstrap (the net legitimately
+    # does not exist before `make build`). When allowed, we DEFER (not silently
+    # pass) and `make build` re-runs this check fail-closed once netconvert has
+    # produced the net. The opt-in is the --allow-unbuilt-network CLI flag (passed
+    # as allow_unbuilt_network=True); when unset (None) it falls back to the
+    # PPS57_ALLOW_UNBUILT_NETWORK=1 env var for programmatic/legacy callers.
+    if allow_unbuilt_network is None:
+        allow_unbuilt_network = os.environ.get("PPS57_ALLOW_UNBUILT_NETWORK") == "1"
     cits_discovery = cits.get("network_discovery", {})
     tsp_profile = tsp.get("network_profile", {})
     enabled = (isinstance(cits_discovery, dict) and bool(cits_discovery.get("enabled", False))) or (
@@ -511,13 +530,19 @@ def validate_network_profile_config(root: Path, cits: dict[str, Any], tsp: dict[
     network_path = Path(str(sumo_cfg["network"]))
     if not network_path.is_absolute():
         network_path = root / network_path
-    if not network_path.exists() and network_path.parent == root / "sumo" / "network":
-        print(
-            f"SKIP network profile: generated net.xml not found at {network_path}; run make build to generate it."
-        )
-        return
     if not network_path.exists():
-        raise SystemExit(f"Config invalida: network profile net.xml nao existe: {network_path}")
+        is_generated = network_path.parent == root / "sumo" / "network"
+        if allow_unbuilt_network and is_generated:
+            print(
+                f"DEFER network profile: net.xml ainda nao gerado em {network_path}; "
+                "sera validado fail-closed apos 'make build' (PPS57_ALLOW_UNBUILT_NETWORK=1)."
+            )
+            return
+        raise SystemExit(
+            f"Config invalida: network profile net.xml nao existe: {network_path}. "
+            "Corre 'make build' para o gerar; para validacao estatica pre-build define "
+            "PPS57_ALLOW_UNBUILT_NETWORK=1."
+        )
     try:
         profile = load_network_profile(network_path)
     except Exception as exc:
@@ -559,7 +584,7 @@ def validate_scenario_profiles(root: Path) -> None:
     print(f"OK scenarios: {len(summaries)} scenario profiles validated.")
 
 
-def validate(root: Path) -> None:
+def validate(root: Path, *, allow_unbuilt_network: bool | None = None) -> None:
     missing = [path for path in REQUIRED_FILES if not (root / path).exists()]
     if missing:
         raise SystemExit("Missing required files:\n" + "\n".join(missing))
@@ -567,7 +592,7 @@ def validate(root: Path) -> None:
         ET.parse(root / rel)
         print(f"OK XML: {rel}")
     validate_routes_sorted(root / "sumo/routes/routes.rou.xml")
-    validate_safety_configs(root)
+    validate_safety_configs(root, allow_unbuilt_network=allow_unbuilt_network)
     validate_scenario_profiles(root)
     print("Static validation completed. Runtime validation with netconvert/sumo is still required.")
 
@@ -575,8 +600,19 @@ def validate(root: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, default=Path.cwd())
+    parser.add_argument(
+        "--allow-unbuilt-network",
+        action="store_true",
+        help=(
+            "Bootstrap pré-build: DEFER (não falhar) a verificação do network-profile "
+            "quando o net.xml gerado ainda não existe. Sem esta flag o check é "
+            "fail-closed. Equivale a PPS57_ALLOW_UNBUILT_NETWORK=1; a flag tem prioridade."
+        ),
+    )
     args = parser.parse_args()
-    validate(args.root)
+    # None (flag ausente) preserva o fallback por env dentro de
+    # validate_network_profile_config; True força o opt-in explicitamente.
+    validate(args.root, allow_unbuilt_network=True if args.allow_unbuilt_network else None)
 
 
 if __name__ == "__main__":
