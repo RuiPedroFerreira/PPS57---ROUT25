@@ -238,15 +238,6 @@ KPI_META = {
     ),
 }
 
-EMISSION_METRICS = [
-    "total_co2_mg",
-    "total_co2_mg_per_vehicle",
-    "total_co2_mg_per_vehicle_km",
-    "total_fuel_mg",
-    "total_fuel_mg_per_vehicle",
-    "total_fuel_mg_per_vehicle_km",
-]
-
 # metrics where an increase is an improvement (drives delta colouring)
 HIGHER_IS_BETTER = {"mean_speed_mps"}
 
@@ -269,7 +260,6 @@ def dataset_provenance(dataset: str) -> str:
 # colours instead of a mix of near-identical greens/reds.
 COLOR_GOOD = "#16a34a"  # improvement / win
 COLOR_BAD = "#dc2626"  # degradation / cost
-COLOR_EMERGENCY = "#dc2626"
 
 ACTION_META = {
     "green_extension": (
@@ -1534,8 +1524,6 @@ def _sync_vehicle_class_kpis() -> None:
 
 # "Demonstrador" is a drill-down view reachable from the "KPIs" tab — it is not a
 # top-level nav entry (kept out of NAV_GROUPS on purpose).
-TABS = ["Resumo", "KPIs", "Decisão", "C-ITS", "vs RL", "Documentação", "Simulação"]
-
 NAV_GROUPS = [
     (None, ["Resumo"]),
     ("Análise", ["KPIs", "Decisão", "C-ITS", "vs RL"]),

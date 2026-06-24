@@ -238,7 +238,7 @@ class LifecycleViolationsTestCase(unittest.TestCase):
             "actuation_errors": 4,
         }
         self.assertEqual(lifecycle_violations({"protocol_kpis": flagged}), flagged)
-        clean = {key: 0 for key in flagged}
+        clean = dict.fromkeys(flagged, 0)
         self.assertEqual(lifecycle_violations({"protocol_kpis": clean}), {})
 
     def test_non_numeric_counts_are_tolerated(self) -> None:
