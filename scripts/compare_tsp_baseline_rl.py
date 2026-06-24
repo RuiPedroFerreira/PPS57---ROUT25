@@ -62,7 +62,13 @@ def parse_args() -> argparse.Namespace:
         default="reports/tabular_q_policy_report.json",
         help="Exported RL policy report.",
     )
-    parser.add_argument("--steps", type=int, default=7200, help="SUMO/TraCI steps for both modes.")
+    parser.add_argument(
+        "--steps",
+        type=int,
+        default=14400,
+        help="SUMO/TraCI steps for both modes (14400 × 0.5s/step = full 7200s window; "
+        "B3: the old default 7200 covered only half the window).",
+    )
     parser.add_argument("--sumo-binary", default="sumo", help="SUMO binary for TraCI.")
     parser.add_argument(
         "--no-actuation",
@@ -125,6 +131,13 @@ def main() -> int:
             ),
         )
         TabularQLearningController(cits_config, tsp_config, optimization_config).run()
+    else:
+        # B21: don't silently reuse a stale policy over fresh baseline logs.
+        print(
+            f"[warn] B21: a reutilizar a política RL existente em {policy_report} sem "
+            "retreinar sobre os logs baseline novos; usa --train-rl para forçar retreino.",
+            file=sys.stderr,
+        )
 
     rl_summary = TSPControlController(
         cits_config,
@@ -148,9 +161,12 @@ def main() -> int:
     print(f"- json: {tsp_config.path_from_root(args.json_out)}")
     print(f"- markdown: {tsp_config.path_from_root(args.md_out)}")
     print(
-        f"- baseline snapshot: {baseline_snapshot} ({len(list(baseline_snapshot.rglob('*')))} files)"
+        f"- baseline snapshot: {baseline_snapshot} "
+        f"({sum(1 for _ in baseline_snapshot.rglob('*'))} files)"
     )
-    print(f"- rl snapshot:       {rl_snapshot} ({len(list(rl_snapshot.rglob('*')))} files)")
+    print(
+        f"- rl snapshot:       {rl_snapshot} ({sum(1 for _ in rl_snapshot.rglob('*'))} files)"
+    )
     return 0
 
 

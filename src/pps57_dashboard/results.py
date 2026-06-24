@@ -3,71 +3,45 @@
 from __future__ import annotations
 
 import json
-import os
 import statistics
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-DATASET_INGOLSTADT = "ingolstadt"
 DATASET_SYNTHETIC = "synthetic"
 
-# Active headline dataset pin.
-#
-# The project has pivoted toward the real Ingolstadt city-wide scenario, but at this
-# stage the dashboard INTENTIONALLY presents the synthetic Boavista corridor: the
-# Ingolstadt runs are not display-ready (no e1/e2 detectors, no GTFS-derived bus
-# headways). Making this an explicit pin — rather than relying on which report dirs
-# happen to exist — stops a freshly generated Ingolstadt suite from silently taking
-# over the platform's headline. To flip the default once Ingolstadt is ready, set
-# PREFERRED_DATASET = DATASET_INGOLSTADT or export PPS57_DASHBOARD_DATASET=ingolstadt.
+# Single headline dataset: the synthetic Boavista corridor (e1/e2 detectors and
+# GTFS-derived bus headways). The earlier city-wide scenario pipeline was removed,
+# so the synthetic corridor is the only scenario dataset. DATASET_ENV_VAR is kept for
+# backward compatibility but no longer selects an alternative.
 DATASET_ENV_VAR = "PPS57_DASHBOARD_DATASET"
 PREFERRED_DATASET = DATASET_SYNTHETIC
 
 
 def discover_scenario_report_roots(reports_root: Path) -> dict[str, Path]:
-    """Return available scenario result roots, preferring Ingolstadt as reference."""
+    """Return available scenario result roots (the synthetic corridor)."""
     roots: dict[str, Path] = {}
-    ingolstadt = reports_root / "ingolstadt"
     synthetic = reports_root / "scenarios"
-    if _has_scenario_reports(ingolstadt):
-        roots[DATASET_INGOLSTADT] = ingolstadt
     if _has_scenario_reports(synthetic):
         roots[DATASET_SYNTHETIC] = synthetic
     return roots
 
 
 def _has_scenario_reports(report_root: Path) -> bool:
-    if (report_root / "scenario_suite_summary.json").exists():
-        return True
     if not report_root.exists():
         return False
+    # B29: a bare scenario_suite_summary.json (no per-seed kpis.json) is an empty
+    # dataset — requiring at least one kpis.json stops the dashboard pinning a blank
+    # root (e.g. after a partial run that wrote only the summary, cf. B2).
     return any(report_root.glob("*/*/seed_*/kpis.json"))
 
 
 def default_scenario_dataset(reports_root: Path) -> str:
-    """Headline dataset the dashboard defaults to.
-
-    Honours the ``PPS57_DASHBOARD_DATASET`` override, then the ``PREFERRED_DATASET``
-    pin, then whatever scenario reports actually exist (synthetic first, since that is
-    the current pin). The explicit pin keeps the choice intentional: a generated
-    Ingolstadt suite never silently replaces the synthetic corridor on the platform.
-    """
-    roots = discover_scenario_report_roots(reports_root)
-    override = os.environ.get(DATASET_ENV_VAR)
-    if override in roots:
-        return override
-    if PREFERRED_DATASET in roots:
-        return PREFERRED_DATASET
-    for candidate in (DATASET_SYNTHETIC, DATASET_INGOLSTADT):
-        if candidate in roots:
-            return candidate
-    return PREFERRED_DATASET
+    """Headline dataset the dashboard defaults to (the synthetic corridor)."""
+    return DATASET_SYNTHETIC
 
 
-def scenario_catalog_path(root: Path, dataset: str) -> Path:
-    if dataset == DATASET_INGOLSTADT:
-        return root / "configs" / "scenario_catalog_ingolstadt.yaml"
+def scenario_catalog_path(root: Path, dataset: str = DATASET_SYNTHETIC) -> Path:
     return root / "configs" / "scenario_catalog.yaml"
 
 
@@ -159,7 +133,6 @@ def load_scenario_kpi_rows(
                                 vehicle_count = bus_count
 
                             vehicle_count_f = _to_float(vehicle_count)
-                            route_len_f = _to_float(data.get("mean_route_length_m"))
                             if vehicle_count_f and vehicle_count_f > 0:
                                 if co2_total is not None:
                                     co2_f = _to_float(co2_total)
@@ -171,22 +144,30 @@ def load_scenario_kpi_rows(
                                     if fuel_f is not None:
                                         _append("total_fuel_mg_per_vehicle", fuel_f / vehicle_count_f)
 
-                            if route_len_f and route_len_f > 0 and vehicle_count_f and vehicle_count_f > 0:
-                                total_distance_m = route_len_f * vehicle_count_f
-                                if total_distance_m > 0:
-                                    dist_km = total_distance_m / 1000
-                                    if co2_total is not None:
-                                        co2_f = _to_float(co2_total)
-                                        if co2_f is not None:
-                                            _append("total_co2_mg_per_vehicle_km", co2_f / dist_km)
-                                    if fuel_total is not None:
-                                        fuel_f = _to_float(fuel_total)
-                                        if fuel_f is not None:
-                                            _append("total_fuel_mg_per_vehicle_km", fuel_f / dist_km)
+                            # B27: normalise per-vehicle-km against the SUM of route
+                            # lengths (total_route_length_m), not mean_route_length_m ×
+                            # vehicles, which only matches when all routes are equal.
+                            total_route_m = _to_float(data.get("total_route_length_m"))
+                            if total_route_m and total_route_m > 0:
+                                dist_km = total_route_m / 1000
+                                if co2_total is not None:
+                                    co2_f = _to_float(co2_total)
+                                    if co2_f is not None:
+                                        _append("total_co2_mg_per_vehicle_km", co2_f / dist_km)
+                                if fuel_total is not None:
+                                    fuel_f = _to_float(fuel_total)
+                                    if fuel_f is not None:
+                                        _append("total_fuel_mg_per_vehicle_km", fuel_f / dist_km)
 
                 for metric_key, meta in kpi_meta.items():
                     value = data.get(metric_key)
                     if value is None:
+                        continue
+                    # B28: coerce to float like the emissions branch and
+                    # load_scenario_run_table do, so "Valor" never mixes str/int/float
+                    # dtypes (which breaks pandas/plotly aggregations downstream).
+                    value_f = _to_float(value)
+                    if value_f is None:
                         continue
                     label = meta[0] if isinstance(meta, (tuple, list)) and meta else metric_key
                     rows.append(
@@ -196,7 +177,7 @@ def load_scenario_kpi_rows(
                             "Seed": seed_dir.name,
                             "metric_key": metric_key,
                             "Métrica": label,
-                            "Valor": value,
+                            "Valor": value_f,
                         }
                     )
     return rows
@@ -353,11 +334,11 @@ def load_scenario_run_table(report_root: Path) -> list[dict]:
                 emissions = kpis.get("emissions")
                 if isinstance(emissions, dict):
                     all_block = kpis.get("all_vehicles") or {}
-                    veh = _f(all_block.get("vehicles"))
-                    route = _f(all_block.get("mean_route_length_m"))
-                    # Identical denominator to load_scenario_kpi_rows so the
-                    # per-vehicle-km values stay consistent across the dashboard.
-                    dist_km = (route * veh / 1000) if (route and veh) else None
+                    # B27: per-vehicle-km denominator is the SUM of route lengths
+                    # (total_route_length_m), identical to load_scenario_kpi_rows, so
+                    # the values stay consistent and correct for heterogeneous routes.
+                    total_route = _f(all_block.get("total_route_length_m"))
+                    dist_km = (total_route / 1000) if total_route else None
                     totals = emissions.get("totals_mg")
                     if isinstance(totals, dict):
                         for sp in EMISSION_SPECIES:
@@ -463,8 +444,17 @@ def scenario_scoreboard(rows: list[dict]) -> dict[str, Any]:
         if gen_b is not None and gen_t is not None and (gen_t - gen_b) > 90:
             out["general_cost_over_90s"] += 1
 
-        if not mean(scen, tsp_rt, "safety", "collisions") and not mean(
-            scen, tsp_rt, "safety", "teleports_jam"
+        # Fail-closed (B26): only count a scenario as safety-clean when we actually
+        # have telemetry showing zero. The old `not mean(...)` read a missing row
+        # (mean() -> None) as 0, so scenarios with no safety data were tallied as
+        # "clean" and inflated the headline. Require both counters present and zero.
+        collisions = mean(scen, tsp_rt, "safety", "collisions")
+        teleports_jam = mean(scen, tsp_rt, "safety", "teleports_jam")
+        if (
+            collisions is not None
+            and teleports_jam is not None
+            and collisions == 0
+            and teleports_jam == 0
         ):
             out["safety_clean"] += 1
 

@@ -1,28 +1,26 @@
 #!/usr/bin/env python3
 """NetworkBinding evidence: authoritative conflict matrix removes the fail-close.
 
-On the real calibrated Ingolstadt network (TUM-VT, 123 TLS) the joined
-intersections trip the contract-verification gate's "sem matriz de conflitos"
-check: signal groups with movements but an empty conflict matrix. That matrix was
-inferred heuristically from phase-state disjointness, which cannot see permissive
+On joined intersections the contract-verification gate's "sem matriz de conflitos"
+check trips: signal groups with movements but an empty conflict matrix. That matrix
+was inferred heuristically from phase-state disjointness, which cannot see permissive
 movements that share green.
 
-This script demonstrates the fix end-to-end on the *real* network, through the
-*real* contract-building path:
+This script demonstrates the fix end-to-end through the *real* contract-building path:
 
-  1. build the controller contracts exactly as the city-wide demo does (auto
-     network discovery + generated contracts), and count the signal groups that
-     trip the fail-close predicate from ``verify_controller_contracts``;
+  1. build the controller contracts exactly as the demo does (auto network discovery
+     + generated contracts), and count the signal groups that trip the fail-close
+     predicate from ``verify_controller_contracts``;
   2. build the :class:`NetworkBinding` (authoritative conflicts from SUMO junction
      ``<request foes>``), apply it to the contracts, and re-count.
 
 It fabricates nothing: every conflict comes from the network's own foe data, and a
 group the network genuinely leaves without foe data still fail-closes. Safety
 remains the final gate. Evidence is written to
-``reports/validation/networkbinding_ingolstadt_check.json``.
+``reports/validation/networkbinding_check.json``.
 
-Pré-requisito: a net materializada por ``scripts/run_ingolstadt_demo.py`` em
-``.tools/ingol_run/ingolstadt_net.net.xml`` (ou aponta ``--net`` para outra net).
+Pré-requisito: a net do corredor sintético em ``sumo/network/corredor.net.xml``
+(corre ``make build``), ou aponta ``--net`` para outra net.
 """
 
 from __future__ import annotations
@@ -51,7 +49,7 @@ from pps57_tsp.signal_control import (  # noqa: E402
     signal_group_lacks_conflict_matrix,
 )
 
-WORK = ROOT / ".tools" / "ingol_run"
+DEFAULT_NET = ROOT / "sumo" / "network" / "corredor.net.xml"
 
 
 def _fail_close_groups(contracts) -> list[dict]:
@@ -74,17 +72,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--net", type=Path, default=WORK / "ingolstadt_net.net.xml")
+    parser.add_argument("--net", type=Path, default=DEFAULT_NET)
     parser.add_argument(
         "--out",
         type=Path,
-        default=ROOT / "reports" / "validation" / "networkbinding_ingolstadt_check.json",
+        default=ROOT / "reports" / "validation" / "networkbinding_check.json",
     )
     args = parser.parse_args()
     if not args.net.exists():
         raise SystemExit(
-            f"Missing {args.net}. Materialise the Ingolstadt net first "
-            "(scripts/run_ingolstadt_demo.py, after git clone TUM-VT/sumo_ingolstadt)."
+            f"Missing {args.net}. Gera a net do corredor com `make build` "
+            "(ou aponta --net para outra net)."
         )
 
     cits = auto_discovery_cits_config(args.net)
@@ -123,9 +121,12 @@ def main() -> None:
         ],
         "fail_close_groups_before_sample": before[:20],
         "fail_close_groups_after": after,
+        # B51: before==0 means the network was ALREADY fully covered — a correct
+        # state, reported as "already_clean" (a success), not the ambiguous "noop"
+        # that read like a failed/inconclusive check.
         "verdict": "pass"
         if (len(before) > 0 and len(after) == 0)
-        else ("noop" if len(before) == 0 else "review"),
+        else ("already_clean" if len(before) == 0 else "review"),
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(

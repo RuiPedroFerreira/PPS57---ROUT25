@@ -27,8 +27,8 @@ def _parse_e1(path: Path) -> dict:
     intervals = list(_intervals(path))
     return {
         "intervals": len(intervals),
-        "mean_occupancy_pct": _avg(_num(item.get("occupancy")) for item in intervals),
-        "mean_speed_mps": _avg(_num(item.get("speed")) for item in intervals),
+        "mean_occupancy_pct": _avg_measurement(_num(item.get("occupancy")) for item in intervals),
+        "mean_speed_mps": _avg_measurement(_num(item.get("speed")) for item in intervals),
         "vehicles_seen": int(sum(_num(item.get("nVehContrib")) or 0 for item in intervals)),
     }
 
@@ -59,7 +59,11 @@ def _network_queue_summary(e2_payload: dict) -> dict:
         }
     return {
         "edge_count": len(edge_summaries),
-        "max_queue_vehicles": max(item["max_queue_vehicles"] or 0 for item in edge_summaries),
+        # B17: keep None when no edge reported a queue, instead of `... or 0` which
+        # turned "no data" into an indistinguishable real-zero max.
+        "max_queue_vehicles": _max(
+            [item["max_queue_vehicles"] for item in edge_summaries]
+        ),
         "mean_queue_vehicles": _avg(item["mean_queue_vehicles"] for item in edge_summaries),
         "mean_occupancy_pct": _avg(item["mean_occupancy_pct"] for item in edge_summaries),
         # Network-level name is `edge_intervals_above_8_veh`: it is the SUM over edges
@@ -85,8 +89,10 @@ def _queue_summary(items: list[dict]) -> dict:
         "intervals": len(items),
         "mean_queue_vehicles": _avg(mean_queues),
         "max_queue_vehicles": _max(max_queues),
-        "mean_occupancy_pct": _avg(occupancies),
-        "mean_speed_mps": _avg(speeds),
+        # B16: speed/occupancy use -1 as a "no vehicles in interval" sentinel; treat
+        # it as missing so sparse intervals don't drag the mean down toward -1.
+        "mean_occupancy_pct": _avg_measurement(occupancies),
+        "mean_speed_mps": _avg_measurement(speeds),
         "intervals_above_8_veh": sum(1 for value in max_queues if value is not None and value >= 8),
     }
 
@@ -117,6 +123,13 @@ def _num(value: object) -> float | None:
 
 def _avg(values) -> float | None:  # type: ignore[no-untyped-def]
     cleaned = [value for value in values if value is not None]
+    return round(mean(cleaned), 3) if cleaned else None
+
+
+def _avg_measurement(values) -> float | None:  # type: ignore[no-untyped-def]
+    # Like _avg but drops SUMO's -1 "no vehicles in interval" sentinel (occupancy
+    # and speed are physically non-negative), so empty intervals don't bias the mean.
+    cleaned = [value for value in values if value is not None and value >= 0]
     return round(mean(cleaned), 3) if cleaned else None
 
 

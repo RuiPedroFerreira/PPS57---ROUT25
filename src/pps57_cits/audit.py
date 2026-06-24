@@ -10,7 +10,41 @@ from pathlib import Path
 from statistics import mean
 from typing import Any
 
-from .lifecycle import PriorityRequestState, transition_request_state
+from .lifecycle import ALLOWED_TRANSITIONS, PriorityRequestState, transition_request_state
+
+# Fail-closed protocol KPIs (B30): a non-zero count in any of these means the
+# audited lifecycle has integrity problems — a final SSEM was never delivered for
+# a live request, an illegal state transition occurred, an SSEM was delivered for a
+# request with no preceding SREM (orphan), or the controller reported an actuation
+# error. The audit CLI must exit non-zero when any are present.
+#
+# `controller_nacks` is deliberately NOT here: a NACK is the safety layer
+# legitimately rejecting an unsafe/late request (normal operation), not a protocol
+# integrity defect — gating on it would fail every run where the safety veto fires.
+PROTOCOL_VIOLATION_KEYS = (
+    "missing_final_ssem",
+    "invalid_state_transitions",
+    "orphan_ssem",
+    "actuation_errors",
+)
+
+
+def lifecycle_violations(report: dict[str, Any]) -> dict[str, int]:
+    """Return the subset of fail-closed protocol KPIs that are non-zero.
+
+    Empty result == clean lifecycle. A non-empty mapping (key -> count) means the
+    audit must be treated as a failure by callers.
+    """
+    kpis = report.get("protocol_kpis", {}) if isinstance(report, dict) else {}
+    violations: dict[str, int] = {}
+    for key in PROTOCOL_VIOLATION_KEYS:
+        try:
+            count = int(kpis.get(key, 0) or 0)
+        except (TypeError, ValueError):
+            count = 0
+        if count > 0:
+            violations[key] = count
+    return violations
 
 
 def audit_protocol_lifecycle(
@@ -45,6 +79,7 @@ def audit_protocol_lifecycle(
             if chain["first_srem_generation_time_ms"] is None:
                 chain["first_srem_generation_time_ms"] = _generation_time_ms(message)
             if _srem_request_type(message) == "priorityCancellation":
+                _reopen_if_settled(chain)
                 _transition_chain(chain, PriorityRequestState.CANCELLED.value, invalid_transitions)
             continue
 
@@ -65,6 +100,9 @@ def audit_protocol_lifecycle(
             chain["processing_ssem_count"] += 1
             if chain["processing_generation_time_ms"] is None:
                 chain["processing_generation_time_ms"] = _generation_time_ms(message)
+            # A new `processing` re-opens a settled chain: the next decision cycle, or a
+            # re-entry that reuses the request key (see _reopen_if_settled).
+            _reopen_if_settled(chain)
             _transition_chain(chain, PriorityRequestState.PROCESSING.value, invalid_transitions)
         elif status in {"granted", "rejected"}:
             chain["final_ssem_count"] += 1
@@ -89,6 +127,7 @@ def audit_protocol_lifecycle(
                 chain["final_generation_time_ms"] = _generation_time_ms(message)
                 chain["final_status"] = "cancelled"
                 final_statuses["cancelled"] += 1
+                _reopen_if_settled(chain)
                 _transition_chain(chain, PriorityRequestState.CANCELLED.value, invalid_transitions)
 
     decisions_by_request: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -158,6 +197,16 @@ def audit_protocol_lifecycle(
         )
         if chain["superseded_by_newer_sequence"]:
             superseded_chains += 1
+    # Superseded sequences (an older seq overlapping a newer re-request for the same
+    # vehicle) have inherently messy transition replays — the same reason they are
+    # excluded from missing_final_ssem below. Drop them from invalid_transitions too,
+    # so the fail-closed gate keys on defects in LIVE request episodes only.
+    superseded_keys = {
+        key for key, chain in chains.items() if chain["superseded_by_newer_sequence"]
+    }
+    invalid_transitions = [
+        item for item in invalid_transitions if item["request_key"] not in superseded_keys
+    ]
     missing_final = [
         key
         for key, chain in chains.items()
@@ -189,6 +238,9 @@ def audit_protocol_lifecycle(
             "with_final_ssem": sum(1 for chain in chains.values() if chain["final_ssem_count"] > 0),
             "missing_final_ssem": len(missing_final),
             "superseded_request_chains": superseded_chains,
+            "request_reevaluation_cycles": sum(
+                int(chain["reevaluation_cycles"]) for chain in chains.values()
+            ),
             "orphan_ssem": orphan_ssem,
             "invalid_state_transitions": len(invalid_transitions),
             "controller_nacks": controller_nacks,
@@ -237,6 +289,7 @@ def _new_chain(key: str) -> dict[str, Any]:
         "processing_ssem_count": 0,
         "final_ssem_count": 0,
         "final_status": None,
+        "reevaluation_cycles": 0,
         "decision_count": 0,
         "actuation_count": 0,
         "srem_message_ids": [],
@@ -245,6 +298,32 @@ def _new_chain(key: str) -> dict[str, Any]:
         "processing_generation_time_ms": None,
         "final_generation_time_ms": None,
     }
+
+
+# States with no successor in the conceptual one-shot model (lifecycle.ALLOWED_
+# TRANSITIONS): a chain that reaches one of these is "settled".
+_TERMINAL_STATES = frozenset(
+    state for state, successors in ALLOWED_TRANSITIONS.items() if not successors
+)
+
+
+def _reopen_if_settled(chain: dict[str, Any]) -> None:
+    """Re-open a settled chain so a new request episode replays from scratch.
+
+    SSEM verdicts (granted/rejected/cancelled) are emitted PER decision cycle, and the
+    OBU reuses a request key across re-entries of the same vehicle (hence
+    duplicate_srem_keys), so one audited chain legitimately spans several episodes.
+    When a `processing` (next cycle) or a cancellation arrives for an already-settled
+    chain, reset the running state to CREATED so the strict one-shot state machine
+    (lifecycle.transition_request_state — which by design forbids leaving a terminal
+    state) validates the new episode from the start instead of false-flagging the
+    re-evaluation as an illegal transition. Genuine within-episode anomalies (a
+    granted/rejected with no preceding `processing`, or two finals back-to-back) are
+    NOT routed through here, so they remain flagged.
+    """
+    if str(chain["state"]) in _TERMINAL_STATES:
+        chain["state"] = PriorityRequestState.CREATED.value
+        chain["reevaluation_cycles"] += 1
 
 
 def _transition_chain(

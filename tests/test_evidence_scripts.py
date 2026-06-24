@@ -2,8 +2,8 @@
 """Regressões dos instrumentos de evidência VIVOS.
 
 Cobre os instrumentos city-agnostic que continuam no caminho principal — o
-network-binding check e o empirical network-profile check (reorientados para a
-rede de Ingolstadt) — mais a sua config partilhada e o predicado fail-close.
+network-binding check e o empirical network-profile check (apontados à rede do
+corredor sintético) — mais a sua config partilhada e o predicado fail-close.
 Cada fixture é um vetor de verificação sintético, escolhido para o resultado ser
 calculável à mão: prova que os instrumentos se comportam como documentado, nada
 mais. NENHUM número é uma medição de tráfego.
@@ -74,6 +74,15 @@ class SharedEvidenceConfigTests(unittest.TestCase):
         envelope, source = _evidence_common.running_time_envelope(config)
         self.assertEqual(envelope, (float(band["min"]), float(band["max"])))
         self.assertEqual(source, band["source"])
+
+    def test_running_time_envelope_reports_clear_error_on_bad_config(self) -> None:
+        # B52: malformed config raises a clear KeyError/ValueError, not a raw deref.
+        with self.assertRaises(KeyError):
+            _evidence_common.running_time_envelope({})
+        with self.assertRaises(ValueError):
+            _evidence_common.running_time_envelope(
+                {"tsp_face_validity": {"bus_running_time_improvement_pct": {"min": 1.0}}}
+            )
 
 
 def _contract(groups: dict) -> ControllerContract:

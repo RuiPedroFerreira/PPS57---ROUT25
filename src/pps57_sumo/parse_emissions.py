@@ -30,11 +30,19 @@ except ImportError:  # pragma: no cover - exercised in minimal CI images.
     from xml.etree import ElementTree as ET  # type: ignore[no-redef]
 
 
-METRICS = ("CO2", "CO", "NOx", "PMx", "HC", "fuel", "electricity")
+# B13: SUMO emits mass pollutants/fuel absolutes in milligrams but electric energy
+# (``electricity_abs``) in watt-hours. Keeping both under a single ``_mg`` suffix
+# mislabels the units, so the aggregates split mass species (mg) from energy (Wh).
+MASS_METRICS = ("CO2", "CO", "NOx", "PMx", "HC", "fuel")
+ENERGY_METRICS = ("electricity",)
+METRICS = MASS_METRICS + ENERGY_METRICS
 
 
 def _ingest_tripinfo(
-    elem: Any, per_vehicle: dict[str, dict[str, float]], per_vehicle_type: dict[str, str]
+    elem: Any,
+    per_vehicle: dict[str, dict[str, float]],
+    per_vehicle_type: dict[str, str],
+    duplicate_ids: set[str],
 ) -> None:
     """Read trip-total absolutes from a ``<tripinfo>``'s ``<emissions>`` child."""
     vid = elem.attrib.get("id", "")
@@ -42,6 +50,15 @@ def _ingest_tripinfo(
         return
     emissions = elem.find("emissions")
     if emissions is None:
+        return
+    # B15: tripinfo carries exactly one trip-total row per vehicle, so a repeated id
+    # is a duplicate export. Record it and skip instead of silently double-counting
+    # its emissions into the same bucket (the per-step path below legitimately sums).
+    # Key on a NON-EMPTY bucket: an earlier emissions-less occurrence (e.g. <emissions/>
+    # with no *_abs attrs) leaves an empty bucket, and a later real row for the same id
+    # must still be ingested (not mistaken for a duplicate and dropped).
+    if per_vehicle.get(vid):
+        duplicate_ids.add(vid)
         return
     bucket = per_vehicle.setdefault(vid, {})
     for metric in METRICS:
@@ -92,6 +109,7 @@ def parse_emissions(path: Path | None) -> dict[str, Any]:
 
     per_vehicle: dict[str, dict[str, float]] = {}
     per_vehicle_type: dict[str, str] = {}
+    duplicate_ids: set[str] = set()
 
     try:
         # Track the root so parsed top-level <tripinfo> rows can be dropped, keeping
@@ -106,7 +124,7 @@ def parse_emissions(path: Path | None) -> dict[str, Any]:
                     root = elem
                 continue
             if elem.tag == "tripinfo":
-                _ingest_tripinfo(elem, per_vehicle, per_vehicle_type)
+                _ingest_tripinfo(elem, per_vehicle, per_vehicle_type, duplicate_ids)
                 elem.clear()
                 if root is not None:
                     root.clear()
@@ -117,11 +135,18 @@ def parse_emissions(path: Path | None) -> dict[str, Any]:
         out["parse_error"] = True
         return out
 
+    # B14: a vehicle whose id was seen but produced no parseable metric left an empty
+    # bucket (setdefault). Drop those before counting so vehicle_count/bus_count and
+    # the per-vehicle normalisations are not inflated by metric-less entries.
+    per_vehicle = {vid: values for vid, values in per_vehicle.items() if values}
     if not per_vehicle:
         return out
 
     out["available"] = True
     out["vehicle_count"] = len(per_vehicle)
+    if duplicate_ids:
+        # B15: surface duplicate trip-total exports instead of swallowing them.
+        out["duplicate_vehicle_count"] = len(duplicate_ids)
 
     totals: dict[str, float] = dict.fromkeys(METRICS, 0.0)
     samples: dict[str, list[float]] = {metric: [] for metric in METRICS}
@@ -133,10 +158,17 @@ def parse_emissions(path: Path | None) -> dict[str, Any]:
             totals[metric] += value
             samples[metric].append(value)
 
-    out["totals_mg"] = {metric: round(totals[metric], 3) for metric in METRICS if samples[metric]}
+    out["totals_mg"] = {m: round(totals[m], 3) for m in MASS_METRICS if samples[m]}
     out["mean_per_vehicle_mg"] = {
-        metric: round(mean(samples[metric]), 3) for metric in METRICS if samples[metric]
+        m: round(mean(samples[m]), 3) for m in MASS_METRICS if samples[m]
     }
+    # B13: electricity_abs is in watt-hours, not mg — emit it under honest _wh keys.
+    energy_totals = {m: round(totals[m], 3) for m in ENERGY_METRICS if samples[m]}
+    if energy_totals:
+        out["totals_wh"] = energy_totals
+        out["mean_per_vehicle_wh"] = {
+            m: round(mean(samples[m]), 3) for m in ENERGY_METRICS if samples[m]
+        }
 
     bus_ids = [
         vid
@@ -156,7 +188,10 @@ def parse_emissions(path: Path | None) -> dict[str, Any]:
         # Same inclusion rule as totals_mg above (keep a species if any bus reported
         # it), instead of the inconsistent ">0" filter this block used before.
         out["bus_totals_mg"] = {
-            metric: round(bus_totals[metric], 3) for metric in METRICS if bus_samples[metric]
+            m: round(bus_totals[m], 3) for m in MASS_METRICS if bus_samples[m]
         }
+        bus_energy = {m: round(bus_totals[m], 3) for m in ENERGY_METRICS if bus_samples[m]}
+        if bus_energy:
+            out["bus_totals_wh"] = bus_energy
         out["bus_count"] = len(bus_ids)
     return out

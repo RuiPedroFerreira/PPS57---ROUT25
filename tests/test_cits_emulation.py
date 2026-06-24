@@ -658,6 +658,91 @@ class Package3CITSTestCase(unittest.TestCase):
         self.assertEqual(audit["protocol_kpis"]["with_final_ssem"], 1)
         self.assertEqual(audit["final_ssem_by_status"], {"granted": 1})
 
+    def test_protocol_audit_tolerates_per_cycle_reevaluation(self) -> None:
+        # A continuous priority request is re-evaluated each signal cycle (and the OBU
+        # reuses the request key across a vehicle re-entry): the RSU re-emits
+        # `processing` and the engine a fresh verdict. Re-opening a chain that already
+        # carries a per-cycle verdict is NOT an illegal lifecycle transition, so the
+        # fail-closed audit must report zero — otherwise the gate fails every normal
+        # multi-cycle run. The re-evaluation is surfaced as request_reevaluation_cycles.
+        import tempfile
+
+        intersection = self.config.rsu_to_intersection["RSU_BOAVISTA_02"]
+        rsu = RSUAgent(self.config, intersection)
+        request = _eligible_srem()
+        processing = rsu.evaluate_request(request, sim_time_s=101.0)
+        rejected = deepcopy(processing)
+        rejected.response.response_status = ResponseStatus.REJECTED.value
+        rejected.audit.granted_strategy = None
+        rejected.audit.rejection_reason = "min_green_not_satisfied:5.0<8.0"
+        rejected.security.generation_time_ms = 103_000
+        processing_again = deepcopy(processing)
+        processing_again.security.generation_time_ms = 104_000
+        granted = deepcopy(processing)
+        granted.response.response_status = ResponseStatus.GRANTED.value
+        granted.audit.granted_strategy = GrantedStrategy.GREEN_EXTENSION.value
+        granted.audit.rejection_reason = None
+        granted.security.generation_time_ms = 105_000
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cits_path = Path(tmp) / "cits.jsonl"
+            cits_path.write_text(
+                "\n".join(
+                    [
+                        request.to_json(),
+                        processing.to_json(),
+                        rejected.to_json(),
+                        processing_again.to_json(),
+                        granted.to_json(),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            audit = audit_protocol_lifecycle(cits_path)
+        self.assertEqual(audit["protocol_kpis"]["invalid_state_transitions"], 0)
+        self.assertEqual(audit["protocol_kpis"]["request_reevaluation_cycles"], 1)
+        self.assertEqual(audit["protocol_kpis"]["lifecycle_chains"], 1)
+
+    def test_protocol_audit_still_flags_final_without_processing(self) -> None:
+        # Two final verdicts back-to-back with no `processing` between them is a real
+        # integrity defect (a verdict flipped without re-evaluation) and must stay
+        # flagged — the per-cycle tolerance must not blunt the fail-closed gate.
+        import tempfile
+
+        intersection = self.config.rsu_to_intersection["RSU_BOAVISTA_02"]
+        rsu = RSUAgent(self.config, intersection)
+        request = _eligible_srem()
+        processing = rsu.evaluate_request(request, sim_time_s=101.0)
+        rejected = deepcopy(processing)
+        rejected.response.response_status = ResponseStatus.REJECTED.value
+        rejected.audit.granted_strategy = None
+        rejected.audit.rejection_reason = "min_green_not_satisfied:5.0<8.0"
+        rejected.security.generation_time_ms = 103_000
+        granted = deepcopy(processing)
+        granted.response.response_status = ResponseStatus.GRANTED.value
+        granted.audit.granted_strategy = GrantedStrategy.GREEN_EXTENSION.value
+        granted.audit.rejection_reason = None
+        granted.security.generation_time_ms = 104_000
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cits_path = Path(tmp) / "cits.jsonl"
+            cits_path.write_text(
+                "\n".join(
+                    [
+                        request.to_json(),
+                        processing.to_json(),
+                        rejected.to_json(),
+                        granted.to_json(),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            audit = audit_protocol_lifecycle(cits_path)
+        self.assertEqual(audit["protocol_kpis"]["invalid_state_transitions"], 1)
+        self.assertEqual(audit["invalid_transitions"][0]["transition"], "rejected->granted")
+
     # ------------------------------------------------------------------
     # Validação project + TraCI gates (não-protocolo, mantidos).
     # ------------------------------------------------------------------

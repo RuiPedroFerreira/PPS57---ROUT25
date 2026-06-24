@@ -33,7 +33,9 @@ STRUCTURAL_WARNING_PATTERNS = (
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default=Path("configs/sumo_scenario_base.json"), type=Path)
-    parser.add_argument("--steps", type=int, default=1800)
+    # B3: smoke passes this straight to SUMO `--end`, which is SECONDS — not TraCI
+    # steps like the other runners' `--steps`. Named `--end-s` to remove that clash.
+    parser.add_argument("--end-s", type=int, default=1800, help="SUMO --end in seconds.")
     parser.add_argument("--sumo-binary", default="sumo")
     args = parser.parse_args()
 
@@ -60,7 +62,7 @@ def main() -> int:
         str(artifacts.sumocfg_file),
         "--duration-log.statistics",
         "--end",
-        str(args.steps),
+        str(args.end_s),
         "--pedestrian.model",
         "striping",
     ]
@@ -78,10 +80,13 @@ def main() -> int:
         print(completed.stderr, end="", file=sys.stderr)
 
     runtime_log = "\n".join(part for part in (completed.stdout, completed.stderr) if part)
+    # B46: only flag actual SUMO Warning/Error lines, not any line that happens to
+    # contain a pattern substring (e.g. an edge/route name with "collision with").
     structural_warnings = [
         line
         for line in runtime_log.splitlines()
-        if any(pattern in line.lower() for pattern in STRUCTURAL_WARNING_PATTERNS)
+        if ("warning:" in line.lower() or "error:" in line.lower())
+        and any(pattern in line.lower() for pattern in STRUCTURAL_WARNING_PATTERNS)
     ]
     if structural_warnings:
         raise SystemExit(

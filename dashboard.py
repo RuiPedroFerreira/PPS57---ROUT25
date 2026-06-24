@@ -69,9 +69,10 @@ KPI_META = {
         "Percentil 95 — descreve o pior cenário para 95% dos veículos. Menor é melhor.",
     ),
     "mean_speed_mps": (
-        "Velocidade média",
+        "Velocidade média de viagem",
         "m/s",
-        "Velocidade média ao longo do trajecto. Maior é melhor.",
+        "Velocidade média de viagem (routeLength/duração, inclui tempo parado); "
+        "diverge das velocidades instantâneas dos detectores. Maior é melhor.",
     ),
     "mean_depart_delay_s": (
         "Atraso de partida médio",
@@ -79,9 +80,10 @@ KPI_META = {
         "Tempo de espera antes de entrar na rede. Menor é melhor.",
     ),
     "mean_stop_count": (
-        "Paragens médias",
+        "Episódios de paragem médios",
         "",
-        "Número médio de paragens por veículo. Menor é melhor.",
+        "Média de episódios de paragem/abrandamento por veículo (waitingCount do "
+        "SUMO — inclui paragens por congestão), não visitas a paragens. Menor é melhor.",
     ),
     "total_co2_mg": (
         "CO2 total",
@@ -236,29 +238,15 @@ KPI_META = {
     ),
 }
 
-EMISSION_METRICS = [
-    "total_co2_mg",
-    "total_co2_mg_per_vehicle",
-    "total_co2_mg_per_vehicle_km",
-    "total_fuel_mg",
-    "total_fuel_mg_per_vehicle",
-    "total_fuel_mg_per_vehicle_km",
-]
-
 # metrics where an increase is an improvement (drives delta colouring)
 HIGHER_IS_BETTER = {"mean_speed_mps"}
 
-# Provenance of each scenario dataset, surfaced on the platform so headline numbers
-# always declare their source (and a generated Ingolstadt suite can never silently
-# masquerade as the synthetic corridor, nor vice-versa).
+# Provenance of the scenario dataset, surfaced on the platform so headline numbers
+# always declare their source.
 DATASET_PROVENANCE = {
     "synthetic": (
         "Corredor sintético — Av. da Boavista (Porto), proxy SUMO controlado · "
         "cenários emparelhados baseline vs TSP."
-    ),
-    "ingolstadt": (
-        "Ingolstadt city-wide (TUM-VT) — procura calibrada por detetores, PT via GTFS · "
-        "referência real."
     ),
 }
 
@@ -272,7 +260,6 @@ def dataset_provenance(dataset: str) -> str:
 # colours instead of a mix of near-identical greens/reds.
 COLOR_GOOD = "#16a34a"  # improvement / win
 COLOR_BAD = "#dc2626"  # degradation / cost
-COLOR_EMERGENCY = "#dc2626"
 
 ACTION_META = {
     "green_extension": (
@@ -1365,7 +1352,12 @@ st.markdown(CSS, unsafe_allow_html=True)
 
 demo = load_json(REPORTS / "tsp_demonstrator_report.json")
 baseline_kpis = load_json(REPORTS / "baseline_kpis.json")
-rl_comparison = load_json(REPORTS / "tsp_baseline_vs_rl_comparison.json")
+# B1 — the "vs RL" tab renders decision-outcome fields (matched_decision_count,
+# verdict_counts, kpi_evaluation, network_impact_verdict) that live ONLY in
+# decision_outcome_evaluation.json (produced by `make evaluate-decision-outcomes`).
+# The runtime-delta tsp_baseline_vs_rl_comparison.json carries a different schema
+# ({comparison, baseline_mode, rl_mode, rows}), so reading it left the tab empty.
+decision_outcome = load_json(REPORTS / "decision_outcome_evaluation.json")
 
 # ── collect run KPIs (needed before the sidebar to annotate class counts) ──────
 
@@ -1532,8 +1524,6 @@ def _sync_vehicle_class_kpis() -> None:
 
 # "Demonstrador" is a drill-down view reachable from the "KPIs" tab — it is not a
 # top-level nav entry (kept out of NAV_GROUPS on purpose).
-TABS = ["Resumo", "KPIs", "Decisão", "C-ITS", "vs RL", "Documentação", "Simulação"]
-
 NAV_GROUPS = [
     (None, ["Resumo"]),
     ("Análise", ["KPIs", "Decisão", "C-ITS", "vs RL"]),
@@ -1593,7 +1583,10 @@ TAB_HEADERS = {
 report_files = {
     "Baseline KPIs": REPORTS / "baseline_kpis.json",
     "Demonstrador TSP": REPORTS / "tsp_demonstrator_report.json",
-    "Comparação TSP vs RL": REPORTS / "tsp_baseline_vs_rl_comparison.json",
+    # B1 — count the file the "vs RL" tab actually renders from
+    # (decision_outcome_evaluation.json), not the runtime-delta report, so the
+    # health badge stays consistent with what the tab shows.
+    "Comparação TSP vs RL": REPORTS / "decision_outcome_evaluation.json",
 }
 _reports_ok = sum(1 for p in report_files.values() if p.exists())
 _reports_total = len(report_files)
@@ -2935,14 +2928,14 @@ elif _active == "C-ITS":
 # ═══════════════════════════════════════════════════════════════════════════════
 
 elif _active == "vs RL":
-    if not rl_comparison:
+    if not decision_outcome:
         warn(
             "Report de comparação Baseline vs RL não disponível. "
-            "Corre <code>make compare-tsp-rl</code> para gerar este relatório."
+            "Corre <code>make evaluate-decision-outcomes</code> para gerar este relatório."
         )
     else:
-        matched = rl_comparison.get("matched_decision_count", 0) or 0
-        net_verdict = rl_comparison.get("network_impact_verdict") or "—"
+        matched = decision_outcome.get("matched_decision_count", 0) or 0
+        net_verdict = decision_outcome.get("network_impact_verdict") or "—"
         hero_lead(
             f"{matched}",
             "decisões da política RL comparadas com a baseline rule-based — veredicto "
@@ -2957,11 +2950,11 @@ elif _active == "vs RL":
         rc1.metric("Decisões comparadas", matched, border=True)
         rc2.metric("Veredicto de rede", net_verdict, border=True)
         rc3.metric(
-            "Tipo de avaliação", (rl_comparison.get("evaluation") or "—").replace("_", " "), border=True
+            "Tipo de avaliação", (decision_outcome.get("evaluation") or "—").replace("_", " "), border=True
         )
 
         section("Distribuição de veredictos por decisão")
-        vc = rl_comparison.get("verdict_counts", {})
+        vc = decision_outcome.get("verdict_counts", {})
         if vc:
             df_vc = pd.DataFrame({"Veredicto": list(vc.keys()), "Contagem": list(vc.values())})
             fig_vc = px.bar(
@@ -2980,13 +2973,25 @@ elif _active == "vs RL":
                 "RL escolheu acção com melhor valor estimado de recompensa."
             )
 
-        kpi_eval = rl_comparison.get("kpi_evaluation", {})
+        kpi_eval = decision_outcome.get("kpi_evaluation", {})
         if kpi_eval.get("available") and kpi_eval.get("rows"):
             section("KPIs — Baseline vs RL")
             rl_rows = []
             for r in kpi_eval["rows"]:
                 mk = r.get("metric", "")
-                lab, _, _ = KPI_META.get(mk, (mk, "", ""))
+                # B25: the outcome evaluator emits composite "group:metric" keys
+                # (e.g. "buses:mean_time_loss_s"); split so KPI_META (keyed by the
+                # bare metric) resolves to a friendly label instead of the raw key.
+                grp, sep, metric_only = mk.partition(":")
+                base_key = metric_only if sep else mk
+                lab, _, _ = KPI_META.get(base_key, (base_key, "", ""))
+                if sep:
+                    grp_label = {
+                        "all_vehicles": "Todos",
+                        "buses": "Autocarros",
+                        "general_traffic": "Tráfego geral",
+                    }.get(grp, grp)
+                    lab = f"{grp_label}: {lab}"
                 bv, rv = r.get("baseline"), r.get("rl")
                 p = pct(bv, rv)
                 rl_rows.append(
@@ -3009,7 +3014,6 @@ elif _active == "vs RL":
 elif _active == "KPIs":
     scenario_roots = discover_scenario_report_roots(REPORTS)
     dataset_labels = {
-        "ingolstadt": "Ingolstadt city-wide (referência real)",
         "synthetic": "Corredor sintético — Boavista",
     }
     dataset_ids = list(scenario_roots) or ["synthetic"]
@@ -3038,7 +3042,7 @@ elif _active == "KPIs":
             st.session_state.active_tab = "Demonstrador"
             st.rerun()
 
-    scenario_dir = scenario_roots.get(selected_dataset, REPORTS / "ingolstadt")
+    scenario_dir = scenario_roots.get(selected_dataset, REPORTS / "scenarios")
     scen_names = (
         sorted(p.name for p in scenario_dir.iterdir() if p.is_dir())
         if scenario_dir.exists()
@@ -3046,9 +3050,8 @@ elif _active == "KPIs":
     )
     if not scen_names:
         warn(
-            "Sem resultados de cenários Ingolstadt. Corre <code>make ingolstadt-suite</code> "
-            "para gerar baseline SUMO vs TSP emparelhados; o modo sintético continua "
-            "disponível se existirem reports em <code>reports/scenarios</code>."
+            "Sem resultados de cenários. Corre <code>make scenario-suite</code> para gerar "
+            "os cenários emparelhados baseline SUMO vs TSP em <code>reports/scenarios</code>."
         )
     else:
         # ── rich per-run KPI table: every scope from each kpis.json ───────────
@@ -3112,9 +3115,8 @@ elif _active == "KPIs":
 
             # ── label / catalog machinery (objective card = source of truth) ──
             label_map = dict(SCENARIO_LABELS)
-            # Scenario objectives come straight from the selected catalog
-            # (configs/) — the source of truth — so the dashboard never invents
-            # descriptions for the Ingolstadt reference set.
+            # Scenario objectives come straight from the catalog (configs/) — the
+            # source of truth — so the dashboard never invents scenario descriptions.
             scen_catalog = load_yaml(scenario_catalog_path(ROOT, selected_dataset)) or {}
             scen_meta = scen_catalog.get("scenarios") or {}
             label_map.update(catalog_label_map(scen_catalog))

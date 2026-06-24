@@ -495,7 +495,19 @@ def validate_safety_configs(root: Path) -> None:
     print("OK config: invariantes safety-critical de cits/tsp config verificadas.")
 
 
-def validate_network_profile_config(root: Path, cits: dict[str, Any], tsp: dict[str, Any]) -> None:
+def validate_network_profile_config(
+    root: Path,
+    cits: dict[str, Any],
+    tsp: dict[str, Any],
+) -> None:
+    # B33 — the fail-closed guarantee is the BUILD-TIME re-validation: `make build`
+    # runs netconvert and then re-runs this check with the generated net present, so
+    # an invalid profile (intersections/TLS absent from the net) is caught fail-closed
+    # (the old code printed "SKIP ... OK" and never re-checked). Before the net exists
+    # (clean checkout / no-SUMO `make test`), a missing GENERATED net DEFERS — the
+    # net-dependent cross-checks simply cannot run yet, but config validation stays
+    # usable without building SUMO. A missing IMPORTED net (a path `make build` will
+    # not produce) is a hard config error.
     cits_discovery = cits.get("network_discovery", {})
     tsp_profile = tsp.get("network_profile", {})
     enabled = (isinstance(cits_discovery, dict) and bool(cits_discovery.get("enabled", False))) or (
@@ -511,13 +523,19 @@ def validate_network_profile_config(root: Path, cits: dict[str, Any], tsp: dict[
     network_path = Path(str(sumo_cfg["network"]))
     if not network_path.is_absolute():
         network_path = root / network_path
-    if not network_path.exists() and network_path.parent == root / "sumo" / "network":
-        print(
-            f"SKIP network profile: generated net.xml not found at {network_path}; run make build to generate it."
-        )
-        return
     if not network_path.exists():
-        raise SystemExit(f"Config invalida: network profile net.xml nao existe: {network_path}")
+        if network_path.parent == root / "sumo" / "network":
+            # Generated net not built yet → defer; `make build` re-validates it
+            # fail-closed once netconvert has produced the net.
+            print(
+                f"DEFER network profile: net.xml ainda nao gerado em {network_path}; "
+                "sera validado fail-closed apos 'make build' (que revalida com a net gerada)."
+            )
+            return
+        raise SystemExit(
+            f"Config invalida: network profile net.xml nao existe: {network_path}. "
+            "Corre 'make build' para o gerar."
+        )
     try:
         profile = load_network_profile(network_path)
     except Exception as exc:

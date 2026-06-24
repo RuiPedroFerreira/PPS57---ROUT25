@@ -31,9 +31,9 @@ from pps57_sumo.network_profile import load_network_profile  # noqa: E402
 
 
 def main() -> int:
-    net = ROOT / ".tools/ingol_run/ingolstadt_net.net.xml"
+    net = ROOT / "sumo/network/corredor.net.xml"
     if not net.exists():
-        raise SystemExit(f"net não encontrada: {net} (corre run_ingolstadt_demo.py)")
+        raise SystemExit(f"net não encontrada: {net} (corre `make build` para a gerar)")
     profile = load_network_profile(net)
     _requests, via_slots = _read_junction_tables(net)
 
@@ -53,7 +53,20 @@ def main() -> int:
             continue
         resolved_by_group: dict[str, bool] = {m.signal_group_id: False for m in tp.movements}
         # mapear conexão -> group (mesma lógica do binding)
-        mv_by_edges = {(m.from_edge, m.to_edge): m.signal_group_id for m in tp.movements}
+        # B49: keep-first + warn when an edge pair is shared by movements in different
+        # signal groups, instead of the last-wins dict silently dropping one.
+        mv_by_edges: dict[tuple[str, str], str] = {}
+        for m in tp.movements:
+            key = (m.from_edge, m.to_edge)
+            existing = mv_by_edges.get(key)
+            if existing is not None and existing != m.signal_group_id:
+                print(
+                    f"[warn] B49: edge pair {key} mapeia a múltiplos signal groups "
+                    f"({existing} e {m.signal_group_id}); usado o primeiro.",
+                    file=sys.stderr,
+                )
+                continue
+            mv_by_edges.setdefault(key, m.signal_group_id)
         for conn in tp.connections:
             via = conn.via
             if not via:
@@ -84,12 +97,18 @@ def main() -> int:
         n = conn_causes.get(cause, 0)
         pct = 100.0 * n / total_conn if total_conn else 0.0
         print(f"  {cause:32s} {n:6d}  ({pct:5.1f}%)")
+    # B50: guard against a network with no signal groups (ZeroDivisionError).
+    no_resolved_pct = 100.0 * groups_no_resolved / groups_total if groups_total else 0.0
+    coverage_pct = (
+        100.0 * (groups_total - groups_no_resolved) / groups_total if groups_total else 0.0
+    )
     print(f"\nsignal groups: {groups_total}; "
           f"sem QUALQUER conexão resolvida (fail-closed): {groups_no_resolved} "
-          f"({100.0*groups_no_resolved/groups_total:.1f}%)")
-    print(f"cobertura esperada: {100.0*(groups_total-groups_no_resolved)/groups_total:.1f}%")
+          f"({no_resolved_pct:.1f}%)")
+    print(f"cobertura esperada: {coverage_pct:.1f}%")
 
-    out = ROOT / ".tools/ingol_run/out/binding_coverage_causes.json"
+    out = ROOT / "reports/validation/binding_coverage_causes.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps({
         "net": net.name,
         "controlled_connections": total_conn,

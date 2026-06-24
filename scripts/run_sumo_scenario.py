@@ -9,7 +9,7 @@ import shutil
 import statistics
 import sys
 from copy import deepcopy
-from functools import cache
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +27,7 @@ from pps57_sumo.parse_tripinfo import parse_tripinfo  # noqa: E402
 from pps57_sumo.scenarios import (  # noqa: E402
     apply_scenario_profile,
     load_catalog,
+    rematerialize_stochastic_incidents,
     scenario_summary,
     validate_scenario_catalog,
 )
@@ -160,28 +161,62 @@ def main() -> int:
     }
     reports_dir = ROOT / args.reports_dir
     reports_dir.mkdir(parents=True, exist_ok=True)
-    (reports_dir / "scenario_suite_summary.json").write_text(
-        json.dumps(scenario_report, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    (reports_dir / "scenario_suite_report.md").write_text(
-        render_suite_report(scenario_report), encoding="utf-8"
-    )
-    # RESULTS.md é o documento de resultados de topo: gerado a partir dos dados
-    # (nunca escrito à mão) para garantir rastreabilidade. Só a suite completa o
-    # reescreve — um run de cenário único não deve substituir o relatório global.
-    if args.all and not args.generate_only:
-        (ROOT / "RESULTS.md").write_text(
-            render_results_doc(scenario_report), encoding="utf-8"
+    # Bugbot: a --generate-only run builds SUMO artifacts WITHOUT running, so it has no
+    # real verdicts (scenario_verdict defaults them to "pass"). It must NOT touch the
+    # persisted result summaries — neither overwrite the JSON suite (which would clobber
+    # real verdicts, including via the `--all` wholesale write) nor make the exit code
+    # gate on the stored suite. The dashboard's result data only ever comes from real runs.
+    if not args.generate_only:
+        summary_path = reports_dir / "scenario_suite_summary.json"
+        # B2: a single-scenario run (make scenario-run) must NOT drop the other scenarios
+        # already in the suite summary. Merge by scenario_id, overriding only the ones
+        # just (re)run. A full `--all` run intentionally replaces everything.
+        if not args.all and summary_path.exists():
+            try:
+                existing = json.loads(summary_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                # An unreadable/corrupt summary must NOT be silently overwritten with this
+                # partial run (that would drop every other stored scenario) — fail closed.
+                raise SystemExit(
+                    f"{summary_path} corrupto/ilegível ({exc}); recuso-me a sobrescrevê-lo "
+                    "com um run parcial e perder os outros cenários. Corrige/apaga o ficheiro "
+                    "ou corre `make scenario-suite` (--all)."
+                ) from exc
+            # Tolerate a valid-JSON-but-malformed structure ("scenarios": null / non-dict
+            # root): `.get(..., [])` returns null when the key exists -> TypeError on iter.
+            existing_scenarios = existing.get("scenarios") if isinstance(existing, dict) else None
+            merged = {
+                s.get("scenario_id"): s
+                for s in (existing_scenarios if isinstance(existing_scenarios, list) else [])
+                if isinstance(s, dict) and s.get("scenario_id")
+            }
+            for summary in run_summaries:
+                merged[summary.get("scenario_id")] = summary
+            scenario_report = {"scenario_count": len(merged), "scenarios": list(merged.values())}
+        summary_path.write_text(
+            json.dumps(scenario_report, indent=2, ensure_ascii=False),
+            encoding="utf-8",
         )
-        print("RESULTS.md regenerado a partir de reports/scenarios/scenario_suite_summary.json")
+        (reports_dir / "scenario_suite_report.md").write_text(
+            render_suite_report(scenario_report), encoding="utf-8"
+        )
+        # RESULTS.md é o documento de resultados de topo, gerado a partir dos dados
+        # (nunca escrito à mão). Só a suite completa (--all) o reescreve.
+        if args.all:
+            (ROOT / "RESULTS.md").write_text(
+                render_results_doc(scenario_report), encoding="utf-8"
+            )
+            print(
+                "RESULTS.md regenerado a partir de reports/scenarios/scenario_suite_summary.json"
+            )
     print(json.dumps(scenario_report, indent=2, ensure_ascii=False))
-    # Propaga o veredito para o exit code: qualquer cenário executado com veredito
-    # != "pass" (fail/inconclusive) tem de falhar o processo, senão CI/make engolem
-    # regressões com exit 0. (--list já retornou acima; --generate-only produz "pass".)
+    # Propaga o veredito para o exit code a partir da SUITE PERSISTIDA (merged), não
+    # só dos cenários desta invocação: senão um `scenario-run` que passa sai 0 mesmo
+    # que o suite summary guardado ainda liste outros cenários a falhar (Bugbot) —
+    # CI/make engoliam regressões. (--list já retornou acima; --generate-only => pass.)
     not_passing = [
         summary.get("scenario_id", "?")
-        for summary in run_summaries
+        for summary in scenario_report["scenarios"]
         if summary.get("verdict", {}).get("status") != "pass"
     ]
     if not_passing:
@@ -316,10 +351,16 @@ def apply_relative_insertion_gate(scenario_runs: dict[str, dict], *, load_kpis=N
                 allowed = max(threshold, baseline_value * RELATIVE_INSERTION_GATE_FACTOR)
                 if candidate_value <= allowed:
                     reasons.remove(_INSERTION_GATE_REASON)
-                    rep["run_verdict"] = {
-                        "status": "fail" if reasons else "pass",
-                        "reasons": reasons,
-                    }
+                    if reasons:
+                        status, out_reasons = "fail", reasons
+                    else:
+                        # Bugbot: removing the last hard reason must not bury an
+                        # inconclusive verdict (e.g. safety telemetry unavailable, B4)
+                        # as a pass — re-derive the inconclusive list from the KPIs.
+                        _, inconclusive = _verdict_reason_lists(kpis)
+                        status = "inconclusive" if inconclusive else "pass"
+                        out_reasons = inconclusive if inconclusive else []
+                    rep["run_verdict"] = {"status": status, "reasons": out_reasons}
                     rep["insertion_gate_note"] = (
                         f"gate relativo: candidate {candidate_value:.0f}s <= "
                         f"max(absoluto {threshold:.0f}s, baseline {baseline_value:.0f}s x "
@@ -378,9 +419,14 @@ def _aggregate_replications(runs: list[dict]) -> dict:
     kpi_paths = [run.get("kpis") for run in runs if run.get("kpis")]
     aggregate["kpi_paths"] = kpi_paths
     summaries = [_load_kpis(p) for p in kpi_paths if p]
-    summaries = [s for s in summaries if s]
-    if summaries:
-        aggregate["kpi_aggregate"] = _compute_kpi_aggregate(summaries)
+    loaded = [s for s in summaries if s]
+    if loaded:
+        aggregate["kpi_aggregate"] = _compute_kpi_aggregate(loaded)
+    # B8: surface how many seeds actually fed the aggregate vs how many were
+    # expected, so a silently-dropped (missing/unreadable) kpis.json is visible
+    # instead of the mean/CI quietly shrinking to the loaded subset.
+    aggregate["kpi_aggregate_n"] = len(loaded)
+    aggregate["kpi_aggregate_dropped"] = len(kpi_paths) - len(loaded)
     return aggregate
 
 
@@ -416,18 +462,29 @@ def _compute_kpi_aggregate(kpis_list: list[dict]) -> dict:
     def stat(values: list[float]) -> dict[str, float | None]:
         out = _mean_ci95(values)
         if not values:
-            out.update({"stdev": None, "p5": None, "p95": None})
+            out.update({"stdev": None, "p5": None, "p95": None, "min": None, "max": None})
             return out
         sorted_v = sorted(values)
-        p5_idx = max(0, int(round((len(sorted_v) - 1) * 0.05)))
-        p95_idx = min(len(sorted_v) - 1, int(round((len(sorted_v) - 1) * 0.95)))
-        # `stdev` (populacional) mantido para retrocompatibilidade; `stdev_sample`
-        # e `ci95_*` são as estatísticas de inferência.
+        if len(sorted_v) >= 2:
+            # B10: interpolated percentiles (statistics.quantiles) instead of a
+            # nearest-rank index that collapsed p5/p95 to min/max for small n.
+            cuts = statistics.quantiles(sorted_v, n=100, method="inclusive")
+            p5 = round(cuts[4], 3)
+            p95 = round(cuts[94], 3)
+        else:
+            p5 = p95 = round(sorted_v[0], 3)
+        # B9: `stdev` now uses the SAMPLE stdev (statistics.stdev), consistent with
+        # the sample-based ci95_* (was populacional pstdev — a different basis in
+        # the same aggregate, so a consumer re-deriving a CI from it disagreed).
         out.update(
             {
-                "stdev": round(statistics.pstdev(values), 3) if len(values) > 1 else 0.0,
-                "p5": round(sorted_v[p5_idx], 3),
-                "p95": round(sorted_v[p95_idx], 3),
+                "stdev": round(statistics.stdev(values), 3) if len(values) > 1 else 0.0,
+                "p5": p5,
+                "p95": p95,
+                # min/max across seeds — worst-case gates (e.g. max queue) must use the
+                # worst seed, not the mean, so a single >threshold seed isn't averaged away.
+                "min": round(sorted_v[0], 3),
+                "max": round(sorted_v[-1], 3),
             }
         )
         return out
@@ -436,6 +493,10 @@ def _compute_kpi_aggregate(kpis_list: list[dict]) -> dict:
         "bus_mean_time_loss_s": stat(collect(["buses", "mean_time_loss_s"])),
         "general_mean_time_loss_s": stat(collect(["general_traffic", "mean_time_loss_s"])),
         "all_vehicles_mean_duration_s": stat(collect(["all_vehicles", "mean_duration_s"])),
+        # Bugbot: aggregate the completed-vehicle/bus COUNTS too, so the report row
+        # doesn't mix first-seed counts with across-seed aggregated metrics.
+        "all_vehicles_count": stat(collect(["all_vehicles", "vehicles"])),
+        "buses_count": stat(collect(["buses", "vehicles"])),
         "max_network_queue_vehicles": stat(
             collect(["detectors", "network_queue", "max_queue_vehicles"])
         ),
@@ -463,6 +524,9 @@ def run_scenario_type(
 
     config = deepcopy(base_config)
     config["random_seed"] = int(seed)
+    # B40: re-draw stochastic incidents for THIS replication's seed (the base config
+    # carries the base-seed draw; without this every seed shares the same incidents).
+    rematerialize_stochastic_incidents(config)
     config.setdefault("detectors", {})
     config["detectors"]["e1_output"] = "../../e1_detectors.xml"
     config["detectors"]["e2_output"] = "../../e2_queues.xml"
@@ -747,12 +811,40 @@ def _paired_significance(
     }
 
 
+def _mean_kpis_for_compare(run: dict) -> dict | None:
+    """Build a KPI dict from the multi-seed means (kpi_aggregate) for compare_kpis.
+
+    B5: the point-delta comparison and the absolute gates must use the mean KPIs
+    across seeds — not the first seed's kpis.json — so they agree with the paired
+    CI95 instead of riding on a single replication. Returns None when there is no
+    aggregate (caller falls back to the first-seed kpis.json).
+    """
+    aggregate = run.get("kpi_aggregate")
+    if not isinstance(aggregate, dict):
+        return None
+
+    def _stat(key: str, field: str) -> float | None:
+        entry = aggregate.get(key)
+        return entry.get(field) if isinstance(entry, dict) else None
+
+    return {
+        "buses": {"mean_time_loss_s": _stat("bus_mean_time_loss_s", "mean")},
+        "general_traffic": {"mean_time_loss_s": _stat("general_mean_time_loss_s", "mean")},
+        "detectors": {
+            # Bugbot: the network_queue_gt_30 gate is a worst-case check — use the MAX
+            # across seeds, not the mean, so one seed's >30 peak isn't averaged away.
+            "network_queue": {"max_queue_vehicles": _stat("max_network_queue_vehicles", "max")}
+        },
+    }
+
+
 def compare_scenario_runs(runs: dict[str, dict]) -> dict:
-    baseline = _load_kpis(runs.get("baseline", {}).get("kpis"))
     baseline_run = runs.get("baseline", {})
+    baseline = _mean_kpis_for_compare(baseline_run) or _load_kpis(baseline_run.get("kpis"))
     comparisons: dict[str, dict] = {}
     for run_type in ("tsp_actuation",):
-        candidate = _load_kpis(runs.get(run_type, {}).get("kpis"))
+        candidate_run = runs.get(run_type, {})
+        candidate = _mean_kpis_for_compare(candidate_run) or _load_kpis(candidate_run.get("kpis"))
         if not baseline or not candidate:
             continue
         comparison = compare_kpis(baseline, candidate)
@@ -828,13 +920,36 @@ def _metric_delta(
     }
 
 
-def run_verdict(kpis: dict) -> dict:
-    if kpis.get("missing_tripinfo"):
-        return {"status": "fail", "reasons": ["missing_tripinfo"]}
-    reasons = []
-    inconclusive = []
+def _verdict_reason_lists(kpis: dict) -> tuple[list[str], list[str]]:
+    """Build (hard reasons, inconclusive reasons) for a run's KPIs.
+
+    Shared by run_verdict and apply_relative_insertion_gate so that relaxing the
+    insertion reason can still surface an inconclusive verdict (e.g. missing safety
+    telemetry, B4) rather than collapsing to a bogus pass.
+    """
+    reasons: list[str] = []
+    inconclusive: list[str] = []
     thresholds = _sumo_quality_thresholds(kpis)
     insertion = kpis.get("insertion", {})
+
+    # Fail-closed safety gate (B4): the collision / teleport / emergency-braking /
+    # vehicles-waiting counters all come from statistics.xml. Keying on file
+    # existence alone is not enough — a present-but-empty statistics.xml (aborted or
+    # short TraCI run) parses cleanly yet carries none of those counters, and the
+    # gates below would then read them as 0 via `or 0`, passing every safety gate
+    # with no evidence. parse_insertion sets safety_statistics_complete only when the
+    # <vehicles>/<teleports>/<safety> blocks were all actually read, so gate on that.
+    # Mark the run inconclusive when telemetry is incomplete; a real hard failure
+    # elsewhere still dominates (inconclusive is only returned when no reasons fire).
+    if not insertion.get("safety_statistics_complete"):
+        inconclusive.append("sumo_safety_statistics_unavailable")
+
+    # Bugbot: the insertion gates below (max_waiting_to_insert / insertion_gap_at_end /
+    # backlog ratio) all come from summary.xml. After B18 a corrupt summary sets
+    # parse_error and leaves those counters unset, so they read 0 via `or 0` and the
+    # gates pass with no evidence. Mark inconclusive instead of silently passing.
+    if insertion.get("parse_error"):
+        inconclusive.append("sumo_insertion_summary_unavailable")
 
     if kpis.get("all_vehicles", {}).get("vehicles", 0) <= 0:
         reasons.append("no_completed_vehicles")
@@ -885,6 +1000,18 @@ def run_verdict(kpis: dict) -> dict:
         backlog_ratio = float(insertion.get("backlog_step_count", 0) or 0) / float(steps)
         if backlog_ratio > float(thresholds["max_backlog_step_ratio"]):
             reasons.append("sumo_backlog_step_ratio_gt_threshold")
+    return reasons, inconclusive
+
+
+def run_verdict(kpis: dict) -> dict:
+    if kpis.get("missing_tripinfo"):
+        return {"status": "fail", "reasons": ["missing_tripinfo"]}
+    # B12: a tripinfo that exists but failed to parse yields a mutilated dict (no
+    # all_vehicles block). Fail with the right reason instead of the misleading
+    # "no_completed_vehicles" the empty block would otherwise trigger.
+    if kpis.get("tripinfo_parse_error"):
+        return {"status": "fail", "reasons": ["tripinfo_parse_error"]}
+    reasons, inconclusive = _verdict_reason_lists(kpis)
     if inconclusive and not reasons:
         return {"status": "inconclusive", "reasons": inconclusive}
     return {"status": "fail" if reasons else "pass", "reasons": reasons}
@@ -945,12 +1072,14 @@ def scenario_verdict(summary: dict) -> dict:
     return {"status": "pass", "reasons": reasons}
 
 
-@cache
+@lru_cache(maxsize=512)
 def _load_kpis_cached(path_str: str, mtime: float) -> dict | None:
     # kpis.json is written once per run then read many times (paired significance
     # ×2, the point comparison, and the scenario/suite/RESULTS reports). Caching on
     # (path, mtime) collapses ~10 reads+parses of each file into one, while the
     # mtime key stays correct if a file is regenerated within the same process.
+    # Bounded (vs functools.cache) so long-lived processes don't grow without limit;
+    # 512 comfortably covers a full suite's scenarios×seeds×run_types kpis.json set.
     return json.loads(Path(path_str).read_text(encoding="utf-8"))
 
 
@@ -973,29 +1102,51 @@ def render_scenario_report(summary: dict) -> str:
         "",
         f"Verdict: **{summary.get('verdict', {}).get('status', 'unknown')}**",
         "",
-        "| Run | Status | Vehicles | Buses | Bus timeLoss | General timeLoss | Max queue | Total CO2 (mg) | Total fuel (mg) |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Run | Seeds | Status | Vehicles | Buses | Bus timeLoss | General timeLoss | Max queue | Total CO2 (mg) | Total fuel (mg) |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for run_type, run in summary.get("runs", {}).items():
         kpis = _load_kpis(run.get("kpis")) or {}
+        aggregate = run.get("kpi_aggregate") if isinstance(run.get("kpi_aggregate"), dict) else {}
+
+        # B6: when there are multiple seeds, show the across-seed MEAN (kpi_aggregate)
+        # rather than the first seed's value unsignalled; the Seeds column makes the
+        # replication count explicit. Falls back to the first-seed value otherwise.
+        def _val(agg_key: str, fallback: Any, field: str = "mean", as_int: bool = False) -> Any:
+            entry = aggregate.get(agg_key)
+            if isinstance(entry, dict) and entry.get(field) is not None:
+                value = entry[field]
+                # Counts are integers — render the across-seed mean rounded to a whole
+                # number instead of an odd-looking fractional count (e.g. 101.333).
+                return int(round(value)) if as_int else round(value, 3)
+            return fallback
+
         emissions_totals = (
             kpis.get("emissions", {}).get("totals_mg", {})
             if isinstance(kpis.get("emissions"), dict)
             else {}
         )
         lines.append(
-            "| {run} | {status} | {veh} | {bus} | {bus_loss} | {gen_loss} | {queue} | {co2} | {fuel} |".format(
+            "| {run} | {seeds} | {status} | {veh} | {bus} | {bus_loss} | {gen_loss} | {queue} | {co2} | {fuel} |".format(
                 run=run_type,
+                seeds=run.get("replication_count", 1),
                 status=run.get("run_verdict", {}).get("status", run.get("status")),
-                veh=kpis.get("all_vehicles", {}).get("vehicles", ""),
-                bus=kpis.get("buses", {}).get("vehicles", ""),
-                bus_loss=kpis.get("buses", {}).get("mean_time_loss_s", ""),
-                gen_loss=kpis.get("general_traffic", {}).get("mean_time_loss_s", ""),
-                queue=kpis.get("detectors", {})
-                .get("network_queue", {})
-                .get("max_queue_vehicles", ""),
-                co2=emissions_totals.get("CO2", ""),
-                fuel=emissions_totals.get("fuel", ""),
+                veh=_val(
+                    "all_vehicles_count", kpis.get("all_vehicles", {}).get("vehicles", ""), as_int=True
+                ),
+                bus=_val("buses_count", kpis.get("buses", {}).get("vehicles", ""), as_int=True),
+                bus_loss=_val("bus_mean_time_loss_s", kpis.get("buses", {}).get("mean_time_loss_s", "")),
+                gen_loss=_val(
+                    "general_mean_time_loss_s",
+                    kpis.get("general_traffic", {}).get("mean_time_loss_s", ""),
+                ),
+                queue=_val(
+                    "max_network_queue_vehicles",
+                    kpis.get("detectors", {}).get("network_queue", {}).get("max_queue_vehicles", ""),
+                    field="max",  # Bugbot: report the worst seed, consistent with the gate
+                ),
+                co2=_val("total_co2_mg", emissions_totals.get("CO2", "")),
+                fuel=_val("total_fuel_mg", emissions_totals.get("fuel", "")),
             )
         )
 
@@ -1169,9 +1320,16 @@ def render_results_doc(report: dict) -> str:
             continue
         sig = cmp.get("bus_time_loss_replication_significance")
         point = cmp.get("bus_time_loss", {})
-        n = sig.get("n") if sig else "1"
+        # B7: show the real seed count instead of a hard-coded "1" when several
+        # seeds ran but no paired CI was computed; the verdict states so explicitly.
+        seed_count = len(s.get("seeds", [])) or 1
+        n = sig.get("n") if sig else seed_count
         mean_imp = f"{sig['mean_improvement']:+.1f}" if sig else "—"
-        verdict = sig.get("verdict", "single_seed_no_ci") if sig else "single_seed_no_ci"
+        verdict = (
+            sig.get("verdict", "single_seed_no_ci")
+            if sig
+            else ("no_paired_ci" if seed_count > 1 else "single_seed_no_ci")
+        )
         reg_pct = point.get("regression_pct")
         # regression_pct é positivo quando o TSP piora; mostramos como melhoria (-)
         pt = f"{-reg_pct:+.1f}%" if isinstance(reg_pct, (int, float)) else "—"
@@ -1195,8 +1353,13 @@ def render_results_doc(report: dict) -> str:
             lines.append(f"| {s['scenario_id']} | pendente | — | — |")
             continue
         sig = cmp.get("general_traffic_time_loss_replication_significance")
+        seed_count = len(s.get("seeds", [])) or 1
         mean_imp = f"{sig['mean_improvement']:+.1f}" if sig else "—"
-        verdict = sig.get("verdict", "single_seed_no_ci") if sig else "single_seed_no_ci"
+        verdict = (
+            sig.get("verdict", "single_seed_no_ci")
+            if sig
+            else ("no_paired_ci" if seed_count > 1 else "single_seed_no_ci")
+        )
         lines.append(f"| {s['scenario_id']} | {mean_imp} | {_ci_cell(sig)} | {verdict} |")
 
     lines += [

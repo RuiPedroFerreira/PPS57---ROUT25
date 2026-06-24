@@ -174,7 +174,7 @@ class TSPControlController:
             # trunca fase, por isso exige TAMBÉM os checks de clearance (fase pedonal,
             # all-red, intergreens). Classificar por estes dois níveis evita que um só
             # TLS atuado/sem-clearance desligue a atuação na rede inteira (era o gate
-            # global; ver smoke city-wide em Ingolstadt: 0/123 atuáveis).
+            # global; observável num smoke city-wide com muitos TLS: 0 atuáveis).
             all_signal_tls = {
                 intersection.tls_id
                 for intersection in self.cits_config.signal_controlled_intersections

@@ -39,12 +39,6 @@ class PolicyOptimizationTestCase(unittest.TestCase):
     def _isolated_opt(self, tmp_root: Path):
         return replace(self.opt, root=tmp_root)
 
-    def _isolated_cits(self, tmp_root: Path):
-        return replace(self.cits, root=tmp_root)
-
-    def _isolated_tsp(self, tmp_root: Path):
-        return replace(self.tsp, root=tmp_root)
-
     def _unit_scenarios(self):
         return build_offline_scenarios(self.cits)
 

@@ -1,4 +1,4 @@
-.PHONY: validate build run gui kpis ingolstadt-list ingolstadt-smoke ingolstadt-run ingolstadt-suite scenario-list scenario-run scenario-suite sumo-smoke cits-sumo tsp-demonstrator compare-tsp-rl compare-sumo-kpis evaluate-decision-outcomes build-event-training-dataset tsp-sumo tsp-sumo-no-actuation tsp-gui tsp-gui-no-actuation optimize-offline train-rl-policy sort-routes test clean
+.PHONY: validate build run gui kpis scenario-list scenario-run scenario-suite sumo-smoke cits-sumo tsp-demonstrator compare-tsp-rl compare-sumo-kpis evaluate-decision-outcomes build-event-training-dataset tsp-sumo tsp-sumo-no-actuation tsp-gui tsp-gui-no-actuation audit-protocol optimize-offline train-rl-policy sort-routes test clean
 
 # Hardening: cada receita corre como `bash -ec`, garantindo `set -e` mesmo
 # em linhas encadeadas e abortando à primeira falha. Sem isto, alguém a
@@ -8,6 +8,9 @@ SHELL := /bin/bash
 
 PYTHON := $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 
+# Pre-build static gate. A missing generated net.xml is DEFERRED here (not silently
+# passed) — the fresh-clone/no-SUMO bootstrap case; `build` re-validates the
+# network-profile fail-closed after netconvert has produced the net.
 validate:
 	$(PYTHON) src/pps57_sumo/validate_project.py --root .
 	$(PYTHON) -m json.tool configs/cits_v2x_config.json >/dev/null
@@ -18,8 +21,11 @@ validate:
 # `validate` corre antes de `build` para que toda a cadeia (run/cits-sumo/
 # tsp-sumo/etc., que dependem de build) execute o gate fail-closed de XML
 # bem-formado e rotas ordenadas. Antes ficava órfão e podia ser ignorado.
+# Após o netconvert gerar o net.xml, revalida-se SEM o opt-in de bootstrap, para
+# que o network-profile seja verificado fail-closed contra a rede real (B33).
 build: validate
 	$(PYTHON) src/pps57_sumo/build_network.py --config configs/sumo_scenario_base.json --base-dir sumo
+	$(PYTHON) src/pps57_sumo/validate_project.py --root .
 
 run: build
 	sumo -c sumo/corredor.sumocfg --duration-log.statistics
@@ -35,21 +41,6 @@ RUN_TYPE ?= baseline
 # config (scenario_profiles[*].random_seeds); definir para correr um subconjunto.
 SUITE_RUN_TYPE ?= pair
 SUITE_SEEDS ?=
-INGOLSTADT_SCENARIO ?= city_am_peak
-INGOLSTADT_RUN_TYPE ?= pair
-INGOLSTADT_SEEDS ?= 57
-ingolstadt-list:
-	$(PYTHON) scripts/run_ingolstadt_demo.py --list
-
-ingolstadt-smoke:
-	$(PYTHON) scripts/run_ingolstadt_demo.py --scenario $(INGOLSTADT_SCENARIO) --run-type pair --steps 300 --seeds $(INGOLSTADT_SEEDS)
-
-ingolstadt-run:
-	$(PYTHON) scripts/run_ingolstadt_demo.py --scenario $(INGOLSTADT_SCENARIO) --run-type $(INGOLSTADT_RUN_TYPE) --seeds $(INGOLSTADT_SEEDS)
-
-ingolstadt-suite:
-	$(PYTHON) scripts/run_ingolstadt_demo.py --all --run-type pair --seeds $(INGOLSTADT_SEEDS)
-
 scenario-list:
 	$(PYTHON) scripts/run_sumo_scenario.py --list
 
@@ -72,7 +63,7 @@ tsp-demonstrator:
 	$(PYTHON) scripts/run_tsp_demonstrator.py --steps 14400
 
 compare-tsp-rl: build
-	$(PYTHON) scripts/compare_tsp_baseline_rl.py --steps 7200 --train-rl
+	$(PYTHON) scripts/compare_tsp_baseline_rl.py --steps 14400 --train-rl
 
 # Compara dois ficheiros de KPIs SUMO já gerados (parse_tripinfo). Os caminhos
 # são overridable: make compare-sumo-kpis BASELINE_KPIS=... RL_KPIS=...
@@ -82,16 +73,26 @@ compare-sumo-kpis:
 	$(PYTHON) scripts/compare_sumo_kpis.py --baseline-kpis $(BASELINE_KPIS) --rl-kpis $(RL_KPIS)
 
 evaluate-decision-outcomes: build
-	$(PYTHON) scripts/evaluate_decision_outcomes.py --steps 7200 --train-rl
+	$(PYTHON) scripts/evaluate_decision_outcomes.py --steps 14400 --train-rl
 
 build-event-training-dataset:
 	$(PYTHON) scripts/build_event_training_dataset.py
 
 tsp-sumo: build
 	$(PYTHON) scripts/run_tsp_control.py --mode sumo --steps 7200
+	$(MAKE) audit-protocol
 
 tsp-sumo-no-actuation: build
 	$(PYTHON) scripts/run_tsp_control.py --mode sumo --steps 7200 --no-actuation
+	$(MAKE) audit-protocol
+
+# Fail-closed protocol audit (B30): inspecciona os artefactos do ciclo de vida
+# C-ITS/TSP (outputs/*.jsonl) e sai !=0 quando há violações de integridade —
+# SSEM final em falta, transições de estado ilegais, SSEM órfão ou erros de
+# actuação. Corre automaticamente após os fluxos headless tsp-sumo e é também
+# invocável standalone sobre os outputs/ já existentes.
+audit-protocol:
+	$(PYTHON) scripts/audit_protocol_lifecycle.py
 
 tsp-gui: build
 	$(PYTHON) scripts/run_tsp_control.py --mode sumo --gui --steps 7200

@@ -74,7 +74,9 @@ def build_demonstrator_report(
     comparisons = {
         "tsp_vs_sumo_baseline_kpis": _kpi_delta(baseline.kpis, tsp.kpis),
         "tsp_controller_vs_sumo_baseline_kpis": _kpi_delta(baseline.kpis, tsp_controller.kpis),
-        "tsp_controller_vs_tsp_runtime": _runtime_delta(tsp, tsp_controller),
+        "tsp_controller_vs_tsp_runtime": _runtime_delta(
+            runs[tsp.label]["runtime"], runs[tsp_controller.label]["runtime"]
+        ),
     }
     return {
         "report_type": "tsp_control_demonstrator",
@@ -306,18 +308,19 @@ def _kpi_delta(baseline: JsonDict | None, candidate: JsonDict | None) -> JsonDic
     return {"available": True, "rows": rows}
 
 
-def _runtime_delta(tsp: DemonstratorRun, controller: DemonstratorRun) -> JsonDict:
-    tsp_payload = _run_payload(tsp)["runtime"]
-    controller_payload = _run_payload(controller)["runtime"]
+def _runtime_delta(tsp_runtime: JsonDict, controller_runtime: JsonDict) -> JsonDict:
+    # Takes the already-computed `runtime` payloads (built once in
+    # build_demonstrator_report) instead of calling _run_payload again per run, which
+    # recomputed per-TLS stats / green-time / score attribution a second time.
     keys = ["total_decisions", "applied_events", "blocked_by_safety", "controller_rejections"]
     return {
         "available": True,
         "rows": [
             {
                 "metric": key,
-                "tsp": tsp_payload.get(key),
-                "tsp_controller": controller_payload.get(key),
-                "delta": _delta(tsp_payload.get(key), controller_payload.get(key)),
+                "tsp": tsp_runtime.get(key),
+                "tsp_controller": controller_runtime.get(key),
+                "delta": _delta(tsp_runtime.get(key), controller_runtime.get(key)),
             }
             for key in keys
         ],
@@ -347,10 +350,18 @@ def _verdict(comparisons: JsonDict) -> JsonDict:
             "status": "inconclusive_missing_bus_kpi",
             "reason": "The report could not find bus mean_time_loss_s in the SUMO KPIs.",
         }
-    if bus_loss_delta < 0 and (traffic_loss_delta is None or traffic_loss_delta <= 0):
+    if bus_loss_delta < 0 and traffic_loss_delta is not None and traffic_loss_delta <= 0:
         return {
             "status": "passes_primary_demonstrator_goal",
             "reason": "Bus time loss improved without increasing general traffic mean time loss.",
+        }
+    if bus_loss_delta < 0 and traffic_loss_delta is None:
+        # B20: bus improved but the general-traffic delta is missing — we cannot claim
+        # the no-cost goal without evidence the general traffic did not pay a cost.
+        return {
+            "status": "inconclusive_missing_general_traffic_kpi",
+            "reason": "Bus time loss improved but general_traffic mean_time_loss_s is missing, "
+            "so the no-cost claim cannot be verified.",
         }
     if bus_loss_delta < 0:
         return {
@@ -404,9 +415,12 @@ def _read_jsonl(path: Path) -> list[JsonDict]:
     if not path.exists():
         return []
     rows: list[JsonDict] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            rows.append(json.loads(line))
+    # Stream the file handle instead of read_text().splitlines() so only one line is
+    # resident at a time (the logs can be multi-GB on long runs).
+    with path.open(encoding="utf-8") as handle:
+        for line in handle:
+            if line.strip():
+                rows.append(json.loads(line))
     return rows
 
 

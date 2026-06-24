@@ -8,6 +8,7 @@ off-policy-evaluation report (pps57_opt.ope) — one implementation, one t-table
 
 from __future__ import annotations
 
+import bisect
 import math
 import statistics
 
@@ -42,7 +43,27 @@ T_CRITICAL_95: dict[int, float] = {
     28: 2.048,
     29: 2.045,
     30: 2.042,
+    # B38: extended past df=30 so the half-width is not understated by ~4% at df=31
+    # (the flat 1.96 normal approximation). Values are two-tailed 95% Student-t.
+    31: 2.040,
+    32: 2.037,
+    33: 2.035,
+    34: 2.032,
+    35: 2.030,
+    36: 2.028,
+    37: 2.026,
+    38: 2.024,
+    39: 2.023,
+    40: 2.021,
+    45: 2.014,
+    50: 2.009,
+    60: 2.000,
+    80: 1.990,
+    100: 1.984,
+    120: 1.980,
 }
+
+_T_DF_SORTED = sorted(T_CRITICAL_95)
 
 
 def t_critical_95(df: int) -> float:
@@ -50,7 +71,12 @@ def t_critical_95(df: int) -> float:
         return 0.0
     if df in T_CRITICAL_95:
         return T_CRITICAL_95[df]
-    return 1.96  # df > 30: aproximação normal
+    if df > _T_DF_SORTED[-1]:
+        return 1.96  # beyond the table (df > 120) → normal approximation
+    # B38: conservative lookup for a gap (e.g. df=42) — the largest tabulated df
+    # <= the actual df. Since t decreases with df, this t is at least the true value.
+    idx = bisect.bisect_right(_T_DF_SORTED, df) - 1
+    return T_CRITICAL_95[_T_DF_SORTED[idx]]
 
 
 def mean_ci95(values: list[float]) -> dict[str, float | int | None]:
@@ -68,14 +94,17 @@ def mean_ci95(values: list[float]) -> dict[str, float | int | None]:
         }
     mean = statistics.fmean(values)
     if n == 1:
+        # B39: a single sample has no spread or CI — return None (not 0.0) for the
+        # inference fields so a consumer can't mistake a degenerate zero-width
+        # interval for a real one. Only the mean is defined.
         return {
             "mean": round(mean, 3),
             "n": 1,
-            "stdev_sample": 0.0,
-            "sem": 0.0,
-            "ci95_half_width": 0.0,
-            "ci95_low": round(mean, 3),
-            "ci95_high": round(mean, 3),
+            "stdev_sample": None,
+            "sem": None,
+            "ci95_half_width": None,
+            "ci95_low": None,
+            "ci95_high": None,
         }
     stdev = statistics.stdev(values)  # amostral (n-1), apropriado para inferência
     sem = stdev / math.sqrt(n)

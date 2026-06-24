@@ -68,7 +68,7 @@ class NetworkProfileTests(unittest.TestCase):
             self.assertEqual(movement_b.target_phase_index, 3)
             self.assertIn(movement_b.signal_group_id, movement_a.conflicts_with)
 
-    def test_validate_skips_missing_generated_network_before_build(self) -> None:
+    def test_validate_defers_unbuilt_generated_network(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             cits = {
@@ -76,8 +76,13 @@ class NetworkProfileTests(unittest.TestCase):
                 "network_discovery": {"enabled": True},
                 "intersections": [],
             }
+            # B33 — a missing GENERATED net.xml DEFERS by default (does not raise), so
+            # config validation stays usable in a clean checkout / no-SUMO `make test`.
+            # The fail-closed guarantee is `make build` re-validating with the net present.
             validate_network_profile_config(root, cits, {})
 
+            # A missing IMPORTED (non-generated) path is a hard config error — that
+            # path is not something `make build` will produce.
             cits["sumo"]["network"] = "imported/missing.net.xml"
             with self.assertRaises(SystemExit):
                 validate_network_profile_config(root, cits, {})

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -161,8 +162,14 @@ def _evaluate_pair(
     rl_status = str(rl.get("status", ""))
     baseline_action = str(baseline.get("action", ""))
     rl_action = str(rl.get("action", ""))
-    baseline_applied = bool(baseline_actuation.get("applied", False))
-    rl_applied = bool(rl_actuation.get("applied", False))
+    # B19: match the demonstrator's network-delivery definition — a shadow
+    # (--no-actuation) event logs applied=True but is NOT real delivery.
+    baseline_applied = bool(baseline_actuation.get("applied", False)) and not baseline_actuation.get(
+        "no_actuation", False
+    )
+    rl_applied = bool(rl_actuation.get("applied", False)) and not rl_actuation.get(
+        "no_actuation", False
+    )
     safety_delta = _safety_delta(baseline_status, rl_status)
     actuation_delta = _actuation_delta(baseline_applied, rl_applied)
     verdict, reason = _verdict(
@@ -387,7 +394,22 @@ def _pair_within_key(
 
 
 def _actuations_by_decision_id(rows: Iterable[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    return {str(row.get("decision_id")): row for row in rows if row.get("decision_id")}
+    # B24: keep the FIRST actuation per decision_id and flag duplicates, instead of
+    # silently letting a later row overwrite the earlier one (last-wins).
+    by_id: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        decision_id = row.get("decision_id")
+        if not decision_id:
+            continue
+        key = str(decision_id)
+        if key in by_id:
+            print(
+                f"[warn] B24: actuação duplicada para decision_id={key}; mantida a primeira.",
+                file=sys.stderr,
+            )
+            continue
+        by_id[key] = row
+    return by_id
 
 
 def _missing_row(key: tuple[float, str, str], verdict: str, item: dict[str, Any] | None) -> Row:
@@ -456,9 +478,10 @@ def _row_delta(rows: list[Row], metric: str) -> float | None:
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
-    return [
-        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
-    ]
+    # Stream the file handle instead of read_text().splitlines(), so a multi-GB log
+    # is parsed line-by-line rather than held entirely in memory as a string + list.
+    with path.open(encoding="utf-8") as handle:
+        return [json.loads(line) for line in handle if line.strip()]
 
 
 def _fmt(value: Any) -> str:

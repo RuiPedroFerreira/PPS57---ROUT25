@@ -555,10 +555,20 @@ def _materialize_stochastic_incidents(
         return
     base_seed = int(config.get("random_seed", 57))
     rng = random.Random(_stochastic_incident_seed(base_seed, scenario_id))
-    events = list(config.get("events", []))
+    # B40: idempotent — drop any previously materialised incident so a per-replication
+    # re-call (with a new seed) REPLACES rather than appends to the base-seed draw.
+    events = [
+        event
+        for event in config.get("events", [])
+        if not (isinstance(event, dict) and event.get("_stochastic_incident"))
+    ]
     for index, template in enumerate(templates):
         if not isinstance(template, dict):
-            continue
+            # B41: fail closed on a malformed entry instead of silently ignoring it.
+            raise ScenarioConfigError(
+                f"{scenario_id or '<base>'}: stochastic_incidents[{index}] must be an object, "
+                f"got {type(template).__name__}."
+            )
         probability = float(template.get("probability", 1.0))
         if rng.random() > probability:
             continue
@@ -595,9 +605,25 @@ def _materialize_stochastic_incidents(
                 "stop_duration_s": round(duration_s, 1),
                 "stop_pos_m": float(template.get("stop_pos_m", 80.0)),
                 "description": f"Stochastic incident materialised from template '{template.get('id_prefix', '')}'.",
+                "_stochastic_incident": True,
             }
         )
     config["events"] = events
+
+
+def rematerialize_stochastic_incidents(config: dict[str, Any]) -> None:
+    """Re-draw stochastic incidents for the config's CURRENT random_seed (B40).
+
+    Each replication must draw its own incidents; the base materialisation in
+    ``apply_scenario_profile`` uses the base seed, so per-seed runs call this after
+    overriding ``random_seed``. No-op when the scenario has no ``stochastic_incidents``.
+    """
+    scenario_id = config.get("scenario_id")
+    profiles = config.get("scenario_profiles", {})
+    profile = profiles.get(scenario_id) if isinstance(profiles, dict) else None
+    if not isinstance(profile, dict) or not profile.get("stochastic_incidents"):
+        return
+    _materialize_stochastic_incidents(config, profile, scenario_id=scenario_id)
 
 
 def _stochastic_incident_seed(base_seed: int, scenario_id: str | None) -> int:

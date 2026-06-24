@@ -32,12 +32,16 @@ class MeanCi95TestCase(unittest.TestCase):
         self.assertIsNone(out["mean"])
         self.assertIsNone(out["ci95_low"])
 
-    def test_single_value_has_zero_width_ci(self) -> None:
+    def test_single_value_has_no_ci(self) -> None:
+        # B39: a single sample has no spread/CI — the inference fields are None
+        # (not a degenerate zero-width interval that reads as a valid CI).
         out = rss._mean_ci95([10.0])
         self.assertEqual(out["mean"], 10.0)
-        self.assertEqual(out["ci95_half_width"], 0.0)
-        self.assertEqual(out["ci95_low"], 10.0)
-        self.assertEqual(out["ci95_high"], 10.0)
+        self.assertEqual(out["n"], 1)
+        self.assertIsNone(out["stdev_sample"])
+        self.assertIsNone(out["ci95_half_width"])
+        self.assertIsNone(out["ci95_low"])
+        self.assertIsNone(out["ci95_high"])
 
     def test_five_values_student_t_interval(self) -> None:
         out = rss._mean_ci95([10, 12, 11, 9, 13])
@@ -50,8 +54,16 @@ class MeanCi95TestCase(unittest.TestCase):
         self.assertAlmostEqual(out["ci95_high"], 12.963, places=2)
 
     def test_t_critical_falls_back_to_normal_for_large_df(self) -> None:
-        self.assertEqual(rss._t_critical_95(200), 1.96)
+        self.assertEqual(rss._t_critical_95(200), 1.96)  # df > 120 → normal approx
         self.assertEqual(rss._t_critical_95(4), 2.776)
+
+    def test_t_critical_uses_extended_table_past_df_30(self) -> None:
+        # B38: df 31..120 are tabulated instead of the flat 1.96 (which understated
+        # the half-width by ~4% at df=31).
+        self.assertEqual(rss._t_critical_95(31), 2.040)
+        self.assertEqual(rss._t_critical_95(50), 2.009)
+        # a gap (df=42) falls back conservatively to the largest tabulated df <= 42.
+        self.assertEqual(rss._t_critical_95(42), rss._t_critical_95(40))
 
 
 class PairedSignificanceTestCase(unittest.TestCase):
@@ -116,9 +128,14 @@ class RelativeInsertionGateTestCase(unittest.TestCase):
     """Gate de max_waiting_to_insert relativo ao baseline emparelhado (v2)."""
 
     @staticmethod
-    def _kpis(max_wait: float, threshold: float = 150) -> dict:
+    def _kpis(max_wait: float, threshold: float = 150, *, safety_complete: bool = True) -> dict:
         return {
-            "insertion": {"max_waiting_to_insert": max_wait},
+            "insertion": {
+                "max_waiting_to_insert": max_wait,
+                # A real run with safety telemetry present (otherwise relativising the
+                # insertion reason surfaces the B4 inconclusive, see the test below).
+                "safety_statistics_complete": safety_complete,
+            },
             "scenario": {"sumo_quality_thresholds": {"max_waiting_to_insert": threshold}},
         }
 
@@ -148,6 +165,34 @@ class RelativeInsertionGateTestCase(unittest.TestCase):
         rss.apply_relative_insertion_gate(runs, load_kpis=store.get)
         self.assertEqual(runs["tsp_actuation"]["run_verdict"], {"status": "pass", "reasons": []})
         self.assertIn("gate relativo", runs["tsp_actuation"]["insertion_gate_note"])
+
+    def test_marginal_breach_with_missing_safety_telemetry_is_inconclusive(self) -> None:
+        # Bugbot: relativising the insertion reason must NOT bury a B4 inconclusive
+        # (safety telemetry unavailable) as a pass.
+        store = {
+            "base.json": self._kpis(148),
+            "cand.json": self._kpis(151, safety_complete=False),
+        }
+        runs = {
+            "baseline": {
+                "seed": 57,
+                "kpis": "base.json",
+                "run_verdict": {"status": "pass", "reasons": []},
+            },
+            "tsp_actuation": {
+                "seed": 57,
+                "kpis": "cand.json",
+                "run_verdict": {
+                    "status": "fail",
+                    "reasons": ["sumo_max_waiting_to_insert_gt_threshold"],
+                },
+            },
+        }
+        rss.apply_relative_insertion_gate(runs, load_kpis=store.get)
+        self.assertEqual(
+            runs["tsp_actuation"]["run_verdict"],
+            {"status": "inconclusive", "reasons": ["sumo_safety_statistics_unavailable"]},
+        )
 
     def test_material_breach_still_fails(self) -> None:
         # baseline 72s, candidato 205s: > max(150, 79.2) -> mantém fail.

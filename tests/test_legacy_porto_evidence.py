@@ -2,7 +2,7 @@
 """Regressões dos instrumentos de evidência LEGADOS (fase Porto/Boavista).
 
 Estes scripts foram arquivados em ``scripts/legacy_porto/`` quando o projeto
-pivotou para o cenário real e calibrado de Ingolstadt (ver
+passou para o pipeline de cenários actual (ver
 ``scripts/legacy_porto/README.md``). Mantemos a cobertura para o código
 arquivado não apodrecer silenciosamente — prova de proveniência/hash, despacho
 do gate V2 configurado, contabilidade de fluxo-zero e a fonte da banda de

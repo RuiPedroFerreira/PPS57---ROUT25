@@ -161,7 +161,14 @@ def main() -> int:
             policy_optimization_summary = json.loads(
                 policy_summary_path.read_text(encoding="utf-8")
             )
-        except (OSError, ValueError):
+        except (OSError, ValueError) as exc:
+            # B43: surface a corrupt summary instead of silently dropping the
+            # counterfactuals section as if the file simply didn't exist.
+            print(
+                f"[warn] B43: não foi possível ler {policy_summary_path} ({exc}); "
+                "a secção de counterfactuals fica indisponível.",
+                file=sys.stderr,
+            )
             policy_optimization_summary = None
 
     report = build_demonstrator_report(
@@ -263,6 +270,12 @@ def _build_network(*, tls_type: str) -> None:
 def _write_current_kpis(label: str) -> None:
     tripinfo = ROOT / "outputs/tripinfo.xml"
     if not tripinfo.exists():
+        # B44: warn the operator — otherwise the snapshot proceeds with kpis: null
+        # and nothing flags that the run produced no tripinfo.
+        print(
+            f"[warn] B44: {tripinfo} em falta para '{label}'; o snapshot fica sem KPIs.",
+            file=sys.stderr,
+        )
         return
     kpis = parse_tripinfo(tripinfo)
     out = ROOT / f"reports/{label}_kpis.json"

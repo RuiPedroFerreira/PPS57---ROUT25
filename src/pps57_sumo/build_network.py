@@ -190,8 +190,14 @@ def write_sumocfg(config: dict, artifacts: SumoArtifacts, *, output_dir: Path) -
         rel(artifacts.detectors_file),
         rel(artifacts.parking_file),
     ]
-    begin = int(float(config.get("simulation_begin_s", 0)))
-    end = int(float(config.get("simulation_end_s", 7200)))
+    # B42: don't truncate fractional horizons (int(float("7200.5")) == 7200). SUMO's
+    # <begin>/<end> accept float seconds; keep integral values as ints for tidy output.
+    def _seconds(value: object, default: float) -> int | float:
+        seconds = float(value if value is not None else default)
+        return int(seconds) if seconds.is_integer() else seconds
+
+    begin = _seconds(config.get("simulation_begin_s"), 0)
+    end = _seconds(config.get("simulation_end_s"), 7200)
     step_length = float(config.get("simulation_step_length_s", 1.0))
     seed = int(config.get("random_seed", 57))
     # Tune actuated TLS defaults when any intersection requests actuated control.
