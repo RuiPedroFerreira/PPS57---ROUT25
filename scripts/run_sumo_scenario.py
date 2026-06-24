@@ -183,7 +183,13 @@ def main() -> int:
             if isinstance(s, dict) and s.get("scenario_id")
         }
         for summary in run_summaries:
-            merged[summary.get("scenario_id")] = summary
+            scenario_id = summary.get("scenario_id")
+            # Bugbot: a --generate-only rebuild skips SUMO and sets no run_verdict, so
+            # its scenario_verdict defaults to "pass". It must NOT overwrite a prior
+            # real verdict (e.g. a fail) in the merged suite — only add new scenarios.
+            if args.generate_only and scenario_id in merged:
+                continue
+            merged[scenario_id] = summary
         scenario_report = {"scenario_count": len(merged), "scenarios": list(merged.values())}
     summary_path.write_text(
         json.dumps(scenario_report, indent=2, ensure_ascii=False),
@@ -1092,10 +1098,10 @@ def render_scenario_report(summary: dict) -> str:
         # B6: when there are multiple seeds, show the across-seed MEAN (kpi_aggregate)
         # rather than the first seed's value unsignalled; the Seeds column makes the
         # replication count explicit. Falls back to the first-seed value otherwise.
-        def _val(agg_key: str, fallback: Any) -> Any:
+        def _val(agg_key: str, fallback: Any, field: str = "mean") -> Any:
             entry = aggregate.get(agg_key)
-            if isinstance(entry, dict) and entry.get("mean") is not None:
-                return round(entry["mean"], 3)
+            if isinstance(entry, dict) and entry.get(field) is not None:
+                return round(entry[field], 3)
             return fallback
 
         emissions_totals = (
@@ -1118,6 +1124,7 @@ def render_scenario_report(summary: dict) -> str:
                 queue=_val(
                     "max_network_queue_vehicles",
                     kpis.get("detectors", {}).get("network_queue", {}).get("max_queue_vehicles", ""),
+                    field="max",  # Bugbot: report the worst seed, consistent with the gate
                 ),
                 co2=_val("total_co2_mg", emissions_totals.get("CO2", "")),
                 fuel=_val("total_fuel_mg", emissions_totals.get("fuel", "")),

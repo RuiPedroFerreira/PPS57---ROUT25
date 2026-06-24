@@ -1693,6 +1693,33 @@ class SumoKpiParsingTestCase(unittest.TestCase):
         self.assertEqual(mean_kpis["detectors"]["network_queue"]["max_queue_vehicles"], 31.0)
         self.assertIsNone(_mean_kpis_for_compare({}))
 
+    def test_scenario_report_queue_shows_worst_seed_not_mean(self) -> None:
+        # Bugbot: the "Max queue" report column must show the worst seed (max),
+        # consistent with the gate — not the across-seed mean.
+        from run_sumo_scenario import render_scenario_report
+
+        summary = {
+            "scenario_id": "s",
+            "seeds": [1, 2, 3],
+            "verdict": {"status": "fail"},
+            "runs": {
+                "tsp_actuation": {
+                    "replication_count": 3,
+                    "run_verdict": {
+                        "status": "fail",
+                        "reasons": ["network_queue_gt_30_vehicles"],
+                    },
+                    "kpi_aggregate": {
+                        "max_network_queue_vehicles": {"mean": 12.0, "max": 31.0},
+                    },
+                }
+            },
+            "comparisons": {},
+        }
+        report = render_scenario_report(summary)
+        self.assertIn("31.0", report)  # worst seed shown
+        self.assertNotIn("12.0", report)  # mean not shown for the queue
+
     def test_steps_convert_to_effective_end_seconds(self) -> None:
         base = json.loads((ROOT / "configs/sumo_scenario_base.json").read_text(encoding="utf-8"))
         cfg = apply_scenario_profile(base, "baseline_am_peak")
