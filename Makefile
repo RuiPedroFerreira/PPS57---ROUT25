@@ -8,11 +8,11 @@ SHELL := /bin/bash
 
 PYTHON := $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 
-# Pre-build static gate. --allow-unbuilt-network lets the network-profile check
-# DEFER (not silently pass) when the generated net.xml does not exist yet — the
-# fresh-clone bootstrap case. `build` re-validates fail-closed after netconvert.
+# Pre-build static gate. A missing generated net.xml is DEFERRED here (not silently
+# passed) — the fresh-clone/no-SUMO bootstrap case; `build` re-validates the
+# network-profile fail-closed after netconvert has produced the net.
 validate:
-	$(PYTHON) src/pps57_sumo/validate_project.py --root . --allow-unbuilt-network
+	$(PYTHON) src/pps57_sumo/validate_project.py --root .
 	$(PYTHON) -m json.tool configs/cits_v2x_config.json >/dev/null
 	$(PYTHON) -m json.tool configs/tsp_safety_config.json >/dev/null
 	$(PYTHON) -m json.tool configs/policy_training_config.json >/dev/null
