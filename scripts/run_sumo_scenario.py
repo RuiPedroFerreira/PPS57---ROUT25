@@ -194,12 +194,13 @@ def main() -> int:
         )
         print("RESULTS.md regenerado a partir de reports/scenarios/scenario_suite_summary.json")
     print(json.dumps(scenario_report, indent=2, ensure_ascii=False))
-    # Propaga o veredito para o exit code: qualquer cenário executado com veredito
-    # != "pass" (fail/inconclusive) tem de falhar o processo, senão CI/make engolem
-    # regressões com exit 0. (--list já retornou acima; --generate-only produz "pass".)
+    # Propaga o veredito para o exit code a partir da SUITE PERSISTIDA (merged), não
+    # só dos cenários desta invocação: senão um `scenario-run` que passa sai 0 mesmo
+    # que o suite summary guardado ainda liste outros cenários a falhar (Bugbot) —
+    # CI/make engoliam regressões. (--list já retornou acima; --generate-only => pass.)
     not_passing = [
         summary.get("scenario_id", "?")
-        for summary in run_summaries
+        for summary in scenario_report["scenarios"]
         if summary.get("verdict", {}).get("status") != "pass"
     ]
     if not_passing:
@@ -334,10 +335,16 @@ def apply_relative_insertion_gate(scenario_runs: dict[str, dict], *, load_kpis=N
                 allowed = max(threshold, baseline_value * RELATIVE_INSERTION_GATE_FACTOR)
                 if candidate_value <= allowed:
                     reasons.remove(_INSERTION_GATE_REASON)
-                    rep["run_verdict"] = {
-                        "status": "fail" if reasons else "pass",
-                        "reasons": reasons,
-                    }
+                    if reasons:
+                        status, out_reasons = "fail", reasons
+                    else:
+                        # Bugbot: removing the last hard reason must not bury an
+                        # inconclusive verdict (e.g. safety telemetry unavailable, B4)
+                        # as a pass — re-derive the inconclusive list from the KPIs.
+                        _, inconclusive = _verdict_reason_lists(kpis)
+                        status = "inconclusive" if inconclusive else "pass"
+                        out_reasons = inconclusive if inconclusive else []
+                    rep["run_verdict"] = {"status": status, "reasons": out_reasons}
                     rep["insertion_gate_note"] = (
                         f"gate relativo: candidate {candidate_value:.0f}s <= "
                         f"max(absoluto {threshold:.0f}s, baseline {baseline_value:.0f}s x "
@@ -887,16 +894,15 @@ def _metric_delta(
     }
 
 
-def run_verdict(kpis: dict) -> dict:
-    if kpis.get("missing_tripinfo"):
-        return {"status": "fail", "reasons": ["missing_tripinfo"]}
-    # B12: a tripinfo that exists but failed to parse yields a mutilated dict (no
-    # all_vehicles block). Fail with the right reason instead of the misleading
-    # "no_completed_vehicles" the empty block would otherwise trigger.
-    if kpis.get("tripinfo_parse_error"):
-        return {"status": "fail", "reasons": ["tripinfo_parse_error"]}
-    reasons = []
-    inconclusive = []
+def _verdict_reason_lists(kpis: dict) -> tuple[list[str], list[str]]:
+    """Build (hard reasons, inconclusive reasons) for a run's KPIs.
+
+    Shared by run_verdict and apply_relative_insertion_gate so that relaxing the
+    insertion reason can still surface an inconclusive verdict (e.g. missing safety
+    telemetry, B4) rather than collapsing to a bogus pass.
+    """
+    reasons: list[str] = []
+    inconclusive: list[str] = []
     thresholds = _sumo_quality_thresholds(kpis)
     insertion = kpis.get("insertion", {})
 
@@ -961,6 +967,18 @@ def run_verdict(kpis: dict) -> dict:
         backlog_ratio = float(insertion.get("backlog_step_count", 0) or 0) / float(steps)
         if backlog_ratio > float(thresholds["max_backlog_step_ratio"]):
             reasons.append("sumo_backlog_step_ratio_gt_threshold")
+    return reasons, inconclusive
+
+
+def run_verdict(kpis: dict) -> dict:
+    if kpis.get("missing_tripinfo"):
+        return {"status": "fail", "reasons": ["missing_tripinfo"]}
+    # B12: a tripinfo that exists but failed to parse yields a mutilated dict (no
+    # all_vehicles block). Fail with the right reason instead of the misleading
+    # "no_completed_vehicles" the empty block would otherwise trigger.
+    if kpis.get("tripinfo_parse_error"):
+        return {"status": "fail", "reasons": ["tripinfo_parse_error"]}
+    reasons, inconclusive = _verdict_reason_lists(kpis)
     if inconclusive and not reasons:
         return {"status": "inconclusive", "reasons": inconclusive}
     return {"status": "fail" if reasons else "pass", "reasons": reasons}

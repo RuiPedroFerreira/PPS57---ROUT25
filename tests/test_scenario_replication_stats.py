@@ -128,9 +128,14 @@ class RelativeInsertionGateTestCase(unittest.TestCase):
     """Gate de max_waiting_to_insert relativo ao baseline emparelhado (v2)."""
 
     @staticmethod
-    def _kpis(max_wait: float, threshold: float = 150) -> dict:
+    def _kpis(max_wait: float, threshold: float = 150, *, safety_complete: bool = True) -> dict:
         return {
-            "insertion": {"max_waiting_to_insert": max_wait},
+            "insertion": {
+                "max_waiting_to_insert": max_wait,
+                # A real run with safety telemetry present (otherwise relativising the
+                # insertion reason surfaces the B4 inconclusive, see the test below).
+                "safety_statistics_complete": safety_complete,
+            },
             "scenario": {"sumo_quality_thresholds": {"max_waiting_to_insert": threshold}},
         }
 
@@ -160,6 +165,34 @@ class RelativeInsertionGateTestCase(unittest.TestCase):
         rss.apply_relative_insertion_gate(runs, load_kpis=store.get)
         self.assertEqual(runs["tsp_actuation"]["run_verdict"], {"status": "pass", "reasons": []})
         self.assertIn("gate relativo", runs["tsp_actuation"]["insertion_gate_note"])
+
+    def test_marginal_breach_with_missing_safety_telemetry_is_inconclusive(self) -> None:
+        # Bugbot: relativising the insertion reason must NOT bury a B4 inconclusive
+        # (safety telemetry unavailable) as a pass.
+        store = {
+            "base.json": self._kpis(148),
+            "cand.json": self._kpis(151, safety_complete=False),
+        }
+        runs = {
+            "baseline": {
+                "seed": 57,
+                "kpis": "base.json",
+                "run_verdict": {"status": "pass", "reasons": []},
+            },
+            "tsp_actuation": {
+                "seed": 57,
+                "kpis": "cand.json",
+                "run_verdict": {
+                    "status": "fail",
+                    "reasons": ["sumo_max_waiting_to_insert_gt_threshold"],
+                },
+            },
+        }
+        rss.apply_relative_insertion_gate(runs, load_kpis=store.get)
+        self.assertEqual(
+            runs["tsp_actuation"]["run_verdict"],
+            {"status": "inconclusive", "reasons": ["sumo_safety_statistics_unavailable"]},
+        )
 
     def test_material_breach_still_fails(self) -> None:
         # baseline 72s, candidato 205s: > max(150, 79.2) -> mantém fail.

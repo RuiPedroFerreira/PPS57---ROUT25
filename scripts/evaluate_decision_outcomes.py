@@ -126,6 +126,11 @@ def main() -> int:
                 apply_actuation=not args.no_actuation,
             )
             _copy_tsp_artifacts(ROOT, baseline_root)
+            # Bugbot: capture the baseline KPIs from the just-written tripinfo BEFORE
+            # the RL run overwrites outputs/tripinfo.xml — otherwise a fresh run leaves
+            # network_impact_verdict at inconclusive_without_kpis (mirrors B23 for roots).
+            if baseline_kpis is None:
+                baseline_kpis = _kpis_from_root(ROOT)
             if args.train_rl or not policy_report.exists():
                 write_event_training_dataset(
                     cits_log=cits_config.path_from_root(
@@ -155,6 +160,8 @@ def main() -> int:
                 apply_actuation=not args.no_actuation,
             )
             _copy_tsp_artifacts(ROOT, rl_root)
+            if rl_kpis is None:
+                rl_kpis = _kpis_from_root(ROOT)
             payload = _write(
                 baseline_root=baseline_root,
                 rl_root=rl_root,
