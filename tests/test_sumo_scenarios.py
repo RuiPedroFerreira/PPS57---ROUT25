@@ -785,6 +785,47 @@ class SumoKpiParsingTestCase(unittest.TestCase):
             self.assertEqual(kpis["emergency_vehicles"]["vehicles"], 1)
             self.assertEqual(kpis["general_traffic"]["vehicles"], 1)
 
+    def test_tripinfo_parser_splits_buses_by_direction(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "tripinfo.xml"
+            path.write_text(
+                "<tripinfos>"
+                '<tripinfo id="bus_STCP500_W_0000" vType="bus_12m" depart="0" arrival="140" duration="140" routeLength="1000" waitingTime="10" timeLoss="40" waitingCount="2" />'
+                '<tripinfo id="bus_STCP500_E_0000" vType="bus_12m" depart="0" arrival="110" duration="110" routeLength="1000" waitingTime="5" timeLoss="10" waitingCount="1" />'
+                "</tripinfos>",
+                encoding="utf-8",
+            )
+            kpis = parse_tripinfo(path)
+            # Sentido isolado, mas o grupo headline `buses` mantém os dois sentidos.
+            self.assertEqual(kpis["buses_westbound"]["vehicles"], 1)
+            self.assertEqual(kpis["buses_westbound"]["mean_time_loss_s"], 40.0)
+            self.assertEqual(kpis["buses_eastbound"]["vehicles"], 1)
+            self.assertEqual(kpis["buses_eastbound"]["mean_time_loss_s"], 10.0)
+            self.assertEqual(kpis["buses"]["vehicles"], 2)
+
+    def test_kpi_aggregate_includes_scenario_focus_metrics(self) -> None:
+        kpis_list = [
+            {
+                "emergency_vehicles": {"mean_time_loss_s": 30.0, "mean_duration_s": 120.0},
+                "buses_westbound": {"mean_time_loss_s": 40.0},
+                "buses_eastbound": {"mean_time_loss_s": 12.0},
+            },
+            {
+                "emergency_vehicles": {"mean_time_loss_s": 36.0, "mean_duration_s": 126.0},
+                "buses_westbound": {"mean_time_loss_s": 44.0},
+                "buses_eastbound": {"mean_time_loss_s": 16.0},
+            },
+        ]
+        agg = _compute_kpi_aggregate(kpis_list)
+        self.assertEqual(agg["emergency_mean_time_loss_s"]["mean"], 33.0)
+        self.assertEqual(agg["emergency_mean_duration_s"]["mean"], 123.0)
+        self.assertEqual(agg["bus_westbound_mean_time_loss_s"]["mean"], 42.0)
+        self.assertEqual(agg["bus_eastbound_mean_time_loss_s"]["mean"], 14.0)
+        # Grupo ausente -> mean None (sem crash), mantendo o agregado uniforme.
+        empty = _compute_kpi_aggregate([{"buses": {"mean_time_loss_s": 10.0}}])
+        self.assertIsNone(empty["emergency_mean_time_loss_s"]["mean"])
+        self.assertIsNone(empty["bus_westbound_mean_time_loss_s"]["mean"])
+
     def test_tripinfo_parser_does_not_classify_scenario_name_bus_as_bus(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "tripinfo.xml"

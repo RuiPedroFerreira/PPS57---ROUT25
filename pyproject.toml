@@ -5,7 +5,8 @@
 [tool.ruff]
 target-version = "py310"   # codebase uses `X | None` and `from __future__ import annotations`
 line-length = 100
-extend-exclude = ["outputs", "reports", "sumo", "public", ".venv"]
+# .claude = tooling vendado de skills do Claude Code (não é código do projeto); lint só o nosso.
+extend-exclude = ["outputs", "reports", "sumo", "public", ".venv", ".claude"]
 
 [tool.ruff.lint]
 # A pragmatic, high-signal rule set:

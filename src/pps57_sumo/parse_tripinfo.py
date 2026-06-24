@@ -119,10 +119,19 @@ def parse_tripinfo(
             return rows
         return [r for r in rows if r[field] == expected]
 
+    def buses_in_direction(direction: str) -> list[dict]:
+        # Split de autocarros por sentido. Cenários focados num heading (ex.
+        # delayed_bus_westbound) diluem o efeito na média dos dois sentidos do grupo
+        # `buses`; isto isola-o. Grupo vazio -> stats None (não rebenta), como em
+        # `emergency_vehicles` nos cenários sem emergência.
+        return [r for r in rows if r["is_bus"] and r["direction"] == direction]
+
     return {
         "source": str(path),
         "all_vehicles": _summarize_items(group(None)),
         "buses": _summarize_items(group("is_bus", True)),
+        "buses_westbound": _summarize_items(buses_in_direction("W")),
+        "buses_eastbound": _summarize_items(buses_in_direction("E")),
         "emergency_vehicles": _summarize_items(group("is_emergency", True)),
         "priority_vehicles": _summarize_items(group("is_priority", True)),
         "general_traffic": _summarize_items(group("is_priority", False)),

@@ -502,6 +502,14 @@ def _compute_kpi_aggregate(kpis_list: list[dict]) -> dict:
         ),
         "total_co2_mg": stat(collect(["emissions", "totals_mg", "CO2"])),
         "total_fuel_mg": stat(collect(["emissions", "totals_mg", "fuel"])),
+        # Métricas-foco por cenário, agregadas pela MESMA máquina (média/IC95/p5-p95/min-max),
+        # mantendo o pipeline uniforme. Ficam com mean=None onde o grupo não existe:
+        # emergency_* só popula no emergency_vehicle_conflict; buses_*bound só onde há
+        # autocarros nesse sentido. O destaque por-cenário é depois feito no display.
+        "emergency_mean_time_loss_s": stat(collect(["emergency_vehicles", "mean_time_loss_s"])),
+        "emergency_mean_duration_s": stat(collect(["emergency_vehicles", "mean_duration_s"])),
+        "bus_westbound_mean_time_loss_s": stat(collect(["buses_westbound", "mean_time_loss_s"])),
+        "bus_eastbound_mean_time_loss_s": stat(collect(["buses_eastbound", "mean_time_loss_s"])),
     }
 
 
@@ -869,6 +877,20 @@ def compare_scenario_runs(runs: dict[str, dict]) -> dict:
         )
         if general_significance is not None:
             comparison["general_traffic_time_loss_replication_significance"] = general_significance
+        # Métricas-foco: significância emparelhada onde o grupo existe. _paired_significance
+        # devolve None (e é ignorada) sem >=2 seeds com valor numérico — i.e. cenários sem
+        # emergência, ou sem autocarros num dado sentido. Mesma régua para todos os cenários.
+        focus_significance = {
+            "emergency_time_loss_replication_significance": ("emergency_vehicles", "mean_time_loss_s"),
+            "bus_westbound_time_loss_replication_significance": ("buses_westbound", "mean_time_loss_s"),
+            "bus_eastbound_time_loss_replication_significance": ("buses_eastbound", "mean_time_loss_s"),
+        }
+        for sig_key, (sig_group, sig_metric) in focus_significance.items():
+            sig = _paired_significance(
+                baseline_run, candidate_run, sig_group, sig_metric, lower_is_better=True
+            )
+            if sig is not None:
+                comparison[sig_key] = sig
         comparisons[f"baseline_vs_{run_type}"] = comparison
     return comparisons
 
@@ -1112,7 +1134,16 @@ def render_scenario_report(summary: dict) -> str:
         # B6: when there are multiple seeds, show the across-seed MEAN (kpi_aggregate)
         # rather than the first seed's value unsignalled; the Seeds column makes the
         # replication count explicit. Falls back to the first-seed value otherwise.
-        def _val(agg_key: str, fallback: Any, field: str = "mean", as_int: bool = False) -> Any:
+        # aggregate=aggregate liga a variável de loop como default (avaliado no def, por
+        # iteração) — _val é chamado dentro da própria iteração, mas o bind explícito
+        # satisfaz o B023 e blinda contra uso diferido futuro.
+        def _val(
+            agg_key: str,
+            fallback: Any,
+            field: str = "mean",
+            as_int: bool = False,
+            aggregate: dict = aggregate,
+        ) -> Any:
             entry = aggregate.get(agg_key)
             if isinstance(entry, dict) and entry.get(field) is not None:
                 value = entry[field]
