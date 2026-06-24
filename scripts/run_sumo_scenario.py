@@ -177,9 +177,13 @@ def main() -> int:
                 "com um run parcial e perder os outros cenários. Corrige/apaga o ficheiro "
                 "ou corre `make scenario-suite` (--all)."
             ) from exc
+        # Bugbot: tolerate a valid-JSON-but-malformed structure (e.g. "scenarios": null
+        # or a non-dict root) — `.get(..., [])` returns null when the key exists, which
+        # would TypeError on iteration. Treat anything that isn't a list as empty.
+        existing_scenarios = existing.get("scenarios") if isinstance(existing, dict) else None
         merged = {
             s.get("scenario_id"): s
-            for s in existing.get("scenarios", [])
+            for s in (existing_scenarios if isinstance(existing_scenarios, list) else [])
             if isinstance(s, dict) and s.get("scenario_id")
         }
         for summary in run_summaries:
@@ -490,6 +494,10 @@ def _compute_kpi_aggregate(kpis_list: list[dict]) -> dict:
         "bus_mean_time_loss_s": stat(collect(["buses", "mean_time_loss_s"])),
         "general_mean_time_loss_s": stat(collect(["general_traffic", "mean_time_loss_s"])),
         "all_vehicles_mean_duration_s": stat(collect(["all_vehicles", "mean_duration_s"])),
+        # Bugbot: aggregate the completed-vehicle/bus COUNTS too, so the report row
+        # doesn't mix first-seed counts with across-seed aggregated metrics.
+        "all_vehicles_count": stat(collect(["all_vehicles", "vehicles"])),
+        "buses_count": stat(collect(["buses", "vehicles"])),
         "max_network_queue_vehicles": stat(
             collect(["detectors", "network_queue", "max_queue_vehicles"])
         ),
@@ -937,6 +945,13 @@ def _verdict_reason_lists(kpis: dict) -> tuple[list[str], list[str]]:
     if not insertion.get("safety_statistics_complete"):
         inconclusive.append("sumo_safety_statistics_unavailable")
 
+    # Bugbot: the insertion gates below (max_waiting_to_insert / insertion_gap_at_end /
+    # backlog ratio) all come from summary.xml. After B18 a corrupt summary sets
+    # parse_error and leaves those counters unset, so they read 0 via `or 0` and the
+    # gates pass with no evidence. Mark inconclusive instead of silently passing.
+    if insertion.get("parse_error"):
+        inconclusive.append("sumo_insertion_summary_unavailable")
+
     if kpis.get("all_vehicles", {}).get("vehicles", 0) <= 0:
         reasons.append("no_completed_vehicles")
     if kpis.get("buses", {}).get("vehicles", 0) <= 0:
@@ -1114,8 +1129,8 @@ def render_scenario_report(summary: dict) -> str:
                 run=run_type,
                 seeds=run.get("replication_count", 1),
                 status=run.get("run_verdict", {}).get("status", run.get("status")),
-                veh=kpis.get("all_vehicles", {}).get("vehicles", ""),
-                bus=kpis.get("buses", {}).get("vehicles", ""),
+                veh=_val("all_vehicles_count", kpis.get("all_vehicles", {}).get("vehicles", "")),
+                bus=_val("buses_count", kpis.get("buses", {}).get("vehicles", "")),
                 bus_loss=_val("bus_mean_time_loss_s", kpis.get("buses", {}).get("mean_time_loss_s", "")),
                 gen_loss=_val(
                     "general_mean_time_loss_s",

@@ -1660,6 +1660,19 @@ class SumoKpiParsingTestCase(unittest.TestCase):
         self.assertEqual(verdict["status"], "inconclusive")
         self.assertEqual(verdict["reasons"], ["sumo_safety_statistics_unavailable"])
 
+    def test_run_verdict_inconclusive_on_corrupt_summary(self) -> None:
+        # Bugbot: a corrupt summary.xml (insertion.parse_error) leaves the insertion
+        # KPIs unset, so the insertion gates must be inconclusive, not a silent pass.
+        kpis = {
+            "all_vehicles": {"vehicles": 100},
+            "buses": {"vehicles": 5},
+            "scenario": {"max_steps": 7200},
+            "insertion": {"parse_error": True, "safety_statistics_complete": True},
+        }
+        verdict = run_verdict(kpis)
+        self.assertEqual(verdict["status"], "inconclusive")
+        self.assertIn("sumo_insertion_summary_unavailable", verdict["reasons"])
+
     def test_run_verdict_fails_on_tripinfo_parse_error(self) -> None:
         # B12: a tripinfo that exists but fails to parse fails with the right reason,
         # not the misleading "no_completed_vehicles".
