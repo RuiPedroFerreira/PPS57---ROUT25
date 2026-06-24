@@ -54,7 +54,10 @@ def _ingest_tripinfo(
     # B15: tripinfo carries exactly one trip-total row per vehicle, so a repeated id
     # is a duplicate export. Record it and skip instead of silently double-counting
     # its emissions into the same bucket (the per-step path below legitimately sums).
-    if vid in per_vehicle:
+    # Key on a NON-EMPTY bucket: an earlier emissions-less occurrence (e.g. <emissions/>
+    # with no *_abs attrs) leaves an empty bucket, and a later real row for the same id
+    # must still be ingested (not mistaken for a duplicate and dropped).
+    if per_vehicle.get(vid):
         duplicate_ids.add(vid)
         return
     bucket = per_vehicle.setdefault(vid, {})

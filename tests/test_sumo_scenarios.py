@@ -894,6 +894,23 @@ class SumoKpiParsingTestCase(unittest.TestCase):
             self.assertEqual(kpis["totals_mg"]["CO2"], 100.0)
             self.assertEqual(kpis["duplicate_vehicle_count"], 1)
 
+    def test_emissions_parser_keeps_real_row_after_emissionless_duplicate_id(self) -> None:
+        # Review: an emissions-less first occurrence must not poison a later real row
+        # for the same id (it would otherwise be dropped as a duplicate, losing totals).
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "tripinfo.xml"
+            path.write_text(
+                "<tripinfos>"
+                '<tripinfo id="x" vType="car"><emissions /></tripinfo>'
+                '<tripinfo id="x" vType="car"><emissions CO2_abs="100" /></tripinfo>'
+                "</tripinfos>",
+                encoding="utf-8",
+            )
+            kpis = parse_emissions(path)
+            self.assertEqual(kpis["vehicle_count"], 1)
+            self.assertEqual(kpis["totals_mg"]["CO2"], 100.0)
+            self.assertNotIn("duplicate_vehicle_count", kpis)
+
     def test_detector_parser_excludes_no_vehicle_sentinel(self) -> None:
         # B16: meanSpeed/meanOccupancy of -1 ("no vehicles in interval") is excluded
         # from the mean instead of dragging it toward -1.
@@ -1724,6 +1741,7 @@ class SumoKpiParsingTestCase(unittest.TestCase):
                     },
                     "kpi_aggregate": {
                         "max_network_queue_vehicles": {"mean": 12.0, "max": 31.0},
+                        "all_vehicles_count": {"mean": 100.333, "max": 102.0},
                     },
                 }
             },
@@ -1732,6 +1750,8 @@ class SumoKpiParsingTestCase(unittest.TestCase):
         report = render_scenario_report(summary)
         self.assertIn("31.0", report)  # worst seed shown
         self.assertNotIn("12.0", report)  # mean not shown for the queue
+        self.assertIn("| 100 |", report)  # count rounded to int
+        self.assertNotIn("100.333", report)  # not a fractional count
 
     def test_steps_convert_to_effective_end_seconds(self) -> None:
         base = json.loads((ROOT / "configs/sumo_scenario_base.json").read_text(encoding="utf-8"))

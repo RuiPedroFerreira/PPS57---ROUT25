@@ -161,55 +161,54 @@ def main() -> int:
     }
     reports_dir = ROOT / args.reports_dir
     reports_dir.mkdir(parents=True, exist_ok=True)
-    summary_path = reports_dir / "scenario_suite_summary.json"
-    # B2: a single-scenario run (make scenario-run) must NOT drop the other
-    # scenarios already in the suite summary. Merge by scenario_id, overriding only
-    # the ones just (re)run. A full `--all` run intentionally replaces everything.
-    if not args.all and summary_path.exists():
-        try:
-            existing = json.loads(summary_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
-            # Bugbot: an unreadable/corrupt summary must NOT be silently overwritten
-            # with this partial run — that would drop every other stored scenario.
-            # Fail closed so the operator fixes/removes it or runs `make scenario-suite`.
-            raise SystemExit(
-                f"{summary_path} corrupto/ilegível ({exc}); recuso-me a sobrescrevê-lo "
-                "com um run parcial e perder os outros cenários. Corrige/apaga o ficheiro "
-                "ou corre `make scenario-suite` (--all)."
-            ) from exc
-        # Bugbot: tolerate a valid-JSON-but-malformed structure (e.g. "scenarios": null
-        # or a non-dict root) — `.get(..., [])` returns null when the key exists, which
-        # would TypeError on iteration. Treat anything that isn't a list as empty.
-        existing_scenarios = existing.get("scenarios") if isinstance(existing, dict) else None
-        merged = {
-            s.get("scenario_id"): s
-            for s in (existing_scenarios if isinstance(existing_scenarios, list) else [])
-            if isinstance(s, dict) and s.get("scenario_id")
-        }
-        for summary in run_summaries:
-            scenario_id = summary.get("scenario_id")
-            # Bugbot: a --generate-only rebuild skips SUMO and sets no run_verdict, so
-            # its scenario_verdict defaults to "pass". It must NOT overwrite a prior
-            # real verdict (e.g. a fail) in the merged suite — only add new scenarios.
-            if args.generate_only and scenario_id in merged:
-                continue
-            merged[scenario_id] = summary
-        scenario_report = {"scenario_count": len(merged), "scenarios": list(merged.values())}
-    summary_path.write_text(
-        json.dumps(scenario_report, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    (reports_dir / "scenario_suite_report.md").write_text(
-        render_suite_report(scenario_report), encoding="utf-8"
-    )
-    # RESULTS.md é o documento de resultados de topo: gerado a partir dos dados
-    # (nunca escrito à mão) para garantir rastreabilidade. Só a suite completa o
-    # reescreve — um run de cenário único não deve substituir o relatório global.
-    if args.all and not args.generate_only:
-        (ROOT / "RESULTS.md").write_text(
-            render_results_doc(scenario_report), encoding="utf-8"
+    # Bugbot: a --generate-only run builds SUMO artifacts WITHOUT running, so it has no
+    # real verdicts (scenario_verdict defaults them to "pass"). It must NOT touch the
+    # persisted result summaries — neither overwrite the JSON suite (which would clobber
+    # real verdicts, including via the `--all` wholesale write) nor make the exit code
+    # gate on the stored suite. The dashboard's result data only ever comes from real runs.
+    if not args.generate_only:
+        summary_path = reports_dir / "scenario_suite_summary.json"
+        # B2: a single-scenario run (make scenario-run) must NOT drop the other scenarios
+        # already in the suite summary. Merge by scenario_id, overriding only the ones
+        # just (re)run. A full `--all` run intentionally replaces everything.
+        if not args.all and summary_path.exists():
+            try:
+                existing = json.loads(summary_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                # An unreadable/corrupt summary must NOT be silently overwritten with this
+                # partial run (that would drop every other stored scenario) — fail closed.
+                raise SystemExit(
+                    f"{summary_path} corrupto/ilegível ({exc}); recuso-me a sobrescrevê-lo "
+                    "com um run parcial e perder os outros cenários. Corrige/apaga o ficheiro "
+                    "ou corre `make scenario-suite` (--all)."
+                ) from exc
+            # Tolerate a valid-JSON-but-malformed structure ("scenarios": null / non-dict
+            # root): `.get(..., [])` returns null when the key exists -> TypeError on iter.
+            existing_scenarios = existing.get("scenarios") if isinstance(existing, dict) else None
+            merged = {
+                s.get("scenario_id"): s
+                for s in (existing_scenarios if isinstance(existing_scenarios, list) else [])
+                if isinstance(s, dict) and s.get("scenario_id")
+            }
+            for summary in run_summaries:
+                merged[summary.get("scenario_id")] = summary
+            scenario_report = {"scenario_count": len(merged), "scenarios": list(merged.values())}
+        summary_path.write_text(
+            json.dumps(scenario_report, indent=2, ensure_ascii=False),
+            encoding="utf-8",
         )
-        print("RESULTS.md regenerado a partir de reports/scenarios/scenario_suite_summary.json")
+        (reports_dir / "scenario_suite_report.md").write_text(
+            render_suite_report(scenario_report), encoding="utf-8"
+        )
+        # RESULTS.md é o documento de resultados de topo, gerado a partir dos dados
+        # (nunca escrito à mão). Só a suite completa (--all) o reescreve.
+        if args.all:
+            (ROOT / "RESULTS.md").write_text(
+                render_results_doc(scenario_report), encoding="utf-8"
+            )
+            print(
+                "RESULTS.md regenerado a partir de reports/scenarios/scenario_suite_summary.json"
+            )
     print(json.dumps(scenario_report, indent=2, ensure_ascii=False))
     # Propaga o veredito para o exit code a partir da SUITE PERSISTIDA (merged), não
     # só dos cenários desta invocação: senão um `scenario-run` que passa sai 0 mesmo
@@ -1113,10 +1112,13 @@ def render_scenario_report(summary: dict) -> str:
         # B6: when there are multiple seeds, show the across-seed MEAN (kpi_aggregate)
         # rather than the first seed's value unsignalled; the Seeds column makes the
         # replication count explicit. Falls back to the first-seed value otherwise.
-        def _val(agg_key: str, fallback: Any, field: str = "mean") -> Any:
+        def _val(agg_key: str, fallback: Any, field: str = "mean", as_int: bool = False) -> Any:
             entry = aggregate.get(agg_key)
             if isinstance(entry, dict) and entry.get(field) is not None:
-                return round(entry[field], 3)
+                value = entry[field]
+                # Counts are integers — render the across-seed mean rounded to a whole
+                # number instead of an odd-looking fractional count (e.g. 101.333).
+                return int(round(value)) if as_int else round(value, 3)
             return fallback
 
         emissions_totals = (
@@ -1129,8 +1131,10 @@ def render_scenario_report(summary: dict) -> str:
                 run=run_type,
                 seeds=run.get("replication_count", 1),
                 status=run.get("run_verdict", {}).get("status", run.get("status")),
-                veh=_val("all_vehicles_count", kpis.get("all_vehicles", {}).get("vehicles", "")),
-                bus=_val("buses_count", kpis.get("buses", {}).get("vehicles", "")),
+                veh=_val(
+                    "all_vehicles_count", kpis.get("all_vehicles", {}).get("vehicles", ""), as_int=True
+                ),
+                bus=_val("buses_count", kpis.get("buses", {}).get("vehicles", ""), as_int=True),
                 bus_loss=_val("bus_mean_time_loss_s", kpis.get("buses", {}).get("mean_time_loss_s", "")),
                 gen_loss=_val(
                     "general_mean_time_loss_s",

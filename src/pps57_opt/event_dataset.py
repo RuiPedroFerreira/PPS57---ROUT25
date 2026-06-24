@@ -59,11 +59,21 @@ def build_event_training_rows(
         item for item in cits_rows if item.get("message_type") == MessageType.SPATEM.value
     )
     decisions = [item for item in _read_jsonl(Path(decision_log)) if item.get("request_id")]
-    actuations_by_decision = {
-        str(item.get("decision_id")): item
-        for item in _read_jsonl(Path(actuation_log))
-        if item.get("decision_id")
-    }
+    actuations_by_decision: dict[str, dict[str, Any]] = {}
+    for item in _read_jsonl(Path(actuation_log)):
+        decision_id = item.get("decision_id")
+        if not decision_id:
+            continue
+        key = str(decision_id)
+        if key in actuations_by_decision:
+            # B24: keep-first + warn, consistent with the SREM dedup above and
+            # outcome_evaluator._actuations_by_decision_id (was last-wins here).
+            print(
+                f"[warn] B24: actuação duplicada para decision_id={key}; mantida a primeira.",
+                file=sys.stderr,
+            )
+            continue
+        actuations_by_decision[key] = item
 
     rows: list[dict[str, Any]] = []
     for decision in decisions:
@@ -281,7 +291,12 @@ def _read_jsonl(path: Path) -> Iterable[dict[str, Any]]:
         for line in handle:
             if not line.strip():
                 continue
-            rows.append(json.loads(line))
+            obj = json.loads(line)
+            # B45: only keep object rows. A bare scalar/list line (malformed JSONL)
+            # would otherwise reach `row.get(...)` in the sort key / consumers and raise
+            # AttributeError, aborting the whole dataset build instead of skipping it.
+            if isinstance(obj, dict):
+                rows.append(obj)
     return rows
 
 
