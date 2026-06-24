@@ -1677,18 +1677,20 @@ class SumoKpiParsingTestCase(unittest.TestCase):
         self.assertTrue(10.0 <= agg["p5"] <= agg["p95"] <= 30.0)
 
     def test_mean_kpis_for_compare_uses_aggregate_means(self) -> None:
-        # B5: the point comparison uses the across-seed means, not the first seed.
+        # B5: the point comparison uses the across-seed means for time-loss, but the
+        # WORST seed (max) for the queue gate (Bugbot) — here mean 12 would pass the
+        # >30 gate, max 31 must not be averaged away.
         run = {
             "kpi_aggregate": {
                 "bus_mean_time_loss_s": {"mean": 50.0},
                 "general_mean_time_loss_s": {"mean": 30.0},
-                "max_network_queue_vehicles": {"mean": 12.0},
+                "max_network_queue_vehicles": {"mean": 12.0, "max": 31.0},
             }
         }
         mean_kpis = _mean_kpis_for_compare(run)
         self.assertEqual(mean_kpis["buses"]["mean_time_loss_s"], 50.0)
         self.assertEqual(mean_kpis["general_traffic"]["mean_time_loss_s"], 30.0)
-        self.assertEqual(mean_kpis["detectors"]["network_queue"]["max_queue_vehicles"], 12.0)
+        self.assertEqual(mean_kpis["detectors"]["network_queue"]["max_queue_vehicles"], 31.0)
         self.assertIsNone(_mean_kpis_for_compare({}))
 
     def test_steps_convert_to_effective_end_seconds(self) -> None:

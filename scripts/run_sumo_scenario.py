@@ -168,13 +168,20 @@ def main() -> int:
     if not args.all and summary_path.exists():
         try:
             existing = json.loads(summary_path.read_text(encoding="utf-8"))
-            merged = {
-                s.get("scenario_id"): s
-                for s in existing.get("scenarios", [])
-                if isinstance(s, dict) and s.get("scenario_id")
-            }
-        except (OSError, ValueError):
-            merged = {}
+        except (OSError, ValueError) as exc:
+            # Bugbot: an unreadable/corrupt summary must NOT be silently overwritten
+            # with this partial run — that would drop every other stored scenario.
+            # Fail closed so the operator fixes/removes it or runs `make scenario-suite`.
+            raise SystemExit(
+                f"{summary_path} corrupto/ilegível ({exc}); recuso-me a sobrescrevê-lo "
+                "com um run parcial e perder os outros cenários. Corrige/apaga o ficheiro "
+                "ou corre `make scenario-suite` (--all)."
+            ) from exc
+        merged = {
+            s.get("scenario_id"): s
+            for s in existing.get("scenarios", [])
+            if isinstance(s, dict) and s.get("scenario_id")
+        }
         for summary in run_summaries:
             merged[summary.get("scenario_id")] = summary
         scenario_report = {"scenario_count": len(merged), "scenarios": list(merged.values())}
@@ -446,7 +453,7 @@ def _compute_kpi_aggregate(kpis_list: list[dict]) -> dict:
     def stat(values: list[float]) -> dict[str, float | None]:
         out = _mean_ci95(values)
         if not values:
-            out.update({"stdev": None, "p5": None, "p95": None})
+            out.update({"stdev": None, "p5": None, "p95": None, "min": None, "max": None})
             return out
         sorted_v = sorted(values)
         if len(sorted_v) >= 2:
@@ -465,6 +472,10 @@ def _compute_kpi_aggregate(kpis_list: list[dict]) -> dict:
                 "stdev": round(statistics.stdev(values), 3) if len(values) > 1 else 0.0,
                 "p5": p5,
                 "p95": p95,
+                # min/max across seeds — worst-case gates (e.g. max queue) must use the
+                # worst seed, not the mean, so a single >threshold seed isn't averaged away.
+                "min": round(sorted_v[0], 3),
+                "max": round(sorted_v[-1], 3),
             }
         )
         return out
@@ -799,15 +810,17 @@ def _mean_kpis_for_compare(run: dict) -> dict | None:
     if not isinstance(aggregate, dict):
         return None
 
-    def _mean(key: str) -> float | None:
+    def _stat(key: str, field: str) -> float | None:
         entry = aggregate.get(key)
-        return entry.get("mean") if isinstance(entry, dict) else None
+        return entry.get(field) if isinstance(entry, dict) else None
 
     return {
-        "buses": {"mean_time_loss_s": _mean("bus_mean_time_loss_s")},
-        "general_traffic": {"mean_time_loss_s": _mean("general_mean_time_loss_s")},
+        "buses": {"mean_time_loss_s": _stat("bus_mean_time_loss_s", "mean")},
+        "general_traffic": {"mean_time_loss_s": _stat("general_mean_time_loss_s", "mean")},
         "detectors": {
-            "network_queue": {"max_queue_vehicles": _mean("max_network_queue_vehicles")}
+            # Bugbot: the network_queue_gt_30 gate is a worst-case check — use the MAX
+            # across seeds, not the mean, so one seed's >30 peak isn't averaged away.
+            "network_queue": {"max_queue_vehicles": _stat("max_network_queue_vehicles", "max")}
         },
     }
 
