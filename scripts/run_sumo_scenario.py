@@ -846,6 +846,17 @@ def _mean_kpis_for_compare(run: dict) -> dict | None:
     }
 
 
+# Métricas-foco por cenário: chave de significância → (rótulo PT, grupo no kpis.json,
+# métrica). Fonte única de verdade para o produtor (compare_scenario_runs) e para os
+# relatórios (render_scenario_report / render_results_doc); acrescentar uma métrica aqui
+# propaga-a a todos os sítios sem editar listas paralelas.
+FOCUS_SIG_METRICS = [
+    ("emergency_time_loss_replication_significance", "Emergência · timeLoss", "emergency_vehicles", "mean_time_loss_s"),
+    ("bus_westbound_time_loss_replication_significance", "Autocarro westbound · timeLoss", "buses_westbound", "mean_time_loss_s"),
+    ("bus_eastbound_time_loss_replication_significance", "Autocarro eastbound · timeLoss", "buses_eastbound", "mean_time_loss_s"),
+]
+
+
 def compare_scenario_runs(runs: dict[str, dict]) -> dict:
     baseline_run = runs.get("baseline", {})
     baseline = _mean_kpis_for_compare(baseline_run) or _load_kpis(baseline_run.get("kpis"))
@@ -881,9 +892,7 @@ def compare_scenario_runs(runs: dict[str, dict]) -> dict:
         # devolve None (e é ignorada) sem >=2 seeds com valor numérico — i.e. cenários sem
         # emergência, ou sem autocarros num dado sentido. Mesma régua para todos os cenários.
         focus_significance = {
-            "emergency_time_loss_replication_significance": ("emergency_vehicles", "mean_time_loss_s"),
-            "bus_westbound_time_loss_replication_significance": ("buses_westbound", "mean_time_loss_s"),
-            "bus_eastbound_time_loss_replication_significance": ("buses_eastbound", "mean_time_loss_s"),
+            key: (group, metric) for key, _label, group, metric in FOCUS_SIG_METRICS
         }
         for sig_key, (sig_group, sig_metric) in focus_significance.items():
             sig = _paired_significance(
@@ -1188,9 +1197,7 @@ def render_scenario_report(summary: dict) -> str:
         for sig_key in (
             "bus_time_loss_replication_significance",
             "general_traffic_time_loss_replication_significance",
-            "emergency_time_loss_replication_significance",
-            "bus_westbound_time_loss_replication_significance",
-            "bus_eastbound_time_loss_replication_significance",
+            *(key for key, *_ in FOCUS_SIG_METRICS),
         )
         if sig_key in comparison
     ]
@@ -1396,15 +1403,10 @@ def render_results_doc(report: dict) -> str:
         )
         lines.append(f"| {s['scenario_id']} | {mean_imp} | {_ci_cell(sig)} | {verdict} |")
 
-    _FOCUS_SIG_KEYS = [
-        ("emergency_time_loss_replication_significance", "Emergência · timeLoss"),
-        ("bus_westbound_time_loss_replication_significance", "Autocarro westbound · timeLoss"),
-        ("bus_eastbound_time_loss_replication_significance", "Autocarro eastbound · timeLoss"),
-    ]
     focus_rows = [
         (s["scenario_id"], label, sig)
         for s in scenarios
-        for key_name, label in _FOCUS_SIG_KEYS
+        for key_name, label, *_ in FOCUS_SIG_METRICS
         for sig in [s.get("comparisons", {}).get("baseline_vs_tsp_actuation", {}).get(key_name)]
         if sig is not None
     ]
@@ -1419,11 +1421,11 @@ def render_results_doc(report: dict) -> str:
             "|---|---|---:|---:|---:|---|",
         ]
         for scen_id, label, sig in focus_rows:
+            mean_imp = sig.get("mean_improvement")
+            mean_cell = f"{mean_imp:+.1f}" if isinstance(mean_imp, (int, float)) else "—"
             lines.append(
                 f"| {scen_id} | {label} | {sig.get('n', '')} | "
-                f"{sig.get('mean_improvement', ''):+.1f} | {_ci_cell(sig)} | {sig.get('verdict', '')} |"
-                if isinstance(sig.get("mean_improvement"), (int, float))
-                else f"| {scen_id} | {label} | {sig.get('n', '')} | — | {_ci_cell(sig)} | {sig.get('verdict', '')} |"
+                f"{mean_cell} | {_ci_cell(sig)} | {sig.get('verdict', '')} |"
             )
 
     lines += [

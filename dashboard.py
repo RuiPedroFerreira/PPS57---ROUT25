@@ -815,8 +815,8 @@ def fmt(val, unit: str = "") -> str:
 
 
 def pct(baseline, candidate) -> float | None:
-    # `baseline` truthiness already excludes 0/0.0/None, so the prior `baseline != 0`
-    # was redundant. abs() keeps the sign reflecting (candidate - baseline) direction.
+    # Guard the divide-by-zero / None paths explicitly (None baseline, 0 baseline, or
+    # missing candidate). abs() keeps the sign reflecting (candidate - baseline) direction.
     if baseline is not None and baseline != 0 and candidate is not None:
         return (candidate - baseline) / abs(baseline) * 100
     return None
