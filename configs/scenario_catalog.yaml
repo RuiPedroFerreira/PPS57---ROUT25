@@ -46,11 +46,14 @@ scenarios:
       lateral nulo quando não há atraso a recuperar.
 
   congested_am_peak:
-    description: Pico saturado (grau de saturação perto de 0.95) - stress-test do TSP.
+    description: Pico fortemente carregado no eixo principal (sem saturação total) - stress-test do TSP.
     realism_basis: >
-      Picos reais de uma arterial urbana excedem frequentemente a capacidade
-      num ou em ambos os sentidos. Com filas a atingir os detectores de
-      jusante, extensões de verde têm custo real nas transversais.
+      Picos reais de uma arterial urbana aproximam-se da capacidade num ou em
+      ambos os sentidos. Aqui o corredor é carregado ~+5-11% vs baseline, o que
+      — pelo efeito não-linear da fila perto da capacidade — eleva o timeLoss do
+      baseline em ~+10-20%; a geometria sintética (entradas curtas, rotunda I6)
+      limita o nível materialmente viável (jam-teleports=0). Com filas a atingir
+      os detectores de jusante, extensões de verde têm custo real nas transversais.
     kpi_focus:
       - tsp_under_saturation
       - bus_time_loss
@@ -117,11 +120,15 @@ scenarios:
       episódio observável.
 
   congested_delayed_bus:
-    description: Autocarro atrasado num corredor saturado - onde a prioridade vale mais e custa mais.
+    description: Autocarro atrasado num corredor fortemente carregado - onde a prioridade vale mais e custa mais.
     realism_basis: >
-      Combina a procura saturada de congested_am_peak com os overrides de
-      serviço e dwell calibrados de delayed_bus_westbound; não introduz novos
-      números de procura. É a intersecção dos dois regimes já justificados.
+      Carrega o sentido do autocarro atrasado (westbound, ~+28%) como em
+      delayed_bus_westbound e acrescenta carga oposta inbound (~+11%) como em
+      congested_am_peak, concentrando a congestão onde o TP atrasado tem de
+      passar — em vez de a colocar sobretudo no sentido oposto. Reaproveita os
+      overrides de serviço e dwell calibrados de delayed_bus_westbound. É a
+      intersecção dos dois regimes já justificados, e o cenário mais carregado
+      da suite (a re-validar com jam-teleports=0).
     kpi_focus:
       - bus_time_loss_under_saturation
       - green_extension_effect

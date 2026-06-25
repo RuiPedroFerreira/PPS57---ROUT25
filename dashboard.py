@@ -3170,15 +3170,6 @@ elif _active == "KPIs":
                 "priority_hierarchy": "Hierarquia de prioridades",
                 "bus_priority_preemption": "Preempção da prioridade ao autocarro",
                 "bus_time_loss_under_saturation": "Perda de tempo do autocarro em saturação",
-                "bus_time_loss_citywide": "Perda de tempo dos autocarros · rede inteira",
-                "bus_time_loss_line11": "Perda de tempo · Linha 11",
-                "tsp_interventions_per_tls": "Intervenções TSP por TLS",
-                "safety_blocks": "Bloqueios da Safety Layer",
-                "fail_closed_coverage": "Cobertura fail-closed",
-                "bus_time_loss_low_demand": "Perda de tempo bus · baixa procura",
-                "intervention_rate_weekend": "Taxa de intervenção · domingo",
-                "robustness_vs_am_peak": "Robustez face ao pico AM",
-                "lateral_impact_near_zero": "Impacto lateral quase nulo",
             }
 
             # ── value accessor: mean over seeds for one cell ──────────────────

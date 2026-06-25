@@ -1184,9 +1184,9 @@
       "id_suffix": "am_operational"
     },
     "off_peak": {
-      "description": "Periodo fora de ponta: mesma geometria e movimentos, com procura geral cerca de metade do pico e headways TP mais espacados no perfil de cenario.",
-      "derived_from": "am_peak",
-      "period_scale": 1.9,
+      "description": "Periodo fora de ponta: mesma geometria e movimentos, derivado do envelope operacional de baseline (am_peak_operational) com procura geral reduzida a ~metade (period_scale 2.0) e headways TP mais espacados no perfil de cenario. Regime fluido onde os autocarros raramente acumulam atraso semaforico, para testar a disciplina do motor de decisao (poucas intervencoes).",
+      "derived_from": "am_peak_operational",
+      "period_scale": 2.0,
       "id_suffix": "off_peak"
     },
     "cross_traffic_pressure": {
@@ -1223,7 +1223,7 @@
       "id_suffix": "emergency_conflict"
     },
     "congested_am_peak": {
-      "description": "Pico saturado moderado: corredor principal (movimentos directos) carregado ~+15-20% vs baseline (route_period_scale 0.90/0.95) com transversais e viragens no nivel operacional. Nivel calibrado para o regime saturado ser materialmente viavel na geometria de base (entradas ~400m, rotunda I6 priority) — robusto (jam-teleports=0 nas 5 seeds com ignore_junction_blocker_s) e a manter o trade-off do TSP mensuravel. Empurrar a procura muito acima disto comeca a (a) transbordar o buffer de insercao na entrada curta e (b) tornar o custo do TSP no trafego geral desproporcionado (a saturacao amplifica a penalizacao das transversais quando se da prioridade ao corredor).",
+      "description": "Pico fortemente carregado no eixo principal (NAO saturacao total): movimentos directos carregados ~+11% inbound (west_to_east 0.90) e ~+5% outbound (east_to_west 0.95) vs baseline, com transversais e viragens no nivel operacional. O efeito nao-linear da fila perto da capacidade traduz este +5-11% de procura num aumento de timeLoss de ~+10-20% no baseline. Nivel calibrado para o regime carregado ser materialmente viavel na geometria sintetica de base (entradas ~400m, rotunda I6 priority) — robusto (jam-teleports=0 nas 5 seeds com ignore_junction_blocker_s) e a manter o trade-off do TSP mensuravel. Empurrar a procura muito acima disto comeca a (a) transbordar o buffer de insercao na entrada curta e (b) tornar o custo do TSP no trafego geral desproporcionado (a carga amplifica a penalizacao das transversais quando se da prioridade ao corredor).",
       "derived_from": "am_peak_operational",
       "period_scale": 1.0,
       "route_period_scale": {
@@ -1231,6 +1231,16 @@
         "route_boavista_east_to_west": 0.95
       },
       "id_suffix": "congested"
+    },
+    "congested_delayed_bus": {
+      "description": "Corredor carregado em ambos os sentidos com enfase no sentido do autocarro atrasado: westbound (east_to_west 0.78, ~+28%, o sentido cidade->mar onde corre o TP atrasado) carregado como em delayed_bus_westbound, mais carga oposta inbound (west_to_east 0.90, ~+11%) como em congested_am_peak. Ao contrario de reutilizar a procura de congested_am_peak (que carregava sobretudo o sentido oposto ao do autocarro), esta procura concentra a carga onde o TP atrasado tem de passar — o caso onde a prioridade vale mais e custa mais. Nivel a re-validar com a suite (jam-teleports=0).",
+      "derived_from": "am_peak_operational",
+      "period_scale": 1.0,
+      "route_period_scale": {
+        "route_boavista_east_to_west": 0.78,
+        "route_boavista_west_to_east": 0.9
+      },
+      "id_suffix": "congested_delayed_bus"
     }
 
   },
@@ -1248,12 +1258,12 @@
         61
       ],
       "events": [],
-      "kpi_focus": ["travel_time", "bus_time_loss", "general_traffic_delay", "queue_baseline"],
+      "kpi_focus": ["bus_time_loss", "general_traffic_delay", "queue_baseline", "travel_time_variability"],
       "expected_behaviour": "Sem eventos especiais; deve servir como baseline comparavel para TSP."
     },
     "baseline_off_peak": {
       "description": "Referencia fora de ponta para validar comportamento em regime fluido.",
-      "justification": "Procura geral aproximadamente metade do pico e headways TP mais espacados representam periodo intermedio sem saturacao.",
+      "justification": "Procura geral reduzida a ~metade do baseline operacional (perfil off_peak, derivado de am_peak_operational com period_scale 2.0) e headways TP mais espacados representam um periodo fora de ponta genuinamente fluido, onde os autocarros raramente acumulam atraso semaforico.",
       "demand_profile": "off_peak",
       "random_seeds": [
         57,
@@ -1269,7 +1279,7 @@
         {"line_id": "STCP502", "direction": "E", "headway_s": 1200}
       ],
       "events": [],
-      "kpi_focus": ["low_delay_regime", "unnecessary_interventions", "travel_time_variability"],
+      "kpi_focus": ["unnecessary_interventions", "low_delay_regime", "bus_headway"],
       "expected_behaviour": "A rede deve operar sem filas persistentes; prioridade nominal deve ter impacto pequeno."
     },
     "cross_traffic_pressure": {
@@ -1329,7 +1339,7 @@
         {"id": "bs_casa_musica_w", "dwell_s": 40}
       ],
       "events": [],
-      "kpi_focus": ["headway_variability", "second_bus_priority_suppression", "bus_bunching"],
+      "kpi_focus": ["headway_variability", "bus_bunching", "second_bus_priority_suppression"],
       "expected_behaviour": "A avaliacao deve distinguir atraso real de simples proximidade entre autocarros."
     },
     "emergency_vehicle_conflict": {
@@ -1359,8 +1369,8 @@
       "expected_behaviour": "Emergencia deve prevalecer sobre TP e trafego geral."
     },
     "congested_am_peak": {
-      "description": "Pico da manha saturado: corredor principal carregado ate ao limite de viabilidade material (timeLoss geral ~+10-20% vs baseline, jam-teleports=0 nas 5 seeds).",
-      "justification": "Testar TSP em condicoes de saturacao e essencial — algoritmos que funcionam bem em fluxo livre podem falhar quando a fila ja atinge o detector de jusante. A procura directa do corredor foi empurrada ate ao ponto onde a rotunda I6 / viragens de I7 comecam a deadlock-ar nalgumas seeds; acima disso o ganho de saturacao deixa de ser materialmente viavel (jam-teleports).",
+      "description": "Pico da manha fortemente carregado no eixo principal (sem saturacao total): corredor carregado ate ao limite de viabilidade material da geometria sintetica (timeLoss geral ~+10-20% vs baseline, jam-teleports=0 nas 5 seeds).",
+      "justification": "Testar TSP sob carga elevada e essencial — algoritmos que funcionam bem em fluxo livre podem falhar quando a fila ja atinge o detector de jusante. A procura directa do corredor foi empurrada ate ao ponto onde a rotunda I6 / viragens de I7 comecam a deadlock-ar nalgumas seeds; acima disso o ganho de carga deixa de ser materialmente viavel (jam-teleports) na geometria de base.",
       "demand_profile": "congested_am_peak",
       "random_seeds": [
         57,
@@ -1370,14 +1380,14 @@
         61
       ],
       "events": [],
-      "kpi_focus": ["saturated_corridor_throughput", "tsp_under_saturation", "queue_spillback", "bus_time_loss"],
+      "kpi_focus": ["tsp_under_saturation", "bus_time_loss", "general_traffic_penalty", "queue_spillback"],
       "expected_behaviour": "Forte aumento de timeLoss no baseline; TSP deve mitigar perdas dos autocarros sem agravar fila transversal."
     }
 ,
     "congested_delayed_bus": {
-      "description": "Autocarro westbound atrasado num corredor saturado: o caso onde a prioridade vale mais e custa mais.",
-      "justification": "Combina a procura saturada de congested_am_peak com os service/stop overrides calibrados de delayed_bus_westbound; nao introduz novos numeros de procura.",
-      "demand_profile": "congested_am_peak",
+      "description": "Autocarro westbound atrasado num corredor fortemente carregado: o caso onde a prioridade vale mais e custa mais.",
+      "justification": "Usa o perfil de procura congested_delayed_bus, que carrega o sentido do autocarro atrasado (westbound, east_to_west 0.78, ~+28%) como em delayed_bus_westbound e acrescenta carga oposta inbound (west_to_east 0.90, ~+11%) como em congested_am_peak — concentrando a congestao onde o TP atrasado tem de passar, em vez de a colocar sobretudo no sentido oposto. Reaproveita os service/stop overrides calibrados de delayed_bus_westbound.",
+      "demand_profile": "congested_delayed_bus",
       "random_seeds": [
         57,
         58,
