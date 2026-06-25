@@ -164,9 +164,9 @@ def _evaluate_pair(
     rl_action = str(rl.get("action", ""))
     # B19: match the demonstrator's network-delivery definition — a shadow
     # (--no-actuation) event logs applied=True but is NOT real delivery.
-    baseline_applied = bool(baseline_actuation.get("applied", False)) and not baseline_actuation.get(
-        "no_actuation", False
-    )
+    baseline_applied = bool(
+        baseline_actuation.get("applied", False)
+    ) and not baseline_actuation.get("no_actuation", False)
     rl_applied = bool(rl_actuation.get("applied", False)) and not rl_actuation.get(
         "no_actuation", False
     )

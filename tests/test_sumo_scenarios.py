@@ -1518,9 +1518,7 @@ class SumoKpiParsingTestCase(unittest.TestCase):
                 self.assertEqual(ped_idx, len(roles) - 2, msg=tls_id)
                 self.assertAlmostEqual(durations[ped_idx], 12.0 - clearance, msg=tls_id)
                 self.assertAlmostEqual(durations[-1], clearance, msg=tls_id)
-                self.assertAlmostEqual(
-                    durations[ped_idx] + durations[-1], 12.0, msg=tls_id
-                )
+                self.assertAlmostEqual(durations[ped_idx] + durations[-1], 12.0, msg=tls_id)
             else:
                 self.assertNotIn("pedestrian", roles, msg=tls_id)
 

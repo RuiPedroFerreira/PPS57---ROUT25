@@ -754,7 +754,9 @@ def build_controller_contract(
         pedestrian_phase_required=pedestrian_required,
         pedestrian_phase_indices=pedestrian_phase_indices,
         signal_groups=signal_groups,
-        vehicle_link_indices=(_vehicle_link_indices(tls_profile) if tls_profile is not None else []),
+        vehicle_link_indices=(
+            _vehicle_link_indices(tls_profile) if tls_profile is not None else []
+        ),
     )
 
 
@@ -993,8 +995,7 @@ def _vehicle_link_indices(tls_profile: TLSProfile) -> list[int]:
         {
             connection.link_index
             for connection in tls_profile.connections
-            if not connection.from_edge.startswith(":")
-            and not connection.to_edge.startswith(":")
+            if not connection.from_edge.startswith(":") and not connection.to_edge.startswith(":")
         }
     )
 

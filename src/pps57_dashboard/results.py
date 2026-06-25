@@ -142,7 +142,9 @@ def load_scenario_kpi_rows(
                                 if fuel_total is not None:
                                     fuel_f = _to_float(fuel_total)
                                     if fuel_f is not None:
-                                        _append("total_fuel_mg_per_vehicle", fuel_f / vehicle_count_f)
+                                        _append(
+                                            "total_fuel_mg_per_vehicle", fuel_f / vehicle_count_f
+                                        )
 
                             # B27: normalise per-vehicle-km against the SUM of route
                             # lengths (total_route_length_m), not mean_route_length_m ×
@@ -348,10 +350,7 @@ def load_scenario_run_table(report_root: Path) -> list[dict]:
                         # under `intervals_above_8_veh`. Surface it under the corrected
                         # canonical key so existing reports keep showing the metric
                         # without regenerating the suite.
-                        if (
-                            "edge_intervals_above_8_veh" not in nq
-                            and "intervals_above_8_veh" in nq
-                        ):
+                        if "edge_intervals_above_8_veh" not in nq and "intervals_above_8_veh" in nq:
                             nq = {**nq, "edge_intervals_above_8_veh": nq["intervals_above_8_veh"]}
                         for metric_key in NETWORK_METRICS:
                             _add(ctx, "network", metric_key, nq.get(metric_key))
@@ -441,7 +440,9 @@ def scenario_scoreboard(rows: list[dict]) -> dict[str, Any]:
     # Prefer the exact arm names; fall back to substring only if the pipeline ever
     # renames them (and never let the tsp pick collide with the baseline arm).
     baseline_rt = (
-        "baseline" if "baseline" in run_types else next((r for r in run_types if "baseline" in r), None)
+        "baseline"
+        if "baseline" in run_types
+        else next((r for r in run_types if "baseline" in r), None)
     )
     tsp_rt = (
         "tsp_actuation"

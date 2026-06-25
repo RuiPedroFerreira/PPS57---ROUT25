@@ -808,8 +808,13 @@ class ConflictAwareAllRedTests(unittest.TestCase):
         from pps57_tsp.signal_control import _missing_all_red_transitions
 
         return _missing_all_red_transitions(
-            states, self.DURATIONS, self.PHASE_SEQ, self.SERVICE, 1.0,
-            link_conflicts=link_conflicts, known_conflict_links=known,
+            states,
+            self.DURATIONS,
+            self.PHASE_SEQ,
+            self.SERVICE,
+            1.0,
+            link_conflicts=link_conflicts,
+            known_conflict_links=known,
         )
 
     def test_genuine_conflict_is_flagged(self) -> None:

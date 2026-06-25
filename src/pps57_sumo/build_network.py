@@ -190,6 +190,7 @@ def write_sumocfg(config: dict, artifacts: SumoArtifacts, *, output_dir: Path) -
         rel(artifacts.detectors_file),
         rel(artifacts.parking_file),
     ]
+
     # B42: don't truncate fractional horizons (int(float("7200.5")) == 7200). SUMO's
     # <begin>/<end> accept float seconds; keep integral values as ints for tidy output.
     def _seconds(value: object, default: float) -> int | float:

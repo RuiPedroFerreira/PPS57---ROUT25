@@ -61,9 +61,7 @@ def _network_queue_summary(e2_payload: dict) -> dict:
         "edge_count": len(edge_summaries),
         # B17: keep None when no edge reported a queue, instead of `... or 0` which
         # turned "no data" into an indistinguishable real-zero max.
-        "max_queue_vehicles": _max(
-            [item["max_queue_vehicles"] for item in edge_summaries]
-        ),
+        "max_queue_vehicles": _max([item["max_queue_vehicles"] for item in edge_summaries]),
         "mean_queue_vehicles": _avg(item["mean_queue_vehicles"] for item in edge_summaries),
         "mean_occupancy_pct": _avg(item["mean_occupancy_pct"] for item in edge_summaries),
         # Network-level name is `edge_intervals_above_8_veh`: it is the SUM over edges

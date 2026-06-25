@@ -261,9 +261,7 @@ class GtfsScheduleAdherenceTestCase(unittest.TestCase):
         cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
         provider = SchedulePlanProvider.from_config(load_cits_config(cfg_path, root=work))
         self.assertIsInstance(provider, GtfsScheduleAdherenceProvider)
-        self.assertEqual(
-            provider.stops_by_vehicle["Bus_:1"], [("E1", 100.0), ("E3", 200.0)]
-        )
+        self.assertEqual(provider.stops_by_vehicle["Bus_:1"], [("E1", 100.0), ("E3", 200.0)])
 
 
 if __name__ == "__main__":

@@ -99,13 +99,17 @@ def _gtfs_provider_from_config(
     trips_src = block.get("gtfs_trips")
     stops_src = block.get("pt_stops")
     if not trips_src or not stops_src:
-        _LOGGER.warning("schedule_plan mode=gtfs requer 'gtfs_trips' e 'pt_stops'; provider desligado.")
+        _LOGGER.warning(
+            "schedule_plan mode=gtfs requer 'gtfs_trips' e 'pt_stops'; provider desligado."
+        )
         return None
     try:
         stops_root = ET.fromstring(Path(cits_config.path_from_root(str(stops_src))).read_bytes())
         trips_root = ET.fromstring(Path(cits_config.path_from_root(str(trips_src))).read_bytes())
     except (OSError, ValueError, ET.ParseError) as exc:  # type: ignore[attr-defined]
-        _LOGGER.warning("schedule_plan mode=gtfs não conseguiu ler os ficheiros (%s); desligado.", exc)
+        _LOGGER.warning(
+            "schedule_plan mode=gtfs não conseguiu ler os ficheiros (%s); desligado.", exc
+        )
         return None
 
     edge_by_stop: dict[str, str] = {}
@@ -135,7 +139,9 @@ def _gtfs_provider_from_config(
             stops_by_vehicle[trip_id] = sequence
 
     if not stops_by_vehicle:
-        _LOGGER.warning("schedule_plan mode=gtfs: nenhuma viagem com paragens mapeáveis; desligado.")
+        _LOGGER.warning(
+            "schedule_plan mode=gtfs: nenhuma viagem com paragens mapeáveis; desligado."
+        )
         return None
     return GtfsScheduleAdherenceProvider(stops_by_vehicle=stops_by_vehicle)
 

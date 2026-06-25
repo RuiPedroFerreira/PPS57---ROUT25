@@ -203,12 +203,8 @@ def main() -> int:
         # RESULTS.md é o documento de resultados de topo, gerado a partir dos dados
         # (nunca escrito à mão). Só a suite completa (--all) o reescreve.
         if args.all:
-            (ROOT / "RESULTS.md").write_text(
-                render_results_doc(scenario_report), encoding="utf-8"
-            )
-            print(
-                "RESULTS.md regenerado a partir de reports/scenarios/scenario_suite_summary.json"
-            )
+            (ROOT / "RESULTS.md").write_text(render_results_doc(scenario_report), encoding="utf-8")
+            print("RESULTS.md regenerado a partir de reports/scenarios/scenario_suite_summary.json")
     print(json.dumps(scenario_report, indent=2, ensure_ascii=False))
     # Propaga o veredito para o exit code a partir da SUITE PERSISTIDA (merged), não
     # só dos cenários desta invocação: senão um `scenario-run` que passa sai 0 mesmo
@@ -605,9 +601,7 @@ def _effective_end_s(config: dict, requested_steps: int | None) -> float:
     return min(configured_end, requested_end)
 
 
-def _assert_horizon_not_truncated(
-    config: dict, args: argparse.Namespace, scenario_id: str
-) -> None:
+def _assert_horizon_not_truncated(config: dict, args: argparse.Namespace, scenario_id: str) -> None:
     """Fail fast when ``--steps`` would halt the run before the demand window ends.
 
     ``--steps`` counts TraCI *steps*, not seconds: at 0.5 s/step, ``--steps 7200``
@@ -851,9 +845,24 @@ def _mean_kpis_for_compare(run: dict) -> dict | None:
 # relatórios (render_scenario_report / render_results_doc); acrescentar uma métrica aqui
 # propaga-a a todos os sítios sem editar listas paralelas.
 FOCUS_SIG_METRICS = [
-    ("emergency_time_loss_replication_significance", "Emergência · timeLoss", "emergency_vehicles", "mean_time_loss_s"),
-    ("bus_westbound_time_loss_replication_significance", "Autocarro westbound · timeLoss", "buses_westbound", "mean_time_loss_s"),
-    ("bus_eastbound_time_loss_replication_significance", "Autocarro eastbound · timeLoss", "buses_eastbound", "mean_time_loss_s"),
+    (
+        "emergency_time_loss_replication_significance",
+        "Emergência · timeLoss",
+        "emergency_vehicles",
+        "mean_time_loss_s",
+    ),
+    (
+        "bus_westbound_time_loss_replication_significance",
+        "Autocarro westbound · timeLoss",
+        "buses_westbound",
+        "mean_time_loss_s",
+    ),
+    (
+        "bus_eastbound_time_loss_replication_significance",
+        "Autocarro eastbound · timeLoss",
+        "buses_eastbound",
+        "mean_time_loss_s",
+    ),
 ]
 
 
@@ -1172,17 +1181,23 @@ def render_scenario_report(summary: dict) -> str:
                 seeds=run.get("replication_count", 1),
                 status=run.get("run_verdict", {}).get("status", run.get("status")),
                 veh=_val(
-                    "all_vehicles_count", kpis.get("all_vehicles", {}).get("vehicles", ""), as_int=True
+                    "all_vehicles_count",
+                    kpis.get("all_vehicles", {}).get("vehicles", ""),
+                    as_int=True,
                 ),
                 bus=_val("buses_count", kpis.get("buses", {}).get("vehicles", ""), as_int=True),
-                bus_loss=_val("bus_mean_time_loss_s", kpis.get("buses", {}).get("mean_time_loss_s", "")),
+                bus_loss=_val(
+                    "bus_mean_time_loss_s", kpis.get("buses", {}).get("mean_time_loss_s", "")
+                ),
                 gen_loss=_val(
                     "general_mean_time_loss_s",
                     kpis.get("general_traffic", {}).get("mean_time_loss_s", ""),
                 ),
                 queue=_val(
                     "max_network_queue_vehicles",
-                    kpis.get("detectors", {}).get("network_queue", {}).get("max_queue_vehicles", ""),
+                    kpis.get("detectors", {})
+                    .get("network_queue", {})
+                    .get("max_queue_vehicles", ""),
                     field="max",  # Bugbot: report the worst seed, consistent with the gate
                 ),
                 co2=_val("total_co2_mg", emissions_totals.get("CO2", "")),
@@ -1357,7 +1372,9 @@ def render_results_doc(report: dict) -> str:
     for s in scenarios:
         cmp = s.get("comparisons", {}).get("baseline_vs_tsp_actuation", {})
         if not cmp:
-            lines.append(f"| {s['scenario_id']} | {len(s.get('seeds', []))} | pendente | — | — | — |")
+            lines.append(
+                f"| {s['scenario_id']} | {len(s.get('seeds', []))} | pendente | — | — | — |"
+            )
             continue
         sig = cmp.get("bus_time_loss_replication_significance")
         point = cmp.get("bus_time_loss", {})
@@ -1479,7 +1496,7 @@ def render_results_doc(report: dict) -> str:
         "",
         "Os números acima são regenerados no fim de `make scenario-suite`. Para mais seeds "
         "(IC95 mais apertado) edita `scenario_profiles[*].random_seeds` em "
-        "`configs/sumo_scenario_base.json` ou corre `make scenario-suite SUITE_SEEDS=\"17 42 57 …\"`.",
+        '`configs/sumo_scenario_base.json` ou corre `make scenario-suite SUITE_SEEDS="17 42 57 …"`.',
     ]
     return "\n".join(lines) + "\n"
 

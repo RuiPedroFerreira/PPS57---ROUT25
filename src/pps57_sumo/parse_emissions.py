@@ -159,9 +159,7 @@ def parse_emissions(path: Path | None) -> dict[str, Any]:
             samples[metric].append(value)
 
     out["totals_mg"] = {m: round(totals[m], 3) for m in MASS_METRICS if samples[m]}
-    out["mean_per_vehicle_mg"] = {
-        m: round(mean(samples[m]), 3) for m in MASS_METRICS if samples[m]
-    }
+    out["mean_per_vehicle_mg"] = {m: round(mean(samples[m]), 3) for m in MASS_METRICS if samples[m]}
     # B13: electricity_abs is in watt-hours, not mg — emit it under honest _wh keys.
     energy_totals = {m: round(totals[m], 3) for m in ENERGY_METRICS if samples[m]}
     if energy_totals:
@@ -170,11 +168,7 @@ def parse_emissions(path: Path | None) -> dict[str, Any]:
             m: round(mean(samples[m]), 3) for m in ENERGY_METRICS if samples[m]
         }
 
-    bus_ids = [
-        vid
-        for vid in per_vehicle
-        if is_bus_like(vid, per_vehicle_type.get(vid, ""))
-    ]
+    bus_ids = [vid for vid in per_vehicle if is_bus_like(vid, per_vehicle_type.get(vid, ""))]
     if bus_ids:
         bus_totals = dict.fromkeys(METRICS, 0.0)
         bus_samples: dict[str, list[float]] = {metric: [] for metric in METRICS}
@@ -187,9 +181,7 @@ def parse_emissions(path: Path | None) -> dict[str, Any]:
                 bus_samples[metric].append(value)
         # Same inclusion rule as totals_mg above (keep a species if any bus reported
         # it), instead of the inconsistent ">0" filter this block used before.
-        out["bus_totals_mg"] = {
-            m: round(bus_totals[m], 3) for m in MASS_METRICS if bus_samples[m]
-        }
+        out["bus_totals_mg"] = {m: round(bus_totals[m], 3) for m in MASS_METRICS if bus_samples[m]}
         bus_energy = {m: round(bus_totals[m], 3) for m in ENERGY_METRICS if bus_samples[m]}
         if bus_energy:
             out["bus_totals_wh"] = bus_energy

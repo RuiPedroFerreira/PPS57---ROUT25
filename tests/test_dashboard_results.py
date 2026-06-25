@@ -56,12 +56,7 @@ class DashboardResultsTestCase(unittest.TestCase):
     def test_loads_kpi_rows_from_reference_layout(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = (
-                Path(tmp)
-                / "reports"
-                / "scenarios"
-                / "city_am_peak"
-                / "tsp_actuation"
-                / "seed_57"
+                Path(tmp) / "reports" / "scenarios" / "city_am_peak" / "tsp_actuation" / "seed_57"
             )
             root.mkdir(parents=True)
             (root / "kpis.json").write_text(
@@ -221,9 +216,7 @@ class DashboardResultsTestCase(unittest.TestCase):
                 encoding="utf-8",
             )
             sig = load_scenario_focus_significance(root)
-            block = sig["delayed_bus_westbound"][
-                "bus_westbound_time_loss_replication_significance"
-            ]
+            block = sig["delayed_bus_westbound"]["bus_westbound_time_loss_replication_significance"]
             self.assertEqual(block["verdict"], "significant_improvement")
             self.assertEqual(block["ci95_low"], 2.0)
             # second key in the same comparison dict must also be returned

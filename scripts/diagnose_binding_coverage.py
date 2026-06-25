@@ -13,6 +13,7 @@ que o seu ``via`` resolve (ou não) para um slot de request com foes:
 Mostra também quantos signal groups ficam sem QUALQUER conexão resolvida (->
 conflict_source="none" -> fail-closed). Não fabrica nada; só diz onde está a perda.
 """
+
 from __future__ import annotations
 
 import json
@@ -92,8 +93,12 @@ def main() -> int:
     total_conn = sum(conn_causes.values())
     print(f"net: {net.name}")
     print(f"\nconexões controladas: {total_conn}")
-    for cause in ("resolved", "via_empty", "via_in_internal_junction_only",
-                  "via_not_in_any_intlanes"):
+    for cause in (
+        "resolved",
+        "via_empty",
+        "via_in_internal_junction_only",
+        "via_not_in_any_intlanes",
+    ):
         n = conn_causes.get(cause, 0)
         pct = 100.0 * n / total_conn if total_conn else 0.0
         print(f"  {cause:32s} {n:6d}  ({pct:5.1f}%)")
@@ -102,20 +107,28 @@ def main() -> int:
     coverage_pct = (
         100.0 * (groups_total - groups_no_resolved) / groups_total if groups_total else 0.0
     )
-    print(f"\nsignal groups: {groups_total}; "
-          f"sem QUALQUER conexão resolvida (fail-closed): {groups_no_resolved} "
-          f"({no_resolved_pct:.1f}%)")
+    print(
+        f"\nsignal groups: {groups_total}; "
+        f"sem QUALQUER conexão resolvida (fail-closed): {groups_no_resolved} "
+        f"({no_resolved_pct:.1f}%)"
+    )
     print(f"cobertura esperada: {coverage_pct:.1f}%")
 
     out = ROOT / "reports/validation/binding_coverage_causes.json"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps({
-        "net": net.name,
-        "controlled_connections": total_conn,
-        "connection_causes": dict(conn_causes),
-        "signal_groups": groups_total,
-        "groups_without_resolved_connection": groups_no_resolved,
-    }, indent=2), "utf-8")
+    out.write_text(
+        json.dumps(
+            {
+                "net": net.name,
+                "controlled_connections": total_conn,
+                "connection_causes": dict(conn_causes),
+                "signal_groups": groups_total,
+                "groups_without_resolved_connection": groups_no_resolved,
+            },
+            indent=2,
+        ),
+        "utf-8",
+    )
     print(f"\n[report] {out}")
     return 0
 

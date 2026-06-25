@@ -35,9 +35,12 @@ class NetworkProfileTests(unittest.TestCase):
             (fake_home / "tools").mkdir(parents=True)
             (fake_home / "data" / "xsd").mkdir(parents=True)
 
-            with patch.dict(os.environ, {"SUMO_HOME": "/path/that/does/not/exist"}), patch(
-                "pps57_sumo.environment._standard_sumo_home_candidates",
-                return_value=[fake_home],
+            with (
+                patch.dict(os.environ, {"SUMO_HOME": "/path/that/does/not/exist"}),
+                patch(
+                    "pps57_sumo.environment._standard_sumo_home_candidates",
+                    return_value=[fake_home],
+                ),
             ):
                 resolved = resolve_sumo_home()
                 env = ensure_sumo_environment()

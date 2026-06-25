@@ -255,6 +255,7 @@ DATASET_PROVENANCE = {
 def dataset_provenance(dataset: str) -> str:
     return DATASET_PROVENANCE.get(dataset, dataset)
 
+
 # ── semantic colours ──────────────────────────────────────────────────────────
 # One canonical green/red pair, used everywhere a chart (or card) encodes
 # improvement vs cost — so every figure across the dashboard speaks the same two
@@ -1278,7 +1279,11 @@ def render_scenario_overview(metric_key: str = "mean_time_loss_s") -> None:
             "backgroundColor": "white",
             "borderColor": "#e2e8f0",
             "borderWidth": 1,
-            "textStyle": {"color": "#0f172a", "fontSize": 12, "fontFamily": "Inter, system-ui, sans-serif"},
+            "textStyle": {
+                "color": "#0f172a",
+                "fontSize": 12,
+                "fontFamily": "Inter, system-ui, sans-serif",
+            },
             "formatter": JsCode(
                 "function(ps){var s='<b>'+ps[0].name+'</b>';"
                 "ps.forEach(function(p){var v=p.value;"
@@ -1300,7 +1305,11 @@ def render_scenario_overview(metric_key: str = "mean_time_loss_s") -> None:
             "name": f"Δ% face ao baseline · {metric_label.lower()} (negativo = melhoria)",
             "nameLocation": "middle",
             "nameGap": 30,
-            "nameTextStyle": {"color": "#94a3b8", "fontSize": 11, "fontFamily": "Inter, system-ui, sans-serif"},
+            "nameTextStyle": {
+                "color": "#94a3b8",
+                "fontSize": 11,
+                "fontFamily": "Inter, system-ui, sans-serif",
+            },
             "splitLine": {"lineStyle": {"color": "#f1f5f9"}},
             "axisLine": {"lineStyle": {"color": "#e2e8f0"}},
             "axisTick": {"show": False},
@@ -1531,6 +1540,7 @@ def _sync_vehicle_class_kpis() -> None:
     stays consistent across reruns."""
     st.session_state.vehicle_class_display = st.session_state.kpis_class_select
 
+
 # ── drawer navigation model + system status ───────────────────────────────────
 
 # "Demonstrador" is a drill-down view reachable from the "KPIs" tab — it is not a
@@ -1641,9 +1651,7 @@ if st.session_state.drawer_open:
         # Navigation is vertically centred in the free space between the header
         # and the bottom group via .st-key-drawer_nav { margin: auto 0 }.
         with st.container(key="drawer_nav"):
-            if st.button(
-                "Fechar", icon=":material/close:", key="close_drawer", width="stretch"
-            ):
+            if st.button("Fechar", icon=":material/close:", key="close_drawer", width="stretch"):
                 st.session_state.drawer_open = False
                 st.rerun()
 
@@ -1674,7 +1682,7 @@ if st.session_state.drawer_open:
             )
             st.markdown(
                 '<div class="drawer-filter-hint">Aplica-se a <strong>todos</strong> os '
-                'KPIs e gráficos</div>',
+                "KPIs e gráficos</div>",
                 unsafe_allow_html=True,
             )
             st.selectbox(
@@ -1691,7 +1699,9 @@ if st.session_state.drawer_open:
             )
             if vehicle_cls == "priority_vehicles" and cls_counts.get("emergency_vehicles", 0) == 0:
                 st.caption("Sem veículos de emergência — **Prioritários = Autocarros**.")
-            elif vehicle_cls == "emergency_vehicles" and cls_counts.get("emergency_vehicles", 0) == 0:
+            elif (
+                vehicle_cls == "emergency_vehicles" and cls_counts.get("emergency_vehicles", 0) == 0
+            ):
                 st.caption("Sem veículos de emergência — métricas vazias.")
 
             st.markdown(
@@ -1699,7 +1709,7 @@ if st.session_state.drawer_open:
                 f'<div class="status-dot"></div>'
                 f'<span class="status-block-title">Sistema activo</span></div>'
                 f'<div class="status-block-sub">{_reports_ok}/{_reports_total} relatórios detectados'
-                f'{("<br>Atualizado " + _fresh) if _fresh else ""}</div></div>',
+                f"{('<br>Atualizado ' + _fresh) if _fresh else ''}</div></div>",
                 unsafe_allow_html=True,
             )
 
@@ -1754,7 +1764,11 @@ st.markdown(
 # Brand bar pinned to the bottom of every page (product logo left, partner right).
 if _hdr_r25 or _hdr_cap:
     _fl = f'<img class="pf-logo" src="{_hdr_r25}" alt="Route 25">' if _hdr_r25 else "<span></span>"
-    _fr = f'<img class="pf-partner" src="{_hdr_cap}" alt="Capgemini">' if _hdr_cap else "<span></span>"
+    _fr = (
+        f'<img class="pf-partner" src="{_hdr_cap}" alt="Capgemini">'
+        if _hdr_cap
+        else "<span></span>"
+    )
     st.markdown(
         f'<div class="page-footer"><div class="page-footer-inner">{_fl}{_fr}</div></div>',
         unsafe_allow_html=True,
@@ -1899,8 +1913,7 @@ if _active == "Resumo":
                     gen_txt = f", a um custo de {gen['pct']:.0f}% no tráfego geral"
             hero_lead(
                 bus_figure,
-                f"O TSP <strong>{verb}</strong> a perda de tempo do transporte "
-                f"público{gen_txt}.",
+                f"O TSP <strong>{verb}</strong> a perda de tempo do transporte público{gen_txt}.",
                 tone=bus_tone,
             )
 
@@ -1968,7 +1981,11 @@ if _active == "Resumo":
                     "n": int(n),
                 }
                 for p, ds, b, t, n in zip(
-                    dfh["pct"], dfh["delta_s"], dfh["baseline"], dfh["tsp"], dfh["n"],
+                    dfh["pct"],
+                    dfh["delta_s"],
+                    dfh["baseline"],
+                    dfh["tsp"],
+                    dfh["n"],
                     strict=False,
                 )
             ]
@@ -1980,7 +1997,11 @@ if _active == "Resumo":
                     "backgroundColor": "white",
                     "borderColor": "#e2e8f0",
                     "borderWidth": 1,
-                    "textStyle": {"color": "#0f172a", "fontSize": 12, "fontFamily": "Inter, system-ui, sans-serif"},
+                    "textStyle": {
+                        "color": "#0f172a",
+                        "fontSize": 12,
+                        "fontFamily": "Inter, system-ui, sans-serif",
+                    },
                     "formatter": JsCode(
                         "function(p){"
                         "var s=p.data.baseline+'s → '+p.data.tsp_val+'s (n='+p.data.n+')';"
@@ -2000,7 +2021,11 @@ if _active == "Resumo":
                 "yAxis": {
                     "type": "category",
                     "data": dfh["Classe"].tolist(),
-                    "axisLabel": {"color": "#374151", "fontSize": 13, "fontFamily": "Inter, system-ui, sans-serif"},
+                    "axisLabel": {
+                        "color": "#374151",
+                        "fontSize": 13,
+                        "fontFamily": "Inter, system-ui, sans-serif",
+                    },
                     "axisLine": {"lineStyle": {"color": "#e2e8f0"}},
                     "axisTick": {"show": False},
                 },
@@ -2078,9 +2103,7 @@ if _active == "Resumo":
             chip_cols = st.columns(3)
             for chip_col, (chip_label, chip_desc) in zip(chip_cols, nav_items, strict=False):
                 with chip_col:
-                    if st.button(
-                        f"{chip_label} →", key=f"chip_{chip_label}", width="stretch"
-                    ):
+                    if st.button(f"{chip_label} →", key=f"chip_{chip_label}", width="stretch"):
                         st.session_state.active_tab = chip_label
                         st.rerun()
                     st.caption(chip_desc)
@@ -2961,7 +2984,9 @@ elif _active == "vs RL":
         rc1.metric("Decisões comparadas", matched, border=True)
         rc2.metric("Veredicto de rede", net_verdict, border=True)
         rc3.metric(
-            "Tipo de avaliação", (decision_outcome.get("evaluation") or "—").replace("_", " "), border=True
+            "Tipo de avaliação",
+            (decision_outcome.get("evaluation") or "—").replace("_", " "),
+            border=True,
         )
 
         section("Distribuição de veredictos por decisão")
@@ -3231,12 +3256,7 @@ elif _active == "KPIs":
                 # Safety/net verdict MIRRORS the repo's own gates
                 # (run_sumo_scenario.compare_scenario_runs): collisions=0 ∧
                 # jam-teleports=0, and the general-traffic penalty must stay ≤ ~90 s.
-                safe = (
-                    coll_t is not None
-                    and jam_t is not None
-                    and coll_t == 0
-                    and jam_t == 0
-                )
+                safe = coll_t is not None and jam_t is not None and coll_t == 0 and jam_t == 0
                 if bus_d is None:
                     verdict = "—"
                 elif bus_d < 0 and (gen_penalty is None or gen_penalty <= 90) and safe:
@@ -3291,10 +3311,12 @@ elif _active == "KPIs":
                 hide_index=True,
                 column_config={
                     "Bus Δ% perda tempo": st.column_config.NumberColumn(
-                        format="%+.1f%%", help="Variação da perda de tempo dos autocarros (TSP vs baseline)."
+                        format="%+.1f%%",
+                        help="Variação da perda de tempo dos autocarros (TSP vs baseline).",
                     ),
                     "Geral Δ% perda tempo": st.column_config.NumberColumn(
-                        format="%+.1f%%", help="Variação da perda de tempo do tráfego geral — o custo do TSP."
+                        format="%+.1f%%",
+                        help="Variação da perda de tempo do tráfego geral — o custo do TSP.",
                     ),
                     "Fila máx Δ": st.column_config.NumberColumn(
                         format="%+.0f", help="Variação da fila máxima na rede (veículos)."
@@ -3456,7 +3478,7 @@ elif _active == "KPIs":
                 if _focus:
                     _chips = "".join(
                         f'<span class="scen-chip">'
-                        f'{kpi_focus_pt.get(k, k.replace("_", " ").capitalize())}</span>'
+                        f"{kpi_focus_pt.get(k, k.replace('_', ' ').capitalize())}</span>"
                         for k in _focus
                     )
                     _chips_html = (
@@ -3487,9 +3509,15 @@ elif _active == "KPIs":
                         _agg(sel, baseline_rt, scope_key, mk),
                     )
 
-            st.markdown('<div class="class-tag">🚌 Autocarro &nbsp;·&nbsp; baseline → TSP</div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="class-tag">🚌 Autocarro &nbsp;·&nbsp; baseline → TSP</div>',
+                unsafe_allow_html=True,
+            )
             _render_class_row("buses")
-            st.markdown('<div class="class-tag">🚗 Tráfego geral &nbsp;·&nbsp; baseline → TSP</div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="class-tag">🚗 Tráfego geral &nbsp;·&nbsp; baseline → TSP</div>',
+                unsafe_allow_html=True,
+            )
             _render_class_row("general_traffic")
             insight(
                 "O TSP é um <strong>trade-off</strong>: ganha tempo para o autocarro, "
@@ -3503,11 +3531,18 @@ elif _active == "KPIs":
             st.markdown('<div class="class-tag">🚌 Autocarro</div>', unsafe_allow_html=True)
             _rb = st.columns(len(_rel))
             for col, mk in zip(_rb, _rel, strict=False):
-                render_kpi_card(col, mk, _agg(sel, tsp_rt, "buses", mk), _agg(sel, baseline_rt, "buses", mk))
+                render_kpi_card(
+                    col, mk, _agg(sel, tsp_rt, "buses", mk), _agg(sel, baseline_rt, "buses", mk)
+                )
             st.markdown('<div class="class-tag">🚗 Tráfego geral</div>', unsafe_allow_html=True)
             _rg = st.columns(len(_rel))
             for col, mk in zip(_rg, _rel, strict=False):
-                render_kpi_card(col, mk, _agg(sel, tsp_rt, "general_traffic", mk), _agg(sel, baseline_rt, "general_traffic", mk))
+                render_kpi_card(
+                    col,
+                    mk,
+                    _agg(sel, tsp_rt, "general_traffic", mk),
+                    _agg(sel, baseline_rt, "general_traffic", mk),
+                )
             insight(
                 "O P95 descreve o pior caso para 95% dos veículos. Aproximar o P95 da média "
                 "significa viagens mais previsíveis — não só mais rápidas."
@@ -3659,9 +3694,7 @@ elif _active == "KPIs":
                             "Baseline": st.column_config.NumberColumn(
                                 "Baseline (mg/veíc-km)", format="%.0f"
                             ),
-                            "TSP": st.column_config.NumberColumn(
-                                "TSP (mg/veíc-km)", format="%.0f"
-                            ),
+                            "TSP": st.column_config.NumberColumn("TSP (mg/veíc-km)", format="%.0f"),
                             "Δ (%)": st.column_config.NumberColumn(format="%+.1f%%"),
                         },
                     )
@@ -3685,9 +3718,13 @@ elif _active == "KPIs":
                             textposition="outside",
                             hovertemplate="%{x}: %{y:+.1f}%<extra></extra>",
                         )
-                        fig_e.update_layout(legend_title="", margin={"t": 44, "b": 30, "l": 8, "r": 8})
+                        fig_e.update_layout(
+                            legend_title="", margin={"t": 44, "b": 30, "l": 8, "r": 8}
+                        )
                         chart_layout(
-                            fig_e, f"Δ emissões por poluente (TSP vs baseline) · {sel_label}", height=320
+                            fig_e,
+                            f"Δ emissões por poluente (TSP vs baseline) · {sel_label}",
+                            height=320,
                         )
                         st.plotly_chart(fig_e, width="stretch", config={"displayModeBar": False})
                 insight(
@@ -3737,8 +3774,7 @@ elif _active == "Documentação":
         [
             g
             for g in GLOSSARY
-            if gloss_query.lower() in g["term"].lower()
-            or gloss_query.lower() in g["def"].lower()
+            if gloss_query.lower() in g["term"].lower() or gloss_query.lower() in g["def"].lower()
         ]
         if gloss_query
         else GLOSSARY

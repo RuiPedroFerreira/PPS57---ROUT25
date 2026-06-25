@@ -164,9 +164,7 @@ def main() -> int:
         f"- baseline snapshot: {baseline_snapshot} "
         f"({sum(1 for _ in baseline_snapshot.rglob('*'))} files)"
     )
-    print(
-        f"- rl snapshot:       {rl_snapshot} ({sum(1 for _ in rl_snapshot.rglob('*'))} files)"
-    )
+    print(f"- rl snapshot:       {rl_snapshot} ({sum(1 for _ in rl_snapshot.rglob('*'))} files)")
     return 0
 
 

@@ -166,7 +166,9 @@ class TSPControlController:
                     contracts=contracts,
                     config=controller_simulation_cfg,
                 )
-            verification_problems = self._verify_signal_programs(signal_control, contracts=contracts)
+            verification_problems = self._verify_signal_programs(
+                signal_control, contracts=contracts
+            )
             # Atribuição per-TLS e per-AÇÃO. Cada problema é "{tls_id}: ..." (os ids
             # de TLS do SUMO nunca contêm ':'). green_extension só estende a fase
             # verde CORRENTE — validado live pela Safety; nunca trunca fase nem muda
