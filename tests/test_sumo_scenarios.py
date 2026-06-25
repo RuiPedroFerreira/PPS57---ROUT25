@@ -111,8 +111,10 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
             float(pressure_flows["route_cross_SN_I6"]["period"]),
             float(baseline_flows["route_cross_SN_I6"]["period"]),
         )
-        self.assertAlmostEqual(float(pressure_flows["route_cross_NS_I2"]["period"]), 39.6)
-        self.assertAlmostEqual(float(pressure_flows["route_cross_SN_I6"]["period"]), 29.7)
+        # Absolute periods track the recalibrated base envelope (period_scale 1.80):
+        # base_cross_period * 1.80 * 0.75 (cross flow_period_scale).
+        self.assertAlmostEqual(float(pressure_flows["route_cross_NS_I2"]["period"]), 43.2)
+        self.assertAlmostEqual(float(pressure_flows["route_cross_SN_I6"]["period"]), 32.4)
 
     def test_emergency_profile_is_the_only_catalog_profile_with_emergency_event(self) -> None:
         for scenario_id in self.catalog["scenarios"]:
@@ -187,15 +189,16 @@ class SumoScenarioProfilesTestCase(unittest.TestCase):
         self.assertNotEqual(base_car["speedFactor"], rain_car["speedFactor"])
 
     def test_congested_peak_increases_corridor_demand(self) -> None:
-        congested = apply_scenario_profile(self.base, "congested_am_peak")
-        flows = {
-            flow["id"]: flow
-            for flow in congested["demand_profiles"][congested["active_demand_profile"]]["flows"]
-        }
-        inbound = next(
-            flow for flow in flows.values() if flow["route"] == "route_boavista_west_to_east"
-        )
-        self.assertLess(float(inbound["period"]), 7.5)
+        # Intent: congested loads the inbound axis MORE than the operational baseline.
+        # Asserted relative to the operational period (not a hardcoded constant) so it
+        # stays valid when the base envelope is recalibrated (period_scale 1.65->1.80).
+        def inbound_period(scenario_id: str) -> float:
+            config = apply_scenario_profile(self.base, scenario_id)
+            flows = config["demand_profiles"][config["active_demand_profile"]]["flows"]
+            inbound = next(f for f in flows if f["route"] == "route_boavista_west_to_east")
+            return float(inbound["period"])
+
+        self.assertLess(inbound_period("congested_am_peak"), inbound_period("baseline_am_peak"))
 
     def test_actuated_tls_type_propagates_to_generated_nodes(self) -> None:
         # O base config é atualmente todo em tempo fixo (sem tls_type=actuated)

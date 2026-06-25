@@ -1178,9 +1178,9 @@
       ]
     },
     "am_peak_operational": {
-      "description": "Ponta da manha operacional para baseline SUMO: mesmo padrao do am_peak HCM, mas com procura ~40% menor para evitar que a referencia sem eventos especiais fique dominada por falhas de insercao.",
+      "description": "Ponta da manha operacional para baseline SUMO: mesmo padrao do am_peak HCM, mas com procura ~45% menor para evitar que a referencia sem eventos especiais fique dominada por falhas de insercao. period_scale recalibrado 1.65->1.80 (jun/2026): no valor anterior o envelope ficava encostado ao limite de insercao da entrada curta (~400m) e a variancia entre seeds transbordava-o numa seed isolada (max_waiting_to_insert ~170-205s > 150 em baseline_am_peak/bunched_buses/emergency_vehicle_conflict). +9% de headway recua a procura para dentro do regime materialmente viavel em TODAS as 5 seeds, mantendo a ponta dominante; re-validado com a suite paralela (--jobs).",
       "derived_from": "am_peak",
-      "period_scale": 1.65,
+      "period_scale": 1.8,
       "id_suffix": "am_operational"
     },
     "off_peak": {
@@ -1202,11 +1202,11 @@
       "id_suffix": "cross_pressure"
     },
     "delayed_bus_westbound": {
-      "description": "Pico com sentido cidade->mar carregado e condicoes para gerar atraso operacional no TP westbound.",
+      "description": "Pico com sentido cidade->mar carregado e condicoes para gerar atraso operacional no TP westbound. route_period_scale east_to_west recalibrado 0.78->0.81 (jun/2026), em cima da reducao do envelope base, para manter o sentido do TP atrasado carregado sem transbordar a insercao (era 155-168s > 150 em seeds isoladas).",
       "derived_from": "am_peak_operational",
       "period_scale": 1.0,
       "route_period_scale": {
-        "route_boavista_east_to_west": 0.78
+        "route_boavista_east_to_west": 0.81
       },
       "id_suffix": "delayed_bus_w"
     },
@@ -1223,22 +1223,22 @@
       "id_suffix": "emergency_conflict"
     },
     "congested_am_peak": {
-      "description": "Pico fortemente carregado no eixo principal (NAO saturacao total): movimentos directos carregados ~+11% inbound (west_to_east 0.90) e ~+5% outbound (east_to_west 0.95) vs baseline, com transversais e viragens no nivel operacional. O efeito nao-linear da fila perto da capacidade traduz este +5-11% de procura num aumento de timeLoss de ~+10-20% no baseline. Nivel calibrado para o regime carregado ser materialmente viavel na geometria sintetica de base (entradas ~400m, rotunda I6 priority) — robusto (jam-teleports=0 nas 5 seeds com ignore_junction_blocker_s) e a manter o trade-off do TSP mensuravel. Empurrar a procura muito acima disto comeca a (a) transbordar o buffer de insercao na entrada curta e (b) tornar o custo do TSP no trafego geral desproporcionado (a carga amplifica a penalizacao das transversais quando se da prioridade ao corredor).",
+      "description": "Pico fortemente carregado no eixo principal (NAO saturacao total): movimentos directos carregados ~+6% inbound (west_to_east 0.94) e ~+2% outbound (east_to_west 0.98) sobre o envelope operacional, com transversais e viragens no nivel operacional. O efeito nao-linear da fila perto da capacidade traduz esta carga num aumento de timeLoss material no baseline mantendo o trade-off do TSP mensuravel. route_period_scale recalibrado (jun/2026) de 0.90/0.95 para 0.94/0.98: nos valores anteriores, sobre a base mais leve, o regime ainda transbordava o buffer de insercao curto e voltava a produzir jam-teleports em seeds isoladas (seed_59 jam=4, seed_60 teleports_total=12). O nivel actual mantem-se carregado e materialmente viavel (jam-teleports=0, teleports_total<=8) nas 5 seeds com ignore_junction_blocker_s; empurrar acima disto (a) transborda a insercao na entrada ~400m / rotunda I6 priority e (b) torna o custo do TSP no trafego geral desproporcionado.",
       "derived_from": "am_peak_operational",
       "period_scale": 1.0,
       "route_period_scale": {
-        "route_boavista_west_to_east": 0.9,
-        "route_boavista_east_to_west": 0.95
+        "route_boavista_west_to_east": 0.94,
+        "route_boavista_east_to_west": 0.98
       },
       "id_suffix": "congested"
     },
     "congested_delayed_bus": {
-      "description": "Corredor carregado em ambos os sentidos com enfase no sentido do autocarro atrasado: westbound (east_to_west 0.78, ~+28%, o sentido cidade->mar onde corre o TP atrasado) carregado como em delayed_bus_westbound, mais carga oposta inbound (west_to_east 0.90, ~+11%) como em congested_am_peak. Ao contrario de reutilizar a procura de congested_am_peak (que carregava sobretudo o sentido oposto ao do autocarro), esta procura concentra a carga onde o TP atrasado tem de passar — o caso onde a prioridade vale mais e custa mais. Nivel a re-validar com a suite (jam-teleports=0).",
+      "description": "Corredor carregado em ambos os sentidos com enfase no sentido do autocarro atrasado: westbound (east_to_west 0.84, ~+19%, o sentido cidade->mar onde corre o TP atrasado) carregado como em delayed_bus_westbound, mais carga oposta inbound (west_to_east 0.95, ~+5%) como em congested_am_peak. Ao contrario de reutilizar a procura de congested_am_peak (que carregava sobretudo o sentido oposto ao do autocarro), esta procura concentra a carga onde o TP atrasado tem de passar — o caso onde a prioridade vale mais e custa mais. route_period_scale recalibrado (jun/2026) de 0.78/0.90 para 0.84/0.95: era o cenario com pior insercao (max_waiting_to_insert ate 268s em seeds isoladas, ambos os bracos) por concentrar carga nos dois sentidos sobre a entrada curta; o nivel actual mantem-no como o caso mais carregado mas materialmente viavel (insercao<150s, jam-teleports=0) nas 5 seeds. Re-validado com a suite paralela.",
       "derived_from": "am_peak_operational",
       "period_scale": 1.0,
       "route_period_scale": {
-        "route_boavista_east_to_west": 0.78,
-        "route_boavista_west_to_east": 0.9
+        "route_boavista_east_to_west": 0.84,
+        "route_boavista_west_to_east": 0.95
       },
       "id_suffix": "congested_delayed_bus"
     }
