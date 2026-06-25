@@ -397,6 +397,18 @@ def _run_leaf_task(
             )
         except Exception as exc:  # noqa: BLE001 - transient TraCI/SUMO startup flakiness
             last_exc = exc
+            # A failed start can leave traci's module-global 'default' connection
+            # half-open (the controller starts the adapter outside its try/finally),
+            # so without resetting it the next attempt dies with
+            # "Connection 'default' is already active." Close it best-effort so the
+            # retry — on a fresh port — starts from a clean client state.
+            try:
+                import traci
+
+                if traci.isLoaded():
+                    traci.close()
+            except Exception:  # noqa: BLE001 - cleanup must never mask the real error
+                pass
             if attempt + 1 < _LEAF_MAX_ATTEMPTS:
                 time.sleep(2.0 * (attempt + 1))
     assert last_exc is not None
