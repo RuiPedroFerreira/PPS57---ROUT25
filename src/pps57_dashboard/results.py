@@ -207,6 +207,10 @@ def catalog_label_map(catalog: dict[str, Any]) -> dict[str, str]:
 CLASS_SCOPES = (
     "all_vehicles",
     "buses",
+    # Split por sentido (parse_tripinfo): permite destacar o foco direcional (ex.
+    # delayed_bus_westbound) que a média dos dois sentidos do grupo `buses` dilui.
+    "buses_westbound",
+    "buses_eastbound",
     "general_traffic",
     "priority_vehicles",
     "emergency_vehicles",
@@ -243,6 +247,34 @@ SAFETY_METRICS = (
 # Order = display priority. CO2/fuel are the headline pair; NOx/PMx are the urban
 # air-quality pollutants; CO/HC are kept for completeness.
 EMISSION_SPECIES = ("CO2", "fuel", "NOx", "PMx", "CO", "HC")
+
+
+def load_scenario_focus_significance(report_root: Path) -> dict[str, dict]:
+    """Map ``scenario_id -> baseline_vs_tsp_actuation`` comparison dict from the suite
+    summary — the paired-significance blocks (bus / general / emergency / directional).
+
+    Empty when the summary is absent or malformed, so callers degrade gracefully to the
+    point delta without a CI verdict. Source: ``scenario_suite_summary.json`` (the one
+    file that already carries the per-scenario ``comparisons``).
+    """
+    summary_path = report_root / "scenario_suite_summary.json"
+    if not summary_path.exists():
+        return {}
+    try:
+        data = json.loads(summary_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    scenarios = data.get("scenarios") if isinstance(data, dict) else None
+    out: dict[str, dict] = {}
+    if isinstance(scenarios, list):
+        for entry in scenarios:
+            if not isinstance(entry, dict) or not entry.get("scenario_id"):
+                continue
+            comps = entry.get("comparisons")
+            pair = comps.get("baseline_vs_tsp_actuation") if isinstance(comps, dict) else None
+            if isinstance(pair, dict):
+                out[str(entry["scenario_id"])] = pair
+    return out
 
 
 def load_scenario_run_table(report_root: Path) -> list[dict]:

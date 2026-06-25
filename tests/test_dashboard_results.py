@@ -16,6 +16,7 @@ from pps57_dashboard.results import (  # noqa: E402
     catalog_label_map,
     default_scenario_dataset,
     discover_scenario_report_roots,
+    load_scenario_focus_significance,
     load_scenario_kpi_rows,
     load_scenario_run_table,
     scenario_catalog_path,
@@ -166,6 +167,62 @@ class DashboardResultsTestCase(unittest.TestCase):
             self.assertEqual(len(amp), 1)
             self.assertEqual(amp[0]["Valor"], 100.0)
             self.assertEqual(amp[0]["Linha"], "L1:E")
+
+    def test_run_table_surfaces_directional_bus_scopes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "reports" / "scenarios"
+            seed = root / "delayed_bus_westbound" / "tsp_actuation" / "seed_57"
+            seed.mkdir(parents=True)
+            (seed / "kpis.json").write_text(
+                json.dumps(
+                    {
+                        "buses": {"vehicles": 4, "mean_time_loss_s": 30.0},
+                        "buses_westbound": {"vehicles": 2, "mean_time_loss_s": 44.0},
+                        "buses_eastbound": {"vehicles": 2, "mean_time_loss_s": 16.0},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            rows = load_scenario_run_table(root)
+            flat = {(r["scope"], r["metric_key"]): r["Valor"] for r in rows}
+            self.assertEqual(flat[("buses_westbound", "mean_time_loss_s")], 44.0)
+            self.assertEqual(flat[("buses_eastbound", "mean_time_loss_s")], 16.0)
+            # the headline two-way bus scope stays intact
+            self.assertEqual(flat[("buses", "mean_time_loss_s")], 30.0)
+
+    def test_focus_significance_loader_reads_suite_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "reports" / "scenarios"
+            root.mkdir(parents=True)
+            (root / "scenario_suite_summary.json").write_text(
+                json.dumps(
+                    {
+                        "scenarios": [
+                            {
+                                "scenario_id": "delayed_bus_westbound",
+                                "comparisons": {
+                                    "baseline_vs_tsp_actuation": {
+                                        "bus_westbound_time_loss_replication_significance": {
+                                            "verdict": "significant_improvement",
+                                            "ci95_low": 2.0,
+                                            "ci95_high": 9.0,
+                                        }
+                                    }
+                                },
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            sig = load_scenario_focus_significance(root)
+            block = sig["delayed_bus_westbound"][
+                "bus_westbound_time_loss_replication_significance"
+            ]
+            self.assertEqual(block["verdict"], "significant_improvement")
+            self.assertEqual(block["ci95_low"], 2.0)
+            # absent / malformed summary -> empty map, not a crash
+            self.assertEqual(load_scenario_focus_significance(Path(tmp) / "nope"), {})
 
     def test_scenario_scoreboard_tallies_tsp_effect(self) -> None:
         def row(scen, rt, scope, mk, val):

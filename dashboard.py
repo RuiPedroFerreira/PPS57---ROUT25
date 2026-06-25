@@ -32,6 +32,7 @@ from pps57_dashboard.results import (  # noqa: E402
     catalog_label_map,
     default_scenario_dataset,
     discover_scenario_report_roots,
+    load_scenario_focus_significance,
     load_scenario_run_table,
     scenario_catalog_path,
     scenario_scoreboard,
@@ -794,6 +795,16 @@ def scenario_run_table(report_root: Path) -> list[dict]:
     and Streamlit reruns top-to-bottom on every interaction, so without caching each
     rerun re-reads and re-parses every seed_*/kpis.json from disk multiple times."""
     return _scenario_run_table_cached(str(report_root), _reports_fingerprint(report_root))
+
+
+@st.cache_data(show_spinner=False)
+def _scenario_focus_significance_cached(report_root_str: str, fingerprint: float) -> dict:
+    return load_scenario_focus_significance(Path(report_root_str))
+
+
+def scenario_focus_significance(report_root: Path) -> dict:
+    """Cached suite-summary significance map (same mtime-keyed pattern as the run table)."""
+    return _scenario_focus_significance_cached(str(report_root), _reports_fingerprint(report_root))
 
 
 def fmt(val, unit: str = "") -> str:
@@ -3304,13 +3315,108 @@ elif _active == "KPIs":
                 "sem colisões nem teleports por gridlock."
             )
             download_csv(ov, "kpis_visao_geral.csv", key="dl_overview")
-            st.caption(
-                "Estimativas pontuais, single-seed (seed 57). Sem barras de erro — "
-                "não há réplicas em disco para intervalos de confiança."
-            )
+            _n_seeds = int(tdf["Seed"].nunique()) if "Seed" in tdf.columns else 1
+            if _n_seeds > 1:
+                st.caption(
+                    f"Médias entre {_n_seeds} seeds. Esta vista geral mostra o ponto médio; "
+                    "o IC95 emparelhado por cenário está na secção «Foco por cenário» abaixo "
+                    "e no RESULTS.md."
+                )
+            else:
+                st.caption(
+                    "Estimativa pontual, single-seed. Sem barras de erro — corre a suite "
+                    "multi-seed para intervalos de confiança."
+                )
 
             # ═════════════════════════════════════════════════════════════════
-            # ② DETALHE POR CENÁRIO
+            # ② FOCO POR CENÁRIO — a métrica que o headline (bus/geral) não isola,
+            #    com IC95 emparelhado vindo do suite summary. Cálculo uniforme (os
+            #    mesmos grupos para todos); aqui é só destaque por cenário.
+            # ═════════════════════════════════════════════════════════════════
+            # (scope em kpis.json, rótulo, chave de significância no comparison)
+            SCENARIO_FOCUS = {
+                "emergency_vehicle_conflict": (
+                    "emergency_vehicles",
+                    "Perda de tempo · veículo de emergência",
+                    "emergency_time_loss_replication_significance",
+                ),
+                "delayed_bus_westbound": (
+                    "buses_westbound",
+                    "Perda de tempo · autocarro westbound",
+                    "bus_westbound_time_loss_replication_significance",
+                ),
+                "congested_delayed_bus": (
+                    "buses_westbound",
+                    "Perda de tempo · autocarro westbound (saturado)",
+                    "bus_westbound_time_loss_replication_significance",
+                ),
+            }
+            _sig_by_scen = scenario_focus_significance(scenario_dir)
+            _VERDICT_GLYPH = {
+                "significant_improvement": "✅ melhoria significativa",
+                "significant_regression": "⚠️ regressão significativa",
+                "inconclusive_ci_includes_zero": "➖ inconclusivo (IC95 inclui 0)",
+            }
+            focus_rows = []
+            for _scen, (_scope, _flabel, _sigkey) in SCENARIO_FOCUS.items():
+                if _scen not in scen_list:
+                    continue
+                _b = _agg(_scen, baseline_rt, _scope, "mean_time_loss_s")
+                _t = _agg(_scen, tsp_rt, _scope, "mean_time_loss_s")
+                if _b is None and _t is None:
+                    continue
+                _sig = (_sig_by_scen.get(_scen) or {}).get(_sigkey) or {}
+                _lo, _hi = _sig.get("ci95_low"), _sig.get("ci95_high")
+                _ci = (
+                    f"[{_lo:+.1f}, {_hi:+.1f}] s"
+                    if isinstance(_lo, (int, float)) and isinstance(_hi, (int, float))
+                    else "—"
+                )
+                focus_rows.append(
+                    {
+                        "Cenário": label_map.get(_scen, _scen),
+                        "Métrica-foco": _flabel,
+                        "Baseline (s)": _b,
+                        "TSP (s)": _t,
+                        "Δ% perda tempo": pct(_b, _t),
+                        "IC95 melhoria (s)": _ci,
+                        "Veredicto emparelhado": _VERDICT_GLYPH.get(
+                            _sig.get("verdict"), "— (precisa ≥2 seeds)"
+                        ),
+                    }
+                )
+            if focus_rows:
+                section("Foco por cenário — métrica específica com IC95 emparelhado")
+                fdf = pd.DataFrame(focus_rows)
+
+                def _style_focus(frame):
+                    styles = pd.DataFrame("", index=frame.index, columns=frame.columns)
+                    if "Δ% perda tempo" in frame.columns:
+                        styles["Δ% perda tempo"] = frame["Δ% perda tempo"].map(_delta_color)
+                    return styles
+
+                st.dataframe(
+                    fdf.style.apply(_style_focus, axis=None),
+                    width="stretch",
+                    hide_index=True,
+                    column_config={
+                        "Baseline (s)": st.column_config.NumberColumn(format="%.1f"),
+                        "TSP (s)": st.column_config.NumberColumn(format="%.1f"),
+                        "Δ% perda tempo": st.column_config.NumberColumn(
+                            format="%+.1f%%",
+                            help="Variação da métrica-foco (TSP vs baseline). Verde = melhoria.",
+                        ),
+                    },
+                )
+                insight(
+                    "Calculada com a mesma régua dos restantes KPIs; o veredicto emparelhado é "
+                    "significativo só quando o IC95 exclui zero. Cenários sem foco dedicado "
+                    "(ex.: bunching) ficam cobertos pela visão geral acima."
+                )
+                download_csv(fdf, "kpis_foco_cenario.csv", key="dl_focus")
+
+            # ═════════════════════════════════════════════════════════════════
+            # ③ DETALHE POR CENÁRIO
             # ═════════════════════════════════════════════════════════════════
             section("Detalhe por cenário")
             col_scen, col_class = st.columns([3, 2], vertical_alignment="bottom")
