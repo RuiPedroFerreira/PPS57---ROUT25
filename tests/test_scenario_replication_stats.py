@@ -243,3 +243,46 @@ class RelativeInsertionGateTestCase(unittest.TestCase):
         rss.apply_relative_insertion_gate({"baseline": run}, load_kpis=lambda _: None)
         self.assertEqual(run["run_verdict"]["status"], "fail")
         self.assertEqual(run["run_verdict"]["reasons"], ["seed_58:sumo_teleports_gt_threshold"])
+
+
+class ResolveJobsTestCase(unittest.TestCase):
+    def test_default_serial(self) -> None:
+        # --jobs 1 (default) keeps the serial path regardless of leaf count.
+        self.assertEqual(rss._resolve_jobs(1, 80), 1)
+
+    def test_auto_caps_at_leaf_count(self) -> None:
+        # 0 => auto = min(cpu, leaves); never more workers than leaves.
+        self.assertEqual(rss._resolve_jobs(0, 4), min(rss.os.cpu_count() or 1, 4))
+
+    def test_explicit_capped_by_leaves(self) -> None:
+        self.assertEqual(rss._resolve_jobs(64, 10), 10)
+
+    def test_negative_is_auto_and_zero_leaves_is_serial(self) -> None:
+        self.assertEqual(rss._resolve_jobs(-1, 6), min(rss.os.cpu_count() or 1, 6))
+        self.assertEqual(rss._resolve_jobs(0, 0), 1)
+
+
+class ScenarioRunsFromLeavesTestCase(unittest.TestCase):
+    """The parallel path reassembles scenario_runs from individual leaf summaries; it
+    must produce exactly what the serial loop would have built."""
+
+    def test_single_seed_passes_leaf_through(self) -> None:
+        leaf = {"run_type": "baseline", "seed": 57, "kpis": "x.json"}
+        runs = rss._scenario_runs_from_leaves(["baseline"], [57], {"baseline": {57: leaf}})
+        self.assertIs(runs["baseline"], leaf)
+        self.assertNotIn("replication_summaries", runs["baseline"])
+
+    def test_multi_seed_matches_serial_aggregate(self) -> None:
+        # Build leaves out of seed order in the dict, then assemble in requested order;
+        # the result must equal _aggregate_replications over the ordered per-seed list.
+        seeds = [57, 58, 59]
+        leaves_by_seed = {s: {"run_type": "tsp_actuation", "seed": s} for s in seeds}
+        runs = rss._scenario_runs_from_leaves(
+            ["tsp_actuation"], seeds, {"tsp_actuation": dict(reversed(list(leaves_by_seed.items())))}
+        )
+        expected = rss._aggregate_replications([leaves_by_seed[s] for s in seeds])
+        self.assertEqual(runs["tsp_actuation"]["replication_count"], 3)
+        self.assertEqual(
+            [r["seed"] for r in runs["tsp_actuation"]["replication_summaries"]], seeds
+        )
+        self.assertEqual(runs["tsp_actuation"]["replication_summaries"], expected["replication_summaries"])

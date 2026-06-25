@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import statistics
 import sys
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from copy import deepcopy
 from functools import lru_cache
 from pathlib import Path
@@ -89,6 +91,18 @@ def parse_args() -> argparse.Namespace:
         help="One or more random seeds to run as replications. Overrides scenario_profile.random_seeds.",
     )
     parser.add_argument(
+        "--jobs",
+        type=int,
+        default=1,
+        help=(
+            "Worker processes for parallel leaf execution (scenario × arm × seed). "
+            "1 = serial (default; behaviour unchanged). 0 = auto = min(cpu, leaves). "
+            "Each leaf runs in its own process with a dedicated TraCI port and per-run "
+            "output dir; the suite summary / RESULTS.md are still written once by the "
+            "parent, so there is no shared-state race."
+        ),
+    )
+    parser.add_argument(
         "--tsp-config",
         default="configs/tsp_safety_config.json",
         type=Path,
@@ -150,10 +164,9 @@ def main() -> int:
     if not args.skip_build:
         _require("netconvert")
 
-    run_summaries = []
     for scenario_id in scenario_ids:
         assert scenario_id is not None
-        run_summaries.append(run_scenario(args, base_config, catalog, scenario_id))
+    run_summaries = _execute_scenarios(args, base_config, catalog, scenario_ids)
 
     scenario_report = {
         "scenario_count": len(run_summaries),
@@ -224,47 +237,86 @@ def main() -> int:
 def run_scenario(
     args: argparse.Namespace, base_config: dict, catalog: dict, scenario_id: str
 ) -> dict:
+    """Serial single-scenario run: execute every leaf (run_type × seed) then finalize.
+
+    The parallel path (`--jobs`) reaches the same result via _execute_scenarios; both
+    funnel through _scenario_runs_from_leaves + finalize_scenario so the aggregation,
+    verdict and reports are byte-for-byte identical regardless of scheduling.
+    """
+    config, run_types, seeds = _scenario_run_plan(args, base_config, scenario_id)
+    leaves: dict[str, dict[int, dict]] = {}
+    for run_type in run_types:
+        leaves[run_type] = {}
+        for seed in seeds:
+            leaves[run_type][seed] = run_scenario_type(
+                args=args,
+                base_config=config,
+                catalog=catalog,
+                scenario_id=scenario_id,
+                run_type=run_type,
+                seed=seed,
+            )
+    scenario_runs = _scenario_runs_from_leaves(run_types, seeds, leaves)
+    return finalize_scenario(args, config, catalog, scenario_id, scenario_runs, seeds)
+
+
+def _scenario_run_plan(
+    args: argparse.Namespace, base_config: dict, scenario_id: str
+) -> tuple[dict, list[str], list[int]]:
+    """Resolve the (config, run_types, seeds) plan for a scenario and create its dirs.
+
+    Cheap and side-effect-light (apply profile, horizon guard, mkdir), so it is safe
+    to call up front for every scenario before fanning the heavy leaf runs out.
+    """
     config = apply_scenario_profile(base_config, scenario_id)
     _assert_horizon_not_truncated(config, args, scenario_id)
-    scenario_output_dir = ROOT / args.outputs_dir / scenario_id
-    scenario_report_dir = ROOT / args.reports_dir / scenario_id
-    scenario_output_dir.mkdir(parents=True, exist_ok=True)
-    scenario_report_dir.mkdir(parents=True, exist_ok=True)
-
+    (ROOT / args.outputs_dir / scenario_id).mkdir(parents=True, exist_ok=True)
+    (ROOT / args.reports_dir / scenario_id).mkdir(parents=True, exist_ok=True)
     # pair/comparison/all são aliases retidos para compatibilidade (Makefile/README):
     # após a consolidação para dois modos, todos resolvem para baseline + tsp_actuation.
     if args.run_type in {"pair", "comparison", "all"}:
         run_types = ["baseline", "tsp_actuation"]
     else:
         run_types = [args.run_type]
-
     seeds = _resolve_seeds(args, config)
+    return config, run_types, seeds
+
+
+def _scenario_runs_from_leaves(
+    run_types: list[str], seeds: list[int], leaves: dict[str, dict[int, dict]]
+) -> dict[str, dict]:
+    """Assemble per-run_type summaries from individual leaf results.
+
+    Single seed -> the leaf summary as-is; multiple seeds -> the replication
+    aggregate. Seeds are consumed in the requested order so the "first" replication
+    (the one _aggregate_replications copies headline fields from) is identical whether
+    the leaves ran serially or in parallel.
+    """
     scenario_runs: dict[str, dict] = {}
     for run_type in run_types:
-        if len(seeds) == 1:
-            scenario_runs[run_type] = run_scenario_type(
-                args=args,
-                base_config=config,
-                catalog=catalog,
-                scenario_id=scenario_id,
-                run_type=run_type,
-                seed=seeds[0],
-            )
-        else:
-            per_seed_runs: list[dict] = []
-            for seed in seeds:
-                per_seed_runs.append(
-                    run_scenario_type(
-                        args=args,
-                        base_config=config,
-                        catalog=catalog,
-                        scenario_id=scenario_id,
-                        run_type=run_type,
-                        seed=seed,
-                    )
-                )
-            scenario_runs[run_type] = _aggregate_replications(per_seed_runs)
+        per_seed = [leaves[run_type][seed] for seed in seeds]
+        scenario_runs[run_type] = (
+            per_seed[0] if len(per_seed) == 1 else _aggregate_replications(per_seed)
+        )
+    return scenario_runs
 
+
+def finalize_scenario(
+    args: argparse.Namespace,
+    config: dict,
+    catalog: dict,
+    scenario_id: str,
+    scenario_runs: dict[str, dict],
+    seeds: list[int],
+) -> dict:
+    """Post-leaf aggregation: insertion gate, paired comparisons, verdict, reports.
+
+    Pure bookkeeping over the kpis.json files the leaves already wrote (no SUMO), so
+    it runs in the parent process once all leaves — however they were scheduled — have
+    finished. Single source of truth for the per-scenario summary/report.
+    """
+    scenario_output_dir = ROOT / args.outputs_dir / scenario_id
+    scenario_report_dir = ROOT / args.reports_dir / scenario_id
     apply_relative_insertion_gate(scenario_runs)
     summary = scenario_summary(config)
     summary["catalog"] = catalog["scenarios"][scenario_id]
@@ -281,12 +333,126 @@ def run_scenario(
     (scenario_report_dir / "scenario_report.md").write_text(
         render_scenario_report(summary), encoding="utf-8"
     )
-
-    if args.generate_only:
-        summary["status"] = "generated"
-        return summary
-    summary["status"] = "completed"
+    summary["status"] = "generated" if args.generate_only else "completed"
     return summary
+
+
+# Porta base TraCI para a execução paralela: cada leaf (scenario×arm×seed) recebe uma
+# porta dedicada e DISTINTA (base + índice) em vez de sondar uma porta livre, eliminando
+# a janela TOCTOU do getFreeSocketPort quando dezenas de SUMO arrancam em simultâneo.
+# Overridable por env para ambientes onde a gama 8900+ esteja ocupada.
+_TRACI_PORT_BASE = int(os.environ.get("PPS57_TRACI_PORT_BASE", "8900"))
+
+
+def _resolve_jobs(requested: int | None, total_leaves: int) -> int:
+    """Number of worker processes for leaf execution.
+
+    1 (default) keeps the original serial behaviour. 0/negative => auto:
+    min(cpu_count, total_leaves). Never more workers than there are leaves.
+    """
+    if total_leaves <= 0:
+        return 1
+    if requested is None or requested <= 0:
+        requested = min(os.cpu_count() or 1, total_leaves)
+    return max(1, min(requested, total_leaves))
+
+
+def _run_leaf_task(
+    args: argparse.Namespace,
+    config: dict,
+    catalog: dict,
+    scenario_id: str,
+    run_type: str,
+    seed: int,
+    port: int,
+) -> dict:
+    """Worker entry point: pin a dedicated TraCI port, run one leaf, return its summary.
+
+    Runs in a forked child (one task per child — see max_tasks_per_child) so no TraCI
+    connection state leaks between leaves and each SUMO process owns a private TCP port.
+    """
+    os.environ["TRACI_PORT"] = str(port)
+    return run_scenario_type(
+        args=args,
+        base_config=config,
+        catalog=catalog,
+        scenario_id=scenario_id,
+        run_type=run_type,
+        seed=seed,
+    )
+
+
+def _execute_scenarios(
+    args: argparse.Namespace, base_config: dict, catalog: dict, scenario_ids: list[str]
+) -> list[dict]:
+    """Run every scenario, fanning the leaf SUMO runs across worker processes.
+
+    Each (scenario, run_type, seed) SUMO run is fully independent — per-run output
+    dirs (the sumocfg writes tripinfo/summary/statistics locally) plus a dedicated
+    TraCI port — so the expensive leaves run in a process pool. The cheap aggregation
+    (insertion gate, paired CI, verdict, per-scenario reports) then runs serially in
+    the parent, and main() writes the suite summary / RESULTS.md exactly once, so there
+    is no shared-state race. --jobs 1 (default) preserves the original serial path.
+    """
+    plans = {sid: _scenario_run_plan(args, base_config, sid) for sid in scenario_ids}
+    total_leaves = sum(len(run_types) * len(seeds) for _c, run_types, seeds in plans.values())
+    jobs = _resolve_jobs(getattr(args, "jobs", 1), total_leaves)
+
+    # generate-only builds artifacts without running SUMO; keep it serial — the pool
+    # would add latency without any real per-leaf work to overlap.
+    if jobs <= 1 or args.generate_only:
+        return [run_scenario(args, base_config, catalog, sid) for sid in scenario_ids]
+
+    tasks: list[tuple[str, str, int, dict]] = []
+    for sid in scenario_ids:
+        config, run_types, seeds = plans[sid]
+        for run_type in run_types:
+            for seed in seeds:
+                tasks.append((sid, run_type, seed, config))
+
+    if _TRACI_PORT_BASE + len(tasks) > 65000:
+        raise SystemExit(
+            f"Parallel run needs {len(tasks)} distinct TraCI ports from base "
+            f"{_TRACI_PORT_BASE}, which exceeds the TCP range. Lower PPS57_TRACI_PORT_BASE."
+        )
+
+    print(
+        f"[parallel] {len(tasks)} leaves (scenario×arm×seed) across {jobs} workers "
+        f"(cpu={os.cpu_count()}); TraCI ports {_TRACI_PORT_BASE}..{_TRACI_PORT_BASE + len(tasks) - 1}",
+        file=sys.stderr,
+    )
+
+    leaves: dict[str, dict[str, dict[int, dict]]] = {}
+    # max_tasks_per_child=1: a fresh process per leaf, so TraCI/SUMO socket state never
+    # carries over between runs in a reused worker.
+    with ProcessPoolExecutor(max_workers=jobs, max_tasks_per_child=1) as executor:
+        future_to_leaf = {
+            executor.submit(
+                _run_leaf_task, args, config, catalog, sid, run_type, seed, _TRACI_PORT_BASE + idx
+            ): (sid, run_type, seed)
+            for idx, (sid, run_type, seed, config) in enumerate(tasks)
+        }
+        for done, future in enumerate(as_completed(future_to_leaf), start=1):
+            sid, run_type, seed = future_to_leaf[future]
+            try:
+                summary = future.result()
+            except Exception as exc:  # noqa: BLE001 - surface which leaf crashed, fail closed
+                raise SystemExit(
+                    f"[{sid}/{run_type}/seed_{seed}] leaf run failed: {exc!r}"
+                ) from exc
+            leaves.setdefault(sid, {}).setdefault(run_type, {})[seed] = summary
+            status = summary.get("run_verdict", {}).get("status", summary.get("status"))
+            print(
+                f"[parallel] {done}/{len(tasks)} {sid}/{run_type}/seed_{seed} -> {status}",
+                file=sys.stderr,
+            )
+
+    run_summaries = []
+    for sid in scenario_ids:
+        config, run_types, seeds = plans[sid]
+        scenario_runs = _scenario_runs_from_leaves(run_types, seeds, leaves[sid])
+        run_summaries.append(finalize_scenario(args, config, catalog, sid, scenario_runs, seeds))
+    return run_summaries
 
 
 # Margem do gate relativo de inserção: o braço candidato só falha o gate de
@@ -728,15 +894,14 @@ GLOBAL_SUMO_OUTPUTS = ("tripinfo.xml", "summary.xml", "statistics.xml")
 
 
 def clear_global_sumo_outputs() -> None:
-    # SUMO writes these files at fixed paths declared in corredor.sumocfg, so
-    # only one scenario at a time can own them. The CLI runs scenarios
-    # sequentially (--all is a serial loop); do NOT parallelise scenario
-    # execution without first moving these outputs into per-run paths via
-    # SUMO's --tripinfo-output/--summary flags.
+    # The PER-SCENARIO sumocfg (write_sumocfg) declares tripinfo/summary/statistics
+    # under each run's OWN output_dir, so a scenario leaf never writes to this legacy
+    # global outputs/ path — which is exactly why --jobs can run leaves in parallel
+    # safely (each owns a private output dir + TraCI port). These unlinks only clear a
+    # stale global dump left by the non-scenario flows (make run/tsp-sumo); use
+    # missing_ok=True so concurrent leaves don't race on a TOCTOU unlink.
     for name in GLOBAL_SUMO_OUTPUTS:
-        path = ROOT / "outputs" / name
-        if path.exists():
-            path.unlink()
+        (ROOT / "outputs" / name).unlink(missing_ok=True)
 
 
 def copy_global_sumo_outputs(run_output_dir: Path) -> None:

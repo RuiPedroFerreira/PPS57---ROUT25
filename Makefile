@@ -8,6 +8,11 @@ SHELL := /bin/bash
 
 PYTHON := $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 
+# SUMO ships as the eclipse-sumo wheel inside .venv/bin (sumo/netconvert/...), not as a
+# system package. Put the venv on PATH for every recipe so SUMO targets work without a
+# manual `source .venv/bin/activate` (AGENTS.md). `export` propagates it to recipes.
+export PATH := $(if $(wildcard .venv/bin),$(abspath .venv/bin):$(PATH),$(PATH))
+
 # Pre-build static gate. A missing generated net.xml is DEFERRED here (not silently
 # passed) — the fresh-clone/no-SUMO bootstrap case; `build` re-validates the
 # network-profile fail-closed after netconvert has produced the net.
@@ -41,14 +46,19 @@ RUN_TYPE ?= baseline
 # config (scenario_profiles[*].random_seeds); definir para correr um subconjunto.
 SUITE_RUN_TYPE ?= pair
 SUITE_SEEDS ?=
+# JOBS = worker processes for the parallel leaf executor (scenario × arm × seed).
+# 0 (default) = auto = min(cpu, #leaves): each leaf is one SUMO process (~1 core,
+# ~1.7 GB), so the suite uses the machine's cores instead of running serially for
+# hours. Set JOBS=1 to force the old serial path; JOBS=N to cap concurrency.
+JOBS ?= 0
 scenario-list:
 	$(PYTHON) scripts/run_sumo_scenario.py --list
 
 scenario-run:
-	$(PYTHON) scripts/run_sumo_scenario.py --scenario $(SCENARIO) --run-type $(RUN_TYPE)
+	$(PYTHON) scripts/run_sumo_scenario.py --scenario $(SCENARIO) --run-type $(RUN_TYPE) --jobs $(JOBS)
 
 scenario-suite:
-	$(PYTHON) scripts/run_sumo_scenario.py --all --run-type $(SUITE_RUN_TYPE) $(if $(SUITE_SEEDS),--seeds $(SUITE_SEEDS))
+	$(PYTHON) scripts/run_sumo_scenario.py --all --run-type $(SUITE_RUN_TYPE) --jobs $(JOBS) $(if $(SUITE_SEEDS),--seeds $(SUITE_SEEDS))
 
 sumo-smoke:
 	$(PYTHON) scripts/sumo_smoke.py
