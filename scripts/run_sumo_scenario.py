@@ -357,6 +357,12 @@ def _resolve_jobs(requested: int | None, total_leaves: int) -> int:
     return max(1, min(requested, total_leaves))
 
 
+# Quantas tentativas por leaf antes de desistir. Sob alta concorrência o arranque do
+# SUMO/TraCI falha ocasionalmente de forma transitória ("Connection closed by SUMO"),
+# e numa suite de centenas de leaves uma única falha não deve desperdiçar a run inteira.
+_LEAF_MAX_ATTEMPTS = int(os.environ.get("PPS57_LEAF_MAX_ATTEMPTS", "3"))
+
+
 def _run_leaf_task(
     args: argparse.Namespace,
     config: dict,
@@ -368,18 +374,33 @@ def _run_leaf_task(
 ) -> dict:
     """Worker entry point: pin a dedicated TraCI port, run one leaf, return its summary.
 
-    Runs in a forked child (one task per child — see max_tasks_per_child) so no TraCI
-    connection state leaks between leaves and each SUMO process owns a private TCP port.
+    Retries transient SUMO/TraCI startup failures (e.g. "Connection closed by SUMO"
+    under heavy concurrency) on a fresh, disjoint port with backoff before giving up,
+    so one flaky leaf does not abort a multi-hundred-leaf suite. Runs in a fresh child
+    per task (max_tasks_per_child=1) so no TraCI state leaks between leaves.
     """
-    os.environ["TRACI_PORT"] = str(port)
-    return run_scenario_type(
-        args=args,
-        base_config=config,
-        catalog=catalog,
-        scenario_id=scenario_id,
-        run_type=run_type,
-        seed=seed,
-    )
+    import time
+
+    last_exc: Exception | None = None
+    for attempt in range(_LEAF_MAX_ATTEMPTS):
+        # Disjoint port per attempt so a half-open socket from a failed start can't
+        # poison the retry (+20000 stays well inside the TCP range for any leaf index).
+        os.environ["TRACI_PORT"] = str(port + attempt * 20000)
+        try:
+            return run_scenario_type(
+                args=args,
+                base_config=config,
+                catalog=catalog,
+                scenario_id=scenario_id,
+                run_type=run_type,
+                seed=seed,
+            )
+        except Exception as exc:  # noqa: BLE001 - transient TraCI/SUMO startup flakiness
+            last_exc = exc
+            if attempt + 1 < _LEAF_MAX_ATTEMPTS:
+                time.sleep(2.0 * (attempt + 1))
+    assert last_exc is not None
+    raise last_exc
 
 
 def _execute_scenarios(
@@ -432,26 +453,63 @@ def _execute_scenarios(
             ): (sid, run_type, seed)
             for idx, (sid, run_type, seed, config) in enumerate(tasks)
         }
+        failed_leaves: list[tuple[str, str, int, str]] = []
         for done, future in enumerate(as_completed(future_to_leaf), start=1):
             sid, run_type, seed = future_to_leaf[future]
             try:
                 summary = future.result()
-            except Exception as exc:  # noqa: BLE001 - surface which leaf crashed, fail closed
-                raise SystemExit(
-                    f"[{sid}/{run_type}/seed_{seed}] leaf run failed: {exc!r}"
-                ) from exc
+            except Exception as exc:  # noqa: BLE001 - one flaky leaf must not nuke the suite
+                # Already retried _LEAF_MAX_ATTEMPTS times in the worker; record and drop
+                # this leaf rather than aborting the whole (possibly hours-long) run.
+                failed_leaves.append((sid, run_type, seed, repr(exc)))
+                print(
+                    f"[parallel] {done}/{len(tasks)} {sid}/{run_type}/seed_{seed} "
+                    f"-> FAILED after {_LEAF_MAX_ATTEMPTS} attempts: {exc!r}",
+                    file=sys.stderr,
+                )
+                continue
             leaves.setdefault(sid, {}).setdefault(run_type, {})[seed] = summary
             status = summary.get("run_verdict", {}).get("status", summary.get("status"))
             print(
                 f"[parallel] {done}/{len(tasks)} {sid}/{run_type}/seed_{seed} -> {status}",
                 file=sys.stderr,
             )
+        if failed_leaves:
+            print(
+                f"[parallel] WARNING: {len(failed_leaves)} leaf(s) failed after retries: "
+                + ", ".join(f"{s}/{r}/seed_{sd}" for s, r, sd, _ in failed_leaves),
+                file=sys.stderr,
+            )
 
     run_summaries = []
     for sid in scenario_ids:
         config, run_types, seeds = plans[sid]
-        scenario_runs = _scenario_runs_from_leaves(run_types, seeds, leaves[sid])
-        run_summaries.append(finalize_scenario(args, config, catalog, sid, scenario_runs, seeds))
+        # Pairing needs the seed in EVERY arm; a leaf dropped after retry-exhaustion
+        # removes just that seed from that scenario (reduced n, recorded in the summary),
+        # instead of aborting the suite or silently unbalancing the paired comparison.
+        effective_seeds = [
+            seed
+            for seed in seeds
+            if all(seed in leaves.get(sid, {}).get(rt, {}) for rt in run_types)
+        ]
+        if not effective_seeds:
+            print(
+                f"[parallel] WARNING: scenario {sid} has no seed complete across all arms; "
+                "skipped from the suite.",
+                file=sys.stderr,
+            )
+            continue
+        if len(effective_seeds) < len(seeds):
+            dropped = sorted(set(seeds) - set(effective_seeds))
+            print(
+                f"[parallel] WARNING: scenario {sid} reduced to n={len(effective_seeds)} "
+                f"(dropped seeds {dropped} after leaf failure).",
+                file=sys.stderr,
+            )
+        scenario_runs = _scenario_runs_from_leaves(run_types, effective_seeds, leaves[sid])
+        run_summaries.append(
+            finalize_scenario(args, config, catalog, sid, scenario_runs, effective_seeds)
+        )
     return run_summaries
 
 
