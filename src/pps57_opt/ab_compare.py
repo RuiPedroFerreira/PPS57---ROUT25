@@ -102,7 +102,6 @@ def build_kpi_comparison_rows(
         "buses",
         "emergency_vehicles",
         "general_traffic",
-        "non_priority_vehicles",
     ]:
         baseline_group = baseline_kpis.get(group, {})
         rl_group = rl_kpis.get(group, {})

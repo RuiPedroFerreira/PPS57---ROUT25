@@ -206,7 +206,12 @@ class DashboardResultsTestCase(unittest.TestCase):
                                             "verdict": "significant_improvement",
                                             "ci95_low": 2.0,
                                             "ci95_high": 9.0,
-                                        }
+                                        },
+                                        "bus_eastbound_time_loss_replication_significance": {
+                                            "verdict": "inconclusive_ci_includes_zero",
+                                            "ci95_low": -1.5,
+                                            "ci95_high": 4.0,
+                                        },
                                     }
                                 },
                             }
@@ -221,6 +226,11 @@ class DashboardResultsTestCase(unittest.TestCase):
             ]
             self.assertEqual(block["verdict"], "significant_improvement")
             self.assertEqual(block["ci95_low"], 2.0)
+            # second key in the same comparison dict must also be returned
+            block2 = sig["delayed_bus_westbound"][
+                "bus_eastbound_time_loss_replication_significance"
+            ]
+            self.assertEqual(block2["verdict"], "inconclusive_ci_includes_zero")
             # absent / malformed summary -> empty map, not a crash
             self.assertEqual(load_scenario_focus_significance(Path(tmp) / "nope"), {})
 

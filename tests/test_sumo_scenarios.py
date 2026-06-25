@@ -1844,6 +1844,13 @@ class SumoKpiParsingTestCase(unittest.TestCase):
                                 "ci95_high": 100.9,
                                 "verdict": "significant_improvement",
                             },
+                            "bus_westbound_time_loss_replication_significance": {
+                                "n": 3,
+                                "mean_improvement": 95.2,
+                                "ci95_low": 55.0,
+                                "ci95_high": 135.4,
+                                "verdict": "significant_improvement",
+                            },
                         }
                     },
                 }
@@ -1853,6 +1860,9 @@ class SumoKpiParsingTestCase(unittest.TestCase):
         self.assertIn("significant_improvement", doc)
         self.assertIn("+70.5", doc)
         self.assertIn("[+40.1, +100.9]", doc)
+        # focus-significance section must also surface in RESULTS.md
+        self.assertIn("Autocarro westbound", doc)
+        self.assertIn("+95.2", doc)
 
     def test_parse_insertion_reads_sumo_safety_stats(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

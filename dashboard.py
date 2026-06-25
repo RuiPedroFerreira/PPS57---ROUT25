@@ -817,7 +817,7 @@ def fmt(val, unit: str = "") -> str:
 def pct(baseline, candidate) -> float | None:
     # `baseline` truthiness already excludes 0/0.0/None, so the prior `baseline != 0`
     # was redundant. abs() keeps the sign reflecting (candidate - baseline) direction.
-    if baseline and candidate is not None:
+    if baseline is not None and baseline != 0 and candidate is not None:
         return (candidate - baseline) / abs(baseline) * 100
     return None
 
@@ -2112,7 +2112,7 @@ elif _active == "Demonstrador":
     else:
         # ── contextual hint: TSP gains live in the bus class ──────────────────
         bus_n = cls_counts.get("buses", 0)
-        if vehicle_cls in ("all_vehicles", "general_traffic", "non_priority_vehicles") and bus_n:
+        if vehicle_cls in ("all_vehicles", "general_traffic") and bus_n:
             hint_col, btn_col = st.columns([4, 1])
             with hint_col:
                 insight(
@@ -3240,7 +3240,12 @@ elif _active == "KPIs":
                 # Safety/net verdict MIRRORS the repo's own gates
                 # (run_sumo_scenario.compare_scenario_runs): collisions=0 ∧
                 # jam-teleports=0, and the general-traffic penalty must stay ≤ ~90 s.
-                safe = (not coll_t) and (not jam_t)
+                safe = (
+                    coll_t is not None
+                    and jam_t is not None
+                    and coll_t == 0
+                    and jam_t == 0
+                )
                 if bus_d is None:
                     verdict = "—"
                 elif bus_d < 0 and (gen_penalty is None or gen_penalty <= 90) and safe:
@@ -3363,7 +3368,7 @@ elif _active == "KPIs":
                     continue
                 _b = _agg(_scen, baseline_rt, _scope, "mean_time_loss_s")
                 _t = _agg(_scen, tsp_rt, _scope, "mean_time_loss_s")
-                if _b is None and _t is None:
+                if _b is None or _t is None:
                     continue
                 _sig = (_sig_by_scen.get(_scen) or {}).get(_sigkey) or {}
                 _lo, _hi = _sig.get("ci95_low"), _sig.get("ci95_high")

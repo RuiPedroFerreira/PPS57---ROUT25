@@ -135,7 +135,6 @@ def parse_tripinfo(
         "emergency_vehicles": _summarize_items(group("is_emergency", True)),
         "priority_vehicles": _summarize_items(group("is_priority", True)),
         "general_traffic": _summarize_items(group("is_priority", False)),
-        "non_priority_vehicles": _summarize_items(group("is_priority", False)),
         "bus_lines": _bus_lines(rows),
         "bus_headways": _bus_headways(rows),
     }

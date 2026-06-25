@@ -465,7 +465,7 @@ def scenario_scoreboard(rows: list[dict]) -> dict[str, Any]:
     for scen in scenarios:
         bus_b = mean(scen, baseline_rt, "buses", "mean_time_loss_s")
         bus_t = mean(scen, tsp_rt, "buses", "mean_time_loss_s")
-        if bus_b and bus_t is not None and bus_b != 0:
+        if bus_b is not None and bus_t is not None and bus_b != 0:
             delta = (bus_t - bus_b) / abs(bus_b) * 100
             bus_deltas.append(delta)
             if delta < 0:
@@ -497,7 +497,7 @@ def scenario_scoreboard(rows: list[dict]) -> dict[str, Any]:
 
         nox_b = mean(scen, baseline_rt, "emissions", "total_nox_mg_per_vehicle_km")
         nox_t = mean(scen, tsp_rt, "emissions", "total_nox_mg_per_vehicle_km")
-        if nox_b and nox_t is not None and nox_t < nox_b:
+        if nox_b is not None and nox_t is not None and nox_t < nox_b:
             out["nox_improved"] += 1
 
     if bus_deltas:

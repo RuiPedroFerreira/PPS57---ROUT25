@@ -933,7 +933,7 @@ def _metric_delta(
         }
     delta = round(candidate_value - base_value, 3)
     regression = delta if lower_is_better else -delta
-    regression_pct = round((regression / base_value) * 100, 3) if base_value else None
+    regression_pct = round((regression / base_value) * 100, 3) if base_value != 0 else None
     return {
         "baseline": base_value,
         "candidate": candidate_value,
@@ -1188,6 +1188,9 @@ def render_scenario_report(summary: dict) -> str:
         for sig_key in (
             "bus_time_loss_replication_significance",
             "general_traffic_time_loss_replication_significance",
+            "emergency_time_loss_replication_significance",
+            "bus_westbound_time_loss_replication_significance",
+            "bus_eastbound_time_loss_replication_significance",
         )
         if sig_key in comparison
     ]
@@ -1392,6 +1395,36 @@ def render_results_doc(report: dict) -> str:
             else ("no_paired_ci" if seed_count > 1 else "single_seed_no_ci")
         )
         lines.append(f"| {s['scenario_id']} | {mean_imp} | {_ci_cell(sig)} | {verdict} |")
+
+    _FOCUS_SIG_KEYS = [
+        ("emergency_time_loss_replication_significance", "Emergência · timeLoss"),
+        ("bus_westbound_time_loss_replication_significance", "Autocarro westbound · timeLoss"),
+        ("bus_eastbound_time_loss_replication_significance", "Autocarro eastbound · timeLoss"),
+    ]
+    focus_rows = [
+        (s["scenario_id"], label, sig)
+        for s in scenarios
+        for key_name, label in _FOCUS_SIG_KEYS
+        for sig in [s.get("comparisons", {}).get("baseline_vs_tsp_actuation", {}).get(key_name)]
+        if sig is not None
+    ]
+    if focus_rows:
+        lines += [
+            "",
+            "## Métricas-foco por cenário (IC95 emparelhado)",
+            "",
+            "Métricas específicas do cenário: veículo de emergência ou autocarro direcional.",
+            "",
+            "| Cenário | Métrica | n | Melhoria média (s) | IC95 (s) | Veredito |",
+            "|---|---|---:|---:|---:|---|",
+        ]
+        for scen_id, label, sig in focus_rows:
+            lines.append(
+                f"| {scen_id} | {label} | {sig.get('n', '')} | "
+                f"{sig.get('mean_improvement', ''):+.1f} | {_ci_cell(sig)} | {sig.get('verdict', '')} |"
+                if isinstance(sig.get("mean_improvement"), (int, float))
+                else f"| {scen_id} | {label} | {sig.get('n', '')} | — | {_ci_cell(sig)} | {sig.get('verdict', '')} |"
+            )
 
     lines += [
         "",
