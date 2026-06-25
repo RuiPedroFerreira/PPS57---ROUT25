@@ -1532,6 +1532,20 @@ Os ganhos por seed são emparelhados e reportados como média com intervalo de
 confiança a 95 % (t-Student); o efeito só é **significativo quando o IC95 exclui
 zero**. Com poucas seeds os intervalos são largos — uma direção consistente não é
 o mesmo que um tamanho de efeito provado.
+
+## Veredito de viabilidade vs. estimativa de efeito
+
+Os gates de viabilidade (`max_collisions=0`, `max_teleports_jam=0`,
+`max_waiting_to_insert`, …) são **fail-closed estritos**. Numa amostragem larga
+(muitas seeds) dos cenários mais carregados, podem assinalar **eventos de cauda
+raros por-seed** — uma colisão de seguimento denso ou um teleport de gridlock numa
+seed isolada — que são reportados de forma **transparente** como `fail` de
+viabilidade, em vez de mascarados. Esses são micro-eventos ao nível da simulação
+numa seed específica e **não** invalidam o IC95 emparelhado do **efeito** do TSP
+nesse cenário (a estimativa de efeito é a diferença baseline↔atuação na mesma
+seed; um artefacto que ocorre numa seed afeta ambos os braços). Ler as duas
+tabelas em conjunto: a de **impacto** mede o efeito; a de **viabilidade** sinaliza
+seeds com micro-eventos a inspecionar, não uma falha do efeito medido.
 """
 
 
