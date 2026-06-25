@@ -7,10 +7,6 @@ corredor sintético) — mais a sua config partilhada e o predicado fail-close.
 Cada fixture é um vetor de verificação sintético, escolhido para o resultado ser
 calculável à mão: prova que os instrumentos se comportam como documentado, nada
 mais. NENHUM número é uma medição de tráfego.
-
-A cobertura dos instrumentos LEGADOS de Porto/Boavista (V2-envelope, contagens de
-referência, corredor de referência) vive em ``tests/test_legacy_porto_evidence.py``,
-apontado a ``scripts/legacy_porto/`` (ver ``scripts/legacy_porto/README.md``).
 """
 
 from __future__ import annotations

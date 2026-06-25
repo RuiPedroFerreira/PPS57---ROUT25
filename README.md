@@ -64,7 +64,6 @@ public/                  Dashboard branding assets (logos)
 outputs/                 Generated JSONL/XML/log artifacts (git-ignored)
 reports/                 Generated summaries, KPIs and policy reports (git-ignored)
 scripts/                 User-facing command-line entry points
-scripts/legacy_porto/    Archived Porto/Boavista sim-to-real exploration (see its README)
 src/pps57_cits/          C-ITS/V2X emulation layer
 src/pps57_opt/           Policy optimization, runtime policy loading and RL training
 src/pps57_sumo/          SUMO network generation, KPI parsing, network binding/profile
@@ -1021,17 +1020,6 @@ What is **not** claimed:
   (from SUMO `<request foes>`); the Safety Layer fail-closes everywhere else.
 - The synthetic corridor's geometry, demand and magnitudes are illustrative
   (HCM-anchored), not a calibration of any specific city.
-
-### Legacy Porto sim-to-real exploration
-
-An earlier phase tried to ground the simulation by *constructing* a real Porto/
-Boavista corridor from open data (OSM extract, STCP GTFS, a European reference-
-count envelope — the V2/V3/V4 "ladder"). That approach was superseded by the
-current synthetic-corridor pipeline. Those construction scripts are archived, not
-deleted, under [`scripts/legacy_porto/`](scripts/legacy_porto/README.md) and remain
-recoverable and auditable. The reusable, city-agnostic parts (authoritative
-conflict matrix, empirical network profile, GTFS and reference-count parsers)
-stayed on the main path under `src/pps57_sumo/`.
 
 ## Development Checks
 
