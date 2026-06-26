@@ -1291,7 +1291,7 @@ def render_scenario_overview(metric_key: str = "mean_time_loss_s") -> None:
                 "if(v==null)return;var sign=v<0?'✅':'⚠️';"
                 "s+='<br/>'+p.marker+p.seriesName+': '+sign+' '+(v>0?'+':'')+v+'%';});"
                 "return s;}"
-            ),
+            ).js_code,
         },
         "xAxis": {
             "type": "value",
@@ -1300,7 +1300,7 @@ def render_scenario_overview(metric_key: str = "mean_time_loss_s") -> None:
             "axisLabel": {
                 "color": "#94a3b8",
                 "fontSize": 11,
-                "formatter": JsCode("function(v){return v+'%';}"),
+                "formatter": JsCode("function(v){return v+'%';}").js_code,
             },
             "name": f"Δ% face ao baseline · {metric_label.lower()} (negativo = melhoria)",
             "nameLocation": "middle",
@@ -2007,7 +2007,7 @@ if _active == "Resumo":
                         "var s=p.data.baseline+'s → '+p.data.tsp_val+'s (n='+p.data.n+')';"
                         "var sign=p.value<0?'✅':'⚠️';"
                         "return '<b>'+p.name+'</b><br/>'+sign+' '+(p.value>0?'+':'')+p.value+'%<br/><span style=\"color:#64748b\">'+s+'</span>';}"
-                    ),
+                    ).js_code,
                 },
                 "xAxis": {
                     "type": "value",
