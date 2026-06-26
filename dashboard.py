@@ -1503,7 +1503,6 @@ if st.session_state.get("vehicle_class_display") not in CLASS_OPTIONS:
     st.session_state.vehicle_class_display = _default_display
 selected_class = st.session_state.vehicle_class_display
 vehicle_cls = cls_label_map[selected_class]
-vehicle_cls_label = next(lbl for k, lbl in VEHICLE_CLASSES if k == vehicle_cls)
 
 
 def _sync_vehicle_class() -> None:
@@ -1754,10 +1753,6 @@ if demo is None and baseline_kpis is None:
     )
     render_simulation_panel()
     st.stop()
-
-# ── per-class data for the selected vehicle filter ────────────────────────────
-
-cls_data = {label: get_kpi(kpis, vehicle_cls) for label, kpis in run_kpis.items()}
 
 # ── vehicle count warning ─────────────────────────────────────────────────────
 # Fire only on a MEANINGFUL spread (>10%). Signal-timing changes naturally cause
