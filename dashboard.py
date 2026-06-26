@@ -1288,10 +1288,10 @@ def render_scenario_overview(metric_key: str = "mean_time_loss_s") -> None:
                 "function(ps){var s='<b>'+ps[0].name+'</b>';"
                 "ps.forEach(function(p){var v=p.value;"
                 "if(v&&typeof v==='object'){v=v.value;}"
-                "if(v==null)return;var sign=v<0?'✅':'⚠️';"
-                "s+='<br/>'+p.marker+p.seriesName+': '+sign+' '+(v>0?'+':'')+v+'%';});"
+                "if(v==null)return;"
+                "s+='<br/>'+p.marker+p.seriesName+': '+(v>0?'+':'')+v+'%';});"
                 "return s;}"
-            ),
+            ).js_code,
         },
         "xAxis": {
             "type": "value",
@@ -1300,7 +1300,7 @@ def render_scenario_overview(metric_key: str = "mean_time_loss_s") -> None:
             "axisLabel": {
                 "color": "#94a3b8",
                 "fontSize": 11,
-                "formatter": JsCode("function(v){return v+'%';}"),
+                "formatter": JsCode("function(v){return v+'%';}").js_code,
             },
             "name": f"Δ% face ao baseline · {metric_label.lower()} (negativo = melhoria)",
             "nameLocation": "middle",
@@ -1884,38 +1884,6 @@ if _active == "Resumo":
                 )
 
         bus = next((r for r in hero if r["key"] in ("buses", "priority_vehicles")), None)
-        gen = next((r for r in hero if r["key"] == "general_traffic"), None)
-
-        # ── plain-language headline — the key figure pulled large ─────────────
-        if bus:
-            # Decide direction from the *rounded* value so the figure, the verb and
-            # the colour never disagree: a delta of -0.3% rounds to 0 and must read
-            # as "no change" (neutral), not as a green "-0%" or a red "+0%".
-            bus_pct_r = round(bus["pct"])
-            if bus_pct_r == 0:
-                verb, bus_tone, bus_figure = (
-                    "mantém praticamente inalterada",
-                    "is-brand",
-                    "≈0%",
-                )
-            else:
-                improved = bus_pct_r < 0
-                verb = "reduz" if improved else "aumenta"
-                bus_tone = "is-good" if improved else "is-bad"
-                bus_figure = f"{bus_pct_r:+d}%"
-            gen_txt = ""
-            if gen:
-                if abs(gen["pct"]) < 2:
-                    gen_txt = ", com impacto praticamente nulo no tráfego geral"
-                elif gen["pct"] < 0:
-                    gen_txt = f" e ainda melhora o tráfego geral em {abs(gen['pct']):.0f}%"
-                else:
-                    gen_txt = f", a um custo de {gen['pct']:.0f}% no tráfego geral"
-            hero_lead(
-                bus_figure,
-                f"O TSP <strong>{verb}</strong> a perda de tempo do transporte público{gen_txt}.",
-                tone=bus_tone,
-            )
 
         # ── headline metrics (the win, in the priority class) ─────────────────
         if bus:
@@ -2005,9 +1973,8 @@ if _active == "Resumo":
                     "formatter": JsCode(
                         "function(p){"
                         "var s=p.data.baseline+'s → '+p.data.tsp_val+'s (n='+p.data.n+')';"
-                        "var sign=p.value<0?'✅':'⚠️';"
-                        "return '<b>'+p.name+'</b><br/>'+sign+' '+(p.value>0?'+':'')+p.value+'%<br/><span style=\"color:#64748b\">'+s+'</span>';}"
-                    ),
+                        "return '<b>'+p.name+'</b><br/>'+(p.value>0?'+':'')+p.value+'%<br/><span style=\"color:#64748b\">'+s+'</span>';}"
+                    ).js_code,
                 },
                 "xAxis": {
                     "type": "value",
@@ -3122,7 +3089,6 @@ elif _active == "KPIs":
 .scen-obj { border:1px solid #e5e7eb; border-left:4px solid #2563eb; border-radius:12px;
             padding:1.1rem 1.3rem; background:#fbfcfe; margin:0.25rem 0 1.1rem; }
 .scen-obj-head { display:flex; align-items:center; gap:0.65rem; margin-bottom:0.35rem; }
-.scen-obj-icon { font-size:26px; line-height:1; }
 .scen-obj-desc { font-size:15px; font-weight:600; color:#0f172a; line-height:1.4; }
 .scen-obj-row { margin-top:0.75rem; }
 .scen-obj-lbl { font-size:11px; font-weight:700; letter-spacing:0.07em; text-transform:uppercase;
@@ -3156,17 +3122,6 @@ elif _active == "KPIs":
             scen_catalog = load_yaml(scenario_catalog_path(ROOT, selected_dataset)) or {}
             scen_meta = scen_catalog.get("scenarios") or {}
             label_map.update(catalog_label_map(scen_catalog))
-            # Per-scenario glyph — purely presentational, keyed by scenario id.
-            scen_icon = {
-                "baseline_am_peak": "🌅",
-                "baseline_off_peak": "🌙",
-                "congested_am_peak": "🚦",
-                "cross_traffic_pressure": "🔀",
-                "delayed_bus_westbound": "🚌",
-                "bunched_buses": "🚏",
-                "emergency_vehicle_conflict": "🚑",
-                "congested_delayed_bus": "🛑",
-            }
             # PT labels for the catalog's kpi_focus tokens (localisation of the
             # source-of-truth keys, not new data). Unknown tokens fall back to a
             # de-snake-cased form below.
@@ -3260,13 +3215,13 @@ elif _active == "KPIs":
                 if bus_d is None:
                     verdict = "—"
                 elif bus_d < 0 and (gen_penalty is None or gen_penalty <= 90) and safe:
-                    verdict = "✅ favorável"
+                    verdict = "favorável"
                 elif bus_d > 0:
-                    verdict = "⚠️ bus pior"
+                    verdict = "bus pior"
                 elif not safe:
-                    verdict = "⛔ segurança"
+                    verdict = "segurança"
                 else:
-                    verdict = "➖ neutro"
+                    verdict = "neutro"
                 ov_rows.append(
                     {
                         "Cenário": label_map.get(scen, scen),
@@ -3274,7 +3229,7 @@ elif _active == "KPIs":
                         "Geral Δ% perda tempo": gen_d,
                         "Fila máx Δ": _absdelta(q_b, q_t),
                         "Trav. emerg. Δ": _absdelta(eb_b, eb_t),
-                        "Segurança": "✓" if safe else "✗",
+                        "Segurança": "sim" if safe else "não",
                         "Veredicto": verdict,
                     }
                 )
@@ -3371,9 +3326,9 @@ elif _active == "KPIs":
             }
             _sig_by_scen = scenario_focus_significance(scenario_dir)
             _VERDICT_GLYPH = {
-                "significant_improvement": "✅ melhoria significativa",
-                "significant_regression": "⚠️ regressão significativa",
-                "inconclusive_ci_includes_zero": "➖ inconclusivo (IC95 inclui 0)",
+                "significant_improvement": "melhoria significativa",
+                "significant_regression": "regressão significativa",
+                "inconclusive_ci_includes_zero": "inconclusivo (IC95 inclui 0)",
             }
             focus_rows = []
             for _scen, (_scope, _flabel, _sigkey) in SCENARIO_FOCUS.items():
@@ -3485,11 +3440,10 @@ elif _active == "KPIs":
                         '<div class="scen-obj-row"><div class="scen-obj-lbl muted">Foco de KPIs'
                         f'</div><div class="scen-obj-chips">{_chips}</div></div>'
                     )
-                _icon = scen_icon.get(sel, "📊")
                 _desc = (_scen_meta.get("description") or "").strip()
                 st.markdown(
                     '<div class="scen-obj">'
-                    f'<div class="scen-obj-head"><span class="scen-obj-icon">{_icon}</span>'
+                    f'<div class="scen-obj-head">'
                     f'<span class="scen-obj-desc">{_desc}</span></div>'
                     f"{_rows_html}{_chips_html}</div>",
                     unsafe_allow_html=True,
@@ -3510,12 +3464,12 @@ elif _active == "KPIs":
                     )
 
             st.markdown(
-                '<div class="class-tag">🚌 Autocarro &nbsp;·&nbsp; baseline → TSP</div>',
+                '<div class="class-tag">Autocarro &nbsp;·&nbsp; baseline → TSP</div>',
                 unsafe_allow_html=True,
             )
             _render_class_row("buses")
             st.markdown(
-                '<div class="class-tag">🚗 Tráfego geral &nbsp;·&nbsp; baseline → TSP</div>',
+                '<div class="class-tag">Tráfego geral &nbsp;·&nbsp; baseline → TSP</div>',
                 unsafe_allow_html=True,
             )
             _render_class_row("general_traffic")
@@ -3528,13 +3482,13 @@ elif _active == "KPIs":
             # ── ▸ Fiabilidade / cauda (P95) ───────────────────────────────────
             section(f"Fiabilidade · {sel_label} — cauda da distribuição (P95)")
             _rel = ["p95_time_loss_s", "p95_duration_s"]
-            st.markdown('<div class="class-tag">🚌 Autocarro</div>', unsafe_allow_html=True)
+            st.markdown('<div class="class-tag">Autocarro</div>', unsafe_allow_html=True)
             _rb = st.columns(len(_rel))
             for col, mk in zip(_rb, _rel, strict=False):
                 render_kpi_card(
                     col, mk, _agg(sel, tsp_rt, "buses", mk), _agg(sel, baseline_rt, "buses", mk)
                 )
-            st.markdown('<div class="class-tag">🚗 Tráfego geral</div>', unsafe_allow_html=True)
+            st.markdown('<div class="class-tag">Tráfego geral</div>', unsafe_allow_html=True)
             _rg = st.columns(len(_rel))
             for col, mk in zip(_rg, _rel, strict=False):
                 render_kpi_card(
@@ -3571,7 +3525,7 @@ elif _active == "KPIs":
                 lbl, unit, _ = KPI_META.get(mk, (mk, "", ""))
                 state = "—"
                 if ok is not None and t is not None:
-                    state = "✓ ok" if ok(t) else "✗ excede"
+                    state = "ok" if ok(t) else "excede"
                 srows.append(
                     {
                         "Indicador": lbl + (f" ({unit})" if unit else ""),

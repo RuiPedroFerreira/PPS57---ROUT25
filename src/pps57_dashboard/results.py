@@ -279,6 +279,45 @@ def load_scenario_focus_significance(report_root: Path) -> dict[str, dict]:
     return out
 
 
+def _seed_int(seed_dir_name: str) -> int | None:
+    """``"seed_67" -> 67``; None when the dir name has no integer suffix."""
+    _, _, tail = seed_dir_name.partition("_")
+    try:
+        return int(tail)
+    except ValueError:
+        return None
+
+
+def _valid_seeds_by_scenario(report_root: Path) -> dict[str, set[int]]:
+    """Per-scenario set of seeds that entered the paired comparison.
+
+    A seed that trips a fail-closed viability gate is dropped from the suite's
+    ``replication_summaries`` (hence from every significance block's
+    ``paired_seeds``), but its ``kpis.json`` still sits on disk. The dashboard
+    aggregates by mean over the on-disk seeds, so without this filter its headline
+    would silently include the dropped seed and drift from RESULTS.md / the paired
+    CI95 (e.g. ``delayed_bus_westbound``: 20 seeds on disk vs n=19 paired). We
+    derive the valid set from the summary's ``paired_seeds`` (union across the
+    significance blocks — the bus block already spans the full replication set, the
+    others are subsets) so the panel and the report agree on the same seeds.
+
+    Scenarios without a paired comparison (no summary, single-seed, malformed) get
+    no entry, and the caller keeps every on-disk seed for them — graceful, never
+    fail-open into dropping data we cannot justify dropping.
+    """
+    out: dict[str, set[int]] = {}
+    for scen, comp in load_scenario_focus_significance(report_root).items():
+        seeds: set[int] = set()
+        for key, block in comp.items():
+            if key.endswith("replication_significance") and isinstance(block, dict):
+                paired = block.get("paired_seeds")
+                if isinstance(paired, list):
+                    seeds.update(int(s) for s in paired if isinstance(s, (int, float)))
+        if seeds:
+            out[scen] = seeds
+    return out
+
+
 def load_scenario_run_table(report_root: Path) -> list[dict]:
     """Return tidy per-scenario/run/seed KPI rows across *all* scopes.
 
@@ -291,6 +330,11 @@ def load_scenario_run_table(report_root: Path) -> list[dict]:
     rows: list[dict] = []
     if not report_root.exists():
         return rows
+
+    # Restrict to the seeds that entered the paired comparison: a viability-dropped
+    # seed still has a kpis.json on disk, but including it would make the dashboard
+    # means diverge from RESULTS.md / the CI95 (see _valid_seeds_by_scenario).
+    valid_seeds = _valid_seeds_by_scenario(report_root)
 
     def _f(val: Any) -> float | None:
         try:
@@ -326,6 +370,14 @@ def load_scenario_run_table(report_root: Path) -> list[dict]:
                 kpi_path = seed_dir / "kpis.json"
                 if not kpi_path.exists():
                     continue
+                scen_valid = valid_seeds.get(scenario_dir.name)
+                if scen_valid is not None:
+                    seed_n = _seed_int(seed_dir.name)
+                    if seed_n is not None and seed_n not in scen_valid:
+                        # Seed excluded from the paired comparison by a fail-closed
+                        # viability gate — skip so the panel uses the same seeds as
+                        # the report and the significance test.
+                        continue
                 try:
                     kpis = json.loads(kpi_path.read_text(encoding="utf-8"))
                 except (OSError, ValueError):
