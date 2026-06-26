@@ -241,20 +241,6 @@ KPI_META = {
 # metrics where an increase is an improvement (drives delta colouring)
 HIGHER_IS_BETTER = {"mean_speed_mps"}
 
-# Provenance of the scenario dataset, surfaced on the platform so headline numbers
-# always declare their source.
-DATASET_PROVENANCE = {
-    "synthetic": (
-        "Corredor sintético — Av. da Boavista (Porto), proxy SUMO controlado · "
-        "cenários emparelhados baseline vs TSP."
-    ),
-}
-
-
-def dataset_provenance(dataset: str) -> str:
-    return DATASET_PROVENANCE.get(dataset, dataset)
-
-
 # ── semantic colours ──────────────────────────────────────────────────────────
 # One canonical green/red pair, used everywhere a chart (or card) encodes
 # improvement vs cost — so every figure across the dashboard speaks the same two
@@ -2993,22 +2979,6 @@ elif _active == "KPIs":
         format_func=lambda item: dataset_labels.get(item, item),
         key="scenario_dataset",
     )
-    st.caption("Dataset activo · " + dataset_provenance(selected_dataset))
-
-    # Drill-down sempre acessível para a comparação de estratégias do corredor
-    # demonstrador (baseline vs TSP), independente do estado dos cenários.
-    _dlc, _ = st.columns([2, 3])
-    with _dlc:
-        if st.button(
-            "Comparação de estratégias · corredor demonstrador →",
-            key="goto_demo",
-            width="stretch",
-            help="Vista detalhada baseline vs TSP no corredor demonstrador. "
-            "A análise RL dedicada está na tab «vs RL».",
-        ):
-            st.session_state.active_tab = "Demonstrador"
-            st.rerun()
-
     scenario_dir = scenario_roots.get(selected_dataset, REPORTS / "scenarios")
     scen_names = (
         sorted(p.name for p in scenario_dir.iterdir() if p.is_dir())
