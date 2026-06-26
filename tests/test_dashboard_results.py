@@ -185,6 +185,61 @@ class DashboardResultsTestCase(unittest.TestCase):
             # the headline two-way bus scope stays intact
             self.assertEqual(flat[("buses", "mean_time_loss_s")], 30.0)
 
+    def test_run_table_excludes_viability_dropped_seeds(self) -> None:
+        # A seed that failed a viability gate is absent from the summary's
+        # paired_seeds but its kpis.json still sits on disk. The run table must
+        # exclude it so the dashboard means match RESULTS.md / the paired CI95.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "reports" / "scenarios"
+            for arm in ("baseline", "tsp_actuation"):
+                for seed, tl in ((57, 30.0), (67, 999.0)):  # 67 = the dropped one
+                    seed_dir = root / "delayed_bus_westbound" / arm / f"seed_{seed}"
+                    seed_dir.mkdir(parents=True)
+                    (seed_dir / "kpis.json").write_text(
+                        json.dumps({"buses": {"vehicles": 4, "mean_time_loss_s": tl}}),
+                        encoding="utf-8",
+                    )
+            # summary lists only seed 57 as paired (67 dropped by viability gate)
+            (root / "scenario_suite_summary.json").write_text(
+                json.dumps(
+                    {
+                        "scenarios": [
+                            {
+                                "scenario_id": "delayed_bus_westbound",
+                                "comparisons": {
+                                    "baseline_vs_tsp_actuation": {
+                                        "bus_time_loss_replication_significance": {
+                                            "paired_seeds": [57],
+                                        }
+                                    }
+                                },
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            rows = load_scenario_run_table(root)
+            seeds_seen = {r["Seed"] for r in rows}
+            self.assertEqual(seeds_seen, {"seed_57"})  # seed_67 excluded
+            tl = [r["Valor"] for r in rows if r["metric_key"] == "mean_time_loss_s"]
+            self.assertTrue(tl and all(v == 30.0 for v in tl))  # no 999.0 outlier
+
+    def test_run_table_keeps_all_seeds_without_summary(self) -> None:
+        # No summary (or no paired_seeds) -> never fail-open into dropping data:
+        # every on-disk seed is kept, exactly as before the viability filter.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "reports" / "scenarios"
+            for seed in (57, 67):
+                seed_dir = root / "delayed_bus_westbound" / "baseline" / f"seed_{seed}"
+                seed_dir.mkdir(parents=True)
+                (seed_dir / "kpis.json").write_text(
+                    json.dumps({"buses": {"vehicles": 4, "mean_time_loss_s": 30.0}}),
+                    encoding="utf-8",
+                )
+            rows = load_scenario_run_table(root)
+            self.assertEqual({r["Seed"] for r in rows}, {"seed_57", "seed_67"})
+
     def test_focus_significance_loader_reads_suite_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "reports" / "scenarios"
