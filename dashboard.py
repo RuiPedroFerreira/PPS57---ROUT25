@@ -382,8 +382,6 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"], .stApp {
 /* chart block title (more prominent than section-label) */
 .chart-title { font-size:1.05rem; font-weight:700; color:#0f172a; margin:1.6rem 0 2px; letter-spacing:-0.2px; }
 .chart-desc  { font-size:0.8rem; color:#64748b; margin:0 0 10px; line-height:1.5; }
-.chart-intro { font-size:0.86rem; color:#475569; margin:0 0 14px; line-height:1.65; max-width:780px; }
-.chart-intro strong { color:#0f172a; font-weight:600; }
 
 /* insight + warning boxes */
 .insight { background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px; padding:10px 14px;
@@ -850,12 +848,6 @@ def insight(text: str) -> None:
     st.markdown(f'<div class="insight">{text}</div>', unsafe_allow_html=True)
 
 
-def chart_intro(text: str) -> None:
-    """Explanatory prose rendered before a chart — sets up what the reader is about
-    to see and how to read it, so the chart's results land in context."""
-    st.markdown(f'<p class="chart-intro">{text}</p>', unsafe_allow_html=True)
-
-
 def warn(text: str) -> None:
     st.markdown(f'<div class="warn-box">{text}</div>', unsafe_allow_html=True)
 
@@ -1234,9 +1226,10 @@ def render_scenario_overview(metric_key: str = "mean_time_loss_s") -> None:
     metric_label = KPI_META.get(metric_key, (metric_key, "", ""))[0]
     st.markdown(
         '<p class="chart-title">Autocarro vs tráfego geral, por cenário</p>'
-        '<p class="chart-desc">Variação percentual da '
-        f"<em>{metric_label.lower()}</em> (TSP vs baseline) em cada cenário, lado a "
-        "lado para as duas classes. À esquerda do zero = melhoria; à direita = custo.</p>",
+        '<p class="chart-desc">Para cada cenário, a variação da '
+        f"<em>{metric_label.lower()}</em> (TSP face ao baseline), com autocarros e tráfego "
+        "geral lado a lado. Barras à esquerda do zero indicam melhoria (menos tempo "
+        "perdido); à direita, custo.</p>",
         unsafe_allow_html=True,
     )
 
@@ -1315,7 +1308,7 @@ def render_scenario_overview(metric_key: str = "mean_time_loss_s") -> None:
                 "fontSize": 11,
                 "formatter": JsCode("function(v){return v+'%';}").js_code,
             },
-            "name": f"Δ% face ao baseline · {metric_label.lower()} (negativo = melhoria)",
+            "name": "Variação face ao baseline (%)",
             "nameLocation": "middle",
             "nameGap": 30,
             "nameTextStyle": {
@@ -1359,12 +1352,6 @@ def render_scenario_overview(metric_key: str = "mean_time_loss_s") -> None:
         "animationEasing": "cubicOut",
     }
     st_echarts(scen_option, height=f"{chart_h}px", key="resumo_scenario_overview")
-    st.caption(
-        "Azul = autocarro · laranja = tráfego geral. À esquerda do zero = o TSP "
-        "melhora (reduz a perda de tempo); à direita = custo. Mostra onde a prioridade "
-        "vale mais (autocarros atrasados, pressão transversal) e onde tem custo "
-        "(dois autocarros muito próximos)."
-    )
 
 
 # ── page config ───────────────────────────────────────────────────────────────
@@ -1929,8 +1916,7 @@ if _active == "Resumo":
         _p2 = " ".join(_p2_parts)
 
         # paragraph 3 — qualitative comment on results. The exact figures live in the
-        # KPI cards and the "Quem ganha" chart right below, so this prose stays
-        # number-free to avoid restating them.
+        # KPI cards right below, so this prose stays number-free to avoid restating them.
         _p3_parts = []
         if _b_bus and _t_bus:
             if _t_bus < _b_bus:
@@ -1955,7 +1941,7 @@ if _active == "Resumo":
                     "limiares aceitáveis do demonstrador."
                 )
         if _p3_parts:
-            _p3_parts.append("Os valores por classe estão nos cartões e no gráfico abaixo.")
+            _p3_parts.append("Os valores por classe estão nos cartões abaixo.")
         else:
             _p3_parts.append("Os resultados detalhados estão disponíveis nas secções abaixo.")
         _p3 = " ".join(_p3_parts)
@@ -2010,16 +1996,6 @@ if _active == "Resumo":
 
         bus = next((r for r in hero if r["key"] in ("buses", "priority_vehicles")), None)
 
-        # The "who wins" chart shows mutually-exclusive populations only. We drop the
-        # aggregates that overlap their own components — priority_vehicles (= buses +
-        # emergency) and all_vehicles (= every class summed) — because plotting a group
-        # beside its members double-counts and, when emergency is absent, renders
-        # Prioritários as a pixel-identical copy of Autocarros. The network-wide total
-        # is surfaced as a caption below instead of as a competing bar.
-        _bar_keys = ("emergency_vehicles", "buses", "general_traffic")
-        hero_bars = [r for r in hero if r["key"] in _bar_keys]
-        net = next((r for r in hero if r["key"] == "all_vehicles"), None)
-
         # ── headline metrics (the win, in the priority class) ─────────────────
         if bus:
             bcls = bus["key"]
@@ -2047,137 +2023,6 @@ if _active == "Resumo":
                 "Fonte: corredor demonstrador (run único baseline vs TSP, SUMO sem "
                 "prioridade) · barra verde = melhoria, vermelha = custo · passa o rato "
                 "sobre cada cartão para a definição."
-            )
-
-        # ── hero chart: who benefits ──────────────────────────────────────────
-        st.markdown(
-            '<p class="chart-title">Quem ganha com o TSP</p>'
-            '<p class="chart-desc">Variação da perda de tempo média (segundos por veículo) de'
-            " cada grupo, com o TSP face ao baseline sem prioridade semafórica.</p>",
-            unsafe_allow_html=True,
-        )
-        chart_intro(
-            "Este gráfico isola o compromisso central do TSP: ao dar prioridade aos autocarros "
-            "nos semáforos, é preciso garantir que o restante tráfego não fica penalizado em "
-            "excesso. Cada barra mostra quanto variou a <strong>perda de tempo média</strong> de um "
-            "grupo de veículos — o tempo que cada veículo perde face a uma circulação sem paragens "
-            "— entre o cenário com TSP e o baseline. Barras à <strong>esquerda</strong> do zero "
-            "significam que o grupo passou a perder menos tempo (melhoria); à <strong>direita</strong>, "
-            "que passou a perder mais (custo). Como os grupos não se sobrepõem, lê-se directamente "
-            "quem beneficia e quem suporta o custo da medida."
-        )
-        if hero_bars:
-            dfh = pd.DataFrame(hero_bars)
-            dfh["delta_s"] = dfh["tsp"] - dfh["baseline"]
-
-            def _fmt_delta_s(ds: float) -> str:
-                return f"{ds:+.1f} s" if abs(ds) < 10 else f"{ds:+.0f} s"
-
-            vals = dfh["pct"].tolist()
-            lo_v, hi_v = min(vals + [0.0]), max(vals + [0.0])
-            pad = max(4.0, (hi_v - lo_v) * 0.38)
-
-            echarts_data = [
-                {
-                    "value": round(p, 2),
-                    "itemStyle": {"color": COLOR_GOOD if p < 0 else COLOR_BAD, "borderRadius": 3},
-                    "label": {
-                        "show": True,
-                        "position": "left" if p < 0 else "right",
-                        "formatter": f"{p:+.1f}%  {_fmt_delta_s(ds)}",
-                        "color": "#374151",
-                        "fontSize": 11,
-                        "fontFamily": "Inter, system-ui, sans-serif",
-                    },
-                    "baseline": round(b, 1),
-                    "tsp_val": round(t, 1),
-                    "n": int(n),
-                }
-                for p, ds, b, t, n in zip(
-                    dfh["pct"],
-                    dfh["delta_s"],
-                    dfh["baseline"],
-                    dfh["tsp"],
-                    dfh["n"],
-                    strict=False,
-                )
-            ]
-            hero_option = {
-                "backgroundColor": "white",
-                "grid": {"left": "22%", "right": "16%", "top": "4%", "bottom": "8%"},
-                "tooltip": {
-                    "trigger": "item",
-                    "backgroundColor": "white",
-                    "borderColor": "#e2e8f0",
-                    "borderWidth": 1,
-                    "textStyle": {
-                        "color": "#0f172a",
-                        "fontSize": 12,
-                        "fontFamily": "Inter, system-ui, sans-serif",
-                    },
-                    "formatter": JsCode(
-                        "function(p){"
-                        "var s=p.data.baseline+'s → '+p.data.tsp_val+'s (n='+p.data.n+')';"
-                        "return '<b>'+p.name+'</b><br/>'+(p.value>0?'+':'')+p.value+'%<br/><span style=\"color:#64748b\">'+s+'</span>';}"
-                    ).js_code,
-                },
-                "xAxis": {
-                    "type": "value",
-                    "min": round(lo_v - pad, 1),
-                    "max": round(hi_v + pad, 1),
-                    "axisLabel": {"color": "#94a3b8", "fontSize": 11},
-                    "splitLine": {"lineStyle": {"color": "#f1f5f9"}},
-                    "axisLine": {"lineStyle": {"color": "#e2e8f0"}},
-                    "axisTick": {"show": False},
-                },
-                "yAxis": {
-                    "type": "category",
-                    "data": dfh["Classe"].tolist(),
-                    "axisLabel": {
-                        "color": "#374151",
-                        "fontSize": 13,
-                        "fontFamily": "Inter, system-ui, sans-serif",
-                    },
-                    "axisLine": {"lineStyle": {"color": "#e2e8f0"}},
-                    "axisTick": {"show": False},
-                },
-                "series": [
-                    {
-                        "type": "bar",
-                        "data": echarts_data,
-                        "barMaxWidth": 36,
-                        "markLine": {
-                            "silent": True,
-                            "symbol": "none",
-                            "data": [{"xAxis": 0}],
-                            "lineStyle": {"color": "#6b7280", "width": 1},
-                            "label": {"show": False},
-                        },
-                    }
-                ],
-                "animation": True,
-                "animationDuration": 600,
-                "animationEasing": "cubicOut",
-            }
-            st_echarts(hero_option, height="280px", key="resumo_hero_chart")
-
-            # ── legend + objective text under the chart ───────────────────────
-            _net_txt = ""
-            if net:
-                _net_d = net["tsp"] - net["baseline"]
-                _net_txt = (
-                    f"Na rede como um todo, a perda de tempo média variou "
-                    f"**{net['pct']:+.1f}%** ({_net_d:+.1f} s, n={net['n']:,}). "
-                )
-            st.caption(
-                _net_txt
-                + ":green[■] melhoria  ·  :red[■] custo"
-                + (
-                    " · Emergência não aparece (cenário base sem veículos de emergência) — "
-                    "ver separador **KPIs → emergency_vehicle_conflict**."
-                    if not any(r["key"] == "emergency_vehicles" for r in hero_bars)
-                    else ""
-                )
             )
 
         # ── breadth across the operational scenarios — adds the safety and
