@@ -35,7 +35,6 @@ from pps57_dashboard.results import (  # noqa: E402
     load_scenario_focus_significance,
     load_scenario_run_table,
     scenario_catalog_path,
-    scenario_scoreboard,
 )
 
 # ── constants ─────────────────────────────────────────────────────────────────
@@ -378,6 +377,12 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"], .stApp {
 /* section label */
 .section-label { font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.1em;
                  color:#94a3b8; margin:26px 0 8px; border-bottom:1px solid #f1f5f9; padding-bottom:4px; }
+/* "Foco" pill on a section header — marks the sections the chosen scenario's
+   kpi_focus (catalog) flags as the ones to read first. Additive: a scenario whose
+   focus maps to no KPIs section simply shows no pill. */
+.section-label .focus-badge { display:inline-block; margin-left:8px; padding:1px 7px;
+  background:#eff6ff; border:1px solid #bfdbfe; color:#1d4ed8; border-radius:10px;
+  font-size:9px; font-weight:700; letter-spacing:.04em; vertical-align:middle; }
 
 /* chart block title (more prominent than section-label) */
 .chart-title { font-size:1.05rem; font-weight:700; color:#0f172a; margin:1.6rem 0 2px; letter-spacing:-0.2px; }
@@ -432,6 +437,8 @@ section.main > div { padding-top: 1rem; }
 .kpi-delta.kpi-good { color:#16a34a; }
 .kpi-delta.kpi-bad  { color:#dc2626; }
 .kpi-delta.kpi-flat { color:#6b7280; }
+.kpi-card .kpi-explain { font-size:11.5px; color:#64748b; line-height:1.6; margin:12px 0 0;
+                          padding-top:10px; border-top:1px solid #f1f5f9; }
 
 /* "Explorar em detalhe" chips are real st.buttons styled near the drawer rules below. */
 
@@ -840,8 +847,11 @@ def run_color(label: str) -> str:
     return "#94a3b8"
 
 
-def section(title: str) -> None:
-    st.markdown(f'<div class="section-label">{title}</div>', unsafe_allow_html=True)
+def section(title: str, focus: bool = False) -> None:
+    """Section header. `focus=True` appends a small "Foco" pill — used in the KPIs
+    tab to mark the sections the selected scenario's catalog kpi_focus points at."""
+    badge = '<span class="focus-badge">Foco</span>' if focus else ""
+    st.markdown(f'<div class="section-label">{title}{badge}</div>', unsafe_allow_html=True)
 
 
 def insight(text: str) -> None:
@@ -875,10 +885,11 @@ def spec_table(rows: list[tuple[str, str]]) -> None:
     st.markdown(f'<div class="spec-table">{body}</div>', unsafe_allow_html=True)
 
 
-def render_kpi_card(col, metric_key: str, value, baseline_val=None) -> None:
+def render_kpi_card(col, metric_key: str, value, baseline_val=None, explanation: str = "") -> None:
     """Custom .kpi-card: label, value and delta. A left accent stripe signals
     improvement (green) or cost (red); neutral metrics (speed) get no stripe.
-    The metric definition is exposed as a native hover tooltip via `title`."""
+    The metric definition is exposed as a native hover tooltip via `title`.
+    Pass `explanation` to render a context paragraph inside the card below the delta."""
     label, unit, desc = KPI_META.get(metric_key, (metric_key, "", ""))
     neutral = metric_key in HIGHER_IS_BETTER  # speed → neutral framing, no stripe
     stripe_cls = ""
@@ -895,51 +906,13 @@ def render_kpi_card(col, metric_key: str, value, baseline_val=None) -> None:
         delta_html = f'<div class="kpi-delta {tone}">{dtxt}</div>'
         if not neutral and dabs != 0:
             stripe_cls = " kpi-good" if improved else " kpi-bad"
+    explain_html = f'<p class="kpi-explain">{explanation}</p>' if explanation else ""
     col.markdown(
         f'<div class="kpi-card{stripe_cls}" title="{desc}">'
         f'<div class="kpi-label">{label}</div>'
         f'<div class="kpi-value">{fmt(value, unit)}</div>'
-        f"{delta_html}</div>",
+        f"{delta_html}{explain_html}</div>",
         unsafe_allow_html=True,
-    )
-
-
-def render_scoreboard(sb: dict) -> None:
-    """Executive scoreboard summarising the TSP effect across every scenario.
-
-    Uses native bordered metrics (no tab-specific CSS) so it renders identically in
-    the Resumo and KPIs tabs. Counts come from `scenario_scoreboard` — every figure
-    traces back to the paired kpis.json runs. Renders nothing without scenario data."""
-    n = sb.get("n_scenarios") or 0
-    if not n:
-        return
-    med = sb.get("bus_delta_median_pct")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric(
-        "Ganho no autocarro",
-        f"{sb['bus_improved']}/{n}",
-        help="Cenários em que o TSP reduz a perda de tempo média do autocarro.",
-        border=True,
-    )
-    c2.metric(
-        "Mediana Δ perda bus",
-        f"{med:+.1f}%" if med is not None else "—",
-        help="Mediana da variação da perda de tempo do autocarro (TSP vs baseline). "
-        "Negativo = melhoria.",
-        border=True,
-    )
-    c3.metric(
-        "Segurança preservada",
-        f"{sb['safety_clean']}/{n}",
-        help="Cenários sem colisões e sem teleports por gridlock no run TSP.",
-        border=True,
-    )
-    c4.metric(
-        "Custo no geral > 90 s",
-        f"{sb['general_cost_over_90s']}/{n}",
-        help="Cenários onde o tráfego geral piora além do limiar de 90 s do pipeline. "
-        "Menos é melhor.",
-        border=True,
     )
 
 
@@ -1236,7 +1209,7 @@ def render_scenario_overview(metric_key: str = "mean_time_loss_s") -> None:
     nums = [v for v in cdf["bus"].tolist() + cdf["gen"].tolist() if v is not None]
     lo, hi = min(nums + [0.0]), max(nums + [0.0])
     pad = max(3.0, (hi - lo) * 0.22)
-    chart_h = max(340, len(cdf) * 58 + 80)
+    chart_h = max(340, len(cdf) * 72 + 80)
     BUS_COLOR, GEN_COLOR = "#2563eb", "#f59e0b"  # colourblind-safe blue/orange pair
 
     def _series(name: str, col: str, color: str) -> dict:
@@ -1266,7 +1239,7 @@ def render_scenario_overview(metric_key: str = "mean_time_loss_s") -> None:
 
     scen_option = {
         "backgroundColor": "white",
-        "grid": {"left": "38%", "right": "12%", "top": "13%", "bottom": "10%"},
+        "grid": {"left": "48%", "right": "14%", "top": "13%", "bottom": "10%"},
         "legend": {
             "data": ["Autocarro", "Tráfego geral"],
             "top": "1%",
@@ -1327,9 +1300,9 @@ def render_scenario_overview(metric_key: str = "mean_time_loss_s") -> None:
                 "color": "#374151",
                 "fontSize": 12,
                 "fontFamily": "Inter, system-ui, sans-serif",
-                "width": 280,
-                "overflow": "truncate",
-                "ellipsis": "…",
+                "width": 390,
+                "overflow": "break",
+                "align": "right",
             },
             "axisLine": {"lineStyle": {"color": "#e2e8f0"}},
             "axisTick": {"show": False},
@@ -1371,7 +1344,7 @@ st.markdown(CSS, unsafe_allow_html=True)
 # ── load data ─────────────────────────────────────────────────────────────────
 
 demo = load_json(REPORTS / "tsp_demonstrator_report.json")
-baseline_kpis = load_json(REPORTS / "baseline_kpis.json")
+baseline_kpis = load_json(REPORTS / "sumo_baseline_kpis.json")
 # B1 — the "vs RL" tab renders decision-outcome fields (matched_decision_count,
 # verdict_counts, kpi_evaluation, network_impact_verdict) that live ONLY in
 # decision_outcome_evaluation.json (produced by `make evaluate-decision-outcomes`).
@@ -1602,17 +1575,13 @@ TAB_HEADERS = {
 }
 
 report_files = {
-    "Baseline KPIs": REPORTS / "baseline_kpis.json",
+    "Baseline KPIs": REPORTS / "sumo_baseline_kpis.json",
     "Demonstrador TSP": REPORTS / "tsp_demonstrator_report.json",
-    # B1 — count the file the "vs RL" tab actually renders from
-    # (decision_outcome_evaluation.json), not the runtime-delta report, so the
-    # health badge stays consistent with what the tab shows.
-    "Comparação TSP vs RL": REPORTS / "decision_outcome_evaluation.json",
 }
 _reports_ok = sum(1 for p in report_files.values() if p.exists())
 _reports_total = len(report_files)
 _fresh = file_mtime(REPORTS / "tsp_demonstrator_report.json") or file_mtime(
-    REPORTS / "baseline_kpis.json"
+    REPORTS / "sumo_baseline_kpis.json"
 )
 # ── topbar (fixed) + hamburger trigger ────────────────────────────────────────
 # The ☰ is a real st.button pinned over the topbar's left edge via its stable
@@ -1728,7 +1697,7 @@ if st.session_state.drawer_open:
 # ── page header ───────────────────────────────────────────────────────────────
 
 fresh = file_mtime(REPORTS / "tsp_demonstrator_report.json") or file_mtime(
-    REPORTS / "baseline_kpis.json"
+    REPORTS / "sumo_baseline_kpis.json"
 )
 scenario_id = ""
 if demo:
@@ -1947,8 +1916,7 @@ if _active == "Resumo":
         _p3 = " ".join(_p3_parts)
 
         _ctx_html = (
-            "<h4 style='font-size:0.95rem;font-weight:700;color:#0f172a;"
-            "margin:0 0 10px;letter-spacing:-0.2px;'>Análise Geral</h4>"
+            '<p class="chart-title">Análise Geral</p>'
             '<div class="ctx-block">'
             f"<p>{_p1}</p>"
             f"<p>{_p2}</p>"
@@ -2000,57 +1968,55 @@ if _active == "Resumo":
         if bus:
             bcls = bus["key"]
             section(f"Impacto do TSP · {bus['Classe'].lower()} ({bus['n']} veículos)")
-            m1, m2, m3 = st.columns(3)
-            render_kpi_card(
-                m1,
-                "mean_time_loss_s",
-                tk.get(bcls, {}).get("mean_time_loss_s"),
-                bk.get(bcls, {}).get("mean_time_loss_s"),
-            )
-            render_kpi_card(
-                m2,
-                "mean_waiting_time_s",
-                tk.get(bcls, {}).get("mean_waiting_time_s"),
-                bk.get(bcls, {}).get("mean_waiting_time_s"),
-            )
-            render_kpi_card(
-                m3,
-                "mean_speed_mps",
-                tk.get(bcls, {}).get("mean_speed_mps"),
-                bk.get(bcls, {}).get("mean_speed_mps"),
-            )
-            st.caption(
-                "Fonte: corredor demonstrador (run único baseline vs TSP, SUMO sem "
-                "prioridade) · barra verde = melhoria, vermelha = custo · passa o rato "
-                "sobre cada cartão para a definição."
-            )
+            _tl_b = bk.get(bcls, {}).get("mean_time_loss_s")
+            _tl_t = tk.get(bcls, {}).get("mean_time_loss_s")
+            _wt_b = bk.get(bcls, {}).get("mean_waiting_time_s")
+            _wt_t = tk.get(bcls, {}).get("mean_waiting_time_s")
+            _sp_b = bk.get(bcls, {}).get("mean_speed_mps")
+            _sp_t = tk.get(bcls, {}).get("mean_speed_mps")
 
-        # ── breadth across the operational scenarios — adds the safety and
-        #    air-quality dimensions that the single demonstrator report lacks ──
-        _scn_roots = discover_scenario_report_roots(REPORTS)
-        _scn_dataset = default_scenario_dataset(REPORTS)
-        _scn_dir = _scn_roots.get(_scn_dataset)
-        if _scn_dir and _scn_dir.exists():
-            _sb = scenario_scoreboard(scenario_run_table(_scn_dir))
-            if _sb["n_scenarios"]:
-                section(f"Robustez em {_sb['n_scenarios']} cenários operacionais")
-                st.caption(
-                    "Fonte · "
-                    + dataset_provenance(_scn_dataset)
-                    + " — suite de cenários, distinta do corredor demonstrador acima."
+            _tl_explain = _wt_explain = _sp_explain = ""
+            if _tl_b and _tl_t:
+                _tl_d = _tl_t - _tl_b
+                _tl_p = bus["pct"]
+                _tl_explain = (
+                    f"Tempo adicional por viagem face ao percurso sem paragens "
+                    f"(velocidade ideal de rede). "
+                    f"Baseline: <strong>{_tl_b:.0f} s</strong> · "
+                    f"TSP: <strong>{_tl_t:.0f} s</strong> — "
+                    f"redução de <strong>{abs(_tl_d):.1f} s ({_tl_p:+.1f}%)</strong>. "
+                    f"A prioridade semafórica encurta a espera antes dos cruzamentos, "
+                    f"reflectindo-se directamente neste indicador."
                 )
-                render_scoreboard(_sb)
-                _all_safe = _sb["safety_clean"] == _sb["n_scenarios"]
-                insight(
-                    (
-                        "Segurança preservada em <strong>todos</strong> os cenários"
-                        if _all_safe
-                        else f"Segurança preservada em {_sb['safety_clean']}/{_sb['n_scenarios']} cenários"
-                    )
-                    + " (0 colisões, 0 teleports por gridlock); "
-                    + f"NOx reduzido em {_sb['nox_improved']}/{_sb['n_scenarios']}. "
-                    + "Detalhe completo no separador <strong>KPIs</strong>."
+            if _wt_b and _wt_t:
+                _wt_d = _wt_t - _wt_b
+                _wt_p = (_wt_d / abs(_wt_b)) * 100
+                _wt_dir = "desce" if _wt_d < 0 else "sobe"
+                _wt_explain = (
+                    f"Tempo total parado em semáforo vermelho ou em fila por viagem. "
+                    f"Baseline: <strong>{_wt_b:.0f} s</strong> · "
+                    f"TSP: <strong>{_wt_t:.0f} s</strong> "
+                    f"({_wt_d:+.1f} s, {_wt_p:+.1f}%). "
+                    f"O verde antecipado ou estendido elimina parte das paragens "
+                    f"completas — daí o valor {_wt_dir}."
                 )
+            if _sp_b and _sp_t:
+                _sp_d = _sp_t - _sp_b
+                _sp_p = (_sp_d / abs(_sp_b)) * 100
+                _sp_dir = "sobe" if _sp_d > 0 else "desce"
+                _sp_explain = (
+                    f"Distância de rota a dividir pela duração total (inclui tempo "
+                    f"parado). "
+                    f"Baseline: <strong>{_sp_b:.2f} m/s</strong> · "
+                    f"TSP: <strong>{_sp_t:.2f} m/s</strong> "
+                    f"({_sp_d:+.2f} m/s, {_sp_p:+.1f}%). "
+                    f"A subida confirma maior fluidez — menos interrupções por viagem."
+                )
+
+            m1, m2, m3 = st.columns(3)
+            render_kpi_card(m1, "mean_time_loss_s", _tl_t, _tl_b, _tl_explain)
+            render_kpi_card(m2, "mean_waiting_time_s", _wt_t, _wt_b, _wt_explain)
+            render_kpi_card(m3, "mean_speed_mps", _sp_t, _sp_b, _sp_explain)
 
         # ── per-scenario overview (zoom-out) — impacto do TSP em todos os cenários
         render_scenario_overview()
@@ -2531,9 +2497,9 @@ elif _active == "Decisão":
         section("Verde concedido ao transporte público")
         gt_total = green.get("applied_extension_s_total", 0) or 0
         if gt_total:
-            st.markdown(
-                f"#### O motor concedeu **{gt_total:.1f} s** de verde extra ao transporte público, "
-                f"em **{green.get('n_extensions', 0)}** extensões aplicadas "
+            insight(
+                f"O motor concedeu <strong>{gt_total:.1f} s</strong> de verde extra ao transporte público, "
+                f"em <strong>{green.get('n_extensions', 0)}</strong> extensões aplicadas "
                 f"(média {green.get('mean_extension_s', 0):.1f} s, máx {green.get('max_extension_s', 0):.1f} s)."
             )
             gq1, gq2, gq3, gq4 = st.columns(4)
@@ -3150,6 +3116,29 @@ elif _active == "KPIs":
                 "bus_time_loss_under_saturation": "Perda de tempo do autocarro em saturação",
             }
 
+            # Which per-scenario KPIs section each kpi_focus token makes relevant.
+            # Tokens describing decision-engine behaviour (rejections, preemption,
+            # request rate, green extensions, hierarchy, …) live in the Decisão tab
+            # and intentionally map to nothing here, so they light up no section.
+            kpi_focus_section = {
+                "bus_time_loss": "tradeoff",
+                "bus_time_loss_under_saturation": "tradeoff",
+                "general_traffic_delay": "tradeoff",
+                "general_traffic_penalty": "tradeoff",
+                "bus_vs_general_tradeoff": "tradeoff",
+                "tsp_under_saturation": "tradeoff",
+                "low_delay_regime": "tradeoff",
+                "westbound_bus_delay": "tradeoff",
+                "emergency_travel_time": "tradeoff",
+                "travel_time_variability": "reliability",
+                "queue_baseline": "network",
+                "queue_spillback": "network",
+                "cross_street_queues": "network",
+                "bus_headway": "headways",
+                "headway_variability": "headways",
+                "bus_bunching": "headways",
+            }
+
             # ── value accessor: mean over seeds for one cell ──────────────────
             def _agg(scen, rt, scope, metric_key):
                 if rt is None:
@@ -3165,27 +3154,6 @@ elif _active == "KPIs":
 
             def _absdelta(b, t):
                 return (t - b) if (b is not None and t is not None) else None
-
-            # ── headline synthesis across all scenarios ───────────────────────
-            sb = scenario_scoreboard(table_rows)
-            if sb["n_scenarios"]:
-                med = sb["bus_delta_median_pct"]
-                if med is not None and med < 0:
-                    hero_lead(
-                        f"{sb['bus_improved']}/{sb['n_scenarios']}",
-                        "cenários em que o TSP <strong>reduz</strong> a perda de tempo do "
-                        f"autocarro (mediana {med:+.1f}%), com segurança preservada em "
-                        f"{sb['safety_clean']}/{sb['n_scenarios']}.",
-                        tone="is-good",
-                    )
-                elif med is not None and med > 0:
-                    hero_lead(
-                        f"{sb['bus_improved']}/{sb['n_scenarios']}",
-                        "cenários com ganho no autocarro — efeito global misto "
-                        f"(mediana {med:+.1f}%). Ver o detalhe por cenário abaixo.",
-                        tone="is-bad",
-                    )
-                render_scoreboard(sb)
 
             # ═════════════════════════════════════════════════════════════════
             # ① VISÃO GERAL — todos os cenários de relance
@@ -3413,6 +3381,13 @@ elif _active == "KPIs":
 
             # ── scenario objective card (catalog source of truth) ─────────────
             _scen_meta = scen_meta.get(sel) or {}
+            # Sections this scenario's catalog kpi_focus flags as primary — drives
+            # the "Foco" pill on the matching section headers below.
+            _focus_sections = {
+                kpi_focus_section[k]
+                for k in (_scen_meta.get("kpi_focus") or [])
+                if k in kpi_focus_section
+            }
             if _scen_meta:
                 _rows_html = ""
                 if _scen_meta.get("expected_use"):
@@ -3448,7 +3423,7 @@ elif _active == "KPIs":
                 )
 
             # ── ▸ Trade-off: autocarro vs tráfego geral ───────────────────────
-            section(f"Trade-off TSP · {sel_label}")
+            section(f"Trade-off TSP · {sel_label}", focus="tradeoff" in _focus_sections)
             _tradeoff = ["mean_time_loss_s", "mean_waiting_time_s", "mean_duration_s"]
 
             def _render_class_row(scope_key):
@@ -3478,7 +3453,10 @@ elif _active == "KPIs":
             )
 
             # ── ▸ Fiabilidade / cauda (P95) ───────────────────────────────────
-            section(f"Fiabilidade · {sel_label} — cauda da distribuição (P95)")
+            section(
+                f"Fiabilidade · {sel_label} — cauda da distribuição (P95)",
+                focus="reliability" in _focus_sections,
+            )
             _rel = ["p95_time_loss_s", "p95_duration_s"]
             st.markdown('<div class="class-tag">Autocarro</div>', unsafe_allow_html=True)
             _rb = st.columns(len(_rel))
@@ -3501,7 +3479,7 @@ elif _active == "KPIs":
             )
 
             # ── ▸ Saúde da rede & segurança ───────────────────────────────────
-            section(f"Saúde da rede & segurança · {sel_label}")
+            section(f"Saúde da rede & segurança · {sel_label}", focus="network" in _focus_sections)
             # Thresholds mirror scenario.sumo_quality_thresholds (identical across the
             # suite) — the pipeline's own documented quality gates, not new criteria.
             safety_specs = [
@@ -3552,7 +3530,10 @@ elif _active == "KPIs":
                 )
 
             # ── ▸ Regularidade dos autocarros (headways) ──────────────────────
-            section(f"Regularidade dos autocarros · {sel_label} — headways")
+            section(
+                f"Regularidade dos autocarros · {sel_label} — headways",
+                focus="headways" in _focus_sections,
+            )
             hd = tdf[(tdf["Cenário"] == sel) & (tdf["scope"] == "headway")]
             if hd.empty:
                 st.info("Sem dados de headway para este cenário.")
@@ -3618,7 +3599,7 @@ elif _active == "KPIs":
                 )
 
             # ── ▸ Emissões & qualidade do ar ──────────────────────────────────
-            section(f"Emissões & qualidade do ar · {sel_label}")
+            section(f"Emissões & qualidade do ar · {sel_label}", focus="emissions" in _focus_sections)
             em_species = [
                 ("total_co2_mg_per_vehicle_km", "CO2"),
                 ("total_fuel_mg_per_vehicle_km", "Combustível"),
@@ -3691,12 +3672,6 @@ elif _active == "KPIs":
 # ═══════════════════════════════════════════════════════════════════════════════
 
 elif _active == "Documentação":
-    st.markdown("#### Documentação — como ler os resultados, fontes e limites da simulação")
-    st.caption(
-        "Tudo nesta dashboard vem de runs SUMO/TraCI reais — não há números inventados. "
-        "Esta página reúne o guia de leitura, o glossário de métricas, a configuração de cada "
-        "run, as fontes de dados e as limitações a ter em conta na interpretação."
-    )
     with st.container(horizontal=True):
         st.badge("Dados reais SUMO/TraCI", icon=":material/verified:", color="green")
         st.badge("Fonte de verdade rastreável", icon=":material/dataset:", color="blue")
