@@ -256,7 +256,7 @@ ACTION_META = {
     ),
     "early_green": (
         "Verde antecipado",
-        "#1d6ef5",
+        "#1d4ed8",
         "Avança o início da fase verde para a aproximação do autocarro.",
     ),
     "no_action": ("Sem acção", "#94a3b8", "Nenhuma intervenção necessária neste ciclo."),
@@ -292,7 +292,7 @@ SCENARIO_LABELS = {
 PALETTE = {
     "sumo_baseline": "#64748b",
     "baseline": "#64748b",
-    "tsp": "#1d6ef5",
+    "tsp": "#1d4ed8",
     "tsp_controller": "#7c3aed",
 }
 
@@ -310,18 +310,24 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"], .stApp {
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility; }
 
+/* Soft page canvas — white cards/charts (and tinted boxes) lift off this subtle
+   cool off-white instead of floating on flat white. Content column is transparent
+   (no bg on .block-container) so it shows through; the translucent topbar/footer
+   blur over it. This is the "soft canvas" the card shadows were always tuned for. */
+[data-testid="stAppViewContainer"], .stApp { background: #f6f8fb; }
+
 /* page header */
-.page-header { border-bottom: 3px solid #1d6ef5; padding-bottom: 12px; margin-bottom: 6px;
+.page-header { border-bottom: 3px solid #1d4ed8; padding-bottom: 12px; margin-bottom: 6px;
                margin-top: 2.5rem; }  /* clear Streamlit's 60px fixed top header */
 .page-header .kicker { font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
-                       letter-spacing: 0.12em; color: #1d6ef5; margin: 0 0 5px; }
+                       letter-spacing: 0.12em; color: #1d4ed8; margin: 0 0 5px; }
 .page-header h1 { font-size: 1.55rem; font-weight: 700; color: #0f172a; margin: 0 0 2px; letter-spacing: -0.4px; }
 .page-header .subtitle { font-size: 0.82rem; color: #64748b; margin: 0; }
 .badge { display:inline-block; background:#eff6ff; border:1px solid #bfdbfe; color:#1d4ed8;
          font-size:0.72rem; font-weight:600; padding:2px 8px; border-radius:4px;
          margin-left:8px; vertical-align:middle; }
 .freshness { font-size:0.74rem; color:#94a3b8; margin:6px 0 0; }
-.ctx-block { background:#f8fafc; border:1px solid #e2e8f0; border-left:3px solid #1d6ef5;
+.ctx-block { background:#f8fafc; border:1px solid #e2e8f0; border-left:3px solid #1d4ed8;
              border-radius:6px; padding:14px 18px; margin-bottom:16px; }
 .ctx-block p { font-size:0.83rem; color:#334155; line-height:1.65; margin:0 0 6px; }
 .ctx-block p:last-child { margin:0; }
@@ -331,7 +337,7 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"], .stApp {
    logo right; centred at the same max width as the content so the logos line up
    with the content edges. */
 .page-footer { position: fixed; left: 0; right: 0; bottom: 0; z-index: 90;
-               background: #ffffff; border-top: 0.5px solid #e5e7eb; height: 56px; }
+               background: #ffffff; border-top: 0.5px solid #e2e8f0; height: 56px; }
 .page-footer-inner { max-width: 1500px; height: 100%; margin: 0 auto; padding: 0 2.5rem;
                      display: flex; align-items: center; justify-content: space-between; }
 .page-footer img { display: block; width: auto; }
@@ -360,19 +366,16 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"], .stApp {
 .verdict-card.is-unknown { border-left-color:#94a3b8; }
 .verdict-card.is-unknown .verdict-headline { color:#475569; }
 
-/* section label */
-.section-label { font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.1em;
-                 color:#94a3b8; margin:26px 0 8px; border-bottom:1px solid #f1f5f9; padding-bottom:4px; }
+/* chart / section block title — ONE consistent heading style for every section
+   header (emitted by section()) and chart title across all tabs. */
+.chart-title { font-size:1.05rem; font-weight:700; color:#0f172a; margin:1.6rem 0 2px; letter-spacing:-0.2px; }
+.chart-desc  { font-size:0.8rem; color:#64748b; margin:0 0 10px; line-height:1.5; }
 /* "Foco" pill on a section header — marks the sections the chosen scenario's
    kpi_focus (catalog) flags as the ones to read first. Additive: a scenario whose
    focus maps to no KPIs section simply shows no pill. */
-.section-label .focus-badge { display:inline-block; margin-left:8px; padding:1px 7px;
+.chart-title .focus-badge { display:inline-block; margin-left:10px; padding:1px 8px;
   background:#eff6ff; border:1px solid #bfdbfe; color:#1d4ed8; border-radius:10px;
-  font-size:9px; font-weight:700; letter-spacing:.04em; vertical-align:middle; }
-
-/* chart block title (more prominent than section-label) */
-.chart-title { font-size:1.05rem; font-weight:700; color:#0f172a; margin:1.6rem 0 2px; letter-spacing:-0.2px; }
-.chart-desc  { font-size:0.8rem; color:#64748b; margin:0 0 10px; line-height:1.5; }
+  font-size:10px; font-weight:700; letter-spacing:.04em; vertical-align:middle; }
 
 /* insight + warning boxes */
 .insight { background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px; padding:10px 14px;
@@ -387,7 +390,7 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"], .stApp {
 .empty-sub   { font-size:0.88rem; color:#64748b; margin:0 0 36px; line-height:1.6; }
 .steps { display:flex; gap:14px; flex-wrap:wrap; justify-content:center; }
 .step  { background:#fff; border:1.5px solid #e2e8f0; border-radius:10px; padding:18px 20px; width:175px; text-align:left; }
-.step:hover { border-color:#1d6ef5; }
+.step:hover { border-color:#1d4ed8; }
 .step-num { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px;
             border-radius:50%; background:#1d4ed8; color:#fff; font-size:0.75rem; font-weight:700; margin-bottom:8px; }
 .step-title { font-weight:600; font-size:0.85rem; color:#0f172a; margin:0 0 4px; }
@@ -402,7 +405,7 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"], .stApp {
 /* C-ITS conversation flow */
 .flow { display:flex; align-items:stretch; gap:6px; flex-wrap:wrap; margin:6px 0 4px; }
 .flow-step { flex:1 1 0; min-width:150px; background:#f8fafc; border:1px solid #e2e8f0;
-             border-left:3px solid #1d6ef5; border-radius:8px; padding:10px 12px; }
+             border-left:3px solid #1d4ed8; border-radius:8px; padding:10px 12px; }
 .flow-step .ft { font-weight:700; font-size:0.8rem; color:#0f172a; }
 .flow-step .fd { font-size:0.74rem; color:#64748b; line-height:1.35; margin-top:2px; }
 .flow-arrow { align-self:center; color:#94a3b8; font-size:1.1rem; font-weight:700; }
@@ -412,17 +415,17 @@ section.main > div { padding-top: 1rem; }
 .block-container { padding-top: 1rem; }
 
 /* KPI metric cards — left accent stripe signals improvement vs cost */
-.kpi-card { border:1px solid #e5e7eb; border-radius:12px; padding:1.25rem; position:relative;
+.kpi-card { border:1px solid #e2e8f0; border-radius:12px; padding:1.25rem; position:relative;
             overflow:hidden; background:#ffffff; }
 .kpi-card::before { content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:transparent; }
 .kpi-card.kpi-good::before { background:#16a34a; }
 .kpi-card.kpi-bad::before  { background:#dc2626; }
-.kpi-card .kpi-label { font-size:12px; color:#6b7280; font-weight:600; margin:0; }
+.kpi-card .kpi-label { font-size:12px; color:#64748b; font-weight:600; margin:0; }
 .kpi-card .kpi-value { font-size:28px; font-weight:700; color:#0f172a; line-height:1.15; margin:4px 0 0; }
 .kpi-card .kpi-delta { font-size:14px; font-weight:600; margin:6px 0 0; }
 .kpi-delta.kpi-good { color:#16a34a; }
 .kpi-delta.kpi-bad  { color:#dc2626; }
-.kpi-delta.kpi-flat { color:#6b7280; }
+.kpi-delta.kpi-flat { color:#64748b; }
 .kpi-card .kpi-explain { font-size:11.5px; color:#64748b; line-height:1.6; margin:12px 0 0;
                           padding-top:10px; border-top:1px solid #f1f5f9; }
 
@@ -458,17 +461,17 @@ header[data-testid="stHeader"] { display: none !important; }
 
 /* topbar — fixed to the viewport top; the hamburger (also fixed) aligns to it */
 .topbar { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: #ffffff;
-          border-bottom: 0.5px solid #e5e7eb; height: 48px; display: flex; align-items: center;
+          border-bottom: 0.5px solid #e2e8f0; height: 48px; display: flex; align-items: center;
           padding: 0 1.5rem 0 3.6rem; gap: 12px; }
-.topbar-logo { font-size: 15px; font-weight: 600; color: #111827; letter-spacing: -0.01em; }
+.topbar-logo { font-size: 15px; font-weight: 600; color: #0f172a; letter-spacing: -0.01em; }
 .topbar-logo span { color: #10b981; }
 .status-dot { width: 6px; height: 6px; border-radius: 50%; background: #10b981; flex-shrink: 0; }
 
 /* hamburger — real st.button(key="open_drawer") pinned over the topbar's left edge */
 .st-key-open_drawer { position: fixed; top: 7px; left: 14px; z-index: 130; width: 34px; }
 .st-key-open_drawer button { width: 34px !important; height: 34px; min-height: 34px; padding: 0;
-  border: 0.5px solid #e5e7eb; border-radius: 8px; background: #f9fafb; color: #111827; font-size: 16px; }
-.st-key-open_drawer button:hover { background: #f3f4f6; border-color: #d1d5db; }
+  border: 0.5px solid #e2e8f0; border-radius: 8px; background: #f8fafc; color: #0f172a; font-size: 16px; }
+.st-key-open_drawer button:hover { background: #f1f5f9; border-color: #cbd5e1; }
 
 /* overlay — real full-screen st.button(key="overlay_close"); clicking it closes the
    drawer. The scrim lives on the container (reliable) and the button fills it
@@ -485,7 +488,7 @@ header[data-testid="stHeader"] { display: none !important; }
    (see .drawer-footer), and the panel reserves bottom padding so the last
    status block never hides behind it. */
 .st-key-drawer_panel { position: fixed; top: 0; left: 0; bottom: 0; width: 264px; z-index: 901;
-  background: #ffffff; border-right: 0.5px solid #e5e7eb; box-shadow: 4px 0 24px rgba(0,0,0,0.06);
+  background: #ffffff; border-right: 0.5px solid #e2e8f0; box-shadow: 4px 0 24px rgba(0,0,0,0.06);
   overflow-y: auto; overflow-x: hidden; padding: 0 0 64px; gap: 0;
   display: flex; flex-direction: column; }
 .st-key-drawer_panel button {
@@ -498,13 +501,13 @@ header[data-testid="stHeader"] { display: none !important; }
 .st-key-drawer_panel button > div {
   justify-content: flex-start !important; width: 100% !important; }
 .st-key-drawer_panel button p { text-align: left !important; margin: 0 !important; }
-.st-key-drawer_panel button:hover { background: #f3f4f6 !important; color: #111827 !important; }
+.st-key-drawer_panel button:hover { background: #f1f5f9 !important; color: #0f172a !important; }
 .st-key-drawer_panel button[kind="primary"] {
   background: #eff6ff !important; color: #1d4ed8 !important; font-weight: 600 !important;
   box-shadow: inset 3px 0 0 #1d4ed8 !important; }
 /* nav icons (Material Symbols) — muted grey by default, brand-blue when active */
-.st-key-drawer_panel button [data-testid="stIconMaterial"] { font-size: 18px !important; color: #9ca3af !important; }
-.st-key-drawer_panel button:hover [data-testid="stIconMaterial"] { color: #6b7280 !important; }
+.st-key-drawer_panel button [data-testid="stIconMaterial"] { font-size: 18px !important; color: #94a3b8 !important; }
+.st-key-drawer_panel button:hover [data-testid="stIconMaterial"] { color: #64748b !important; }
 .st-key-drawer_panel button[kind="primary"] [data-testid="stIconMaterial"] { color: #1d4ed8 !important; }
 .st-key-drawer_panel [data-testid="stSelectbox"],
 .st-key-drawer_panel [data-testid="stCaptionContainer"] { padding-left: 12px; padding-right: 12px; }
@@ -514,7 +517,7 @@ header[data-testid="stHeader"] { display: none !important; }
    so the label, hint, select and status block stack with their own spacing. */
 .drawer-filter-hint { font-size: 10.5px; color: #94a3b8; line-height: 1.45; padding: 0 14px 8px; }
 .st-key-drawer_bottom [data-testid="stMarkdownContainer"] { margin-bottom: 0 !important; }
-.drawer-filter-hint strong { color: #6b7280; font-weight: 600; }
+.drawer-filter-hint strong { color: #64748b; font-weight: 600; }
 .st-key-drawer_panel [data-baseweb="select"] > div {
   background: #ffffff !important; border-radius: 9px !important; min-height: 40px; }
 .st-key-drawer_panel [data-testid="stSelectbox"] label { display: none; }
@@ -534,36 +537,36 @@ header[data-testid="stHeader"] { display: none !important; }
 .st-key-drawer_bottom { gap: 0; }
 
 /* drawer decorative bits */
-.drawer-head { height: 48px; border-bottom: 0.5px solid #e5e7eb; display: flex; align-items: center;
+.drawer-head { height: 48px; border-bottom: 0.5px solid #e2e8f0; display: flex; align-items: center;
                padding: 0 14px; justify-content: space-between; }
-.drawer-head .dh-logo { font-size: 15px; font-weight: 600; color: #111827; }
+.drawer-head .dh-logo { font-size: 15px; font-weight: 600; color: #0f172a; }
 .drawer-head .dh-logo span { color: #10b981; }
-.drawer-head .dh-sub { font-size: 11px; color: #6b7280; }
+.drawer-head .dh-sub { font-size: 11px; color: #64748b; }
 .drawer-section-label { font-size: 9.5px; font-weight: 700; letter-spacing: 0.11em; text-transform: uppercase;
-                        color: #9ca3af; padding: 16px 14px 5px;
+                        color: #94a3b8; padding: 16px 14px 5px;
                         /* keep the label above any adjacent button hover highlight */
                         position: relative; z-index: 1; }
-.nav-divider { height: 0.5px; background: #eef1f5; margin: 10px 14px; }
-.status-block { margin: 12px 12px 4px; padding: 11px 12px; border: 0.5px solid #e5e7eb; border-radius: 10px;
-                background: #f9fafb; }
+.nav-divider { height: 0.5px; background: #eef2f7; margin: 10px 14px; }
+.status-block { margin: 12px 12px 4px; padding: 11px 12px; border: 0.5px solid #e2e8f0; border-radius: 10px;
+                background: #f8fafc; }
 .status-block-row { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; }
-.status-block-title { font-size: 12px; font-weight: 600; color: #111827; }
-.status-block-sub { font-size: 11px; color: #6b7280; line-height: 1.55; }
+.status-block-title { font-size: 12px; font-weight: 600; color: #0f172a; }
+.status-block-sub { font-size: 11px; color: #64748b; line-height: 1.55; }
 /* footer pinned to the bottom of the 264px drawer; white bg + top/right borders
    so scrolling content disappears cleanly behind it. */
 .drawer-footer { position: fixed; left: 0; bottom: 0; width: 264px; z-index: 902;
                  box-sizing: border-box; display: flex; align-items: center; gap: 9px;
                  padding: 12px 14px; background: #ffffff;
-                 border-top: 0.5px solid #e5e7eb; border-right: 0.5px solid #e5e7eb; }
-.drawer-footer-label { font-size: 10px; color: #9ca3af; font-weight: 600; white-space: nowrap;
+                 border-top: 0.5px solid #e2e8f0; border-right: 0.5px solid #e2e8f0; }
+.drawer-footer-label { font-size: 10px; color: #94a3b8; font-weight: 600; white-space: nowrap;
                        text-transform: uppercase; letter-spacing: 0.06em; }
 .drawer-footer-logo { height: 18px; width: auto; opacity: 0.75; }
 
 /* "Explorar em detalhe" chips — real buttons (key=chip_*) styled as cards */
 .st-key-explore_chips button { height: auto; min-height: 0; text-align: left; justify-content: flex-start;
-  align-items: flex-start; border: 1px solid #e5e7eb; border-radius: 10px; background: #ffffff;
+  align-items: flex-start; border: 1px solid #e2e8f0; border-radius: 10px; background: #ffffff;
   color: #0f172a; font-weight: 700; font-size: 14px; padding: 0.85rem 1.1rem; box-shadow: none; }
-.st-key-explore_chips button:hover { background: #f9fafb; border-color: #cbd5e1; }
+.st-key-explore_chips button:hover { background: #f8fafc; border-color: #cbd5e1; }
 
 /* glossary + reading-guide cards (relocated from the sidebar to the Documentação tab) */
 .gloss-card { background:#ffffff; border:1px solid #e2e8f0; border-radius:8px;
@@ -572,7 +575,8 @@ header[data-testid="stHeader"] { display: none !important; }
               display:flex; justify-content:space-between; align-items:baseline; gap:0.5rem; }
 .gloss-unit { font-size:11px; font-weight:400; color:#94a3b8; white-space:nowrap; }
 .gloss-def { font-size:12px; color:#64748b; line-height:1.55; }
-.step-card { display:flex; gap:0.75rem; align-items:flex-start; margin-bottom:0.75rem; }
+.step-card { display:flex; gap:0.75rem; align-items:flex-start; margin-bottom:0.75rem;
+             background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:0.85rem 1rem; }
 .step-card .step-num { font-size:11px; font-weight:700; color:#ffffff; background:#1d4ed8;
                        border-radius:50%; width:22px; height:22px; display:flex; align-items:center;
                        justify-content:center; flex-shrink:0; margin-top:1px; }
@@ -594,7 +598,7 @@ header[data-testid="stHeader"] { display: none !important; }
   box-shadow: 0 1px 2px rgba(16,24,40,0.04); }
 
 /* Lighter horizontal rules (Streamlit "---") so section breaks read as hairlines. */
-hr { border: none !important; border-top: 1px solid #eef1f5 !important; margin: 1.4rem 0 !important; }
+hr { border: none !important; border-top: 1px solid #eef2f7 !important; margin: 1.4rem 0 !important; }
 
 /* Card depth — a subtle two-layer shadow, consistent across every card surface.
    stat-card has no background of its own, so give it white to sit on the canvas. */
@@ -616,8 +620,10 @@ hr { border: none !important; border-top: 1px solid #eef1f5 !important; margin: 
 .st-key-explore_chips button:hover {
   box-shadow: 0 6px 16px rgba(16,24,40,0.09); transform: translateY(-2px); }
 
-/* Native bordered metrics (st.metric(border=True)) — match the card radius/shadow. */
+/* Native bordered metrics (st.metric(border=True)) — match the card radius/shadow
+   and sit on a clean white surface so they lift off the soft canvas. */
 [data-testid="stMetric"] {
+  background: #ffffff;
   border-radius: 12px;
   box-shadow: 0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.05); }
 
@@ -634,11 +640,21 @@ hr { border: none !important; border-top: 1px solid #eef1f5 !important; margin: 
    card just frames them with a hairline border, radius and soft shadow. */
 [data-testid="stPlotlyChart"] {
   background: #ffffff;
-  border: 1px solid #e9eef5;
+  border: 1px solid #eef2f7;
   border-radius: 14px;
   padding: 14px 16px 8px;
   box-shadow: 0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.05); }
 [data-testid="stPlotlyChart"] .svg-container { border-radius: 12px; }
+
+/* ECharts charts (st_echarts renders an iframe) get the same card frame as Plotly
+   so every chart across the dashboard reads as one consistent surface on the soft
+   canvas. Modern browsers clip the iframe content to the border-radius; the chart
+   paints its own white background so the rounded corners stay clean. */
+iframe[title*="echarts" i] {
+  background: #ffffff;
+  border: 1px solid #eef2f7;
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.05); }
 
 /* Resumo hero — the headline statement with its key figure pulled large, so the
    single most important number leads the whole dashboard. */
@@ -659,7 +675,7 @@ hr { border: none !important; border-top: 1px solid #eef1f5 !important; margin: 
 .doc-limit { background:#ffffff; border:1px solid #f1f5f9; border-left:3px solid #f59e0b;
   border-radius:8px; padding:10px 14px; margin-bottom:8px; font-size:0.82rem;
   color:#475569; line-height:1.55; box-shadow:0 1px 2px rgba(16,24,40,0.04); }
-.spec-table { border:1px solid #e5e7eb; border-radius:10px; overflow:hidden; background:#ffffff;
+.spec-table { border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; background:#ffffff;
   box-shadow:0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.05); }
 .spec-row { display:flex; gap:1rem; padding:9px 14px; border-top:1px solid #f1f5f9; font-size:0.83rem; }
 .spec-row:first-child { border-top:none; }
@@ -834,10 +850,11 @@ def run_color(label: str) -> str:
 
 
 def section(title: str, focus: bool = False) -> None:
-    """Section header. `focus=True` appends a small "Foco" pill — used in the KPIs
-    tab to mark the sections the selected scenario's catalog kpi_focus points at."""
+    """Section header — uses the .chart-title style so every section heading and chart
+    title across all tabs reads in one consistent style. `focus=True` appends a "Foco"
+    pill (KPIs tab) marking sections the selected scenario's catalog kpi_focus points at."""
     badge = '<span class="focus-badge">Foco</span>' if focus else ""
-    st.markdown(f'<div class="section-label">{title}{badge}</div>', unsafe_allow_html=True)
+    st.markdown(f'<p class="chart-title">{title}{badge}</p>', unsafe_allow_html=True)
 
 
 def insight(text: str) -> None:
@@ -1300,7 +1317,7 @@ def render_scenario_overview(metric_key: str = "mean_time_loss_s") -> None:
                     "silent": True,
                     "symbol": "none",
                     "data": [{"xAxis": 0}],
-                    "lineStyle": {"color": "#9ca3af", "width": 1.5, "type": "dotted"},
+                    "lineStyle": {"color": "#94a3b8", "width": 1.5, "type": "dotted"},
                     "label": {"show": False},
                 },
             },
@@ -1672,7 +1689,7 @@ if st.session_state.drawer_open:
         _cap_img = (
             f'<img class="drawer-footer-logo" src="{_cap_uri}" alt="Capgemini">'
             if _cap_uri
-            else '<span style="font-size:11px;font-weight:600;color:#6b7280;">Capgemini</span>'
+            else '<span style="font-size:11px;font-weight:600;color:#64748b;">Capgemini</span>'
         )
         st.markdown(
             f'<div class="drawer-footer">'
@@ -2003,6 +2020,9 @@ if _active == "Resumo":
             render_kpi_card(m1, "mean_time_loss_s", _tl_t, _tl_b, _tl_explain)
             render_kpi_card(m2, "mean_waiting_time_s", _wt_t, _wt_b, _wt_explain)
             render_kpi_card(m3, "mean_speed_mps", _sp_t, _sp_b, _sp_explain)
+            # breathing room before the per-scenario chart so it reads as a distinct
+            # block from the cards, matching the page's section rhythm
+            st.markdown("<div style='height:1.75rem'></div>", unsafe_allow_html=True)
 
         # ── per-scenario overview (zoom-out) — impacto do TSP em todos os cenários
         render_scenario_overview()
@@ -2340,6 +2360,40 @@ elif _active == "Decisão":
             "Sem acção necessária (verde já chega)": by_action.get("no_action", 0),
         }
 
+        # ── explanatory context (mirrors the Resumo "Análise Geral" block) ────
+        # Conceptual, number-free prose: how the engine works, independent of the
+        # run. The figures live in the hero_lead immediately below, so this stays
+        # free of numbers to avoid restating them.
+        _dp1 = (
+            "O <strong>motor de decisão TSP</strong> decide, ciclo a ciclo, se um autocarro "
+            "recebe prioridade semafórica. Quando um autocarro se aproxima de uma intersecção "
+            "instrumentada, envia um pedido por <strong>C-ITS</strong>; o motor pontua esse "
+            "pedido com base no <strong>atraso ao horário</strong>, na regularidade do "
+            "<strong>intervalo (headway)</strong> e na <strong>proximidade</strong> da intersecção."
+        )
+        _dp2 = (
+            "De cada avaliação resulta uma acção: <strong>verde antecipado</strong> ou "
+            "<strong>extensão de verde</strong> — as duas únicas que alteram o semáforo "
+            "(accionáveis) — ou então <strong>rejeitar</strong>, <strong>reavaliar no ciclo "
+            "seguinte</strong> ou <strong>sem acção</strong> quando o verde já é suficiente. "
+            "Por isso o número de decisões avaliadas é muito superior ao de actuações aplicadas: "
+            "a maioria das decisões é, deliberadamente, uma não-actuação."
+        )
+        _dp3 = (
+            "Antes de chegar à rede, cada actuação accionável passa por uma "
+            "<strong>Safety Layer</strong>, que barra qualquer mudança que comprometa a "
+            "segurança da intersecção (amarelo insuficiente, conflito com peões ou com outra "
+            "fase). As secções abaixo percorrem este caminho completo — do funil de decisões "
+            "às acções concedidas, ao verde injectado e aos bloqueios de segurança."
+        )
+        st.markdown(
+            '<p class="chart-title">Como funciona o motor de decisão</p>'
+            '<div class="ctx-block">'
+            f"<p>{_dp1}</p><p>{_dp2}</p><p>{_dp3}</p>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
         # ── plain-language headline (lead with the story) ─────────────────────
         if total > 0:
             ar_txt = f"{applied / actionable * 100:.0f}%" if actionable else "—"
@@ -2374,7 +2428,7 @@ elif _active == "Decisão":
                         ],
                         x=[total, actionable, applied],
                         textinfo="value+percent initial",
-                        marker_color=["#94a3b8", "#1d6ef5", COLOR_GOOD],
+                        marker_color=["#94a3b8", "#1d4ed8", COLOR_GOOD],
                         hovertemplate="%{y}: %{x}<extra></extra>",
                     )
                 )
@@ -2534,7 +2588,7 @@ elif _active == "Decisão":
                     x=vals_o,
                     y=labels_o,
                     orientation="h",
-                    marker_color="#1d6ef5",
+                    marker_color="#1d4ed8",
                     texttemplate="%{x:.3f}",
                     textposition="outside",
                     cliponaxis=False,
@@ -2630,6 +2684,40 @@ elif _active == "C-ITS":
             by_type = summ.get("cits_by_type", {})
             prl = summ.get("priority_request_lifecycle", {})
 
+            # ── explanatory context (mirrors the Resumo/Decisão intro blocks) ──
+            # Conceptual, number-free prose: what C-ITS is and how the protocol
+            # works. The figures live in the hero_lead immediately below.
+            _cp1 = (
+                "O <strong>C-ITS</strong> (Cooperative Intelligent Transport Systems) é a "
+                "camada de comunicação <strong>V2X</strong> que liga os autocarros aos "
+                "semáforos. É por aqui que o autocarro 'fala' com a infraestrutura: anuncia "
+                "que se aproxima e pede prioridade, e o semáforo responde. Sem esta troca de "
+                "mensagens, o motor de decisão TSP não teria como saber que vem um autocarro "
+                "a caminho."
+            )
+            _cp2 = (
+                "A conversa segue um protocolo normalizado de quatro mensagens: o semáforo "
+                "difunde o <strong>mapa das aproximações (MAPEM)</strong> e o <strong>estado "
+                "das fases em tempo real (SPATEM)</strong>; o autocarro, ao aproximar-se, "
+                "envia um <strong>pedido de prioridade (SREM)</strong>; e a unidade de berma "
+                "(RSU) devolve a decisão — concede ou recusa — por <strong>SSEM</strong>. O "
+                "diagrama abaixo mostra esta sequência."
+            )
+            _cp3 = (
+                "Cada pedido SREM origina exactamente uma resposta SSEM — é nesse par que se "
+                "medem a fiabilidade e a latência do canal. Esta tab quantifica o volume de "
+                "mensagens por tipo, a saúde do transporte e o ciclo de vida dos pedidos — os "
+                "dados que alimentam, em tempo real, as decisões analisadas na tab "
+                "<strong>Motor de decisão</strong>."
+            )
+            st.markdown(
+                '<p class="chart-title">Como funciona a comunicação C-ITS</p>'
+                '<div class="ctx-block">'
+                f"<p>{_cp1}</p><p>{_cp2}</p><p>{_cp3}</p>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
+
             # ── plain-language intro: the V2X conversation ────────────────────
             srem_n = by_type.get("SREM") or 0
             ssem_n = by_type.get("SSEM") or 0
@@ -2685,7 +2773,7 @@ elif _active == "C-ITS":
                         x="Tipo",
                         y="Mensagens",
                         color="Tipo",
-                        color_discrete_sequence=["#1d4ed8", "#0891b2", "#7c3aed", "#059669"],
+                        color_discrete_sequence=["#1d4ed8", "#0891b2", "#7c3aed", "#16a34a"],
                         height=320,
                         log_y=True,
                     )
@@ -2879,6 +2967,37 @@ elif _active == "C-ITS":
 # ═══════════════════════════════════════════════════════════════════════════════
 
 elif _active == "vs RL":
+    # ── explanatory context (mirrors the Resumo/Decisão/C-ITS intro blocks) ──
+    # Shown regardless of data availability so the tab's purpose reads even when
+    # the comparison report hasn't been generated yet.
+    _rp1 = (
+        "Esta tab compara duas formas de decidir a prioridade semafórica: a "
+        "<strong>regra heurística (rule-based)</strong> da tab Motor de decisão — critérios "
+        "fixos e explicáveis — e uma <strong>política de Reinforcement Learning (RL)</strong>, "
+        "treinada para maximizar o desempenho da rede. A pergunta é simples: uma política "
+        "aprendida com dados decide melhor do que regras escritas à mão?"
+    )
+    _rp2 = (
+        "A política RL é treinada <strong>offline</strong>, por tentativa e erro em simulação, "
+        "ajustando-se para reduzir o tempo perdido sem degradar o resto da rede. É depois "
+        "avaliada <strong>decisão a decisão</strong> contra a baseline rule-based: para cada "
+        "situação compara-se a acção que cada abordagem escolheria e o valor estimado do "
+        "respectivo resultado."
+    )
+    _rp3 = (
+        "Um <strong>veredicto positivo</strong> indica que a RL escolheu uma acção com melhor "
+        "valor esperado do que a regra. As secções abaixo mostram a distribuição desses "
+        "veredictos e o impacto agregado nos KPIs de rede. A RL é aqui uma <strong>linha de "
+        "investigação</strong> — serve para testar se há margem para superar a heurística, que "
+        "continua a ser a base de referência."
+    )
+    st.markdown(
+        '<p class="chart-title">Como funciona a comparação vs RL</p>'
+        '<div class="ctx-block">'
+        f"<p>{_rp1}</p><p>{_rp2}</p><p>{_rp3}</p>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
     if not decision_outcome:
         warn(
             "Report de comparação Baseline vs RL não disponível. "
@@ -3008,20 +3127,20 @@ elif _active == "KPIs":
                 """
 <style>
 .scenario-header { margin-bottom: 1.5rem; }
-.scenario-title { font-size: 22px; font-weight: 700; color: var(--text-color, #111827); margin-bottom: 0.25rem; }
+.scenario-title { font-size: 22px; font-weight: 700; color: var(--text-color, #0f172a); margin-bottom: 0.25rem; }
 .scenario-sub { font-size: 14px; color: rgba(128,128,128,0.9); margin-bottom: 0.75rem; }
 .scenario-badges { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .badge-green { background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; border-radius:99px; padding:0.2rem 0.75rem; font-size:13px; font-weight:500; }
 .badge-red { background:#fee2e2; color:#b91c1c; border:1px solid #fecaca; border-radius:99px; padding:0.2rem 0.75rem; font-size:13px; font-weight:500; }
-.stat-card { border:1px solid #e5e7eb; border-radius:12px; padding:1.25rem 1rem; text-align:center; }
-.stat-label { font-size:12px; color:#6b7280; margin-bottom:0.35rem; text-transform:uppercase; letter-spacing:0.06em; }
+.stat-card { border:1px solid #e2e8f0; border-radius:12px; padding:1.25rem 1rem; text-align:center; }
+.stat-label { font-size:12px; color:#64748b; margin-bottom:0.35rem; text-transform:uppercase; letter-spacing:0.06em; }
 .stat-value { font-size:28px; font-weight:700; line-height:1.1; }
-.stat-unit { font-size:13px; color:#9ca3af; margin-top:0.2rem; }
+.stat-unit { font-size:13px; color:#94a3b8; margin-top:0.2rem; }
 .stat-positive { color:#16a34a; }
 .stat-negative { color:#dc2626; }
-.stat-neutral { color:#111827; }
-.scen-obj { border:1px solid #e5e7eb; border-left:4px solid #2563eb; border-radius:12px;
-            padding:1.1rem 1.3rem; background:#fbfcfe; margin:0.25rem 0 1.1rem; }
+.stat-neutral { color:#0f172a; }
+.scen-obj { border:1px solid #e2e8f0; border-left:4px solid #2563eb; border-radius:12px;
+            padding:1.1rem 1.3rem; background:#f8fafc; margin:0.25rem 0 1.1rem; }
 .scen-obj-head { display:flex; align-items:center; gap:0.65rem; margin-bottom:0.35rem; }
 .scen-obj-desc { font-size:15px; font-weight:600; color:#0f172a; line-height:1.4; }
 .scen-obj-row { margin-top:0.75rem; }
