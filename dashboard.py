@@ -336,6 +336,11 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"], .stApp {
          font-size:0.72rem; font-weight:600; padding:2px 8px; border-radius:4px;
          margin-left:8px; vertical-align:middle; }
 .freshness { font-size:0.74rem; color:#94a3b8; margin:6px 0 0; }
+.ctx-block { background:#f8fafc; border:1px solid #e2e8f0; border-left:3px solid #1d6ef5;
+             border-radius:6px; padding:14px 18px; margin-bottom:16px; }
+.ctx-block p { font-size:0.83rem; color:#334155; line-height:1.65; margin:0 0 6px; }
+.ctx-block p:last-child { margin:0; }
+.ctx-block strong { color:#0f172a; font-weight:600; }
 
 /* brand bar pinned to the bottom of every page — product logo left, partner
    logo right; centred at the same max width as the content so the logos line up
@@ -377,6 +382,8 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"], .stApp {
 /* chart block title (more prominent than section-label) */
 .chart-title { font-size:1.05rem; font-weight:700; color:#0f172a; margin:1.6rem 0 2px; letter-spacing:-0.2px; }
 .chart-desc  { font-size:0.8rem; color:#64748b; margin:0 0 10px; line-height:1.5; }
+.chart-intro { font-size:0.86rem; color:#475569; margin:0 0 14px; line-height:1.65; max-width:780px; }
+.chart-intro strong { color:#0f172a; font-weight:600; }
 
 /* insight + warning boxes */
 .insight { background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px; padding:10px 14px;
@@ -841,6 +848,12 @@ def section(title: str) -> None:
 
 def insight(text: str) -> None:
     st.markdown(f'<div class="insight">{text}</div>', unsafe_allow_html=True)
+
+
+def chart_intro(text: str) -> None:
+    """Explanatory prose rendered before a chart — sets up what the reader is about
+    to see and how to read it, so the chart's results land in context."""
+    st.markdown(f'<p class="chart-intro">{text}</p>', unsafe_allow_html=True)
 
 
 def warn(text: str) -> None:
@@ -1753,10 +1766,7 @@ st.markdown(
   </h1>
   {f'<p class="subtitle">{_hsub}</p>' if _hsub else ""}
 </div>
-<p class="freshness">
-  {"Última actualização dos dados: <strong>" + fresh + "</strong>" if fresh else "Sem dados carregados"}
-  {(" · Cenário: <code>" + scenario_id + "</code>") if scenario_id else ""}
-</p>
+
 """,
     unsafe_allow_html=True,
 )
@@ -1846,6 +1856,121 @@ HERO_CLASSES = [
 ]
 
 if _active == "Resumo":
+    # ── context block ─────────────────────────────────────────────────────────
+    if demo and baseline_key and primary_tsp:
+        _bk = run_kpis.get(baseline_key, {})
+        _tk = run_kpis.get(primary_tsp, {})
+        _tsp_run = demo.get("runs", {}).get(primary_tsp, {})
+        _tsp_summ = _tsp_run.get("summary", {})
+
+        # scenario identity
+        _scn_id = _tsp_summ.get("scenario_id", scenario_id) or scenario_id
+        _n_tls = len(_tsp_summ.get("per_tls", {})) or _tsp_summ.get(
+            "signal_program_verification", {}
+        ).get("tls_actuable")
+        _sim_steps = _tsp_summ.get("steps", 0)
+        _sim_h = f"{_sim_steps // 3600:.0f}" if _sim_steps else None
+
+        # TSP actuation
+        _total_dec = _tsp_summ.get("total_decisions") or _tsp_summ.get("cits_processing_messages")
+        _applied = _tsp_summ.get("applied_events") or _tsp_summ.get("approved_decisions")
+        _early_g = (_tsp_summ.get("by_action") or {}).get("early_green")
+        _ext_g = (_tsp_summ.get("by_action") or {}).get("green_extension")
+        _safety_blocks = _tsp_summ.get("blocked_by_safety", 0)
+
+        # KPI deltas
+        _b_bus = _bk.get("buses", {}).get("mean_time_loss_s") or _bk.get("priority_vehicles", {}).get("mean_time_loss_s")
+        _t_bus = _tk.get("buses", {}).get("mean_time_loss_s") or _tk.get("priority_vehicles", {}).get("mean_time_loss_s")
+        _b_gen = _bk.get("general_traffic", {}).get("mean_time_loss_s")
+        _t_gen = _tk.get("general_traffic", {}).get("mean_time_loss_s")
+        _n_all = _tk.get("all_vehicles", {}).get("vehicles") or _bk.get("all_vehicles", {}).get("vehicles") or 0
+
+        # paragraph 1 — what the experiment is
+        _p1 = (
+            "Este demonstrador avalia a aplicação de <strong>Traffic Signal Priority (TSP)</strong> "
+            "na <strong>Linha 25 do Porto</strong>, no corredor Boavista, através de microsimulação "
+            "com SUMO e comunicação C-ITS entre os autocarros e os semáforos instrumentados. "
+            "O objectivo é verificar se a prioridade semafórica melhora a pontualidade dos "
+            "autocarros sem penalizar o tráfego geral — uma condição essencial para a adopção "
+            "do sistema em contexto urbano real."
+        )
+
+        _SCENARIO_LABELS = {
+            "porto_boavista_base_v04_tsp_safety_layer": "corredor da Avenida da Boavista em direcção a Matosinhos",
+            "porto_boavista_base_v04": "corredor da Avenida da Boavista em direcção a Matosinhos",
+        }
+        _scn_label = _SCENARIO_LABELS.get(_scn_id, _scn_id) if _scn_id else None
+
+        # paragraph 2 — scenario and test conditions
+        _p2_parts = ["O teste foi realizado no"]
+        if _scn_label:
+            _p2_parts.append(f"<strong>{_scn_label}</strong>,")
+        _p2_parts.append("que inclui uma <strong>Safety Layer</strong> activa — responsável por filtrar")
+        _p2_parts.append("actuações que possam comprometer a segurança da intersecção.")
+        if _sim_h and _n_tls:
+            _p2_parts.append(
+                f"Foram simuladas <strong>{_sim_h} horas</strong> de tráfego em "
+                f"<strong>{_n_tls} intersecções instrumentadas</strong>"
+                + (f", com <strong>{_n_all:,} veículos</strong> em circulação" if _n_all else "")
+                + "."
+            )
+        if _total_dec and _applied is not None:
+            _act_parts = []
+            if _early_g:
+                _act_parts.append(f"{_early_g} green antecipado")
+            if _ext_g:
+                _act_parts.append(f"{_ext_g} extensão de verde")
+            _act_str = " e ".join(_act_parts) if _act_parts else f"{_applied} actuações"
+            _p2_parts.append(
+                f"O controlador TSP processou <strong>{_total_dec} decisões</strong> "
+                f"e aplicou <strong>{_applied}</strong> ({_act_str})"
+                + ("; a Safety Layer não bloqueou nenhuma actuação." if _safety_blocks == 0 else f"; {_safety_blocks} foram bloqueadas pela Safety Layer.")
+            )
+        _p2 = " ".join(_p2_parts)
+
+        # paragraph 3 — qualitative comment on results. The exact figures live in the
+        # KPI cards and the "Quem ganha" chart right below, so this prose stays
+        # number-free to avoid restating them.
+        _p3_parts = []
+        if _b_bus and _t_bus:
+            if _t_bus < _b_bus:
+                _p3_parts.append(
+                    "Os resultados confirmam o objectivo primário: com o TSP, os "
+                    "<strong>autocarros passam a perder menos tempo</strong> no corredor."
+                )
+            else:
+                _p3_parts.append(
+                    "Neste cenário, o TSP <strong>não reduziu a perda de tempo dos "
+                    "autocarros</strong>."
+                )
+        if _b_gen and _t_gen:
+            if _t_gen <= _b_gen:
+                _p3_parts.append(
+                    "O <strong>tráfego geral não foi penalizado</strong> — chegou mesmo a "
+                    "beneficiar —, sinal de que a actuação não introduziu disrupção na rede."
+                )
+            else:
+                _p3_parts.append(
+                    "O <strong>tráfego geral</strong> registou um custo contido, dentro dos "
+                    "limiares aceitáveis do demonstrador."
+                )
+        if _p3_parts:
+            _p3_parts.append("Os valores por classe estão nos cartões e no gráfico abaixo.")
+        else:
+            _p3_parts.append("Os resultados detalhados estão disponíveis nas secções abaixo.")
+        _p3 = " ".join(_p3_parts)
+
+        _ctx_html = (
+            "<h4 style='font-size:0.95rem;font-weight:700;color:#0f172a;"
+            "margin:0 0 10px;letter-spacing:-0.2px;'>Análise Geral</h4>"
+            '<div class="ctx-block">'
+            f"<p>{_p1}</p>"
+            f"<p>{_p2}</p>"
+            f"<p>{_p3}</p>"
+            "</div>"
+        )
+        st.markdown(_ctx_html, unsafe_allow_html=True)
+
     # ── verdict ───────────────────────────────────────────────────────────────
     if demo and "verdict" in demo:
         v = demo["verdict"]
@@ -1885,6 +2010,16 @@ if _active == "Resumo":
 
         bus = next((r for r in hero if r["key"] in ("buses", "priority_vehicles")), None)
 
+        # The "who wins" chart shows mutually-exclusive populations only. We drop the
+        # aggregates that overlap their own components — priority_vehicles (= buses +
+        # emergency) and all_vehicles (= every class summed) — because plotting a group
+        # beside its members double-counts and, when emergency is absent, renders
+        # Prioritários as a pixel-identical copy of Autocarros. The network-wide total
+        # is surfaced as a caption below instead of as a competing bar.
+        _bar_keys = ("emergency_vehicles", "buses", "general_traffic")
+        hero_bars = [r for r in hero if r["key"] in _bar_keys]
+        net = next((r for r in hero if r["key"] == "all_vehicles"), None)
+
         # ── headline metrics (the win, in the priority class) ─────────────────
         if bus:
             bcls = bus["key"]
@@ -1917,12 +2052,22 @@ if _active == "Resumo":
         # ── hero chart: who benefits ──────────────────────────────────────────
         st.markdown(
             '<p class="chart-title">Quem ganha com o TSP</p>'
-            '<p class="chart-desc">Variação percentual da perda de tempo média por classe de veículo'
-            " — TSP vs Baseline (SUMO sem prioridade semafórica).</p>",
+            '<p class="chart-desc">Variação da perda de tempo média (segundos por veículo) de'
+            " cada grupo, com o TSP face ao baseline sem prioridade semafórica.</p>",
             unsafe_allow_html=True,
         )
-        if hero:
-            dfh = pd.DataFrame(hero)
+        chart_intro(
+            "Este gráfico isola o compromisso central do TSP: ao dar prioridade aos autocarros "
+            "nos semáforos, é preciso garantir que o restante tráfego não fica penalizado em "
+            "excesso. Cada barra mostra quanto variou a <strong>perda de tempo média</strong> de um "
+            "grupo de veículos — o tempo que cada veículo perde face a uma circulação sem paragens "
+            "— entre o cenário com TSP e o baseline. Barras à <strong>esquerda</strong> do zero "
+            "significam que o grupo passou a perder menos tempo (melhoria); à <strong>direita</strong>, "
+            "que passou a perder mais (custo). Como os grupos não se sobrepõem, lê-se directamente "
+            "quem beneficia e quem suporta o custo da medida."
+        )
+        if hero_bars:
+            dfh = pd.DataFrame(hero_bars)
             dfh["delta_s"] = dfh["tsp"] - dfh["baseline"]
 
             def _fmt_delta_s(ds: float) -> str:
@@ -2017,12 +2162,20 @@ if _active == "Resumo":
             st_echarts(hero_option, height="280px", key="resumo_hero_chart")
 
             # ── legend + objective text under the chart ───────────────────────
+            _net_txt = ""
+            if net:
+                _net_d = net["tsp"] - net["baseline"]
+                _net_txt = (
+                    f"Na rede como um todo, a perda de tempo média variou "
+                    f"**{net['pct']:+.1f}%** ({_net_d:+.1f} s, n={net['n']:,}). "
+                )
             st.caption(
-                ":green[■] Melhoria (barra à esquerda)  ·  :red[■] Custo (barra à direita)  ·  eixo centrado em zero"
+                _net_txt
+                + ":green[■] melhoria  ·  :red[■] custo"
                 + (
-                    " · Emergência não aparece aqui (cenário base sem veículos de emergência) — "
+                    " · Emergência não aparece (cenário base sem veículos de emergência) — "
                     "ver separador **KPIs → emergency_vehicle_conflict**."
-                    if not any(r["key"] == "emergency_vehicles" for r in hero)
+                    if not any(r["key"] == "emergency_vehicles" for r in hero_bars)
                     else ""
                 )
             )
