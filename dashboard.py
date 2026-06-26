@@ -1884,38 +1884,6 @@ if _active == "Resumo":
                 )
 
         bus = next((r for r in hero if r["key"] in ("buses", "priority_vehicles")), None)
-        gen = next((r for r in hero if r["key"] == "general_traffic"), None)
-
-        # ── plain-language headline — the key figure pulled large ─────────────
-        if bus:
-            # Decide direction from the *rounded* value so the figure, the verb and
-            # the colour never disagree: a delta of -0.3% rounds to 0 and must read
-            # as "no change" (neutral), not as a green "-0%" or a red "+0%".
-            bus_pct_r = round(bus["pct"])
-            if bus_pct_r == 0:
-                verb, bus_tone, bus_figure = (
-                    "mantém praticamente inalterada",
-                    "is-brand",
-                    "≈0%",
-                )
-            else:
-                improved = bus_pct_r < 0
-                verb = "reduz" if improved else "aumenta"
-                bus_tone = "is-good" if improved else "is-bad"
-                bus_figure = f"{bus_pct_r:+d}%"
-            gen_txt = ""
-            if gen:
-                if abs(gen["pct"]) < 2:
-                    gen_txt = ", com impacto praticamente nulo no tráfego geral"
-                elif gen["pct"] < 0:
-                    gen_txt = f" e ainda melhora o tráfego geral em {abs(gen['pct']):.0f}%"
-                else:
-                    gen_txt = f", a um custo de {gen['pct']:.0f}% no tráfego geral"
-            hero_lead(
-                bus_figure,
-                f"O TSP <strong>{verb}</strong> a perda de tempo do transporte público{gen_txt}.",
-                tone=bus_tone,
-            )
 
         # ── headline metrics (the win, in the priority class) ─────────────────
         if bus:
