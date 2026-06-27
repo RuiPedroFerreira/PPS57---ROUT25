@@ -248,6 +248,7 @@ HIGHER_IS_BETTER = {"mean_speed_mps"}
 # colours instead of a mix of near-identical greens/reds.
 COLOR_GOOD = "#16a34a"  # improvement / win
 COLOR_BAD = "#dc2626"  # degradation / cost
+COLOR_TSP = "#1d4ed8"  # TSP brand blue — single source of truth for all TSP series
 
 ACTION_META = {
     "green_extension": (
@@ -257,7 +258,7 @@ ACTION_META = {
     ),
     "early_green": (
         "Verde antecipado",
-        "#1d4ed8",
+        COLOR_TSP,
         "Avança o início da fase verde para a aproximação do autocarro.",
     ),
     "no_action": ("Sem acção", "#94a3b8", "Nenhuma intervenção necessária neste ciclo."),
@@ -293,7 +294,7 @@ SCENARIO_LABELS = {
 PALETTE = {
     "sumo_baseline": "#64748b",
     "baseline": "#64748b",
-    "tsp": "#1d4ed8",
+    "tsp": COLOR_TSP,
     "tsp_controller": "#7c3aed",
 }
 
@@ -651,8 +652,11 @@ hr { border: none !important; border-top: 1px solid #eef2f7 !important; margin: 
 /* ECharts charts (st_echarts renders an iframe) get the same card frame as Plotly
    so every chart across the dashboard reads as one consistent surface on the soft
    canvas. Modern browsers clip the iframe content to the border-radius; the chart
-   paints its own white background so the rounded corners stay clean. */
-iframe[title*="echarts" i] {
+   paints its own white background so the rounded corners stay clean.
+   Selector targets the component name Streamlit writes to the iframe title attribute
+   (declared as "streamlit_echarts" in streamlit-echarts); if styling breaks after a
+   library upgrade, check whether that title attribute still contains "streamlit_echarts". */
+iframe[title*="streamlit_echarts"] {
   background: #ffffff;
   border: 1px solid #eef2f7;
   border-radius: 14px;
@@ -868,12 +872,9 @@ def warn(text: str) -> None:
 
 
 def ctx_block(title: str, *paras: str) -> None:
+    section(title)
     inner = "".join(f"<p>{p}</p>" for p in paras)
-    st.markdown(
-        f'<p class="chart-title">{title}</p>'
-        f'<div class="ctx-block">{inner}</div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown(f'<div class="ctx-block">{inner}</div>', unsafe_allow_html=True)
 
 
 def hero_lead(figure: str, statement_html: str, tone: str = "is-brand") -> None:
@@ -1485,8 +1486,6 @@ STEPS = [
 
 if "drawer_open" not in st.session_state:
     st.session_state.drawer_open = False
-if "active_tab" not in st.session_state:
-    st.session_state.active_tab = "Resumo"
 
 # ── global vehicle-class filter ───────────────────────────────────────────────
 # The filter lives in the drawer, but it is computed here at module level so the
@@ -1580,8 +1579,8 @@ TAB_HEADERS = {
     ),
 }
 
-if st.session_state.active_tab not in TAB_HEADERS:
-    st.session_state.active_tab = "Resumo"
+if st.session_state.get("active_tab") not in TAB_HEADERS:
+    st.session_state.active_tab = next(iter(TAB_HEADERS))
 
 report_files = {
     "Baseline KPIs": REPORTS / "sumo_baseline_kpis.json",
@@ -2093,7 +2092,7 @@ elif _active == "Decisão":
 
         # ── plain-language headline (lead with the story) ─────────────────────
         if total > 0:
-            ar_txt = f"{applied / actionable * 100:.0f}%" if actionable else "—"
+            ar_txt = f"{min(applied / actionable, 1) * 100:.0f}%" if actionable else "—"
             block_html = (
                 f" A Safety Layer bloqueou <strong>{blocked}</strong> por segurança."
                 if blocked
@@ -2161,7 +2160,7 @@ elif _active == "Decisão":
                     border=True,
                     help="Accionáveis barradas pela Safety Layer por risco de segurança.",
                 )
-                ar = f"{applied / actionable * 100:.0f}%" if actionable else "—"
+                ar = f"{min(applied / actionable, 1) * 100:.0f}%" if actionable else "—"
                 st.caption(
                     f"Taxa de aplicação: **{ar}** ({applied}/{actionable} accionáveis aplicadas)"
                     + (f" · {rejected} rejeições do controller" if rejected else "")
@@ -2457,7 +2456,7 @@ elif _active == "C-ITS":
                         x="Tipo",
                         y="Mensagens",
                         color="Tipo",
-                        color_discrete_sequence=["#1d4ed8", "#0891b2", "#7c3aed", "#16a34a"],
+                        color_discrete_sequence=[PALETTE["tsp"], "#0891b2", PALETTE["tsp_controller"], COLOR_GOOD],
                         height=320,
                         log_y=True,
                     )
