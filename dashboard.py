@@ -894,8 +894,8 @@ def spec_table(rows: list[tuple[str, str]]) -> None:
     """Lightweight key→value spec list for the Documentação page — cleaner and
     more compact than a Streamlit dataframe for short metadata."""
     body = "".join(
-        f'<div class="spec-row"><span class="spec-k">{k}</span>'
-        f'<span class="spec-v">{v}</span></div>'
+        f'<div class="spec-row"><span class="spec-k">{_html.escape(str(k))}</span>'
+        f'<span class="spec-v">{_html.escape(str(v))}</span></div>'
         for k, v in rows
     )
     st.markdown(f'<div class="spec-table">{body}</div>', unsafe_allow_html=True)
@@ -1656,8 +1656,8 @@ if st.session_state.drawer_open:
                 '<div class="drawer-section-label">Filtro global</div>', unsafe_allow_html=True
             )
             st.markdown(
-                '<div class="drawer-filter-hint">Aplica-se a <strong>todos</strong> os '
-                "KPIs e gráficos</div>",
+                '<div class="drawer-filter-hint">Mostra avisos sobre disponibilidade '
+                "de dados para a classe seleccionada</div>",
                 unsafe_allow_html=True,
             )
             st.selectbox(
@@ -1702,9 +1702,6 @@ if st.session_state.drawer_open:
 
 # ── page header ───────────────────────────────────────────────────────────────
 
-fresh = file_mtime(REPORTS / "tsp_demonstrator_report.json") or file_mtime(
-    REPORTS / "sumo_baseline_kpis.json"
-)
 scenario_id = ""
 if demo:
     for _r in demo.get("runs", {}).values():
@@ -1827,18 +1824,27 @@ if _active == "Resumo":
             "signal_program_verification", {}
         ).get("tls_actuable")
         _sim_steps = _tsp_summ.get("steps", 0)
-        _sim_h = f"{_sim_steps // 3600:.0f}" if _sim_steps else None
+        _n_sim_h = _sim_steps // 3600 if _sim_steps else 0
+        _sim_h = str(_n_sim_h) if _n_sim_h else None
 
-        # TSP actuation
-        _total_dec = _tsp_summ.get("total_decisions") or _tsp_summ.get("cits_processing_messages")
-        _applied = _tsp_summ.get("applied_events") or _tsp_summ.get("approved_decisions")
+        # TSP actuation — use `is None` not `or` so that legitimate 0 values are preserved
+        _total_dec = _tsp_summ.get("total_decisions")
+        if _total_dec is None:
+            _total_dec = _tsp_summ.get("cits_processing_messages")
+        _applied = _tsp_summ.get("applied_events")
+        if _applied is None:
+            _applied = _tsp_summ.get("approved_decisions")
         _early_g = (_tsp_summ.get("by_action") or {}).get("early_green")
         _ext_g = (_tsp_summ.get("by_action") or {}).get("green_extension")
-        _safety_blocks = _tsp_summ.get("blocked_by_safety", 0)
+        _safety_blocks = _tsp_summ.get("blocked_by_safety") or 0
 
-        # KPI deltas
-        _b_bus = _bk.get("buses", {}).get("mean_time_loss_s") or _bk.get("priority_vehicles", {}).get("mean_time_loss_s")
-        _t_bus = _tk.get("buses", {}).get("mean_time_loss_s") or _tk.get("priority_vehicles", {}).get("mean_time_loss_s")
+        # KPI deltas — use `is None` fallback so that 0.0 (e.g. perfect punctuality) is kept
+        _b_bus = _bk.get("buses", {}).get("mean_time_loss_s")
+        if _b_bus is None:
+            _b_bus = _bk.get("priority_vehicles", {}).get("mean_time_loss_s")
+        _t_bus = _tk.get("buses", {}).get("mean_time_loss_s")
+        if _t_bus is None:
+            _t_bus = _tk.get("priority_vehicles", {}).get("mean_time_loss_s")
         _b_gen = _bk.get("general_traffic", {}).get("mean_time_loss_s")
         _t_gen = _tk.get("general_traffic", {}).get("mean_time_loss_s")
         _n_all = _tk.get("all_vehicles", {}).get("vehicles") or _bk.get("all_vehicles", {}).get("vehicles") or 0
@@ -1862,7 +1868,7 @@ if _active == "Resumo":
         # paragraph 2 — scenario and test conditions
         _p2_parts = ["O teste foi realizado no"]
         if _scn_label:
-            _p2_parts.append(f"<strong>{_scn_label}</strong>,")
+            _p2_parts.append(f"<strong>{_html.escape(_scn_label)}</strong>,")
         _p2_parts.append("que inclui uma <strong>Safety Layer</strong> activa — responsável por filtrar")
         _p2_parts.append("actuações que possam comprometer a segurança da intersecção.")
         if _sim_h and _n_tls:
@@ -1889,7 +1895,7 @@ if _active == "Resumo":
         # paragraph 3 — qualitative comment on results. The exact figures live in the
         # KPI cards right below, so this prose stays number-free to avoid restating them.
         _p3_parts = []
-        if _b_bus and _t_bus:
+        if _b_bus is not None and _t_bus is not None:
             if _t_bus < _b_bus:
                 _p3_parts.append(
                     "Os resultados confirmam o objectivo primário: com o TSP, os "
@@ -1900,7 +1906,7 @@ if _active == "Resumo":
                     "Neste cenário, o TSP <strong>não reduziu a perda de tempo dos "
                     "autocarros</strong>."
                 )
-        if _b_gen and _t_gen:
+        if _b_gen is not None and _t_gen is not None:
             if _t_gen <= _b_gen:
                 _p3_parts.append(
                     "O <strong>tráfego geral não foi penalizado</strong> — chegou mesmo a "
@@ -1926,7 +1932,7 @@ if _active == "Resumo":
         st.markdown(
             f'<div class="verdict-card {vmod}">'
             f'<p class="verdict-headline">Veredicto · {vtitle}</p>'
-            f'<p class="verdict-support">{v.get("reason", v.get("status", ""))}</p></div>',
+            f'<p class="verdict-support">{_html.escape(v.get("reason", v.get("status", "")))}</p></div>',
             unsafe_allow_html=True,
         )
 
@@ -1944,7 +1950,7 @@ if _active == "Resumo":
             bv = bk.get(key, {}).get("mean_time_loss_s")
             tv = tk.get(key, {}).get("mean_time_loss_s")
             n = tk.get(key, {}).get("vehicles") or 0
-            if bv and tv and n:
+            if bv and tv is not None and n:
                 hero.append(
                     {
                         "Classe": label,
@@ -2063,9 +2069,9 @@ elif _active == "Decisão":
         # aplicação é o nº de decisões ACCIONÁVEIS, não o total de avaliações.
         actionable = (by_action.get("green_extension") or 0) + (by_action.get("early_green") or 0)
         non_actionable = {
-            "Reavaliar no ciclo seguinte": by_action.get("reevaluate_next_cycle", 0),
-            "Rejeitadas (score abaixo do limiar)": by_action.get("reject", 0),
-            "Sem acção necessária (verde já chega)": by_action.get("no_action", 0),
+            "Reavaliar no ciclo seguinte": by_action.get("reevaluate_next_cycle") or 0,
+            "Rejeitadas (score abaixo do limiar)": by_action.get("reject") or 0,
+            "Sem acção necessária (verde já chega)": by_action.get("no_action") or 0,
         }
 
         ctx_block(
@@ -2120,7 +2126,7 @@ elif _active == "Decisão":
                             "Accionáveis (propõem mudança)",
                             "Aplicadas em rede",
                         ],
-                        x=[total, actionable, applied],
+                        x=[total, actionable, min(applied, actionable) if actionable else applied],
                         textinfo="value+percent initial",
                         marker_color=["#94a3b8", PALETTE["tsp"], COLOR_GOOD],
                         hovertemplate="%{y}: %{x}<extra></extra>",
@@ -2488,7 +2494,7 @@ elif _active == "C-ITS":
                 mc2.metric("Entregues", f"{delivered:,}", border=True)
                 mc3.metric(
                     "Perdidas",
-                    mt.get("dropped", "—"),
+                    "—" if mt.get("dropped") is None else mt["dropped"],
                     border=True,
                     help="Mensagens que não chegaram ao destino.",
                 )
@@ -3130,8 +3136,8 @@ elif _active == "KPIs":
                     index=CLASS_OPTIONS.index(selected_class),
                     key="kpis_class_select",
                     on_change=_sync_vehicle_class_kpis,
-                    help="Aplica-se às outras tabs. O trade-off abaixo mostra sempre "
-                    "autocarro e tráfego geral, independente deste filtro.",
+                    help="O trade-off abaixo mostra sempre autocarro e tráfego geral, "
+                    "independente deste filtro. Activa avisos de disponibilidade de dados.",
                 )
             sel = selected_scenario
             sel_label = label_map.get(sel, sel)
@@ -3147,16 +3153,18 @@ elif _active == "KPIs":
             }
             if _scen_meta:
                 _rows_html = ""
-                if _scen_meta.get("expected_use"):
+                _eu = _scen_meta.get("expected_use")
+                if isinstance(_eu, str) and _eu.strip():
                     _rows_html += (
                         '<div class="scen-obj-row"><div class="scen-obj-lbl">Objetivo</div>'
-                        f'<p class="scen-obj-txt">{_scen_meta["expected_use"].strip()}</p></div>'
+                        f'<p class="scen-obj-txt">{_eu.strip()}</p></div>'
                     )
-                if _scen_meta.get("realism_basis"):
+                _rb = _scen_meta.get("realism_basis")
+                if isinstance(_rb, str) and _rb.strip():
                     _rows_html += (
                         '<div class="scen-obj-row"><div class="scen-obj-lbl muted">'
                         "Porquê é realista</div>"
-                        f'<p class="scen-obj-txt muted">{_scen_meta["realism_basis"].strip()}</p></div>'
+                        f'<p class="scen-obj-txt muted">{_rb.strip()}</p></div>'
                     )
                 _chips_html = ""
                 _focus = _scen_meta.get("kpi_focus") or []
