@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import datetime as _dt
+import html as _html
 import json
 import os
 import shutil
@@ -860,7 +861,7 @@ def section(title: str, focus: bool = False) -> None:
     title across all tabs reads in one consistent style. `focus=True` appends a "Foco"
     pill (KPIs tab) marking sections the selected scenario's catalog kpi_focus points at."""
     badge = '<span class="focus-badge">Foco</span>' if focus else ""
-    st.markdown(f'<p class="chart-title">{title}{badge}</p>', unsafe_allow_html=True)
+    st.markdown(f'<p class="chart-title">{_html.escape(title)}{badge}</p>', unsafe_allow_html=True)
 
 
 def insight(text: str) -> None:
@@ -1584,13 +1585,10 @@ if st.session_state.get("active_tab") not in TAB_HEADERS:
 
 report_files = {
     "Baseline KPIs": REPORTS / "sumo_baseline_kpis.json",
-    "Demonstrador TSP": REPORTS / "tsp_demonstrator_report.json",
 }
 _reports_ok = sum(1 for p in report_files.values() if p.exists())
 _reports_total = len(report_files)
-_fresh = file_mtime(REPORTS / "tsp_demonstrator_report.json") or file_mtime(
-    REPORTS / "sumo_baseline_kpis.json"
-)
+_fresh = file_mtime(REPORTS / "sumo_baseline_kpis.json")
 # ── topbar (fixed) + hamburger trigger ────────────────────────────────────────
 # The ☰ is a real st.button pinned over the topbar's left edge via its stable
 # .st-key-open_drawer class (a plain HTML icon can't trigger a rerun, and
@@ -2679,7 +2677,7 @@ elif _active == "vs RL":
         hero_lead(
             f"{matched}",
             "decisões da política RL comparadas com a baseline rule-based — veredicto "
-            f"de impacto na rede: <strong>{net_verdict}</strong>.",
+            f"de impacto na rede: <strong>{_html.escape(net_verdict)}</strong>.",
         )
         st.caption(
             "A política RL é treinada offline e avaliada contra a regra heurística; aqui vê-se "
