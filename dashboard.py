@@ -2380,7 +2380,7 @@ elif _active == "C-ITS":
                 (k for k in ("tsp_controller", "tsp") if k in tsp_run_keys),
                 tsp_run_keys[0],
             )
-            summ = demo["runs"][sel_cits_run].get("summary", {})
+            summ = demo.get("runs", {}).get(sel_cits_run, {}).get("summary", {})
             by_type = summ.get("cits_by_type", {})
             prl = summ.get("priority_request_lifecycle", {})
 
@@ -3170,8 +3170,9 @@ elif _active == "KPIs":
                 _focus = _scen_meta.get("kpi_focus") or []
                 if _focus:
                     _chips = "".join(
-                        f'<span class="scen-chip">'
-                        f"{kpi_focus_pt.get(k, k.replace('_', ' ').capitalize())}</span>"
+                        '<span class="scen-chip">'
+                        + (kpi_focus_pt[k] if k in kpi_focus_pt else k.replace("_", " ").capitalize() if isinstance(k, str) else str(k))
+                        + "</span>"
                         for k in _focus
                     )
                     _chips_html = (
@@ -3182,7 +3183,7 @@ elif _active == "KPIs":
                 st.markdown(
                     '<div class="scen-obj">'
                     f'<div class="scen-obj-head">'
-                    f'<span class="scen-obj-desc">{_desc}</span></div>'
+                    f'<span class="scen-obj-desc">{_html.escape(_desc)}</span></div>'
                     f"{_rows_html}{_chips_html}</div>",
                     unsafe_allow_html=True,
                 )
@@ -3543,7 +3544,7 @@ elif _active == "Documentação":
         "Autocarros (Linha 25) requerem duração de simulação suficiente para entrar na rede. "
         "Runs com menos de 3600 steps podem não incluir nenhuma viagem de autocarro completa.",
     ]
-    for lim in limitations + standard_limits:
+    for lim in [_html.escape(str(l)) for l in limitations] + standard_limits:
         st.markdown(f'<div class="doc-limit">{lim}</div>', unsafe_allow_html=True)
 
     if demo:
