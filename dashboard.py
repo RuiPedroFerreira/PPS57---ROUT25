@@ -528,8 +528,8 @@ header[data-testid="stHeader"] { display: none !important; }
 .st-key-drawer_panel > div:has(> .st-key-drawer_nav) {
   flex: 1 1 auto !important; display: flex !important; flex-direction: column !important; }
 .st-key-drawer_nav { flex: 1 1 auto; justify-content: flex-start !important; gap: 2px;
-  padding-top: 16px; /* matches the 16px section-label top padding so the header→Fechar
-                        gap shares the drawer's vertical rhythm */ }
+  padding-top: 16px; /* matches the 16px .drawer-section-label top padding so the
+                        header→Fechar gap shares the drawer's vertical rhythm */ }
 /* Same compact-spacing fix as drawer_bottom: Streamlit gives markdown containers a
    negative bottom margin that pulls the following nav button UP onto the section
    label, so the button's hover highlight paints over "ANÁLISE"/"REFERÊNCIA".
@@ -600,6 +600,7 @@ header[data-testid="stHeader"] { display: none !important; }
 
 /* Lighter horizontal rules (Streamlit "---") so section breaks read as hairlines. */
 hr { border: none !important; border-top: 1px solid #eef2f7 !important; margin: 1.4rem 0 !important; }
+.spacer-section { height: 1.75rem; }
 
 /* Card depth — a subtle two-layer shadow, consistent across every card surface.
    stat-card has no background of its own, so give it white to sit on the canvas. */
@@ -864,6 +865,15 @@ def insight(text: str) -> None:
 
 def warn(text: str) -> None:
     st.markdown(f'<div class="warn-box">{text}</div>', unsafe_allow_html=True)
+
+
+def ctx_block(title: str, *paras: str) -> None:
+    inner = "".join(f"<p>{p}</p>" for p in paras)
+    st.markdown(
+        f'<p class="chart-title">{title}</p>'
+        f'<div class="ctx-block">{inner}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def hero_lead(figure: str, statement_html: str, tone: str = "is-brand") -> None:
@@ -1570,6 +1580,9 @@ TAB_HEADERS = {
     ),
 }
 
+if st.session_state.active_tab not in TAB_HEADERS:
+    st.session_state.active_tab = "Resumo"
+
 report_files = {
     "Baseline KPIs": REPORTS / "sumo_baseline_kpis.json",
     "Demonstrador TSP": REPORTS / "tsp_demonstrator_report.json",
@@ -1787,8 +1800,8 @@ VERDICT_MAP = {
 }
 
 # ── navigation routing ────────────────────────────────────────────────────────
-# st.tabs is gone — the drawer sets st.session_state.active_tab, and each former
-# tab body now renders inside an if/elif on that value (bodies unchanged).
+# The drawer sets st.session_state.active_tab; each tab body renders inside an
+# if/elif on that value.
 _active = st.session_state.active_tab
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1907,15 +1920,7 @@ if _active == "Resumo":
             _p3_parts.append("Os resultados detalhados estão disponíveis nas secções abaixo.")
         _p3 = " ".join(_p3_parts)
 
-        _ctx_html = (
-            '<p class="chart-title">Análise Geral</p>'
-            '<div class="ctx-block">'
-            f"<p>{_p1}</p>"
-            f"<p>{_p2}</p>"
-            f"<p>{_p3}</p>"
-            "</div>"
-        )
-        st.markdown(_ctx_html, unsafe_allow_html=True)
+        ctx_block("Análise Geral", _p1, _p2, _p3)
 
     # ── verdict ───────────────────────────────────────────────────────────────
     if demo and "verdict" in demo:
@@ -2009,16 +2014,12 @@ if _active == "Resumo":
             render_kpi_card(m1, "mean_time_loss_s", _tl_t, _tl_b, _tl_explain)
             render_kpi_card(m2, "mean_waiting_time_s", _wt_t, _wt_b, _wt_explain)
             render_kpi_card(m3, "mean_speed_mps", _sp_t, _sp_b, _sp_explain)
-            # breathing room before the per-scenario chart so it reads as a distinct
-            # block from the cards, matching the page's section rhythm
-            st.markdown("<div style='height:1.75rem'></div>", unsafe_allow_html=True)
+            st.markdown("<div class='spacer-section'></div>", unsafe_allow_html=True)
 
         # ── per-scenario overview (zoom-out) — impacto do TSP em todos os cenários
         render_scenario_overview()
 
         # ── navigation chips: click jumps to the matching view ────────────────
-        # Real st.buttons (styled as cards via .st-key-explore_chips) set
-        # active_tab and rerun — the drawer-driven equivalent of the old tabs.
         section("Explorar em detalhe")
         nav_items = [
             ("KPIs", "KPIs por cenário operacional — baseline vs TSP, por classe e métrica."),
@@ -2051,7 +2052,7 @@ elif _active == "Decisão":
             (k for k in ("tsp_controller", "tsp") if k in tsp_run_keys),
             tsp_run_keys[0] if tsp_run_keys else (runs_all[0] if runs_all else ""),
         )
-        runtime = demo["runs"].get(sel_run, {}).get("runtime", {})
+        runtime = demo.get("runs", {}).get(sel_run, {}).get("runtime", {})
 
         total = runtime.get("total_decisions", 0)
         applied = runtime.get("applied_events", 0)
@@ -2070,38 +2071,24 @@ elif _active == "Decisão":
             "Sem acção necessária (verde já chega)": by_action.get("no_action", 0),
         }
 
-        # ── explanatory context (mirrors the Resumo "Análise Geral" block) ────
-        # Conceptual, number-free prose: how the engine works, independent of the
-        # run. The figures live in the hero_lead immediately below, so this stays
-        # free of numbers to avoid restating them.
-        _dp1 = (
+        ctx_block(
+            "Como funciona o motor de decisão",
             "O <strong>motor de decisão TSP</strong> decide, ciclo a ciclo, se um autocarro "
             "recebe prioridade semafórica. Quando um autocarro se aproxima de uma intersecção "
             "instrumentada, envia um pedido por <strong>C-ITS</strong>; o motor pontua esse "
             "pedido com base no <strong>atraso ao horário</strong>, na regularidade do "
-            "<strong>intervalo (headway)</strong> e na <strong>proximidade</strong> da intersecção."
-        )
-        _dp2 = (
+            "<strong>intervalo (headway)</strong> e na <strong>proximidade</strong> da intersecção.",
             "De cada avaliação resulta uma acção: <strong>verde antecipado</strong> ou "
             "<strong>extensão de verde</strong> — as duas únicas que alteram o semáforo "
             "(accionáveis) — ou então <strong>rejeitar</strong>, <strong>reavaliar no ciclo "
             "seguinte</strong> ou <strong>sem acção</strong> quando o verde já é suficiente. "
             "Por isso o número de decisões avaliadas é muito superior ao de actuações aplicadas: "
-            "a maioria das decisões é, deliberadamente, uma não-actuação."
-        )
-        _dp3 = (
+            "a maioria das decisões é, deliberadamente, uma não-actuação.",
             "Antes de chegar à rede, cada actuação accionável passa por uma "
             "<strong>Safety Layer</strong>, que barra qualquer mudança que comprometa a "
             "segurança da intersecção (amarelo insuficiente, conflito com peões ou com outra "
             "fase). As secções abaixo percorrem este caminho completo — do funil de decisões "
-            "às acções concedidas, ao verde injectado e aos bloqueios de segurança."
-        )
-        st.markdown(
-            '<p class="chart-title">Como funciona o motor de decisão</p>'
-            '<div class="ctx-block">'
-            f"<p>{_dp1}</p><p>{_dp2}</p><p>{_dp3}</p>"
-            "</div>",
-            unsafe_allow_html=True,
+            "às acções concedidas, ao verde injectado e aos bloqueios de segurança.",
         )
 
         # ── plain-language headline (lead with the story) ─────────────────────
@@ -2138,7 +2125,7 @@ elif _active == "Decisão":
                         ],
                         x=[total, actionable, applied],
                         textinfo="value+percent initial",
-                        marker_color=["#94a3b8", "#1d4ed8", COLOR_GOOD],
+                        marker_color=["#94a3b8", PALETTE["tsp"], COLOR_GOOD],
                         hovertemplate="%{y}: %{x}<extra></extra>",
                     )
                 )
@@ -2298,7 +2285,7 @@ elif _active == "Decisão":
                     x=vals_o,
                     y=labels_o,
                     orientation="h",
-                    marker_color="#1d4ed8",
+                    marker_color=PALETTE["tsp"],
                     texttemplate="%{x:.3f}",
                     textposition="outside",
                     cliponaxis=False,
@@ -2394,38 +2381,25 @@ elif _active == "C-ITS":
             by_type = summ.get("cits_by_type", {})
             prl = summ.get("priority_request_lifecycle", {})
 
-            # ── explanatory context (mirrors the Resumo/Decisão intro blocks) ──
-            # Conceptual, number-free prose: what C-ITS is and how the protocol
-            # works. The figures live in the hero_lead immediately below.
-            _cp1 = (
+            ctx_block(
+                "Como funciona a comunicação C-ITS",
                 "O <strong>C-ITS</strong> (Cooperative Intelligent Transport Systems) é a "
                 "camada de comunicação <strong>V2X</strong> que liga os autocarros aos "
                 "semáforos. É por aqui que o autocarro 'fala' com a infraestrutura: anuncia "
                 "que se aproxima e pede prioridade, e o semáforo responde. Sem esta troca de "
                 "mensagens, o motor de decisão TSP não teria como saber que vem um autocarro "
-                "a caminho."
-            )
-            _cp2 = (
+                "a caminho.",
                 "A conversa segue um protocolo normalizado de quatro mensagens: o semáforo "
                 "difunde o <strong>mapa das aproximações (MAPEM)</strong> e o <strong>estado "
                 "das fases em tempo real (SPATEM)</strong>; o autocarro, ao aproximar-se, "
                 "envia um <strong>pedido de prioridade (SREM)</strong>; e a unidade de berma "
                 "(RSU) devolve a decisão — concede ou recusa — por <strong>SSEM</strong>. O "
-                "diagrama abaixo mostra esta sequência."
-            )
-            _cp3 = (
+                "diagrama abaixo mostra esta sequência.",
                 "Cada pedido SREM origina exactamente uma resposta SSEM — é nesse par que se "
                 "medem a fiabilidade e a latência do canal. Esta tab quantifica o volume de "
                 "mensagens por tipo, a saúde do transporte e o ciclo de vida dos pedidos — os "
                 "dados que alimentam, em tempo real, as decisões analisadas na tab "
-                "<strong>Motor de decisão</strong>."
-            )
-            st.markdown(
-                '<p class="chart-title">Como funciona a comunicação C-ITS</p>'
-                '<div class="ctx-block">'
-                f"<p>{_cp1}</p><p>{_cp2}</p><p>{_cp3}</p>"
-                "</div>",
-                unsafe_allow_html=True,
+                "<strong>Motor de decisão</strong>.",
             )
 
             # ── plain-language intro: the V2X conversation ────────────────────
@@ -2677,43 +2651,30 @@ elif _active == "C-ITS":
 # ═══════════════════════════════════════════════════════════════════════════════
 
 elif _active == "vs RL":
-    # ── explanatory context (mirrors the Resumo/Decisão/C-ITS intro blocks) ──
-    # Shown regardless of data availability so the tab's purpose reads even when
-    # the comparison report hasn't been generated yet.
-    _rp1 = (
-        "Esta tab compara duas formas de decidir a prioridade semafórica: a "
-        "<strong>regra heurística (rule-based)</strong> da tab Motor de decisão — critérios "
-        "fixos e explicáveis — e uma <strong>política de Reinforcement Learning (RL)</strong>, "
-        "treinada para maximizar o desempenho da rede. A pergunta é simples: uma política "
-        "aprendida com dados decide melhor do que regras escritas à mão?"
-    )
-    _rp2 = (
-        "A política RL é treinada <strong>offline</strong>, por tentativa e erro em simulação, "
-        "ajustando-se para reduzir o tempo perdido sem degradar o resto da rede. É depois "
-        "avaliada <strong>decisão a decisão</strong> contra a baseline rule-based: para cada "
-        "situação compara-se a acção que cada abordagem escolheria e o valor estimado do "
-        "respectivo resultado."
-    )
-    _rp3 = (
-        "Um <strong>veredicto positivo</strong> indica que a RL escolheu uma acção com melhor "
-        "valor esperado do que a regra. As secções abaixo mostram a distribuição desses "
-        "veredictos e o impacto agregado nos KPIs de rede. A RL é aqui uma <strong>linha de "
-        "investigação</strong> — serve para testar se há margem para superar a heurística, que "
-        "continua a ser a base de referência."
-    )
-    st.markdown(
-        '<p class="chart-title">Como funciona a comparação vs RL</p>'
-        '<div class="ctx-block">'
-        f"<p>{_rp1}</p><p>{_rp2}</p><p>{_rp3}</p>"
-        "</div>",
-        unsafe_allow_html=True,
-    )
     if not decision_outcome:
         warn(
             "Report de comparação Baseline vs RL não disponível. "
             "Corre <code>make evaluate-decision-outcomes</code> para gerar este relatório."
         )
     else:
+        ctx_block(
+            "Como funciona a comparação vs RL",
+            "Esta tab compara duas formas de decidir a prioridade semafórica: a "
+            "<strong>regra heurística (rule-based)</strong> da tab Motor de decisão — critérios "
+            "fixos e explicáveis — e uma <strong>política de Reinforcement Learning (RL)</strong>, "
+            "treinada para maximizar o desempenho da rede. A pergunta é simples: uma política "
+            "aprendida com dados decide melhor do que regras escritas à mão?",
+            "A política RL é treinada <strong>offline</strong>, por tentativa e erro em simulação, "
+            "ajustando-se para reduzir o tempo perdido sem degradar o resto da rede. É depois "
+            "avaliada <strong>decisão a decisão</strong> contra a baseline rule-based: para cada "
+            "situação compara-se a acção que cada abordagem escolheria e o valor estimado do "
+            "respectivo resultado.",
+            "Um <strong>veredicto positivo</strong> indica que a RL escolheu uma acção com melhor "
+            "valor esperado do que a regra. As secções abaixo mostram a distribuição desses "
+            "veredictos e o impacto agregado nos KPIs de rede. A RL é aqui uma <strong>linha de "
+            "investigação</strong> — serve para testar se há margem para superar a heurística, que "
+            "continua a ser a base de referência.",
+        )
         matched = decision_outcome.get("matched_decision_count", 0) or 0
         net_verdict = decision_outcome.get("network_impact_verdict") or "—"
         hero_lead(
@@ -3522,9 +3483,10 @@ elif _active == "Documentação":
 
     # ── proveniência: o que foi corrido e de onde vêm os dados ─────────────────
     section("Configuração da simulação")
-    if demo:
-        sel_run_meta = st.selectbox("Run", list(demo.get("runs", {}).keys()), key="meta_run")
-        summ_m = demo["runs"][sel_run_meta].get("summary", {})
+    _demo_runs = demo.get("runs", {}) if demo else {}
+    if _demo_runs:
+        sel_run_meta = st.selectbox("Run", list(_demo_runs.keys()), key="meta_run")
+        summ_m = _demo_runs.get(sel_run_meta, {}).get("summary", {})
         col_a, col_b = st.columns(2)
         with col_a:
             spec_table(
