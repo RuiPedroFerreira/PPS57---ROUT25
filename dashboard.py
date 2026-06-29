@@ -1464,12 +1464,12 @@ GLOSSARY = [
     {
         "term": "Perda de tempo média",
         "unit": "segundos (s)",
-        "def": "Tempo adicional gasto por veículo face ao percurso sem paragens.",
+        "def": "Tempo perdido por veículo face à velocidade ideal de rede (free-flow speed). Menor é melhor.",
     },
     {
         "term": "Tempo de espera médio",
         "unit": "segundos (s)",
-        "def": "Tempo total parado em semáforos por veículo durante a simulação.",
+        "def": "Tempo parado em fila ou semáforo vermelho por veículo durante a simulação.",
     },
     {
         "term": "Velocidade média",
@@ -1492,19 +1492,19 @@ GLOSSARY = [
         "def": "Segmentação dos veículos simulados: autocarros, tráfego geral, veículos prioritários, emergência.",
     },
     {
-        "term": "Throughput",
-        "unit": "veículos/hora",
-        "def": "Número de veículos que completam o percurso por hora de simulação.",
+        "term": "Veículos concluídos",
+        "unit": "veículos",
+        "def": "Número de veículos que completaram a viagem dentro da janela simulada (campo vehicles dos KPIs). Apenas estes entram no cálculo das médias.",
     },
     {
         "term": "Headway",
         "unit": "segundos (s)",
-        "def": "Intervalo de tempo entre dois autocarros consecutivos na mesma paragem.",
+        "def": "Intervalo entre partidas consecutivas da mesma linha/sentido (calculado sobre os tempos de saída da origem da rota).",
     },
     {
         "term": "C-ITS",
         "unit": "—",
-        "def": "Cooperative Intelligent Transport Systems — comunicação V2I entre o autocarro e o semáforo.",
+        "def": "Cooperative Intelligent Transport Systems — comunicação V2X entre veículos e infra-estrutura semafórica.",
     },
     {
         "term": "Cenário base (Baseline)",
@@ -1515,11 +1515,6 @@ GLOSSARY = [
         "term": "RL (Reinforcement Learning)",
         "unit": "—",
         "def": "Controlador de semáforo treinado por aprendizagem por reforço, comparado com a regra TSP.",
-    },
-    {
-        "term": "Delay por fase",
-        "unit": "segundos (s)",
-        "def": "Atraso acumulado durante cada fase semafórica, por classe de veículo.",
     },
 ]
 
@@ -1538,7 +1533,7 @@ STEPS = [
     {
         "n": "3",
         "title": "Analisa o gráfico de barras",
-        "body": "Barras à esquerda (verde) = o TSP melhora essa classe. Barras à direita (vermelho) = custo para essa classe. O eixo está centrado em zero.",
+        "body": "Barras à esquerda do zero = melhoria (menos tempo perdido); à direita = custo. Azul = autocarros, laranja = tráfego geral.",
     },
     {
         "n": "4",
@@ -3611,7 +3606,7 @@ elif _active == "Documentação":
             ("Dados sintéticos", str(data_policy.get("synthetic_operational_data", "—"))),
             ("Rede viária", "sumo/plain/corredor.{nod,edg}.xml — geometria manual da Boavista"),
             ("Paragens", "sumo/additional/bus_stops.add.xml"),
-            ("Rotas", "sumo/routes/routes.rou.xml — randomTrips com semente controlada"),
+            ("Rotas", "sumo/routes/routes.rou.xml — flows Poisson gerados por generate_plain_corridor.py; autocarros programados manualmente; semente de simulação controlada"),
         ]
     )
 
