@@ -266,7 +266,7 @@ ACTION_META = {
     "reject": ("Rejeitado", COLOR_BAD, "Pedido recusado por critério de elegibilidade."),
     "reevaluate_next_cycle": (
         "Reavaliar no ciclo",
-        "#f59e0b",
+        "#d97706",
         "Decisão adiada — reavalia na próxima janela de decisão.",
     ),
 }
@@ -981,11 +981,24 @@ def render_kpi_card(col, metric_key: str, value, baseline_val=None, explanation:
         if not neutral and dabs != 0:
             stripe_cls = " kpi-good" if improved else " kpi-bad"
     explain_html = f'<p class="kpi-explain">{explanation}</p>' if explanation else ""
+    bar_html = ""
+    if value is not None and baseline_val not in (None, 0) and value >= 0 and baseline_val > 0:
+        _ref = max(baseline_val, value) * 1.1
+        _base_pct = (baseline_val / _ref) * 100
+        _tsp_pct = min((value / _ref) * 100, 100)
+        _bar_improved = (value > baseline_val) if metric_key in HIGHER_IS_BETTER else (value < baseline_val)
+        _bar_color = "#16a34a" if _bar_improved else ("#dc2626" if value != baseline_val else "#94a3b8")
+        bar_html = (
+            f'<div style="margin-top:10px;position:relative;height:5px;background:#e2e8f0;border-radius:3px;">'
+            f'<div style="position:absolute;left:0;height:100%;width:{_tsp_pct:.1f}%;background:{_bar_color};border-radius:3px;opacity:0.8;"></div>'
+            f'<div style="position:absolute;left:{_base_pct:.1f}%;top:-3px;height:11px;width:2px;background:#64748b;border-radius:1px;" title="baseline"></div>'
+            f'</div>'
+        )
     col.markdown(
         f'<div class="kpi-card{stripe_cls}" title="{desc}">'
         f'<div class="kpi-label">{label}</div>'
         f'<div class="kpi-value">{fmt(value, unit)}</div>'
-        f"{delta_html}{explain_html}</div>",
+        f"{delta_html}{bar_html}{explain_html}</div>",
         unsafe_allow_html=True,
     )
 
@@ -3095,8 +3108,46 @@ elif _active == "KPIs":
                 for col in delta_cols:
                     if col in frame.columns:
                         styles[col] = frame[col].map(_delta_color)
+                if "Veredicto" in frame.columns:
+                    styles["Veredicto"] = frame["Veredicto"].map(
+                        lambda v: "background-color:#dcfce7;color:#15803d;font-weight:600"
+                        if v == "favorável"
+                        else (
+                            "background-color:#fee2e2;color:#b91c1c;font-weight:600"
+                            if v in ("bus pior", "segurança")
+                            else (
+                                "background-color:#f1f5f9;color:#475569;font-weight:600"
+                                if v == "neutro"
+                                else ""
+                            )
+                        )
+                    )
                 return styles
 
+            # ── verdict summary pills ──────────────────────────────────────────
+            _vc = ov["Veredicto"].value_counts().to_dict()
+            _n_fav = _vc.get("favorável", 0)
+            _n_neu = _vc.get("neutro", 0)
+            _n_bad = sum(v for k, v in _vc.items() if k not in ("favorável", "neutro", "—"))
+            _s1, _s2, _s3 = st.columns(3)
+            _s1.markdown(
+                f'<div class="stat-card"><div class="stat-label">Favoráveis</div>'
+                f'<div class="stat-value stat-positive">{_n_fav}</div>'
+                f'<div class="stat-unit">de {n_scen} cenários</div></div>',
+                unsafe_allow_html=True,
+            )
+            _s2.markdown(
+                f'<div class="stat-card"><div class="stat-label">Neutros</div>'
+                f'<div class="stat-value stat-neutral">{_n_neu}</div>'
+                f'<div class="stat-unit">de {n_scen} cenários</div></div>',
+                unsafe_allow_html=True,
+            )
+            _s3.markdown(
+                f'<div class="stat-card"><div class="stat-label">Com custo</div>'
+                f'<div class="stat-value stat-negative">{_n_bad}</div>'
+                f'<div class="stat-unit">de {n_scen} cenários</div></div>',
+                unsafe_allow_html=True,
+            )
             st.dataframe(
                 ov.style.apply(_style_overview, axis=None),
                 width="stretch",
@@ -3296,6 +3347,69 @@ elif _active == "KPIs":
                     unsafe_allow_html=True,
                 )
 
+            # ── ▸ Perfil multidimensional (radar) ────────────────────────────────
+            def _radar_score(b, t, good="lower"):
+                if b is None or t is None or b == 0:
+                    return 50
+                chg = (t - b) / b * 100
+                return max(0, min(100, 50 - chg if good == "lower" else 50 + chg))
+
+            _r_bus_b = _agg(sel, baseline_rt, "buses", "mean_time_loss_s")
+            _r_bus_t = _agg(sel, tsp_rt, "buses", "mean_time_loss_s")
+            _r_gen_b = _agg(sel, baseline_rt, "general_traffic", "mean_time_loss_s")
+            _r_gen_t = _agg(sel, tsp_rt, "general_traffic", "mean_time_loss_s")
+            _r_q_b = _agg(sel, baseline_rt, "network", "max_queue_vehicles")
+            _r_q_t = _agg(sel, tsp_rt, "network", "max_queue_vehicles")
+            _r_coll_t = _agg(sel, tsp_rt, "safety", "collisions")
+            _r_jam_t = _agg(sel, tsp_rt, "safety", "teleports_jam")
+            _r_co2_b = _agg(sel, baseline_rt, "emissions", "total_co2_mg_per_vehicle_km")
+            _r_co2_t = _agg(sel, tsp_rt, "emissions", "total_co2_mg_per_vehicle_km")
+            _r_safety = (
+                100
+                if (_r_coll_t is not None and _r_coll_t == 0 and _r_jam_t is not None and _r_jam_t == 0)
+                else (50 if (_r_coll_t is None and _r_jam_t is None) else 0)
+            )
+            _rlabels = ["Autocarro", "Tráf. geral", "Filas", "Segurança", "Emissões CO₂"]
+            _rvals = [
+                _radar_score(_r_bus_b, _r_bus_t),
+                _radar_score(_r_gen_b, _r_gen_t),
+                _radar_score(_r_q_b, _r_q_t),
+                _r_safety,
+                _radar_score(_r_co2_b, _r_co2_t),
+            ]
+            _fig_radar = go.Figure()
+            _fig_radar.add_trace(go.Scatterpolar(
+                r=_rvals + [_rvals[0]],
+                theta=_rlabels + [_rlabels[0]],
+                fill="toself",
+                fillcolor="rgba(37,99,235,0.12)",
+                line={"color": "#2563eb", "width": 2},
+                name="TSP vs baseline",
+            ))
+            _fig_radar.add_trace(go.Scatterpolar(
+                r=[50] * len(_rlabels) + [50],
+                theta=_rlabels + [_rlabels[0]],
+                mode="lines",
+                line={"color": "#94a3b8", "width": 1, "dash": "dot"},
+                name="Neutro",
+            ))
+            chart_layout(_fig_radar, f"Perfil multidimensional · {sel_label}", height=320)
+            _fig_radar.update_layout(
+                polar={
+                    "radialaxis": {
+                        "visible": True,
+                        "range": [0, 100],
+                        "tickvals": [25, 50, 75],
+                        "ticktext": ["custo", "neutro", "melhoria"],
+                        "tickfont": {"size": 9},
+                    },
+                    "angularaxis": {"tickfont": {"size": 11}},
+                },
+                margin={"t": 44, "b": 70, "l": 60, "r": 60},
+                legend={"orientation": "h", "yanchor": "bottom", "y": -0.3, "bgcolor": "rgba(0,0,0,0)"},
+            )
+            st.plotly_chart(_fig_radar, width="stretch", config={"displayModeBar": False})
+
             # ── ▸ Trade-off: autocarro vs tráfego geral ───────────────────────
             section(f"Trade-off TSP · {sel_label}", focus="tradeoff" in _focus_sections)
             _tradeoff = ["mean_time_loss_s", "mean_waiting_time_s", "mean_duration_s"]
@@ -3375,7 +3489,7 @@ elif _active == "KPIs":
                 lbl, unit, _ = KPI_META.get(mk, (mk, "", ""))
                 state = "—"
                 if ok is not None and t is not None:
-                    state = "ok" if ok(t) else "excede"
+                    state = "✓ ok" if ok(t) else "✗ excede"
                 srows.append(
                     {
                         "Indicador": lbl + (f" ({unit})" if unit else ""),
@@ -3389,12 +3503,16 @@ elif _active == "KPIs":
             if srows:
                 def _style_safety(frame):
                     styles = pd.DataFrame("", index=frame.index, columns=frame.columns)
-                    if "Estado" in frame.columns:
-                        styles["Estado"] = frame["Estado"].map(
-                            lambda v: "background-color:#dcfce7;color:#15803d"
-                            if v == "ok"
-                            else ("background-color:#fee2e2;color:#b91c1c" if v == "excede" else "")
-                        )
+                    if "Estado" not in frame.columns:
+                        return styles
+                    for i, row in frame.iterrows():
+                        v = row.get("Estado", "")
+                        if "ok" in str(v):
+                            styles.loc[i, :] = "background-color:#f0fdf4"
+                            styles.loc[i, "Estado"] = "background-color:#dcfce7;color:#15803d;font-weight:600"
+                        elif "excede" in str(v):
+                            styles.loc[i, :] = "background-color:#fff1f2"
+                            styles.loc[i, "Estado"] = "background-color:#fee2e2;color:#b91c1c;font-weight:600"
                     return styles
 
                 st.dataframe(
