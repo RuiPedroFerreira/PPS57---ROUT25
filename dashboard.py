@@ -2435,7 +2435,18 @@ elif _active == "Decisão":
                 for tid, d in per_tls.items()
             ]
             df_tls = pd.DataFrame(tls_rows).sort_values("Decisões", ascending=False)
-            st.dataframe(df_tls, width="stretch", hide_index=True)
+
+            def _style_tls(frame):
+                styles = pd.DataFrame("", index=frame.index, columns=frame.columns)
+                if "Bloqueadas" in frame.columns:
+                    styles["Bloqueadas"] = frame["Bloqueadas"].map(
+                        lambda v: "background-color:#fee2e2;color:#b91c1c"
+                        if isinstance(v, (int, float)) and v > 0
+                        else ""
+                    )
+                return styles
+
+            st.dataframe(df_tls.style.apply(_style_tls, axis=None), width="stretch", hide_index=True)
             download_csv(df_tls, f"per_tls_{sel_run}.csv", key=f"dl_tls_{sel_run}")
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2824,11 +2835,29 @@ elif _active == "vs RL":
                         "Baseline": fmt(bv),
                         "RL": fmt(rv),
                         "Δ (s)": fmt(r.get("delta")),
-                        "Δ (%)": f"{p:+.1f}%" if p is not None else "—",
+                        "Δ (%)": p,
                     }
                 )
             df_rl = pd.DataFrame(rl_rows)
-            st.dataframe(df_rl, width="stretch", hide_index=True)
+
+            def _style_rl(frame):
+                styles = pd.DataFrame("", index=frame.index, columns=frame.columns)
+                if "Δ (%)" in frame.columns:
+                    styles["Δ (%)"] = frame["Δ (%)"].map(
+                        lambda v: ""
+                        if v is None or (isinstance(v, float) and pd.isna(v))
+                        else ("background-color:#dcfce7;color:#15803d" if v < 0 else ("background-color:#fee2e2;color:#b91c1c" if v > 0 else ""))
+                    )
+                return styles
+
+            st.dataframe(
+                df_rl.style.apply(_style_rl, axis=None),
+                width="stretch",
+                hide_index=True,
+                column_config={
+                    "Δ (%)": st.column_config.NumberColumn(format="%+.1f%%"),
+                },
+            )
             download_csv(df_rl, "baseline_vs_rl_kpis.csv", key="dl_rl")
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -3358,8 +3387,18 @@ elif _active == "KPIs":
                     }
                 )
             if srows:
+                def _style_safety(frame):
+                    styles = pd.DataFrame("", index=frame.index, columns=frame.columns)
+                    if "Estado" in frame.columns:
+                        styles["Estado"] = frame["Estado"].map(
+                            lambda v: "background-color:#dcfce7;color:#15803d"
+                            if v == "ok"
+                            else ("background-color:#fee2e2;color:#b91c1c" if v == "excede" else "")
+                        )
+                    return styles
+
                 st.dataframe(
-                    pd.DataFrame(srows),
+                    pd.DataFrame(srows).style.apply(_style_safety, axis=None),
                     width="stretch",
                     hide_index=True,
                     column_config={
