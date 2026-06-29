@@ -303,9 +303,9 @@ PALETTE = {
 
 CSS = """
 <style>
-/* Inter is referenced throughout this stylesheet — load it so the typography is
-   actually rendered in Inter (not the system fallback) and looks crisp. */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+/* Inter is loaded via a non-blocking <link rel="stylesheet"> + preconnect emitted
+   just before this CSS (FONT_LINKS) — faster than an @import inside <style>, which
+   serializes CSS parse → fetch CSS → fetch font and delays first paint. */
 
 html, body, [class*="css"], [data-testid="stAppViewContainer"], .stApp {
   font-family: "Inter", "Segoe UI", system-ui, sans-serif;
@@ -329,7 +329,7 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"], .stApp {
 .badge { display:inline-block; background:#eff6ff; border:1px solid #bfdbfe; color:#1d4ed8;
          font-size:0.72rem; font-weight:600; padding:2px 8px; border-radius:4px;
          margin-left:8px; vertical-align:middle; }
-.freshness { font-size:0.74rem; color:#94a3b8; margin:6px 0 0; }
+.freshness { font-size:0.74rem; color:#64748b; margin:6px 0 0; }
 .ctx-block { background:#f8fafc; border:1px solid #e2e8f0; border-left:3px solid #1d4ed8;
              border-radius:6px; padding:14px 18px; margin-bottom:16px; }
 .ctx-block p { font-size:0.83rem; color:#334155; line-height:1.65; margin:0 0 6px; }
@@ -402,7 +402,7 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"], .stApp {
             border-radius:5px; padding:2px 7px; color:#1d4ed8; }
 
 /* tighten metric cards */
-[data-testid="stMetricValue"] { font-size:1.45rem !important; font-weight:700; }
+[data-testid="stMetricValue"] { font-size:1.45rem !important; font-weight:700; font-variant-numeric:tabular-nums; }
 [data-testid="stMetricLabel"] { font-size:0.78rem; }
 
 /* C-ITS conversation flow */
@@ -424,9 +424,9 @@ section.main > div { padding-top: 1rem; }
 .kpi-card.kpi-good::before { background:#16a34a; }
 .kpi-card.kpi-bad::before  { background:#dc2626; }
 .kpi-card .kpi-label { font-size:12px; color:#64748b; font-weight:600; margin:0; }
-.kpi-card .kpi-value { font-size:28px; font-weight:700; color:#0f172a; line-height:1.15; margin:4px 0 0; }
+.kpi-card .kpi-value { font-size:28px; font-weight:700; color:#0f172a; line-height:1.15; margin:4px 0 0; font-variant-numeric:tabular-nums; }
 .kpi-card .kpi-delta { font-size:14px; font-weight:600; margin:6px 0 0; }
-.kpi-delta.kpi-good { color:#16a34a; }
+.kpi-delta.kpi-good { color:#15803d; }
 .kpi-delta.kpi-bad  { color:#dc2626; }
 .kpi-delta.kpi-flat { color:#64748b; }
 .kpi-card .kpi-explain { font-size:11.5px; color:#64748b; line-height:1.6; margin:12px 0 0;
@@ -518,7 +518,7 @@ header[data-testid="stHeader"] { display: none !important; }
    Streamlit gives markdown containers a -16px bottom margin (compact spacing) which
    pulls each block up onto the previous one; neutralise it across the bottom group
    so the label, hint, select and status block stack with their own spacing. */
-.drawer-filter-hint { font-size: 10.5px; color: #94a3b8; line-height: 1.45; padding: 0 14px 8px; }
+.drawer-filter-hint { font-size: 10.5px; color: #64748b; line-height: 1.45; padding: 0 14px 8px; }
 .st-key-drawer_bottom [data-testid="stMarkdownContainer"] { margin-bottom: 0 !important; }
 .drawer-filter-hint strong { color: #64748b; font-weight: 600; }
 .st-key-drawer_panel [data-baseweb="select"] > div {
@@ -546,7 +546,7 @@ header[data-testid="stHeader"] { display: none !important; }
 .drawer-head .dh-logo span { color: #10b981; }
 .drawer-head .dh-sub { font-size: 11px; color: #64748b; }
 .drawer-section-label { font-size: 9.5px; font-weight: 700; letter-spacing: 0.11em; text-transform: uppercase;
-                        color: #94a3b8; padding: 16px 14px 5px;
+                        color: #64748b; padding: 16px 14px 5px;
                         /* keep the label above any adjacent button hover highlight */
                         position: relative; z-index: 1; }
 .nav-divider { height: 0.5px; background: #eef2f7; margin: 10px 14px; }
@@ -561,7 +561,7 @@ header[data-testid="stHeader"] { display: none !important; }
                  box-sizing: border-box; display: flex; align-items: center; gap: 9px;
                  padding: 12px 14px; background: #ffffff;
                  border-top: 0.5px solid #e2e8f0; border-right: 0.5px solid #e2e8f0; }
-.drawer-footer-label { font-size: 10px; color: #94a3b8; font-weight: 600; white-space: nowrap;
+.drawer-footer-label { font-size: 10px; color: #64748b; font-weight: 600; white-space: nowrap;
                        text-transform: uppercase; letter-spacing: 0.06em; }
 .drawer-footer-logo { height: 18px; width: auto; opacity: 0.75; }
 
@@ -576,7 +576,7 @@ header[data-testid="stHeader"] { display: none !important; }
               padding:0.6rem 0.75rem; margin-bottom:0.5rem; }
 .gloss-term { font-size:13px; font-weight:600; color:#0f172a; margin-bottom:0.2rem;
               display:flex; justify-content:space-between; align-items:baseline; gap:0.5rem; }
-.gloss-unit { font-size:11px; font-weight:400; color:#94a3b8; white-space:nowrap; }
+.gloss-unit { font-size:11px; font-weight:400; color:#64748b; white-space:nowrap; }
 .gloss-def { font-size:12px; color:#64748b; line-height:1.55; }
 .step-card { display:flex; gap:0.75rem; align-items:flex-start; margin-bottom:0.75rem;
              background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:0.85rem 1rem; }
@@ -611,12 +611,13 @@ hr { border: none !important; border-top: 1px solid #eef2f7 !important; margin: 
 .status-block, .step, .step-card {
   box-shadow: 0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.05); }
 
-/* Lift the interactive-feeling cards on hover. */
+/* Static cards get a shadow-only hover — no lift. The translate lift is reserved
+   for genuinely interactive surfaces (the explore chips, which are real buttons),
+   so a raised card never implies a click target that isn't there. */
 .kpi-card, .stat-card, .gloss-card, .step {
-  transition: box-shadow .18s ease, transform .18s ease, border-color .18s ease; }
+  transition: box-shadow .18s ease, border-color .18s ease; }
 .kpi-card:hover, .stat-card:hover, .gloss-card:hover, .step:hover {
-  box-shadow: 0 6px 16px rgba(16,24,40,0.09), 0 2px 5px rgba(16,24,40,0.05);
-  transform: translateY(-2px); }
+  box-shadow: 0 6px 16px rgba(16,24,40,0.09), 0 2px 5px rgba(16,24,40,0.05); }
 
 /* Explore chips (real buttons) get the same gentle motion as the cards. */
 .st-key-explore_chips button {
@@ -657,8 +658,15 @@ hr { border: none !important; border-top: 1px solid #eef2f7 !important; margin: 
    Selector targets the component name Streamlit writes to the iframe title attribute
    (declared as "streamlit_echarts" in streamlit-echarts); if styling breaks after a
    library upgrade, check whether that title attribute still contains "streamlit_echarts". */
+@keyframes chart-skeleton { to { background-position: -480px 0; } }
 iframe[title*="streamlit_echarts"] {
-  background: #ffffff;
+  /* Skeleton shimmer while the ECharts bundle loads inside the iframe — the chart's
+     own opaque white canvas paints over it on load. Finite iterations so there is no
+     idle CPU afterwards; prefers-reduced-motion (below) collapses the motion. */
+  background-color: #f8fafc;
+  background-image: linear-gradient(100deg, #f8fafc 30%, #eef2f7 50%, #f8fafc 70%);
+  background-size: 480px 100%; background-repeat: no-repeat; background-position: 480px 0;
+  animation: chart-skeleton 1.15s ease-in-out 4;
   border: 1px solid #eef2f7;
   border-radius: 14px;
   box-shadow: 0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.05); }
@@ -688,6 +696,26 @@ iframe[title*="streamlit_echarts"] {
 .spec-row:first-child { border-top:none; }
 .spec-k { flex:0 0 190px; color:#64748b; font-weight:600; }
 .spec-v { color:#0f172a; word-break:break-word; }
+
+/* ── Accessibility: visible keyboard focus + reduced-motion ──────────────────
+   The drawer / topbar / chip buttons override Streamlit's box-shadow focus ring,
+   so re-establish a clear focus indicator with `outline` (independent of the
+   box-shadow the active-nav indicator and card shadows already use). */
+.st-key-drawer_panel button:focus-visible,
+.st-key-open_drawer button:focus-visible,
+.st-key-explore_chips button:focus-visible {
+  outline: 2px solid #1d4ed8 !important; outline-offset: 2px; }
+
+/* Honour the OS "reduce motion" setting — drop hover transforms and collapse
+   transition/animation durations to ~0. (ECharts canvas motion is JS-driven and
+   kept short separately.) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.001ms !important; animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
+  .kpi-card:hover, .stat-card:hover, .gloss-card:hover, .step:hover,
+  .st-key-explore_chips button:hover { transform: none !important; }
+}
 </style>
 """
 
@@ -854,6 +882,15 @@ def fmt(val, unit: str = "") -> str:
     return f"{s} {unit}".strip() if unit else s
 
 
+def nfmt(n) -> str:
+    """Integer count with a pt-style thousands separator (1234567 -> '1.234.567').
+    Used for whole-number counts shown in Portuguese prose, where the English ','
+    separator reads wrong."""
+    if n is None:
+        return "—"
+    return f"{n:,}".replace(",", ".")
+
+
 def pct(baseline, candidate) -> float | None:
     # Guard the divide-by-zero / None paths explicitly (None baseline, 0 baseline, or
     # missing candidate). abs() keeps the sign reflecting (candidate - baseline) direction.
@@ -879,7 +916,10 @@ def section(title: str, focus: bool = False) -> None:
     title across all tabs reads in one consistent style. `focus=True` appends a "Foco"
     pill (KPIs tab) marking sections the selected scenario's catalog kpi_focus points at."""
     badge = '<span class="focus-badge">Foco</span>' if focus else ""
-    st.markdown(f'<p class="chart-title">{_html.escape(title)}{badge}</p>', unsafe_allow_html=True)
+    st.markdown(
+        f'<p class="chart-title" role="heading" aria-level="2">{_html.escape(title)}{badge}</p>',
+        unsafe_allow_html=True,
+    )
 
 
 def insight(text: str) -> None:
@@ -1115,7 +1155,7 @@ def render_simulation_panel() -> None:
         value=1200,
         step=200,
         help="Mais passos = simulação mais longa e realista. Autocarros da Linha 25 "
-        "precisam de ≥3600 passos para entrar na rede. 2 passos ≈ 1 segundo simulado.",
+        "precisam de ≥2200 passos para completar a primeira viagem. 2 passos ≈ 1 segundo simulado.",
     )
     hc1, hc2, hc3 = st.columns(3)
     triggered: list[tuple[str, list[str]]] | None = None
@@ -1245,7 +1285,7 @@ def render_scenario_overview(metric_key: str = "mean_time_loss_s") -> None:
     lo, hi = min(nums + [0.0]), max(nums + [0.0])
     pad = max(3.0, (hi - lo) * 0.22)
     chart_h = max(340, len(cdf) * 72 + 80)
-    BUS_COLOR, GEN_COLOR = "#2563eb", "#f59e0b"  # colourblind-safe blue/orange pair
+    BUS_COLOR, GEN_COLOR = "#2563eb", "#d97706"  # colourblind-safe blue/orange pair (both ≥3:1 on white)
 
     def _series(name: str, col: str, color: str) -> dict:
         return {
@@ -1312,7 +1352,7 @@ def render_scenario_overview(metric_key: str = "mean_time_loss_s") -> None:
             "min": round(lo - pad, 1),
             "max": round(hi + pad, 1),
             "axisLabel": {
-                "color": "#94a3b8",
+                "color": "#64748b",
                 "fontSize": 11,
                 "formatter": JsCode("function(v){return v+'%';}").js_code,
             },
@@ -1320,7 +1360,7 @@ def render_scenario_overview(metric_key: str = "mean_time_loss_s") -> None:
             "nameLocation": "middle",
             "nameGap": 30,
             "nameTextStyle": {
-                "color": "#94a3b8",
+                "color": "#64748b",
                 "fontSize": 11,
                 "fontFamily": "Inter, system-ui, sans-serif",
             },
@@ -1356,7 +1396,7 @@ def render_scenario_overview(metric_key: str = "mean_time_loss_s") -> None:
             _series("Tráfego geral", "gen", GEN_COLOR),
         ],
         "animation": True,
-        "animationDuration": 700,
+        "animationDuration": 400,
         "animationEasing": "cubicOut",
     }
     st_echarts(scen_option, height=f"{chart_h}px", key="resumo_scenario_overview")
@@ -1373,6 +1413,16 @@ st.set_page_config(
         "about": "PPS57 · ROUT25 — Dashboard de análise de Traffic Signal Priority (TSP) "
         "para a Linha 25 do Porto. Compara Baseline SUMO, TSP Rule-based e TSP+RL.",
     },
+)
+# Preconnect + non-blocking stylesheet for Inter, emitted before the main CSS so the
+# browser's preload scanner starts the font fetch early (replaces the slower render-
+# blocking @import that used to live inside the <style> block).
+st.markdown(
+    '<link rel="preconnect" href="https://fonts.googleapis.com">'
+    '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+    '<link rel="stylesheet" '
+    'href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">',
+    unsafe_allow_html=True,
 )
 st.markdown(CSS, unsafe_allow_html=True)
 
@@ -1534,15 +1584,10 @@ selected_class = st.session_state.vehicle_class_display
 vehicle_cls = cls_label_map[selected_class]
 
 
-def _sync_vehicle_class() -> None:
-    """Persist the drawer selectbox choice into the non-widget session key."""
-    st.session_state.vehicle_class_display = st.session_state.drawer_class_select
-
-
 def _sync_vehicle_class_kpis() -> None:
-    """Mirror of _sync_vehicle_class for the in-tab (KPIs) class selector — both
-    widgets write the same canonical key, so changing the class in either place
-    stays consistent across reruns."""
+    """Persist the in-tab (KPIs) class selector into the canonical (non-widget) session
+    key, so changing the class there stays consistent across reruns. The drawer selector
+    uses diff-detect + a full rerun instead (it lives in an st.fragment)."""
     st.session_state.vehicle_class_display = st.session_state.kpis_class_select
 
 
@@ -1608,14 +1653,11 @@ report_files = {
 _reports_ok = sum(1 for p in report_files.values() if p.exists())
 _reports_total = len(report_files)
 _fresh = file_mtime(REPORTS / "sumo_baseline_kpis.json")
-# ── topbar (fixed) + hamburger trigger ────────────────────────────────────────
-# The ☰ is a real st.button pinned over the topbar's left edge via its stable
-# .st-key-open_drawer class (a plain HTML icon can't trigger a rerun, and
-# components/JS are out of scope).
-if st.button("☰", key="open_drawer", help="Abrir menu"):
-    st.session_state.drawer_open = True
-    st.rerun()
-
+# ── topbar (fixed) + slide-over drawer ────────────────────────────────────────
+# The drawer chrome lives in an st.fragment so opening/closing the menu reruns ONLY
+# this fragment — not the whole script and every chart. Navigation and the global
+# filter still escalate to a full app rerun (st.rerun()), because the page body
+# outside the fragment depends on active_tab / vehicle_cls and must re-render.
 st.markdown(
     """
 <div class="topbar">
@@ -1625,17 +1667,25 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ── slide-over drawer ─────────────────────────────────────────────────────────
 
-if st.session_state.drawer_open:
-    # Overlay: a real full-screen button — clicking anywhere outside closes the
-    # drawer (a plain <div> can't trigger a rerun without JS/components).
+@st.fragment
+def _drawer_chrome() -> None:
+    # ☰ trigger — pinned over the topbar's left edge via .st-key-open_drawer. Inside a
+    # fragment a click reruns only the fragment, so just flip the flag and fall through;
+    # the panel below renders in this same fragment pass (no full app rerun).
+    if st.button("☰", key="open_drawer", help="Abrir menu"):
+        st.session_state.drawer_open = True
+
+    if not st.session_state.drawer_open:
+        return
+
+    # Overlay: a real full-screen button — clicking anywhere outside closes the drawer.
     if st.button("Fechar menu", key="overlay_close", help="Fechar o menu"):
         st.session_state.drawer_open = False
-        st.rerun()
+        st.rerun(scope="fragment")
 
-    # Panel: real Streamlit widgets, pinned into the fixed drawer via the
-    # container's stable .st-key-drawer_panel class.
+    # Panel: real Streamlit widgets, pinned into the fixed drawer via the container's
+    # stable .st-key-drawer_panel class.
     with st.container(key="drawer_panel"):
         st.markdown(
             '<div class="drawer-head"><div class="dh-logo">Route<span>_25</span></div>'
@@ -1647,7 +1697,7 @@ if st.session_state.drawer_open:
         with st.container(key="drawer_nav"):
             if st.button("Fechar", icon=":material/close:", key="close_drawer", width="stretch"):
                 st.session_state.drawer_open = False
-                st.rerun()
+                st.rerun(scope="fragment")
 
             for group_label, group_tabs in NAV_GROUPS:
                 if group_label:
@@ -1665,7 +1715,7 @@ if st.session_state.drawer_open:
                     ):
                         st.session_state.active_tab = _label
                         st.session_state.drawer_open = False
-                        st.rerun()
+                        st.rerun()  # app scope — the page body must switch tab
 
         # Filter + status are pushed to the bottom of the flex column (just above
         # the fixed footer) via .st-key-drawer_bottom { margin-top: auto }.
@@ -1679,18 +1729,23 @@ if st.session_state.drawer_open:
                 "de dados para a classe seleccionada</div>",
                 unsafe_allow_html=True,
             )
-            st.selectbox(
+            # Diff-detect instead of on_change: changing the class must re-render the
+            # page body (charts) OUTSIDE this fragment, so escalate to a full app rerun.
+            _choice = st.selectbox(
                 "Classe de veículo",
                 options=CLASS_OPTIONS,
                 index=CLASS_OPTIONS.index(selected_class),
                 key="drawer_class_select",
-                on_change=_sync_vehicle_class,
                 label_visibility="collapsed",
                 help="Classe de veículo aplicada a todos os KPIs e gráficos; o número é a "
                 "contagem de veículos. Abre em Autocarros (onde o TSP actua); muda para "
                 "'Todos os veículos' para o efeito líquido na rede. Prioritários = Autocarros "
                 "+ Emergência; Tráfego geral = não-prioritários.",
             )
+            if _choice != st.session_state.vehicle_class_display:
+                st.session_state.vehicle_class_display = _choice
+                st.rerun()  # app scope — propagate the new class to the whole page
+
             if vehicle_cls == "priority_vehicles" and cls_counts.get("emergency_vehicles", 0) == 0:
                 st.caption("Sem veículos de emergência — **Prioritários = Autocarros**.")
             elif (
@@ -1718,6 +1773,9 @@ if st.session_state.drawer_open:
             f'<span class="drawer-footer-label">Developed by</span>{_cap_img}</div>',
             unsafe_allow_html=True,
         )
+
+
+_drawer_chrome()
 
 # ── page header ───────────────────────────────────────────────────────────────
 
@@ -1894,7 +1952,7 @@ if _active == "Resumo":
             _p2_parts.append(
                 f"Foram simuladas <strong>{_sim_h} horas</strong> de tráfego em "
                 f"<strong>{_n_tls} intersecções instrumentadas</strong>"
-                + (f", com <strong>{_n_all:,} veículos</strong> em circulação" if _n_all else "")
+                + (f", com <strong>{nfmt(_n_all)} veículos</strong> em circulação" if _n_all else "")
                 + "."
             )
         if _total_dec and _applied is not None:
@@ -2443,10 +2501,10 @@ elif _active == "C-ITS":
                     else ""
                 )
                 hero_lead(
-                    f"{srem_n + ssem_n:,}",
+                    nfmt(srem_n + ssem_n),
                     "mensagens de prioridade trocadas entre veículos prioritários e "
-                    f"semáforos — <strong>{srem_n:,}</strong> pedidos (SREM) e "
-                    f"<strong>{ssem_n:,}</strong> respostas (SSEM){grant_html}.",
+                    f"semáforos — <strong>{nfmt(srem_n)}</strong> pedidos (SREM) e "
+                    f"<strong>{nfmt(ssem_n)}</strong> respostas (SSEM){grant_html}.",
                 )
             st.markdown(
                 """
@@ -2498,7 +2556,7 @@ elif _active == "C-ITS":
                     for mtype, mdesc in cits_descs.items():
                         cnt = by_type.get(mtype) or 0
                         st.markdown(
-                            f"**{mtype}** — {cnt:,} mensagens  \n"
+                            f"**{mtype}** — {nfmt(cnt)} mensagens  \n"
                             f'<span style="font-size:0.78rem;color:#64748b">{mdesc}</span>',
                             unsafe_allow_html=True,
                         )
@@ -2515,8 +2573,8 @@ elif _active == "C-ITS":
                 published = mt.get("published", 0) or 0
                 delivered = mt.get("delivered", 0) or 0
                 rate = f"{delivered / published * 100:.0f}%" if published else "—"
-                mc1.metric("Publicadas", f"{published:,}", border=True)
-                mc2.metric("Entregues", f"{delivered:,}", border=True)
+                mc1.metric("Publicadas", nfmt(published), border=True)
+                mc2.metric("Entregues", nfmt(delivered), border=True)
                 mc3.metric(
                     "Perdidas",
                     "—" if mt.get("dropped") is None else mt["dropped"],
@@ -2733,7 +2791,7 @@ elif _active == "vs RL":
                 x="Veredicto",
                 y="Contagem",
                 color="Veredicto",
-                color_discrete_sequence=[COLOR_GOOD, COLOR_BAD, "#94a3b8", "#f59e0b"],
+                color_discrete_sequence=[COLOR_GOOD, COLOR_BAD, "#94a3b8", "#d97706"],
                 height=320,
             )
             fig_vc.update_layout(showlegend=False)
@@ -2834,8 +2892,8 @@ elif _active == "KPIs":
 .badge-red { background:#fee2e2; color:#b91c1c; border:1px solid #fecaca; border-radius:99px; padding:0.2rem 0.75rem; font-size:13px; font-weight:500; }
 .stat-card { border:1px solid #e2e8f0; border-radius:12px; padding:1.25rem 1rem; text-align:center; }
 .stat-label { font-size:12px; color:#64748b; margin-bottom:0.35rem; text-transform:uppercase; letter-spacing:0.06em; }
-.stat-value { font-size:28px; font-weight:700; line-height:1.1; }
-.stat-unit { font-size:13px; color:#94a3b8; margin-top:0.2rem; }
+.stat-value { font-size:28px; font-weight:700; line-height:1.1; font-variant-numeric:tabular-nums; }
+.stat-unit { font-size:13px; color:#64748b; margin-top:0.2rem; }
 .stat-positive { color:#16a34a; }
 .stat-negative { color:#dc2626; }
 .stat-neutral { color:#0f172a; }
@@ -2846,7 +2904,7 @@ elif _active == "KPIs":
 .scen-obj-row { margin-top:0.75rem; }
 .scen-obj-lbl { font-size:11px; font-weight:700; letter-spacing:0.07em; text-transform:uppercase;
                 color:#2563eb; margin-bottom:0.2rem; }
-.scen-obj-lbl.muted { color:#94a3b8; }
+.scen-obj-lbl.muted { color:#64748b; }
 .scen-obj-txt { font-size:13.5px; color:#334155; line-height:1.55; margin:0; }
 .scen-obj-txt.muted { color:#64748b; }
 .scen-obj-chips { display:flex; flex-wrap:wrap; gap:0.4rem; margin-top:0.85rem; }
@@ -3567,10 +3625,12 @@ elif _active == "Documentação":
         "contagens de tráfego reais do CMP/IMT — os valores absolutos são indicativos, não previsões operacionais.",
         "A Safety Layer pode não ser exercida em runs curtas (0 bloqueios). Os caminhos de segurança são "
         "cobertos por testes unitários mas requerem cenários de stress para aparecer em evidência de runtime.",
-        "Autocarros (Linha 25) requerem duração de simulação suficiente para entrar na rede. "
-        "Runs com menos de 3600 steps podem não incluir nenhuma viagem de autocarro completa.",
+        "Autocarros (Linha 25) entram na rede a partir do passo ~51 (~26s simulados), mas só completam "
+        "a primeira viagem ao passo ~2123 (~1062s). Runs com menos de 2200 steps não incluem nenhuma "
+        "viagem de autocarro completa; com menos de 3600 steps a amostra é reduzida (≤5 viagens) e as "
+        "estatísticas de autocarro podem ser pouco representativas.",
     ]
-    for lim in [_html.escape(str(l)) for l in limitations] + standard_limits:
+    for lim in [_html.escape(str(item)) for item in limitations] + standard_limits:
         st.markdown(f'<div class="doc-limit">{lim}</div>', unsafe_allow_html=True)
 
     if demo:
