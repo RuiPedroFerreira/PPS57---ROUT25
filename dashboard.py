@@ -829,6 +829,24 @@ def scenario_focus_significance(report_root: Path) -> dict:
     return _scenario_focus_significance_cached(str(report_root), _reports_fingerprint(report_root))
 
 
+@st.cache_data(show_spinner=False)
+def _discover_scenario_roots_cached(reports_str: str, fingerprint: float) -> dict:
+    return discover_scenario_report_roots(Path(reports_str))
+
+
+@st.cache_data(show_spinner=False)
+def _default_scenario_dataset_cached(reports_str: str, fingerprint: float) -> str:
+    return default_scenario_dataset(Path(reports_str))
+
+
+def cached_scenario_roots(reports: Path) -> dict:
+    return _discover_scenario_roots_cached(str(reports), _reports_fingerprint(reports))
+
+
+def cached_default_dataset(reports: Path) -> str:
+    return _default_scenario_dataset_cached(str(reports), _reports_fingerprint(reports))
+
+
 def fmt(val, unit: str = "") -> str:
     if val is None:
         return "—"
@@ -1056,6 +1074,7 @@ def _run_streaming(commands: list[tuple[str, list[str]]], label: str) -> bool:
     return ok
 
 
+@st.fragment
 def render_simulation_panel() -> None:
     section("Visualização em tempo real (SUMO-GUI)")
     st.caption(
@@ -1167,8 +1186,8 @@ def render_scenario_overview(metric_key: str = "mean_time_loss_s") -> None:
     trade-off across every operational scenario, rendered in the Resumo tab. Reads
     the rich per-run table so it always shows BOTH classes (independent of the global
     vehicle-class filter); renders nothing without paired baseline+TSP data."""
-    roots = discover_scenario_report_roots(REPORTS)
-    dataset = default_scenario_dataset(REPORTS)
+    roots = cached_scenario_roots(REPORTS)
+    dataset = cached_default_dataset(REPORTS)
     scenario_dir = roots.get(dataset)
     if scenario_dir is None or not scenario_dir.exists():
         return
@@ -1192,11 +1211,11 @@ def render_scenario_overview(metric_key: str = "mean_time_loss_s") -> None:
                 & (tdf["scope"] == scope)
                 & (tdf["metric_key"] == metric_key),
                 "Valor",
-            ]
+            ].dropna()
             return float(vals.mean()) if len(vals) else None
 
         b, t = _mean(baseline_rt), _mean(tsp_rt)
-        if b and t is not None and b != 0:
+        if b is not None and b != 0 and t is not None:
             return round((t - b) / abs(b) * 100, 1)
         return None
 
@@ -1347,7 +1366,7 @@ def render_scenario_overview(metric_key: str = "mean_time_loss_s") -> None:
 
 st.set_page_config(
     page_title="PPS57 — TSP Analysis",
-    page_icon=None,
+    page_icon=":material/traffic:",
     layout="wide",
     initial_sidebar_state="collapsed",
     menu_items={
@@ -1373,7 +1392,7 @@ decision_outcome = load_json(REPORTS / "decision_outcome_evaluation.json")
 run_kpis: dict[str, dict] = {}
 if demo:
     for label, run in demo.get("runs", {}).items():
-        if "kpis" in run:
+        if isinstance(run.get("kpis"), dict):
             run_kpis[label] = run["kpis"]
 if baseline_kpis and not any("baseline" in k.lower() for k in run_kpis):
     run_kpis["baseline"] = baseline_kpis
@@ -1769,7 +1788,7 @@ if demo is None and baseline_kpis is None:
 counts = {k: get_kpi(v, "all_vehicles").get("vehicles", 0) or 0 for k, v in run_kpis.items()}
 nonzero = [c for c in counts.values() if c]
 if nonzero and (max(nonzero) - min(nonzero)) / max(nonzero) > 0.10:
-    count_str = " · ".join(f"{k}: {v}" for k, v in counts.items())
+    count_str = " · ".join(f"{_html.escape(k)}: {v}" for k, v in counts.items())
     warn(
         "<strong>Aviso metodológico:</strong> as runs diferem significativamente no número de "
         f"veículos concluídos ({count_str}). Isto sugere durações de simulação distintas — as "
@@ -1926,7 +1945,7 @@ if _active == "Resumo":
         ctx_block("Análise Geral", _p1, _p2, _p3)
 
     # ── verdict ───────────────────────────────────────────────────────────────
-    if demo and "verdict" in demo:
+    if demo and isinstance(demo.get("verdict"), dict):
         v = demo["verdict"]
         vmod, vtitle = VERDICT_MAP.get(v.get("status", ""), ("is-unknown", "Estado desconhecido"))
         st.markdown(
@@ -1938,7 +1957,8 @@ if _active == "Resumo":
 
     if not (baseline_key and primary_tsp):
         st.info(
-            "Sem um par baseline + TSP para resumir. Corre o demonstrador no separador Simulação."
+            "Sem um par baseline + TSP para resumir. Corre o demonstrador no separador Simulação.",
+            icon=":material/play_circle:",
         )
     else:
         bk = run_kpis[baseline_key]
@@ -1950,12 +1970,12 @@ if _active == "Resumo":
             bv = bk.get(key, {}).get("mean_time_loss_s")
             tv = tk.get(key, {}).get("mean_time_loss_s")
             n = tk.get(key, {}).get("vehicles") or 0
-            if bv and tv is not None and n:
+            if bv is not None and bv != 0 and tv is not None and n:
                 hero.append(
                     {
                         "Classe": label,
                         "key": key,
-                        "pct": (tv - bv) / bv * 100,
+                        "pct": (tv - bv) / abs(bv) * 100,
                         "n": n,
                         "baseline": bv,
                         "tsp": tv,
@@ -1976,7 +1996,7 @@ if _active == "Resumo":
             _sp_t = tk.get(bcls, {}).get("mean_speed_mps")
 
             _tl_explain = _wt_explain = _sp_explain = ""
-            if _tl_b and _tl_t:
+            if _tl_b is not None and _tl_t is not None:
                 _tl_d = _tl_t - _tl_b
                 _tl_p = bus["pct"]
                 _tl_explain = (
@@ -1988,7 +2008,7 @@ if _active == "Resumo":
                     f"A prioridade semafórica encurta a espera antes dos cruzamentos, "
                     f"reflectindo-se directamente neste indicador."
                 )
-            if _wt_b and _wt_t:
+            if _wt_b is not None and _wt_t is not None:
                 _wt_d = _wt_t - _wt_b
                 _wt_p = (_wt_d / abs(_wt_b)) * 100
                 _wt_dir = "desce" if _wt_d < 0 else "sobe"
@@ -2000,7 +2020,7 @@ if _active == "Resumo":
                     f"O verde antecipado ou estendido elimina parte das paragens "
                     f"completas — daí o valor {_wt_dir}."
                 )
-            if _sp_b and _sp_t:
+            if _sp_b is not None and _sp_t is not None:
                 _sp_d = _sp_t - _sp_b
                 _sp_p = (_sp_d / abs(_sp_b)) * 100
                 _sp_dir = "sobe" if _sp_d > 0 else "desce"
@@ -2035,6 +2055,7 @@ if _active == "Resumo":
                 with chip_col:
                     if st.button(f"{chip_label} →", key=f"chip_{chip_label}", width="stretch"):
                         st.session_state.active_tab = chip_label
+                        st.session_state.drawer_open = False
                         st.rerun()
                     st.caption(chip_desc)
 
@@ -2044,7 +2065,7 @@ if _active == "Resumo":
 
 elif _active == "Decisão":
     if not demo:
-        st.info("Report do demonstrador não disponível.")
+        st.info("Report do demonstrador não disponível.", icon=":material/folder_off:")
     else:
         runs_all = list(demo.get("runs", {}).keys())
         tsp_run_keys = [k for k in runs_all if k != "sumo_baseline"]
@@ -2240,7 +2261,7 @@ elif _active == "Decisão":
             insight(
                 f"O motor concedeu <strong>{gt_total:.1f} s</strong> de verde extra ao transporte público, "
                 f"em <strong>{green.get('n_extensions', 0)}</strong> extensões aplicadas "
-                f"(média {green.get('mean_extension_s', 0):.1f} s, máx {green.get('max_extension_s', 0):.1f} s)."
+                f"(média {green.get('mean_extension_s') or 0:.1f} s, máx {green.get('max_extension_s') or 0:.1f} s)."
             )
             gq1, gq2, gq3, gq4 = st.columns(4)
             gq1.metric(
@@ -2253,13 +2274,13 @@ elif _active == "Decisão":
             )
             gq2.metric(
                 "Extensão média",
-                f"{green.get('mean_extension_s', 0):.1f} s",
+                f"{green.get('mean_extension_s') or 0:.1f} s",
                 border=True,
                 help="Média de segundos por extensão de verde concedida.",
             )
             gq3.metric(
                 "Extensão máxima",
-                f"{green.get('max_extension_s', 0):.1f} s",
+                f"{green.get('max_extension_s') or 0:.1f} s",
                 border=True,
                 help="Maior extensão de verde aplicada numa única decisão.",
             )
@@ -2280,7 +2301,11 @@ elif _active == "Decisão":
 
         section("O que motivou as actuações — decomposição do priority score")
         if score_attr:
-            items = sorted(score_attr.items(), key=lambda kv: kv[1], reverse=True)
+            items = sorted(
+                ((k, v) for k, v in score_attr.items() if v is not None),
+                key=lambda kv: kv[1],
+                reverse=True,
+            )
             labels_o = [OBJECTIVE_LABELS.get(k, k) for k, _ in items]
             vals_o = [v for _, v in items]
             fig_o = go.Figure(
@@ -2296,12 +2321,12 @@ elif _active == "Decisão":
                 )
             )
             chart_layout(fig_o, "", height=max(220, len(items) * 46 + 80))
-            fig_o.update_xaxes(range=[0, max(vals_o) * 1.25 + 0.01])
+            fig_o.update_xaxes(range=[0, max(vals_o) * 1.25 + 0.01] if vals_o else [0, 1])
             st.plotly_chart(fig_o, width="stretch", config={"displayModeBar": False})
             top_obj = labels_o[0] if labels_o else "—"
             insight(
                 "Contribuição média de cada objectivo para o priority score das decisões que "
-                f"<strong>actuaram</strong>. O motor agiu sobretudo por <strong>{top_obj.lower()}</strong>. "
+                f"<strong>actuaram</strong>. O motor agiu sobretudo por <strong>{_html.escape(top_obj.lower())}</strong>. "
                 "A soma das barras ≈ score médio das actuações; objectivos a zero não tiveram peso "
                 "neste cenário (ex. headway, quando não há bunching)."
             )
@@ -2366,11 +2391,11 @@ elif _active == "Decisão":
 
 elif _active == "C-ITS":
     if not demo:
-        st.info("Report do demonstrador não disponível.")
+        st.info("Report do demonstrador não disponível.", icon=":material/folder_off:")
     else:
         tsp_run_keys = [k for k in demo.get("runs", {}) if k != "sumo_baseline"]
         if not tsp_run_keys:
-            st.info("Sem runs TSP disponíveis.")
+            st.info("Sem runs TSP disponíveis.", icon=":material/info:")
         else:
             # O tráfego C-ITS (V2X) só existe nas runs de actuação TSP — o baseline
             # não troca mensagens de prioridade — por isso não há selector de run:
@@ -2471,7 +2496,7 @@ elif _active == "C-ITS":
                 with col_desc:
                     st.markdown("&nbsp;")
                     for mtype, mdesc in cits_descs.items():
-                        cnt = by_type.get(mtype, 0)
+                        cnt = by_type.get(mtype) or 0
                         st.markdown(
                             f"**{mtype}** — {cnt:,} mensagens  \n"
                             f'<span style="font-size:0.78rem;color:#64748b">{mdesc}</span>',
@@ -2499,7 +2524,7 @@ elif _active == "C-ITS":
                     help="Mensagens que não chegaram ao destino.",
                 )
                 mc4.metric("Taxa de entrega", rate, border=True)
-                if mt.get("dropped", 0) == 0:
+                if mt.get("dropped") == 0:
                     insight(
                         "Entrega de <strong>100%</strong>: nesta corrida o canal V2X está "
                         "configurado como ideal (sem perdas, latência ou jitter), por isso o valor "
@@ -2758,12 +2783,12 @@ elif _active == "vs RL":
 # ═══════════════════════════════════════════════════════════════════════════════
 
 elif _active == "KPIs":
-    scenario_roots = discover_scenario_report_roots(REPORTS)
+    scenario_roots = cached_scenario_roots(REPORTS)
     dataset_labels = {
         "synthetic": "Corredor sintético — Boavista",
     }
     dataset_ids = list(scenario_roots) or ["synthetic"]
-    default_dataset = default_scenario_dataset(REPORTS)
+    default_dataset = cached_default_dataset(REPORTS)
     default_idx = dataset_ids.index(default_dataset) if default_dataset in dataset_ids else 0
     selected_dataset = st.selectbox(
         "Dataset de cenários",
@@ -2793,7 +2818,8 @@ elif _active == "KPIs":
         if not table_rows:
             st.info(
                 "Cenários presentes mas sem KPIs legíveis nos kpis.json. "
-                "Corre a suite para (re)gerar os resultados emparelhados baseline vs TSP."
+                "Corre a suite para (re)gerar os resultados emparelhados baseline vs TSP.",
+                icon=":material/refresh:",
             )
         else:
             # ── single injected <style> block for this tab ────────────────────
@@ -2912,7 +2938,7 @@ elif _active == "KPIs":
                     & (tdf["scope"] == scope)
                     & (tdf["metric_key"] == metric_key)
                 )
-                vals = tdf.loc[mask, "Valor"]
+                vals = tdf.loc[mask, "Valor"].dropna()
                 return float(vals.mean()) if len(vals) else None
 
             def _absdelta(b, t):
@@ -3157,21 +3183,21 @@ elif _active == "KPIs":
                 if isinstance(_eu, str) and _eu.strip():
                     _rows_html += (
                         '<div class="scen-obj-row"><div class="scen-obj-lbl">Objetivo</div>'
-                        f'<p class="scen-obj-txt">{_eu.strip()}</p></div>'
+                        f'<p class="scen-obj-txt">{_html.escape(_eu.strip())}</p></div>'
                     )
                 _rb = _scen_meta.get("realism_basis")
                 if isinstance(_rb, str) and _rb.strip():
                     _rows_html += (
                         '<div class="scen-obj-row"><div class="scen-obj-lbl muted">'
                         "Porquê é realista</div>"
-                        f'<p class="scen-obj-txt muted">{_rb.strip()}</p></div>'
+                        f'<p class="scen-obj-txt muted">{_html.escape(_rb.strip())}</p></div>'
                     )
                 _chips_html = ""
                 _focus = _scen_meta.get("kpi_focus") or []
                 if _focus:
                     _chips = "".join(
                         '<span class="scen-chip">'
-                        + (kpi_focus_pt[k] if k in kpi_focus_pt else k.replace("_", " ").capitalize() if isinstance(k, str) else str(k))
+                        + (kpi_focus_pt[k] if k in kpi_focus_pt else _html.escape(k.replace("_", " ").capitalize()) if isinstance(k, str) else _html.escape(str(k)))
                         + "</span>"
                         for k in _focus
                     )
@@ -3302,7 +3328,7 @@ elif _active == "KPIs":
             )
             hd = tdf[(tdf["Cenário"] == sel) & (tdf["scope"] == "headway")]
             if hd.empty:
-                st.info("Sem dados de headway para este cenário.")
+                st.info("Sem dados de headway para este cenário.", icon=":material/info:")
             else:
                 lines = sorted(x for x in hd["Linha"].dropna().unique())
 
@@ -3316,7 +3342,7 @@ elif _active == "KPIs":
                         & (tdf["Run type"] == rt)
                         & (tdf["metric_key"] == mk)
                     )
-                    vals = tdf.loc[m, "Valor"]
+                    vals = tdf.loc[m, "Valor"].dropna()
                     return float(vals.mean()) if len(vals) else None
 
                 hrows = []
@@ -3380,7 +3406,7 @@ elif _active == "KPIs":
                     continue
                 erows.append({"Poluente": name, "Baseline": b, "TSP": t, "Δ (%)": pct(b, t)})
             if not erows:
-                st.info("Sem dados de emissões para este cenário.")
+                st.info("Sem dados de emissões para este cenário.", icon=":material/info:")
             else:
                 edf = pd.DataFrame(erows)
                 col_tbl, col_chart = st.columns([2, 3])
@@ -3400,7 +3426,7 @@ elif _active == "KPIs":
                 with col_chart:
                     ed = edf.dropna(subset=["Δ (%)"]).copy()
                     if ed.empty:
-                        st.info("Sem pares baseline + TSP para o gráfico de emissões.")
+                        st.info("Sem pares baseline + TSP para o gráfico de emissões.", icon=":material/info:")
                     else:
                         ed["Efeito"] = ed["Δ (%)"].map(
                             lambda v: "Melhoria" if v < 0 else ("Custo" if v > 0 else "Neutro")
