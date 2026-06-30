@@ -28,8 +28,8 @@ non-obvious, durable setup/run caveats.
 
 ### Dependency notes
 - `requirements.lock` is the **complete** reproducible lockfile: it includes SUMO
-  interfaces, the full dashboard stack (`streamlit`, `streamlit-echarts`, `plotly`,
-  `pandas`) and dev tools (`pytest`, `ruff`). Use it for repeatable installs
+  interfaces, the full dashboard stack (`streamlit`, `plotly`, `pandas`) and dev
+  tools (`pytest`, `ruff`). Use it for repeatable installs
   (`python -m pip install -r requirements.lock`). `requirements.txt` declares
   flexible version ranges and is the source used to regenerate the lockfile.
 - `starlette` and `uvicorn` appear in `requirements.lock` as transitive deps of

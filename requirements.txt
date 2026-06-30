@@ -19,10 +19,3 @@ PyYAML>=6.0,<7.0
 streamlit>=1.41,<2.0
 plotly>=5.22,<7.0
 pandas>=2.0,<4.0
-# Gráficos ECharts no dashboard (import duro em dashboard.py: JsCode, st_echarts).
-# Pinned a 0.4.x: é a última linha sobre st.components.v1, que o Streamlit 1.58
-# aceita. A partir de 0.5.0 o pacote migra para st.components.v2 com JS file-backed,
-# que o Streamlit >=1.58 recusa registar sem declaração de asset_dir em pyproject.
-# Nota de API: na v1 os JsCode têm de ser passados como `.js_code` (string), não
-# como objeto — ver os formatters em dashboard.py.
-streamlit-echarts>=0.4,<0.5

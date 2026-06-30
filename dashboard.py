@@ -13,6 +13,7 @@ import os
 import shutil
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 import pandas as pd
@@ -20,7 +21,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 import yaml
-from streamlit_echarts import JsCode, st_echarts
 
 ROOT = Path(__file__).parent
 REPORTS = ROOT / "reports"
@@ -651,26 +651,6 @@ hr { border: none !important; border-top: 1px solid #eef2f7 !important; margin: 
   box-shadow: 0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.05); }
 [data-testid="stPlotlyChart"] .svg-container { border-radius: 12px; }
 
-/* ECharts charts (st_echarts renders an iframe) get the same card frame as Plotly
-   so every chart across the dashboard reads as one consistent surface on the soft
-   canvas. Modern browsers clip the iframe content to the border-radius; the chart
-   paints its own white background so the rounded corners stay clean.
-   Selector targets the component name Streamlit writes to the iframe title attribute
-   (declared as "streamlit_echarts" in streamlit-echarts); if styling breaks after a
-   library upgrade, check whether that title attribute still contains "streamlit_echarts". */
-@keyframes chart-skeleton { to { background-position: -480px 0; } }
-iframe[title*="streamlit_echarts"] {
-  /* Skeleton shimmer while the ECharts bundle loads inside the iframe — the chart's
-     own opaque white canvas paints over it on load. Finite iterations so there is no
-     idle CPU afterwards; prefers-reduced-motion (below) collapses the motion. */
-  background-color: #f8fafc;
-  background-image: linear-gradient(100deg, #f8fafc 30%, #eef2f7 50%, #f8fafc 70%);
-  background-size: 480px 100%; background-repeat: no-repeat; background-position: 480px 0;
-  animation: chart-skeleton 1.15s ease-in-out 4;
-  border: 1px solid #eef2f7;
-  border-radius: 14px;
-  box-shadow: 0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.05); }
-
 /* Resumo hero — the headline statement with its key figure pulled large, so the
    single most important number leads the whole dashboard. */
 .hero-lead { display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin:8px 0 22px; }
@@ -707,8 +687,7 @@ iframe[title*="streamlit_echarts"] {
   outline: 2px solid #1d4ed8 !important; outline-offset: 2px; }
 
 /* Honour the OS "reduce motion" setting — drop hover transforms and collapse
-   transition/animation durations to ~0. (ECharts canvas motion is JS-driven and
-   kept short separately.) */
+   transition/animation durations to ~0. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     transition-duration: 0.001ms !important; animation-duration: 0.001ms !important;
@@ -1294,125 +1273,79 @@ def render_scenario_overview(metric_key: str = "mean_time_loss_s") -> None:
         unsafe_allow_html=True,
     )
 
-    nums = [v for v in cdf["bus"].tolist() + cdf["gen"].tolist() if v is not None]
+    # pd.notna drops both None and pandas-coerced NaN (a None bus/gen makes the
+    # column float64, so `is not None` would let NaN through and poison min/max).
+    nums = [v for v in cdf["bus"].tolist() + cdf["gen"].tolist() if pd.notna(v)]
     lo, hi = min(nums + [0.0]), max(nums + [0.0])
     pad = max(3.0, (hi - lo) * 0.22)
     chart_h = max(340, len(cdf) * 72 + 80)
-    BUS_COLOR, GEN_COLOR = "#2563eb", "#d97706"  # colourblind-safe blue/orange pair (both ≥3:1 on white)
+    BUS_COLOR, GEN_COLOR = "#2563eb", "#d97706"
 
-    def _series(name: str, col: str, color: str) -> dict:
-        return {
-            "name": name,
-            "type": "bar",
-            "barMaxWidth": 15,
-            "barGap": "30%",
-            "itemStyle": {"color": color, "borderRadius": 3},
-            "data": [
-                None
-                if v is None
-                else {
-                    "value": round(v, 1),
-                    "label": {
-                        "show": True,
-                        "position": "left" if v < 0 else "right",
-                        "formatter": f"{v:+.1f}%",
-                        "color": "#475569",
-                        "fontSize": 10,
-                        "fontFamily": "Inter, system-ui, sans-serif",
-                    },
-                }
-                for v in cdf[col]
-            ],
-        }
+    def _fmt(v: float | None) -> str:
+        return "" if pd.isna(v) else f"{v:+.1f}%"
 
-    scen_option = {
-        "backgroundColor": "white",
-        "grid": {"left": "48%", "right": "14%", "top": "13%", "bottom": "10%"},
-        "legend": {
-            "data": ["Autocarro", "Tráfego geral"],
-            "top": "1%",
-            "icon": "roundRect",
-            "itemWidth": 12,
-            "itemHeight": 12,
-            "textStyle": {
-                "color": "#374151",
-                "fontSize": 12,
-                "fontFamily": "Inter, system-ui, sans-serif",
-            },
+    # Plotly does not wrap tick labels, so pre-wrap long scenario names; yaxis
+    # automargin then sizes the label gutter to fit instead of clipping them.
+    ylabels = ["<br>".join(textwrap.wrap(str(lbl), 24)) or str(lbl) for lbl in cdf["label"]]
+
+    def _bar(name: str, col: str, color: str) -> go.Bar:
+        return go.Bar(
+            name=name,
+            x=cdf[col].tolist(),
+            y=ylabels,
+            orientation="h",
+            marker={"color": color, "line_width": 0, "cornerradius": 3},
+            text=[_fmt(v) for v in cdf[col]],
+            textposition="outside",
+            textfont={"size": 10, "color": "#475569"},
+            cliponaxis=False,
+            hovertemplate="%{fullData.name}: %{x:+.1f}%<extra></extra>",
+        )
+
+    fig_scen = go.Figure([_bar("Autocarro", "bus", BUS_COLOR), _bar("Tráfego geral", "gen", GEN_COLOR)])
+    fig_scen.add_vline(x=0, line_color="#94a3b8", line_width=1.5, line_dash="dot")
+    fig_scen.update_layout(
+        barmode="group",
+        height=chart_h,
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        margin={"l": 10, "r": 80, "t": 40, "b": 50},
+        hovermode="y unified",
+        hoverlabel={
+            "bgcolor": "white",
+            "bordercolor": "#e2e8f0",
+            "font": {"size": 12, "color": "#0f172a", "family": "Inter, system-ui"},
         },
-        "tooltip": {
-            "trigger": "axis",
-            "axisPointer": {"type": "shadow"},
-            "backgroundColor": "white",
-            "borderColor": "#e2e8f0",
-            "borderWidth": 1,
-            "textStyle": {
-                "color": "#0f172a",
-                "fontSize": 12,
-                "fontFamily": "Inter, system-ui, sans-serif",
-            },
-            "formatter": JsCode(
-                "function(ps){var s='<b>'+ps[0].name+'</b>';"
-                "ps.forEach(function(p){var v=p.value;"
-                "if(v&&typeof v==='object'){v=v.value;}"
-                "if(v==null)return;"
-                "s+='<br/>'+p.marker+p.seriesName+': '+(v>0?'+':'')+v+'%';});"
-                "return s;}"
-            ).js_code,
+        legend={
+            "orientation": "h",
+            "x": 0.5,
+            "xanchor": "center",
+            "y": 1.02,
+            "yanchor": "bottom",
+            "font": {"size": 12, "color": "#374151"},
+            "itemwidth": 30,
         },
-        "xAxis": {
-            "type": "value",
-            "min": round(lo - pad, 1),
-            "max": round(hi + pad, 1),
-            "axisLabel": {
-                "color": "#64748b",
-                "fontSize": 11,
-                "formatter": JsCode("function(v){return v+'%';}").js_code,
-            },
-            "name": "Variação face ao baseline (%)",
-            "nameLocation": "middle",
-            "nameGap": 30,
-            "nameTextStyle": {
-                "color": "#64748b",
-                "fontSize": 11,
-                "fontFamily": "Inter, system-ui, sans-serif",
-            },
-            "splitLine": {"lineStyle": {"color": "#f1f5f9"}},
-            "axisLine": {"lineStyle": {"color": "#e2e8f0"}},
-            "axisTick": {"show": False},
+        xaxis={
+            "title": "Variação face ao baseline (%)",
+            "title_font": {"size": 11, "color": "#64748b"},
+            "tickfont": {"size": 11, "color": "#64748b"},
+            "ticksuffix": "%",
+            "gridcolor": "#f1f5f9",
+            "linecolor": "#e2e8f0",
+            "zerolinecolor": "#94a3b8",
+            "zerolinewidth": 0,
+            "range": [lo - pad, hi + pad],
         },
-        "yAxis": {
-            "type": "category",
-            "data": cdf["label"].tolist(),
-            "axisLabel": {
-                "color": "#374151",
-                "fontSize": 12,
-                "fontFamily": "Inter, system-ui, sans-serif",
-                "width": 390,
-                "overflow": "break",
-                "align": "right",
-            },
-            "axisLine": {"lineStyle": {"color": "#e2e8f0"}},
-            "axisTick": {"show": False},
+        yaxis={
+            "automargin": True,
+            "tickfont": {"size": 11, "color": "#374151"},
+            "linecolor": "#e2e8f0",
         },
-        "series": [
-            {
-                **_series("Autocarro", "bus", BUS_COLOR),
-                "markLine": {
-                    "silent": True,
-                    "symbol": "none",
-                    "data": [{"xAxis": 0}],
-                    "lineStyle": {"color": "#94a3b8", "width": 1.5, "type": "dotted"},
-                    "label": {"show": False},
-                },
-            },
-            _series("Tráfego geral", "gen", GEN_COLOR),
-        ],
-        "animation": True,
-        "animationDuration": 400,
-        "animationEasing": "cubicOut",
-    }
-    st_echarts(scen_option, height=f"{chart_h}px", key="resumo_scenario_overview")
+        font={"family": "Inter, system-ui, sans-serif"},
+        bargap=0.3,
+        bargroupgap=0.1,
+    )
+    st.plotly_chart(fig_scen, width="stretch", config={"displayModeBar": False}, theme=None)
 
 
 # ── page config ───────────────────────────────────────────────────────────────
@@ -2220,7 +2153,7 @@ elif _active == "Decisão":
                     )
                 )
                 chart_layout(fig_funnel, "Funil de decisão TSP", height=300)
-                st.plotly_chart(fig_funnel, width="stretch", config={"displayModeBar": False})
+                st.plotly_chart(fig_funnel, width="stretch", config={"displayModeBar": False}, theme=None)
             with col_m:
                 mm1, mm2 = st.columns(2)
                 mm1.metric(
@@ -2301,7 +2234,7 @@ elif _active == "Decisão":
                 )
                 chart_layout(fig_pie, "Acções do motor TSP", height=320)
                 fig_pie.update_layout(showlegend=False)
-                st.plotly_chart(fig_pie, width="stretch", config={"displayModeBar": False})
+                st.plotly_chart(fig_pie, width="stretch", config={"displayModeBar": False}, theme=None)
             else:
                 st.caption("Sem acções registadas.")
         with col_legend:
@@ -2388,7 +2321,7 @@ elif _active == "Decisão":
             )
             chart_layout(fig_o, "", height=max(220, len(items) * 46 + 80))
             fig_o.update_xaxes(range=[0, max(vals_o) * 1.25 + 0.01] if vals_o else [0, 1])
-            st.plotly_chart(fig_o, width="stretch", config={"displayModeBar": False})
+            st.plotly_chart(fig_o, width="stretch", config={"displayModeBar": False}, theme=None)
             top_obj = labels_o[0] if labels_o else "—"
             insight(
                 "Contribuição média de cada objectivo para o priority score das decisões que "
@@ -2422,7 +2355,7 @@ elif _active == "Decisão":
             )
             chart_layout(fig_sf, "Safety Layer — motivos de bloqueio")
             fig_sf.update_xaxes(range=[0, (df_sf["Bloqueios"].max() or 1) * 1.18])
-            st.plotly_chart(fig_sf, width="stretch", config={"displayModeBar": False})
+            st.plotly_chart(fig_sf, width="stretch", config={"displayModeBar": False}, theme=None)
             insight(
                 "A Safety Layer bloqueia actuações que criem conflitos: amarelo insuficiente, "
                 "violação de verde mínimo/máximo, cooldown entre actuações ou conflito de fases."
@@ -2569,7 +2502,7 @@ elif _active == "C-ITS":
                     fig_ct.update_layout(showlegend=False)
                     fig_ct.update_traces(hovertemplate="%{x}: %{y}<extra></extra>")
                     chart_layout(fig_ct, "Mensagens por protocolo C-ITS (escala log)")
-                    st.plotly_chart(fig_ct, width="stretch", config={"displayModeBar": False})
+                    st.plotly_chart(fig_ct, width="stretch", config={"displayModeBar": False}, theme=None)
                 with col_desc:
                     st.markdown("&nbsp;")
                     for mtype, mdesc in cits_descs.items():
@@ -2737,7 +2670,7 @@ elif _active == "C-ITS":
                         fig_lc.update_yaxes(title_text="", showticklabels=False)
                         fig_lc.update_xaxes(title_text="")
                         chart_layout(fig_lc, f"Desfecho dos {tracked} pedidos seguidos", height=200)
-                        st.plotly_chart(fig_lc, width="stretch", config={"displayModeBar": False})
+                        st.plotly_chart(fig_lc, width="stretch", config={"displayModeBar": False}, theme=None)
                     _parts = cleared + expired + active
                     _eq = (
                         "= todos os pedidos seguidos"
@@ -2815,7 +2748,7 @@ elif _active == "vs RL":
             )
             fig_vc.update_layout(showlegend=False)
             chart_layout(fig_vc, "Veredictos da política RL vs baseline rule-based")
-            st.plotly_chart(fig_vc, width="stretch", config={"displayModeBar": False})
+            st.plotly_chart(fig_vc, width="stretch", config={"displayModeBar": False}, theme=None)
             insight(
                 "Cada decisão compara a acção da política RL com a rule-based. Veredicto positivo = "
                 "RL escolheu acção com melhor valor estimado de recompensa."
@@ -3408,7 +3341,7 @@ elif _active == "KPIs":
                 margin={"t": 44, "b": 70, "l": 60, "r": 60},
                 legend={"orientation": "h", "yanchor": "bottom", "y": -0.3, "bgcolor": "rgba(0,0,0,0)"},
             )
-            st.plotly_chart(_fig_radar, width="stretch", config={"displayModeBar": False})
+            st.plotly_chart(_fig_radar, width="stretch", config={"displayModeBar": False}, theme=None)
 
             # ── ▸ Trade-off: autocarro vs tráfego geral ───────────────────────
             section(f"Trade-off TSP · {sel_label}", focus="tradeoff" in _focus_sections)
@@ -3593,7 +3526,7 @@ elif _active == "KPIs":
                 )
                 fig_h.update_layout(legend_title="", margin={"t": 44, "b": 30, "l": 8, "r": 8})
                 chart_layout(fig_h, f"Amplitude de headway por linha — {sel_label}", height=300)
-                st.plotly_chart(fig_h, width="stretch", config={"displayModeBar": False})
+                st.plotly_chart(fig_h, width="stretch", config={"displayModeBar": False}, theme=None)
                 insight(
                     "A amplitude (máx − mín) é um proxy <em>coarse</em> de bunching "
                     "(poucas partidas por linha, só média/mín/máx em disco). "
@@ -3661,7 +3594,7 @@ elif _active == "KPIs":
                             f"Δ emissões por poluente (TSP vs baseline) · {sel_label}",
                             height=320,
                         )
-                        st.plotly_chart(fig_e, width="stretch", config={"displayModeBar": False})
+                        st.plotly_chart(fig_e, width="stretch", config={"displayModeBar": False}, theme=None)
                 insight(
                     "Valores por <strong>veículo-km</strong> (a normalização comparável entre arms). "
                     "Negativo = o TSP reduziu o poluente. NOx e PMx são os poluentes mais relevantes "
