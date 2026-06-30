@@ -44,6 +44,10 @@ non-obvious, durable setup/run caveats.
 - Dashboard: `streamlit run dashboard.py` (default port 8501). Seven tabs: Resumo,
   KPIs, Decisão, C-ITS, vs RL, Documentação, Simulação. With an empty `reports/`
   most tabs show "no data" warnings (not errors). Generate data first: `make
-  tsp-demonstrator` (Resumo/KPIs/Decisão/C-ITS tabs); `make compare-tsp-rl` (vs
-  RL tab); `make scenario-suite` (KPIs tab scenario comparison, both arms, all
-  seeds).
+  tsp-demonstrator` (Resumo/KPIs/Decisão/C-ITS tabs); `make
+  evaluate-decision-outcomes` (vs RL tab — it reads
+  `reports/decision_outcome_evaluation.json`, NOT the runtime-delta
+  `tsp_baseline_vs_rl_comparison.json` from `make compare-tsp-rl`, which has a
+  different schema; see the B1 note in `dashboard.py`); `make scenario-suite`
+  (KPIs tab scenario comparison, both arms, all seeds — `SUITE_SEEDS=<seed>`
+  restricts to one seed for a much faster run).
