@@ -65,6 +65,7 @@ outputs/                 Generated JSONL/XML/log artifacts (git-ignored)
 reports/                 Generated summaries, KPIs and policy reports (git-ignored)
 scripts/                 User-facing command-line entry points
 src/pps57_cits/          C-ITS/V2X emulation layer
+src/pps57_dashboard/     Dashboard data-loading helpers (scenario tables, result models)
 src/pps57_opt/           Policy optimization, runtime policy loading and RL training
 src/pps57_sumo/          SUMO network generation, KPI parsing, network binding/profile
 src/pps57_tsp/           TSP engine, Safety Layer and actuation
@@ -166,16 +167,18 @@ external SUMO installation to `PATH`.
 
 ## Streamlit Dashboard
 
-`dashboard.py` reads the synthetic-corridor scenario reports under
-`reports/scenarios/`. Launch it with:
+`dashboard.py` reads synthetic-corridor scenario reports and demonstrator
+artifacts under `reports/`. Launch it with:
 
 ```bash
 streamlit run dashboard.py
 ```
 
-It has eight tabs — Resumo, KPIs, Decisão, C-ITS, vs RL, Cenários, Método and
-Simulação — and the Cenários tab reads `reports/scenarios/` plus
-`configs/scenario_catalog.yaml`. Generate those first with `make scenario-suite`.
+It has seven tabs — Resumo, KPIs, Decisão, C-ITS, vs RL, Documentação and
+Simulação. The KPIs tab reads `reports/scenarios/` (scenario per-run KPIs and
+paired comparisons); generate those first with `make scenario-suite`. The Resumo
+and KPIs tabs also consume `reports/tsp_demonstrator_report.json` produced by
+`make tsp-demonstrator`.
 
 ## Available Make Targets
 
@@ -193,10 +196,11 @@ Simulação — and the Cenários tab reads `reports/scenarios/` plus
 | `make scenario-suite` | Run every scenario for **both** arms (baseline + tsp_actuation) over all configured seeds, export per-scenario KPIs + paired comparisons, and regenerate `RESULTS.md` | Yes |
 | `make cits-sumo` | Run C-ITS emulation connected to SUMO/TraCI | Yes |
 | `make tsp-demonstrator` | Run SUMO baseline, direct TSP and TSP with simulated controller, then write evidence reports | Yes |
-| `make tsp-sumo` | Run TSP with SUMO and TraCI actuation | Yes |
-| `make tsp-sumo-no-actuation` | Run TSP with SUMO observation only | Yes |
+| `make tsp-sumo` | Run TSP with SUMO and TraCI actuation; chains `audit-protocol` automatically | Yes |
+| `make tsp-sumo-no-actuation` | Run TSP with SUMO observation only; chains `audit-protocol` automatically | Yes |
 | `make tsp-gui` | Run TSP with SUMO GUI and TraCI actuation | Yes |
 | `make tsp-gui-no-actuation` | Run TSP with SUMO GUI observation only | Yes |
+| `make audit-protocol` | Replay C-ITS/TSP/actuation lifecycle logs and exit non-zero on violations (fail-closed) | No |
 | `make compare-tsp-rl` | Run baseline and RL TSP back-to-back and write a comparison table | Yes |
 | `make compare-sumo-kpis BASELINE_KPIS=... RL_KPIS=...` | Diff two pre-generated KPI JSON files | No |
 | `make evaluate-decision-outcomes` | Classify RL decisions as same / blocked-unsafe / less intrusive | Yes |
@@ -524,7 +528,15 @@ network impact as `inconclusive_without_kpis`.
 
 ### Protocol Lifecycle Audit
 
-Replays SREM/SSEM/TSP/actuation logs and checks the per-request lifecycle chain:
+Replays SREM/SSEM/TSP/actuation logs and checks the per-request lifecycle chain.
+`make tsp-sumo` and `make tsp-sumo-no-actuation` chain this automatically after
+their SUMO run. To run it standalone against existing artifacts:
+
+```bash
+make audit-protocol
+```
+
+Or directly (all paths have defaults pointing at `outputs/` and `reports/`):
 
 ```bash
 .venv/bin/python scripts/audit_protocol_lifecycle.py \
@@ -534,7 +546,9 @@ Replays SREM/SSEM/TSP/actuation logs and checks the per-request lifecycle chain:
   --output reports/protocol_lifecycle_audit.json
 ```
 
-Run a TSP SUMO workflow first to produce the input logs.
+The audit exits non-zero when it finds missing final SSEMs, invalid state
+transitions, or actuation errors. Run a TSP SUMO workflow first to produce the
+input logs.
 
 ### Event-Log Training Dataset
 
@@ -1055,9 +1069,9 @@ such as `make run`, `make cits-sumo` or `make tsp-sumo-no-actuation`.
 `dashboard.py` reads generated reports. Produce them first, e.g.:
 
 ```bash
-make tsp-demonstrator
-make compare-tsp-rl
-make scenario-suite RUN_TYPE=comparison
+make tsp-demonstrator    # Resumo, KPIs, Decisão and C-ITS tabs
+make compare-tsp-rl      # vs RL tab
+make scenario-suite      # KPIs tab scenario comparison (both arms, all seeds)
 streamlit run dashboard.py
 ```
 
